@@ -222,6 +222,10 @@ const LIST_LIMIT = 200;
                   <a mat-stroked-button [routerLink]="['/classes']" [queryParams]="{ class: b.class_id }">
                     <mat-icon>checklist</mat-icon>Roll call</a>
                 }
+                @if (b.class_id && canSeeClasses() && (b.state === 'scheduled' || b.state === 'provisioning' || b.state === 'active')) {
+                  <a mat-stroked-button class="class-live" [routerLink]="['/classes', b.class_id, 'sessions', b.id, 'live']">
+                    <mat-icon>visibility</mat-icon>Live</a>
+                }
                 @if (canSeeLive() && (b.exercise_id || b.class_id)) {
                   <a mat-stroked-button [routerLink]="b.exercise_id ? ['/ops-center', b.exercise_id] : ['/ops-center/select']">
                     <mat-icon>cast_for_education</mat-icon>Live Class</a>

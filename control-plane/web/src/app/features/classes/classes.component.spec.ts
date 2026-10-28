@@ -4,7 +4,7 @@ import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { WritableSignal, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { ActivatedRoute, convertToParamMap } from '@angular/router';
+import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { AuthService } from '@core/services/auth.service';
 import {
@@ -135,7 +135,7 @@ describe('ClassesComponent', () => {
     TestBed.configureTestingModule({
       imports: [ClassesComponent, NoopAnimationsModule],
       providers: [
-        provideHttpClient(), provideHttpClientTesting(),
+        provideHttpClient(), provideHttpClientTesting(), provideRouter([]),
         { provide: ClassesApiService, useValue: api },
         { provide: OperatorRecordsApiService, useValue: records },
         { provide: NotificationService, useValue: notify },
@@ -272,6 +272,14 @@ describe('ClassesComponent', () => {
     expect(el.textContent).toContain('Team 1');
     expect(buttons('Split').length).toBe(0);
     expect(el.querySelectorAll('.member select').length).toBe(0);
+  });
+
+  it('links every session to its live view (ADR 0014 §19)', () => {
+    setup('observer', { ...CLASS, my_role: 'observer', can_edit: false } as ClassRecord);
+    component.open(component.classes()[0]);
+    fixture.detectChanges();
+    const links = Array.from(el.querySelectorAll('a.live')).map(a => a.getAttribute('href'));
+    expect(links).toEqual(['/classes/c1/sessions/ev1/live', '/classes/c1/sessions/ev2/live']);
   });
 
   it('splits a collective session into teams and moves a Student', () => {

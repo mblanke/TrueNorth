@@ -33,6 +33,11 @@ export type MyClasses = S['AttendingClassesOut'];
 export type MyClass = S['AttendingClassOut'];
 export type MyClassSession = S['AttendingSessionOut'];
 export type MyRangeStatus = S['AttendingRangeStatus'];
+export type MyRangeConsoles = S['MyRangeConsolesOut'];
+export type ClassConsole = S['ClassConsoleOut'];
+export type ClassLive = S['ClassLiveOut'];
+export type LiveStudent = S['LiveStudentOut'];
+export type LiveRange = S['LiveRangeOut'];
 
 /** `d` as local ISO 8601 with its UTC offset, e.g. 2026-11-02T00:00:00-05:00. */
 export function localIso(d: Date): string {
@@ -142,6 +147,26 @@ export class ClassesApiService {
   }
   moveTeamMember(id: string, eventId: string, userId: string, teamId: string): Observable<SessionTeams> {
     return this.http.put<SessionTeams>(`${this.base}/${id}/sessions/${eventId}/teams/members/${userId}`, { team_id: teamId });
+  }
+
+  // ── Consoles and the live view (ADR 0014 §19-20; #313, #321) ──
+  /** My classes: the machines of the Student's own class range they may open a console on. */
+  myRangeConsoles(rangeId: string): Observable<MyRangeConsoles> {
+    return this.http.get<MyRangeConsoles>(`${this.base}/attending/ranges/${rangeId}/consoles`);
+  }
+  /** A one-time console ticket on one of the Student's machines, during their session (audited). */
+  openMyRangeConsole(rangeId: string, machine: string): Observable<ClassConsole> {
+    return this.http.post<ClassConsole>(
+      `${this.base}/attending/ranges/${rangeId}/consoles/${encodeURIComponent(machine)}`, {});
+  }
+  /** A class session's live view: each Student's machines and status (its staff and observers). */
+  sessionLive(id: string, eventId: string): Observable<ClassLive> {
+    return this.http.get<ClassLive>(`${this.base}/${id}/sessions/${eventId}/live`);
+  }
+  /** A console on a machine of one of the session's ranges (audited; an observer's is marked observed). */
+  openSessionConsole(id: string, eventId: string, rangeId: string, machine: string): Observable<ClassConsole> {
+    return this.http.post<ClassConsole>(`${this.base}/${id}/sessions/${eventId}/live/console`,
+      { range_id: rangeId, machine });
   }
 
   // ── Attendance and close-out (ADR 0014 §12-13; #283) ──
