@@ -459,23 +459,23 @@ It changes nothing about courses, cmi5, Moodle, lab sessions or the career-path 
 
 ## Delivery
 
-One issue and one PR each. Blocking edges are on the issues (GitHub dependencies, plus a `Blocked by` line). All carry the label R1. Slices marked AR need `adversarial-reviewer` before merge (CLAUDE.md: auth, tenancy, provisioning); any slice touching a range also gets `range-reviewer`. Every slice passes the gate (`bash scripts/dod.sh`); anything with a UI also runs `DOD_WEB=1`.
+One issue and one PR each. Blocking edges are on the issues (GitHub dependencies, plus a `Blocked by` line). Thirteen slices plus one owner-decision ticket: the participant-sizing requirement (decision 9) added S12 and S13 to the twelve of the first design. All carry the label R1. Slices marked AR need `adversarial-reviewer` before merge (CLAUDE.md: auth, tenancy, provisioning); any slice touching a range also gets `range-reviewer`. Every slice passes the gate (`bash scripts/dod.sh`); anything with a UI also runs `DOD_WEB=1`.
 
 | Id | Issue | Slice | Blocked by | AR |
 |---|---|---|---|---|
-| D0 | TBD | Owner decisions: cleared admin, live approver separation, isolation `enforce`, GLM wording, free-form scripts | none | n/a |
-| S1 | TBD | Tracer: request to outline gate, end to end (web request form with participants per role, API, runner kind, sandbox, model deny list, architect agent with the Needs input sizing loop and `intake.*` checks, tenancy) | this ADR merged | yes |
-| S2 | TBD | Scenario, MESL, delivery cells mapped to roles (stage 2) | S1 | no |
-| S3 | TBD | Reuse an existing range, captured inject timeline, defang checks, image inventory (stage 3) | S2 | range-reviewer |
-| S4 | TBD | Scoring and evidence map (stage 5), static QA report, preview gate (admin) | S3 | no |
-| S5 | TBD | Instructor pack, role briefs, debrief template (stage 4), AAR template reader | S4 | no |
-| S6 | TBD | Dry run: capacity admission, build at minimal size, certify, simulated players, report, teardown, hash into preview | S4, S12, #311, ADR 0013 S4 to S6 | yes |
-| S7 | TBD | Bundle, Promote, exercise template record mapping, separation checks | S5, S6, the template-record PR | yes |
-| S8 | TBD | Proven by dry run and the content port item type `exercise_template` | S7, #324 | yes |
-| S9 | TBD | Drafted range templates: images needed and exists, draft state refuses creation and booking, deferred dry run | S3, S6, S7 | yes |
-| S10 | TBD | Live substrate: action registry, executor, isolation re-probe condition, kill switch, flag off | S6, D0 | yes |
-| S12 | TBD | Sizing: role definitions, seat patterns, scale rules, deterministic renderer, derived templates, capacity report ("needs N VMs..., biggest size that fits") | S3 | no (range-reviewer) |
-| S13 | TBD | Resize and roster: session sizing record, re-approval on change, role-aware team split and role on membership (#299) | S7, S12, #299 | yes |
-| S11 | TBD | Live generation: stage 3b agent, `live.*` checks, Live approval gate, flagging everywhere, class arming | S7, S10 | yes |
+| D0 | #327 | Owner decisions: cleared admin, live approver separation, isolation `enforce`, GLM wording, free-form scripts | none | n/a |
+| S1 | #328 | Tracer: request to outline gate, end to end (web request form with participants per role, API, runner kind, sandbox, model deny list, architect agent with the Needs input sizing loop and `intake.*` checks, tenancy) | this ADR merged | yes |
+| S2 | #329 | Scenario, MESL, delivery cells mapped to roles (stage 2) | S1 | no |
+| S3 | #330 | Reuse an existing range, captured inject timeline, defang checks, image inventory (stage 3) | S2 | range-reviewer |
+| S4 | #332 | Scoring and evidence map (stage 5), static QA report, preview gate (admin) | S3 | no |
+| S5 | #333 | Instructor pack, role briefs, debrief template (stage 4), AAR template reader | S4 | no |
+| S6 | #334 | Dry run: capacity admission, build at minimal size, certify, simulated players, report, teardown, hash into preview | S4, S12, #311, ADR 0013 S4 to S6 | yes |
+| S7 | #335 | Bundle, Promote, exercise template record mapping, separation checks | S5, S6, the template-record PR | yes |
+| S8 | #336 | Proven by dry run and the content port item type `exercise_template` | S7, #324 | yes |
+| S9 | #337 | Drafted range templates: images needed and exists, draft state refuses creation and booking, deferred dry run | S3, S6, S7 | yes |
+| S10 | #338 | Live substrate: action registry, executor, isolation re-probe condition, kill switch, flag off | S6, D0 | yes |
+| S12 | #331 | Sizing: role definitions, seat patterns, scale rules, deterministic renderer, derived templates, capacity report ("needs N VMs..., biggest size that fits") | S3 | no (range-reviewer) |
+| S13 | #340 | Resize and roster: session sizing record, re-approval on change, role-aware team split and role on membership (#299) | S7, S12, #299 | yes |
+| S11 | #339 | Live generation: stage 3b agent, `live.*` checks, Live approval gate, flagging everywhere, class arming | S7, S10 | yes |
 
 Slices that must be adversarially reviewed: S1 (runner, tenancy), S6 (dry run: capacity, provisioning, teardown, synthetic users), S7 (promotion importer), S8 (extends the port's import trust boundary), S9 (provisioning gating), S13 (booking approval and team assignment across students), S10 and S11 (live attacks). S2, S4, S5 and S12 are content, UI and pure-computation slices and take the ordinary `tn-change-review`; S3 and S12 take `range-reviewer`.
