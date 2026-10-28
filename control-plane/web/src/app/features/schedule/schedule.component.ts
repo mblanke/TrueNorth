@@ -11,6 +11,7 @@ import { AuthService } from '@core/services/auth.service';
 import {
   Booking, BookingIn, CapacityResult, CourseOption, OvercapacityPolicy, SchedulerApiService, Timeline,
 } from '@core/services/scheduler-api.service';
+import { durationWords } from '@core/services/scheduler-settings.service';
 import type { RangeSummary, ScenarioSummary, TemplateSummary, User } from '@core/models';
 import {
   DAY_MS, HOLDING_STATES, Level, addDays, at, diskLabel, gb, hhmm, hourOf, isLive, isoDate, layoutLanes, level,
@@ -123,7 +124,7 @@ const ROW = 46; // px per hour
                   <option value="individual">Individual: a range per Student, from this template</option>
                   <option value="collective">Collective: one shared range (an exercise)</option>
                 </select>
-                <small>Ranges are built 30 minutes before the class's first session that needs them and kept until its last.@if (f.id && f.rangeMode) { Changing this on an approved session sends it back for approval.}</small></label>
+                <small>Ranges are built {{ leadWords() }} before the class's first session that needs them and kept until its last.@if (f.id && f.rangeMode) { Changing this on an approved session sends it back for approval.}</small></label>
             }
           }
           <label class="field"><span>Course</span>
@@ -245,19 +246,21 @@ const ROW = 46; // px per hour
       <dl class="kv"><dt>When</dt><dd>{{ hhmm(b.start_time) }}–{{ hhmm(b.end_time) }}</dd>
         <dt>Instructor</dt><dd>{{ b.instructor_id ? personName(b.instructor_id) : 'Nobody yet' }}</dd>
         <dt>Range</dt><dd>{{ b.range_id ? rangeName(b.range_id) : 'none yet' }}</dd>
-        @if (b.course_id) { <dt>Class</dt><dd>{{ courseName(b.course_id) }}</dd> }
+        @if (b.class_id) { <dt>Class</dt><dd>{{ className(b.class_id) }}</dd> }
+        @if (b.course_id) { <dt>Course</dt><dd>{{ courseName(b.course_id) }}</dd> }
         @if (b.exercise_id) { <dt>Exercise</dt><dd><a [routerLink]="['/exercises', b.exercise_id]">Open the exercise</a></dd> }
         @else if (b.scenario_id) { <dt>Scenario</dt><dd>{{ scenarioName(b.scenario_id) }} · its exercise is created when the range is built</dd> }
         <dt>Size</dt><dd>{{ b.vm_count }} VMs · {{ b.vcpu_total }} vCPU · {{ gb(b.ram_mb_total) }} GB · {{ disk(b.disk_gb_total) }}</dd>
         @if (b.state !== 'draft' && (b.range_id || b.template_id)) { <dt>Range builds</dt><dd>{{ buildAt(b) }}{{ b.range_id ? '' : ' (created from the template)' }} · torn down {{ teardownAt(b) }}</dd> }
-        @if (isLive(b) && b.instructor_id) { <dt>Reminder</dt><dd>Emailed to the instructor 24 h before</dd> }</dl>
+        @if (isLive(b) && (b.instructor_id || b.class_id || b.course_id)) { <dt>Reminder</dt><dd>{{ reminderText(b) }}</dd> }</dl>
       @if (b.state === 'pending_approval') {
         <div class="note" role="note"><strong>Awaiting approval</strong> by an admin or range ops. Nothing is held and nobody is invited until then.
           @if (b.approval?.proposed_start_time; as ps) {
             <br>Proposed instead: <strong>{{ longWhenOf(ps, b.approval!.proposed_end_time!) }}</strong>.
-            @if (canEdit(b)) {
-              <div class="actions"><button class="action primary" [disabled]="busy()" (click)="acceptProposal(b)">Accept</button>
-                <button class="action" [disabled]="busy()" (click)="declineProposal(b)">Decline</button></div>
+            @if (b.can_accept || b.can_decline) {
+              <div class="actions">
+                @if (b.can_accept) { <button class="action primary" [disabled]="busy()" (click)="acceptProposal(b)">Accept</button> }
+                @if (b.can_decline) { <button class="action" [disabled]="busy()" (click)="declineProposal(b)">Decline</button> }</div>
             }
           }
         </div>
@@ -266,11 +269,11 @@ const ROW = 46; // px per hour
         <div class="note" role="note"><strong>Rejected</strong>{{ b.approval?.reason ? ': ' + b.approval!.reason : '' }}</div>
       }
       @if (actionError(); as err) { <div class="note"><strong>Can’t do that</strong><br>{{ err }}</div> }
-      @if (canEdit(b)) {
+      @if (b.can_change || b.can_wind_down) {
         <div class="actions">
-          @if (b.state === 'draft') { <button class="action primary" [disabled]="busy()" (click)="scheduleDraft(b)">Schedule it</button> }
-          @if (b.state === 'draft' || b.state === 'scheduled' || b.state === 'pending_approval') { <button class="action" (click)="startEditing(b)">Move or resize</button> }
-          @if (isLive(b) || b.state === 'draft' || b.state === 'pending_approval') {
+          @if (b.can_change && b.state === 'draft') { <button class="action primary" [disabled]="busy()" (click)="scheduleDraft(b)">Schedule it</button> }
+          @if (b.can_move) { <button class="action" (click)="startEditing(b)">Move or resize</button> }
+          @if (b.can_wind_down && (isLive(b) || b.state === 'draft' || b.state === 'pending_approval')) {
             @if (confirmCancel() === b.id) { <button class="action primary" [disabled]="busy()" (click)="cancel(b)">Yes, cancel it</button> }
             @else { <button class="action" (click)="confirmCancel.set(b.id)">Cancel booking</button> }
           }
@@ -446,6 +449,8 @@ export class ScheduleComponent implements OnInit, OnDestroy {
 
   // ── Derived ────────────────────────────────────────────
   readonly lead = computed(() => this.timeline()?.lead_minutes ?? 30);
+  /** The site's provisioning lead in words (GET /schedule/timeline lead_minutes; #318). */
+  readonly leadWords = computed(() => durationWords(this.lead()));
   readonly grace = computed(() => this.timeline()?.grace_minutes ?? 15);
   readonly loads = computed(() => (this.timeline() ? slotLoads(this.timeline()!) : []));
   readonly visible = computed(() => this.bookings().filter(b => b.state !== 'cancelled'));
@@ -752,10 +757,15 @@ export class ScheduleComponent implements OnInit, OnDestroy {
   }
 
   // ── View helpers ───────────────────────────────────────
-  canEdit(b: Booking): boolean {
-    const me = this.me()?.id;
-    return this.isAdmin() || (this.role() === 'instructor' && !!me && (b.instructor_id === me || b.created_by === me));
+  /** Who gets the day-before reminder (scheduler/clock.py step 4): the instructor, and the
+   *  class's roll call (a class session) or the course's enrolled Students. */
+  reminderText(b: Booking): string {
+    const who = [b.instructor_id ? 'the instructor' : '',
+      b.class_id ? 'the Students on the roll call' : b.course_id ? 'the course’s enrolled Students' : '']
+      .filter(Boolean).join(' and ');
+    return `Emailed to ${who} 24 h before`;
   }
+  className(id: string): string { return this.classes().find(c => c.id === id)?.name ?? 'A class'; }
   isMine(b: Booking): boolean { return !!this.me()?.id && b.instructor_id === this.me()!.id; }
   isLive(b: Booking): boolean { return HOLDING_STATES.includes(b.state); }
   hourLoad(dayIndex: number, h: number): number {

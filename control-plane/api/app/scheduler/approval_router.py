@@ -28,7 +28,7 @@ from ..auth import CurrentUser, get_current_user
 from ..classes import sessions
 from ..db import get_db
 from ..rbac import Permission, require_permission
-from . import approval, service
+from . import approval, approval_notices, service
 from .capacity import get_capacity_provider
 from .router import _announce, _changeable, _owned
 from .schemas import ApprovalItemOut, ApprovalQueueOut, EventOut, FitOut, ProposeIn, RejectIn, UtcDateTime, as_utc
@@ -49,7 +49,7 @@ def approval_queue(db: Session = Depends(get_db), user: CurrentUser = Depends(ge
     """The caller's tenant's class sessions awaiting approval, soonest first, each with
     whether it fits now and the next free slot when it does not (ADR 0014 §16)."""
     events = approval.queue(db, user)
-    outs = service.outs(db, events)
+    outs = service.outs(db, events, viewer=user)
     class_ids = {o["class_id"] for o in outs if o["class_id"]}
     names = sessions.class_names(db, {uuid.UUID(c) for c in class_ids}, events[0].tenant_id) if events else {}
     items = []
@@ -92,24 +92,32 @@ def approve_event(
     service.serialize_bookings(db)
     evt = _owned(db, event_id, user)
     moved, warnings = approval.approve(db, user, evt)
+    notices = approval_notices.notify(db, evt, user, "approved") if moved else []
     db.commit()
     db.refresh(evt)
     if moved:
         _announce(background, db, evt, "REQUEST")
-    return service.out(db, evt, warnings, service.maintenance_warnings(db, evt))
+    background.add_task(approval_notices.send, notices)
+    return service.out(db, evt, warnings, service.maintenance_warnings(db, evt), viewer=user)
 
 
 @router.post("/events/{event_id}/reject", response_model=EventOut, summary="Reject a class session", dependencies=_APPROVE)
 def reject_event(
-    event_id: str, body: RejectIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
+    event_id: str,
+    body: RejectIn,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ):
-    """pending_approval -> rejected, with a reason the instructor sees. Nothing was sent, so
-    nothing is withdrawn."""
+    """pending_approval -> rejected, with a reason the instructor sees (in the app, and by
+    email when email is configured). Nothing was sent, so nothing is withdrawn."""
     evt = _owned(db, event_id, user)
-    approval.reject(db, user, evt, body.reason)
+    changed = approval.reject(db, user, evt, body.reason)
+    notices = approval_notices.notify(db, evt, user, "rejected", reason=body.reason) if changed else []
     db.commit()
     db.refresh(evt)
-    return service.out(db, evt)
+    background.add_task(approval_notices.send, notices)
+    return service.out(db, evt, viewer=user)
 
 
 @router.post(
@@ -117,16 +125,32 @@ def reject_event(
     dependencies=_APPROVE,
 )
 def propose_time(
-    event_id: str, body: ProposeIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
+    event_id: str,
+    body: ProposeIn,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ):
     """The time must fit now (409 with the next free slot otherwise). The session stays
-    pending, holding nothing, until its instructor accepts or declines."""
+    pending, holding nothing, until its instructor accepts or declines. The instructor is
+    told (in the app, and by email when email is configured)."""
     service.serialize_bookings(db)
     evt = _owned(db, event_id, user)
+    before = service.approval_of(db, evt.id)
+    same = (
+        before is not None and before.proposed_start is not None
+        and as_utc(before.proposed_start) == as_utc(body.start_time)
+        and as_utc(before.proposed_end) == as_utc(body.end_time)
+    )
     warnings = approval.propose(db, user, evt, body.start_time, body.end_time)
+    # A repeat of the proposal already standing changes nothing: the instructor is not told twice.
+    changed = not same
+    notices = approval_notices.notify(db, evt, user, "proposed", proposed=(body.start_time, body.end_time)) \
+        if changed else []
     db.commit()
     db.refresh(evt)
-    return service.out(db, evt, warnings)
+    background.add_task(approval_notices.send, notices)
+    return service.out(db, evt, warnings, viewer=user)
 
 
 @router.post(
@@ -148,7 +172,7 @@ def accept_proposal(
     db.commit()
     db.refresh(evt)
     _announce(background, db, evt, "REQUEST")
-    return service.out(db, evt, warnings, service.maintenance_warnings(db, evt))
+    return service.out(db, evt, warnings, service.maintenance_warnings(db, evt), viewer=user)
 
 
 @router.post(
@@ -161,4 +185,4 @@ def decline_proposal(event_id: str, db: Session = Depends(get_db), user: Current
     approval.decline(db, user, evt)
     db.commit()
     db.refresh(evt)
-    return service.out(db, evt)
+    return service.out(db, evt, viewer=user)

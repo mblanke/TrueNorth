@@ -25,6 +25,8 @@ export type ReinstateResult = S['ReinstateOut'];
 export type AttendanceGrid = S['AttendanceGridOut'];
 export type AttendanceCell = S['AttendanceCellOut'];
 export type AttendanceStatus = S['AttendanceStatusOut'];
+/** What the lead may set (ADR 0014 §12): present or excused, never absent. */
+export type AttendanceCorrection = S['AttendanceCorrectionOut'];
 export type Closeout = S['CloseoutOut'];
 export type Standing = S['StandingOut'];
 export type ResultOutcome = S['ResultOutcomeOut'];
@@ -33,6 +35,7 @@ export type MyClasses = S['AttendingClassesOut'];
 export type MyClass = S['AttendingClassOut'];
 export type MyClassSession = S['AttendingSessionOut'];
 export type MyRangeStatus = S['AttendingRangeStatus'];
+export type RollCallDomains = S['RollCallDomainsOut'];
 export type MyRangeConsoles = S['MyRangeConsolesOut'];
 export type ClassConsole = S['ClassConsoleOut'];
 export type ClassLive = S['ClassLiveOut'];
@@ -79,6 +82,14 @@ export class ClassesApiService {
   }
   create(body: ClassIn): Observable<ClassRecord> {
     return this.http.post<ClassRecord>(this.base, body);
+  }
+  /** The email domains this organisation's roll calls accept (class:create): an admin's setting, or its AD accounts'. */
+  rollCallDomains(): Observable<RollCallDomains> {
+    return this.http.get<RollCallDomains>(`${this.base}/roll-call-domains`);
+  }
+  /** Set them for the caller's own organisation (tenant:update; audited). An empty list allows any domain. */
+  setRollCallDomains(emailDomains: string[]): Observable<RollCallDomains> {
+    return this.http.put<RollCallDomains>(`${this.base}/roll-call-domains`, { email_domains: emailDomains });
   }
   update(id: string, body: ClassIn): Observable<ClassRecord> {
     return this.http.put<ClassRecord>(`${this.base}/${id}`, body);
@@ -174,8 +185,9 @@ export class ClassesApiService {
   attendance(id: string): Observable<AttendanceGrid> {
     return this.http.get<AttendanceGrid>(`${this.base}/${id}/attendance`);
   }
-  /** The lead or an admin sets one Student's attendance at one session; audited. */
-  setAttendance(id: string, sessionId: string, entryId: string, status: AttendanceStatus,
+  /** The lead or an admin corrects one Student's attendance at one session to present or
+   *  excused, with an optional note; audited. */
+  setAttendance(id: string, sessionId: string, entryId: string, status: AttendanceCorrection,
                 note: string | null = null): Observable<AttendanceCell> {
     return this.http.put<AttendanceCell>(`${this.base}/${id}/attendance/${sessionId}/${entryId}`, { status, note });
   }

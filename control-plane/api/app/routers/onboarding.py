@@ -24,10 +24,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
+from ..classes.onboarding import admitted_from_roll_call
 from ..db import get_db
 from ..enrollment import SELF, ensure_enrollment, ensure_path_enrollment
 from ..models import Course, Enrollment, LearningPath, Qualification, User
-from ..schemas import OnboardingPathIn, OnboardingProfileIn, OnboardingStateOut
+from ..onboarding_schemas import OnboardingPathIn, OnboardingProfileIn, OnboardingStateOut
 from ..tenancy import get_owned_or_global
 
 logger = logging.getLogger("truenorth.onboarding")
@@ -86,6 +87,7 @@ def _state_out(db: Session, row: User) -> OnboardingStateOut:
         learning_path_id=uuid.UUID(path_id) if path_id else None,
         enrolled_course_count=enrolled,
         onboarded_at=row.onboarded_at,
+        via_roll_call=admitted_from_roll_call(db, row.id),
     )
 
 

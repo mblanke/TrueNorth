@@ -2,6 +2,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
+import { RouterLink } from '@angular/router';
 import { EMAIL_DOCS_URL, EmailStatusService } from '@core/services/email-status.service';
 import { apiError } from '../ranges/range-capabilities';
 
@@ -12,7 +13,7 @@ import { apiError } from '../ranges/range-capabilities';
  */
 @Component({
   selector: 'tn-email-settings-card',
-  imports: [MatButtonModule, MatCardModule, MatIconModule],
+  imports: [MatButtonModule, MatCardModule, MatIconModule, RouterLink],
   template: `
     @if (email.status(); as s) {
       <mat-card class="email-card">
@@ -30,7 +31,7 @@ import { apiError } from '../ranges/range-capabilities';
             </dl>
           }
           @if (!s.configured) {
-            <p>Set the relay in the installer (<a [href]="docsUrl" target="_blank" rel="noopener">install/README.md, "Email (SMTP)"</a>),
+            <p>Set the relay in the installer (<a [routerLink]="docsUrl">how to set up email</a>),
               then re-run 30-config and 50-stack-up.</p>
           }
           @if (result()) { <p class="result" role="status">{{ result() }}</p> }

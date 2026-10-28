@@ -57,6 +57,17 @@ def is_break_glass_identity(identity) -> bool:
     return bool(name) and name in break_glass_usernames() and not getattr(identity, "ad_object_guid", None)
 
 
+def last_seen(db: Session, user_ids) -> dict[uuid.UUID, datetime]:
+    """When each of ``user_ids`` was last seen (an hour's resolution: ``note``). Accounts
+    never seen since this was installed are left out. For other sections, e.g. whether a
+    Student has signed in since an in-app notification was issued (classes, #319)."""
+    ids = {u for u in user_ids if u is not None}
+    if not ids:
+        return {}
+    rows = db.query(UserLastSeen.user_id, UserLastSeen.last_seen_at).filter(UserLastSeen.user_id.in_(ids)).all()
+    return {uid: (at.replace(tzinfo=UTC) if at.tzinfo is None else at) for uid, at in rows}
+
+
 def touch(db: Session, user_id: uuid.UUID, now: datetime | None = None) -> None:
     """Record ``user_id`` as seen at ``now``. Does not commit."""
     now = now or datetime.now(UTC)

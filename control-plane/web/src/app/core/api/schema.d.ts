@@ -7954,6 +7954,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The unit readiness page: classes, enrolment, attendance, results and qualifications
+         * @description The caller's own tenant only. Pass, fail or incomplete with the instructor's comment;
+         *     never a score.  **readiness:read**
+         */
+        get: operations["getUnitReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/readiness/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The unit readiness page as CSV
+         * @description One row per Student per class; cells a spreadsheet would run as a formula are
+         *     defused. Audited (``readiness_export``).  **readiness:read**
+         */
+        get: operations["exportUnitReadinessCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/readiness/export.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The unit readiness page as PDF
+         * @description Rendered with the AAR's PDF machinery (fpdf2). Audited (``readiness_export``).
+         *     **readiness:read**
+         */
+        get: operations["exportUnitReadinessPdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/registration": {
         parameters: {
             query?: never;
@@ -8646,7 +8709,8 @@ export interface paths {
         /**
          * Propose another time for a class session
          * @description The time must fit now (409 with the next free slot otherwise). The session stays
-         *     pending, holding nothing, until its instructor accepts or declines.
+         *     pending, holding nothing, until its instructor accepts or declines. The instructor is
+         *     told (in the app, and by email when email is configured).
          */
         post: operations["propose_time_schedule_events__event_id__propose_post"];
         delete?: never;
@@ -8666,8 +8730,8 @@ export interface paths {
         put?: never;
         /**
          * Reject a class session
-         * @description pending_approval -> rejected, with a reason the instructor sees. Nothing was sent, so
-         *     nothing is withdrawn.
+         * @description pending_approval -> rejected, with a reason the instructor sees (in the app, and by
+         *     email when email is configured). Nothing was sent, so nothing is withdrawn.
          */
         post: operations["reject_event_schedule_events__event_id__reject_post"];
         delete?: never;
@@ -8775,6 +8839,27 @@ export interface paths {
          * @description Platform-wide, because every tenant books against the same cluster. Audit-logged.
          */
         put: operations["put_policy_schedule_policy_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The site's scheduler settings
+         * @description Provisioning lead, teardown grace, the 'next free' search horizon and the site's time
+         *     zone, so pages say what this site does rather than the defaults.  **schedule:read**
+         */
+        get: operations["getSchedulerSettings"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -10730,10 +10815,20 @@ export interface components {
         };
         /** AttendanceCorrectIn */
         AttendanceCorrectIn: {
-            /** Note */
+            /**
+             * Note
+             * @description Why it was corrected (audited)
+             */
             note?: string | null;
-            status: components["schemas"]["AttendanceStatusOut"];
+            status: components["schemas"]["AttendanceCorrectionOut"];
         };
+        /**
+         * AttendanceCorrectionOut
+         * @description What an instructor may set (ADR 0014 §12): present or excused. Absent is the clock's
+         *     finding, never a correction (#319).
+         * @enum {string}
+         */
+        AttendanceCorrectionOut: "present" | "excused";
         /** AttendanceGridOut */
         AttendanceGridOut: {
             /** Can Edit */
@@ -13939,6 +14034,36 @@ export interface components {
         /** EventOut */
         EventOut: {
             approval?: components["schemas"]["ApprovalOut"] | null;
+            /**
+             * Can Accept
+             * @description can_change, and an approver proposed another time to accept
+             * @default false
+             */
+            can_accept?: boolean;
+            /**
+             * Can Change
+             * @description The caller may edit, move or cancel it (a class session: its lead or an admin)
+             * @default false
+             */
+            can_change?: boolean;
+            /**
+             * Can Decline
+             * @description can_change, and an approver proposed another time to decline
+             * @default false
+             */
+            can_decline?: boolean;
+            /**
+             * Can Move
+             * @description can_change, and it is in a state that moves (draft, awaiting approval, scheduled)
+             * @default false
+             */
+            can_move?: boolean;
+            /**
+             * Can Wind Down
+             * @description The caller may cancel or complete it: can_change, or a session left under way when its class was cancelled
+             * @default false
+             */
+            can_wind_down?: boolean;
             /** Class Id */
             class_id?: string | null;
             /** Course Id */
@@ -17364,6 +17489,12 @@ export interface components {
              * @default []
              */
             steps_done?: string[];
+            /**
+             * Via Roll Call
+             * @description Admitted from a class roll call on first sign-in (ADR 0014 §1): there was no access request, so the wizard skips the step that confirms one
+             * @default false
+             */
+            via_roll_call?: boolean;
         };
         /** OpenAction */
         OpenAction: {
@@ -18465,6 +18596,165 @@ export interface components {
             /** Name */
             name?: string;
         };
+        /** ReadinessClassOut */
+        ReadinessClassOut: {
+            /** Awaiting Result */
+            awaiting_result: number;
+            /**
+             * Class Id
+             * Format: uuid
+             */
+            class_id: string;
+            /** Closed At */
+            closed_at?: string | null;
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /** Course Name */
+            course_name: string;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /**
+             * Enrolled
+             * @description Students on the roll call shown (forfeited seats included)
+             */
+            enrolled: number;
+            /** Failed */
+            failed: number;
+            /** Incomplete */
+            incomplete: number;
+            /** Name */
+            name: string;
+            /** Passed */
+            passed: number;
+            /**
+             * Qualification
+             * @description The NQual the course delivers, if any
+             */
+            qualification?: string | null;
+            /**
+             * Sessions Held
+             * @description Approved sessions that have ended
+             */
+            sessions_held: number;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** Status */
+            status: string;
+            /** Students */
+            students: components["schemas"]["ReadinessStudentOut"][];
+        };
+        /** ReadinessQualificationOut */
+        ReadinessQualificationOut: {
+            /**
+             * Code
+             * @description The NQual granted
+             */
+            code: string;
+            /**
+             * Earned
+             * @description Passes, in the classes shown, on courses that deliver it
+             */
+            earned: number;
+            /**
+             * Qualification Id
+             * Format: uuid
+             */
+            qualification_id: string;
+            /** Title */
+            title: string;
+        };
+        /** ReadinessStudentOut */
+        ReadinessStudentOut: {
+            /** Absent */
+            absent: number;
+            /**
+             * Comment
+             * @description The instructor's comment on the result
+             */
+            comment?: string | null;
+            /** Decided At */
+            decided_at?: string | null;
+            /**
+             * Display Name
+             * @description None: on the roll call, never signed in
+             */
+            display_name?: string | null;
+            /** Email */
+            email: string;
+            /**
+             * Enrolment Status
+             * @description Their enrolment on the class's course, if any
+             */
+            enrolment_status?: string | null;
+            /**
+             * Entry Id
+             * Format: uuid
+             */
+            entry_id: string;
+            /** Excused */
+            excused: number;
+            /** @description The close-out result; None: not decided yet */
+            outcome?: components["schemas"]["ResultOutcomeOut"] | null;
+            /**
+             * Present
+             * @description Sessions recorded present
+             */
+            present: number;
+            /**
+             * Qualification Earned
+             * @description The course's qualification (NQual), when the result is a pass
+             */
+            qualification_earned?: string | null;
+            /** Roll Call Status */
+            roll_call_status: string;
+            /**
+             * Unit
+             * @description The Student's unit (users.unit); None when unknown
+             */
+            unit?: string | null;
+        };
+        /** ReadinessSummaryOut */
+        ReadinessSummaryOut: {
+            /** Absent */
+            absent: number;
+            /** Awaiting Result */
+            awaiting_result: number;
+            /** Classes */
+            classes: number;
+            /**
+             * Enrolments
+             * @description Places on the classes shown: one per Student per class
+             */
+            enrolments: number;
+            /** Excused */
+            excused: number;
+            /** Failed */
+            failed: number;
+            /** Incomplete */
+            incomplete: number;
+            /** Passed */
+            passed: number;
+            /** Present */
+            present: number;
+            /** Qualifications Earned */
+            qualifications_earned: number;
+            /** Sessions Held */
+            sessions_held: number;
+            /**
+             * Students
+             * @description Different people
+             */
+            students: number;
+        };
         /**
          * RegistrationApproveIn
          * @description The approval decision. Role and tenant are assigned HERE, not inferred.
@@ -18842,6 +19132,17 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Notified
+             * @description Actually told to sign in: an email the relay accepted, or an in-app notification they have signed in since. Only a notified Student can lose their seat (#319)
+             * @default false
+             */
+            notified?: boolean;
+            /**
+             * Notified At
+             * @description When the SMTP relay accepted their onboarding or day-before email; empty when none was sent
+             */
+            notified_at?: string | null;
             /** Onboarding Sent At */
             onboarding_sent_at: string | null;
             /**
@@ -18849,10 +19150,21 @@ export interface components {
              * @description Why an addition waits for an approver, or was rejected
              */
             pending_reason?: string | null;
+            /**
+             * Rejection Reason
+             * @description An addition an approver rejected (ADR 0014 §17): the reason they gave
+             */
+            rejection_reason?: string | null;
             /** Reminded At */
             reminded_at: string | null;
             /** Removed At */
             removed_at: string | null;
+            /**
+             * Seat Kept Not Notified
+             * @description Past their sign-in deadline and still invited, but never notified: the seat is kept
+             * @default false
+             */
+            seat_kept_not_notified?: boolean;
             /** Signed In At */
             signed_in_at: string | null;
             status: components["schemas"]["RollCallStatusOut"];
@@ -18870,7 +19182,7 @@ export interface components {
          * RollCallStatusOut
          * @enum {string}
          */
-        RollCallStatusOut: "invited" | "signed_in" | "ready" | "removed" | "pending" | "forfeited";
+        RollCallStatusOut: "invited" | "signed_in" | "removed" | "pending" | "forfeited";
         /** RosterIn */
         RosterIn: {
             /**
@@ -19202,6 +19514,32 @@ export interface components {
             version?: string;
             /** Yaml */
             yaml?: string;
+        };
+        /**
+         * SchedulerSettingsOut
+         * @description The site's scheduler settings that pages show in words (#318).
+         */
+        SchedulerSettingsOut: {
+            /**
+             * Grace Minutes
+             * @description Kept this long after it ends (SCHEDULER_TEARDOWN_GRACE_MIN)
+             */
+            grace_minutes: number;
+            /**
+             * Lead Minutes
+             * @description Ranges are built this long before a session starts (SCHEDULER_PROVISION_LEAD_MIN)
+             */
+            lead_minutes: number;
+            /**
+             * Next Free Days
+             * @description How far ahead 'next free' is searched (SCHEDULER_NEXT_FREE_DAYS)
+             */
+            next_free_days: number;
+            /**
+             * Site Timezone
+             * @description The site's IANA time zone (SITE_TIMEZONE); UTC when unset
+             */
+            site_timezone: string;
         };
         /** SecurityGroupIn */
         SecurityGroupIn: {
@@ -20776,6 +21114,34 @@ export interface components {
              * @description On the roll call with no account yet: placed once they sign in
              */
             email: string;
+        };
+        /** UnitReadinessOut */
+        UnitReadinessOut: {
+            /** Classes */
+            classes: components["schemas"]["ReadinessClassOut"][];
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /** Qualifications */
+            qualifications: components["schemas"]["ReadinessQualificationOut"][];
+            summary: components["schemas"]["ReadinessSummaryOut"];
+            /**
+             * Unit
+             * @description The unit filter applied; None: every unit
+             */
+            unit?: string | null;
+            /**
+             * Units
+             * @description The units of the Students on the classes in the date range
+             */
+            units: string[];
         };
         /** UrlIngestIn */
         UrlIngestIn: {
@@ -35975,6 +36341,114 @@ export interface operations {
             };
         };
     };
+    getUnitReadiness: {
+        parameters: {
+            query?: {
+                /** @description Classes ending on or after this day (default: a year ago) */
+                date_from?: string | null;
+                /** @description Classes starting on or before this day (default: 90 days ahead) */
+                date_to?: string | null;
+                /** @description Only Students of this unit (case and spaces ignored) */
+                unit?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitReadinessOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exportUnitReadinessCsv: {
+        parameters: {
+            query?: {
+                /** @description Classes ending on or after this day (default: a year ago) */
+                date_from?: string | null;
+                /** @description Classes starting on or before this day (default: 90 days ahead) */
+                date_to?: string | null;
+                /** @description Only Students of this unit (case and spaces ignored) */
+                unit?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exportUnitReadinessPdf: {
+        parameters: {
+            query?: {
+                /** @description Classes ending on or after this day (default: a year ago) */
+                date_from?: string | null;
+                /** @description Classes starting on or before this day (default: 90 days ahead) */
+                date_to?: string | null;
+                /** @description Only Students of this unit (case and spaces ignored) */
+                unit?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     submit_registration_registration_post: {
         parameters: {
             query?: never;
@@ -37385,6 +37859,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getSchedulerSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchedulerSettingsOut"];
                 };
             };
         };

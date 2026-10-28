@@ -28,8 +28,8 @@ from ..rbac import (
     user_has_permission,
 )
 from ..tenancy import get_owned, tenant_uuid
-from . import approval, calendar_backends, clock, feed, invites, lifecycle, service
-from .capacity import PROVISION_LEAD, TEARDOWN_GRACE, Resources, available, get_capacity_provider
+from . import approval, calendar_backends, change_rule, clock, feed, invites, lifecycle, service
+from .capacity import PROVISION_LEAD, TEARDOWN_GRACE, Resources, available, get_capacity_provider, site_timezone
 from .models import EventState, ScheduledEvent
 from .schemas import (
     CapacityCheck,
@@ -42,6 +42,7 @@ from .schemas import (
     MySessionOut,
     PolicyIn,
     PolicyOut,
+    SchedulerSettingsOut,
     TimelineOut,
     UtcDateTime,
     as_utc,
@@ -141,6 +142,21 @@ def check_capacity(body: CapacityCheck, db: Session = Depends(get_db), user: Cur
     )
 
 
+@router.get(
+    "/settings", response_model=SchedulerSettingsOut, operation_id="getSchedulerSettings",
+    summary="The site's scheduler settings",
+)
+def scheduler_settings() -> SchedulerSettingsOut:
+    """Provisioning lead, teardown grace, the 'next free' search horizon and the site's time
+    zone, so pages say what this site does rather than the defaults.  **schedule:read**"""
+    return SchedulerSettingsOut(
+        lead_minutes=int(PROVISION_LEAD.total_seconds() // 60),
+        grace_minutes=int(TEARDOWN_GRACE.total_seconds() // 60),
+        next_free_days=service.NEXT_FREE_DAYS,
+        site_timezone=site_timezone().key,
+    )
+
+
 @router.get("/policy", response_model=PolicyOut, summary="Over-capacity policy")
 def get_policy(db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     """`block`: a booking that does not fit is refused for everyone. `warn`: it is
@@ -186,7 +202,7 @@ def list_events(
         q = q.filter(ScheduledEvent.start_time < end)
     total = q.count()
     events = q.offset(offset).limit(limit).all()
-    return {"items": service.outs(db, events), "total": total}
+    return {"items": service.outs(db, events, viewer=user), "total": total}
 
 
 @router.post(
@@ -267,7 +283,7 @@ def create_event(
     db.refresh(evt)
     if evt.state == EventState.scheduled:
         _announce(background, db, evt, "REQUEST")
-    return service.out(db, evt, warnings, service.maintenance_warnings(db, evt))
+    return service.out(db, evt, warnings, service.maintenance_warnings(db, evt), viewer=user)
 
 
 def _refuse_class_course(
@@ -421,26 +437,17 @@ def _changeable(db: Session, event_id: str, user: CurrentUser, *, winding_down: 
     still be wound down (``winding_down``: cancelled or completed), since cancelling a class
     leaves a session under way to its instructor."""
     evt = _owned(db, event_id, user)
-    cls = sessions.class_of(db, evt)
-    if cls is not None and cls.status != "open" and not (winding_down and cls.status == "cancelled"):
-        raise HTTPException(409, f"The class is {cls.status}; its sessions do not change")
-    if cls is not None:
-        if not (sessions.edits_class_of(db, evt, user) or user_has_permission(user, Permission.SCHEDULE_ADMIN)):
-            raise HTTPException(403, "Only the class's lead instructor or an admin changes its sessions")
-        return evt
-    if (
-        evt.instructor_id is not None
-        and evt.instructor_id != service.user_uuid(user)
-        and not user_has_permission(user, Permission.SCHEDULE_ADMIN)
-    ):
-        raise HTTPException(403, "This is another instructor's session; only they or an administrator can change it")
+    # The rule itself is change_rule's, so the pages' can_* flags are the same rule (#319).
+    denied = change_rule.refusal(evt, user, sessions.class_of(db, evt), winding_down=winding_down)
+    if denied is not None:
+        raise denied
     return evt
 
 
 @router.get("/events/{event_id}", response_model=EventOut, summary="Get a scheduled event")
 def get_event(event_id: str, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
     evt = _owned(db, event_id, user)
-    return service.out(db, evt, maintenance=service.maintenance_warnings(db, evt))
+    return service.out(db, evt, maintenance=service.maintenance_warnings(db, evt), viewer=user)
 
 
 @router.put("/events/{event_id}", response_model=EventOut, summary="Update a scheduled event", dependencies=_WRITE)
@@ -540,7 +547,7 @@ def update_event(
         _announce(background, db, evt, "REQUEST", previous_instructor, previous_course)
     elif reapprove and previous_state == EventState.scheduled:  # not confirmed any more
         _announce(background, db, evt, "CANCEL", previous_instructor, previous_course)
-    return service.out(db, evt, warnings, service.maintenance_warnings(db, evt))
+    return service.out(db, evt, warnings, service.maintenance_warnings(db, evt), viewer=user)
 
 
 def _updated_mode(db: Session, cls, evt: ScheduledEvent, body: EventIn, range_id, exercise_id, scenario_id):
@@ -594,7 +601,7 @@ def schedule_event(
     warnings: list[str] = []
     if service.needs_approval(db, evt):
         if evt.state in (EventState.pending_approval, EventState.scheduled):
-            return service.out(db, evt)
+            return service.out(db, evt, viewer=user)
         return _move(db, user, evt, EventState.pending_approval)
     if evt.state == EventState.draft:
         _refuse_class_course(db, user, evt.course_id, evt.start_time, evt.end_time)
@@ -676,7 +683,7 @@ def _move(
         elif to == EventState.cancelled and before not in {s.value for s in lifecycle.UNSENT}:
             _announce(background, db, evt, "CANCEL")
     holding = evt.state in lifecycle.EDITABLE
-    return service.out(db, evt, warnings, service.maintenance_warnings(db, evt) if holding else None)
+    return service.out(db, evt, warnings, service.maintenance_warnings(db, evt) if holding else None, viewer=user)
 
 
 @router.post(

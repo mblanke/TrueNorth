@@ -23,8 +23,12 @@ class's *first approved session* starts loses their seat. The 2 hours are fixed 
   approved session not over when they were added (``joined_at``): from when they were added
   if that is during it, from its start if it is later (added in the evening: the next
   morning's session). ``deadline`` holds the whole rule.
-- *Never told, never forfeited.* An entry with no account whose onboarding email was never
-  sent (held by the daily email limit) is never forfeited.
+- *Never told, never forfeited* (owner direction, #319). Only a Student who was actually
+  notified loses a seat: an onboarding or day-before email the SMTP relay accepted
+  (``notified_at``, recorded by ``service.deliver`` after the send), or an in-app notification
+  issued to their linked account (``in_app_notified_at``) that they have signed in since
+  (``ad_status_sync.last_seen``). With email off, a refused or failed send, or the daily email
+  limit, the seat is kept, and the roll call shows the lead "not notified, seat kept".
 - *Signed in by email.* An unlinked entry whose address names exactly one account, an
   active Student of the class's tenant made by a directory sign-in (``source = ad``:
   Request access, ambiguous or failed admission, adoption), counts as signed in, and is
@@ -130,10 +134,33 @@ def deadline(windows: list, entry: RollCallEntry) -> datetime | None:
     return None
 
 
-def never_told(entry: RollCallEntry) -> bool:
-    """No account and no onboarding email ever sent (held by the daily email limit): nobody
-    told them to sign in, so they cannot lose a seat for not doing it."""
-    return entry.user_id is None and entry.onboarding_sent_at is None
+def notified(entry: RollCallEntry, seen: dict) -> bool:
+    """Whether the Student was actually told to sign in (owner direction, #319): an onboarding
+    or day-before email the SMTP relay accepted (``notified_at``), or an in-app notification
+    issued to their linked account that they have signed in since (``seen``: user id -> last
+    seen, ``last_seen.last_seen``). An email claimed but never sent (email off, a refused or
+    failed send, the daily limit) tells nobody, so it never costs a seat."""
+    if entry.notified_at is not None:
+        return True
+    if entry.in_app_notified_at is None or entry.user_id is None:
+        return False
+    at = seen.get(entry.user_id)
+    return at is not None and at >= _aware(entry.in_app_notified_at)
+
+
+def seen_for(db: Session, entries: list[RollCallEntry]) -> dict:
+    """When the linked accounts of ``entries`` were last seen, for ``notified``."""
+    from ..ad_status_sync.last_seen import last_seen
+
+    return last_seen(db, [e.user_id for e in entries if e.in_app_notified_at is not None and e.notified_at is None])
+
+
+def kept_not_notified(windows: list, entry: RollCallEntry, seen: dict, now: datetime) -> bool:
+    """Past their deadline and still invited, but never notified: the seat is kept (#319)."""
+    if entry.status != RollCallStatus.invited.value or entry.forfeited_at is not None:
+        return False
+    when = deadline(windows, entry)
+    return when is not None and now >= when and not notified(entry, seen)
 
 
 @dataclass
@@ -211,14 +238,16 @@ def forfeit_due(db: Session, cls: Class, now: datetime) -> Forfeited | None:
     if not windows:
         return None
     due = []
-    for e in db.query(RollCallEntry).filter(
+    invited = db.query(RollCallEntry).filter(
         RollCallEntry.class_id == cls.id,
         RollCallEntry.tenant_id == cls.tenant_id,
         RollCallEntry.status == RollCallStatus.invited.value,
         RollCallEntry.forfeited_at.is_(None),
-    ):
+    ).all()
+    seen = seen_for(db, invited)
+    for e in invited:
         when = deadline(windows, e)
-        if when is not None and now >= when and not never_told(e):
+        if when is not None and now >= when and notified(e, seen):
             due.append((e, when))
     due = [(e, when) for e, when in due if not _signed_in_since(db, cls, e, now)]
     won = [(e, when) for e, when in due if _claim(db, e, now)]
@@ -540,7 +569,7 @@ async def run_forever() -> None:
             result = await asyncio.to_thread(_tick_in_own_session)
             if result.forfeited:
                 logger.info("Seats forfeited: %d", sum(len(f.emails) for f in result.forfeited))
-            await service.send(result.mails)
+            await service.send(result.mails)  # staff notices: nothing to record
             await scheduler.send_invites(result.invites)
         except asyncio.CancelledError:
             raise

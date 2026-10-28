@@ -595,6 +595,22 @@ administrator, registers vCenter, and ends with the smoke test (`95-smoke-test`:
 container healthy, readiness of database, Redis and OpenSearch, and a real sign-in whose
 token must carry the AD groups) and the validation report (`99-validate`).
 
+The seed also decides which tenant is the **platform tenant** (`PLATFORM_TENANT_ID`: its
+admins are the platform administrators). Unless you set `tn_platform_tenant_id`, it is the
+bootstrap tenant on `tn_tenant_slug`, picked on the first run only, recorded in
+`/srv/truenorth/state/platform_tenant_id` and never re-picked by slug. A later run stops,
+naming both ids, if a different tenant has taken that slug. This guide installs with
+Compose, which needs nothing more. A Kubernetes install (the Helm chart) is not run by the
+installer: set `config.platformTenantId` to the operator's tenant id **before a second
+tenant exists**, or nobody is the platform administrator (the api logs an error at startup
+and refuses platform actions). An explicit `tn_platform_tenant_id` is recorded too, so
+clearing it later keeps that tenant.
+
+**Upgrading a site that already has more than one tenant:** before the first upgrade onto this
+release, check which tenant owns the bootstrap slug (`SELECT id, slug FROM tenants`, compare
+with `tn_tenant_slug`). The first run records whichever tenant holds it, and it never
+changes after that. If it is not the operator's tenant, set `tn_platform_tenant_id` first.
+
 Read the report at the end. Expected on this site's first run:
 
 | Line | Expected | Meaning |

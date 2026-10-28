@@ -37,6 +37,21 @@
       result-transfer routes and must describe this independent deployment.
     success_msg: "enclave profile: {{ tn_enclave_id }} / {{ tn_classification_level }}"
 
+# PLATFORM_TENANT_ID must be a tenant UUID or production refuses to start (app/settings.py);
+# SITE_TIMEZONE an IANA name (an unknown one is read as UTC, with a warning).
+- name: Preflight — platform tenant and site time zone are well formed
+  ansible.builtin.assert:
+    that:
+      - (tn_platform_tenant_id | default('') | string | trim | length == 0)
+        or (tn_platform_tenant_id | string | trim | lower
+            is match('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'))
+      - (tn_site_timezone | default('') | string | trim | length == 0)
+        or (tn_site_timezone | string | trim is match('^[A-Za-z][A-Za-z0-9_+/-]*$'))
+    fail_msg: >-
+      tn_platform_tenant_id must be empty (the bootstrap tenant) or a tenant UUID, and
+      tn_site_timezone empty (the host's zone) or an IANA name such as America/Toronto.
+    quiet: true
+
 - name: Preflight — no vault value is still a CHANGE_ME placeholder
   vars:
     _skip: >-

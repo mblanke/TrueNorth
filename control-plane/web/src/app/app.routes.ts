@@ -376,7 +376,7 @@ export const routes: Routes = [
     title: 'Users & Teams - TrueNorth Range',
   },
   {
-    // The registration queue on its own page, for instructors (registration:read); the
+    // The registration queue on its own page (registration:read: admins, ADR 0014 §5); the
     // same panel is also a tab of the admin's /users.
     path: 'approvals',
     canActivate: [authGuard, onboardingGuard, pageGuard('approvals')],
@@ -401,6 +401,15 @@ export const routes: Routes = [
     title: 'Classes - TrueNorth Range',
   },
   {
+    // ADR 0014 decision 7 (#289): commander = observer + the unit readiness page. Read-only,
+    // the caller's own organisation; observers, instructors and admins (readiness:read).
+    path: 'readiness',
+    canActivate: [authGuard, onboardingGuard, pageGuard('readiness')],
+    loadComponent: () =>
+      import('./features/readiness/unit-readiness.component').then(m => m.UnitReadinessComponent),
+    title: 'Unit readiness - TrueNorth Range',
+  },
+  {
     // ADR 0014 §19 (#321): a class session's live view, for its lead, assistants, observers
     // and admins (the API decides who; class:read to reach the page).
     path: 'classes/:classId/sessions/:eventId/live',
@@ -416,6 +425,14 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/maintenance-windows/maintenance-windows.component').then(m => m.MaintenanceWindowsComponent),
     title: 'Maintenance windows - TrueNorth Range',
+  },
+  {
+    // Before 'admin'. How to turn email on, bundled with the app (#318): the email banner links here.
+    path: 'admin/help/email',
+    canActivate: [authGuard, adminGuard],
+    loadComponent: () =>
+      import('./features/admin/email-help.component').then(m => m.EmailHelpComponent),
+    title: 'Set up email - TrueNorth Range',
   },
   {
     // Before 'admin'. Platform administrator: drafts and publishing; any admin: the export.

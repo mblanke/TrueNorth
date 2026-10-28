@@ -12,6 +12,7 @@ Adding an email to a roll call (``add_to_roll_call``):
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import logging
@@ -337,6 +338,10 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
         entry.user_id = None
         entry.signed_in_at = None
         entry.forfeited_at = None  # a fresh addition: the forfeit rule applies to it afresh
+        # ...and so does "only forfeit a Student who was told": a new stint is emailed again and
+        # earns its own proof of notice, never the old stint's (#319).
+        entry.onboarding_sent_at = entry.reminded_at = None
+        entry.notified_at = entry.in_app_notified_at = None
         if no_room:
             entry.status = RollCallStatus.pending.value
             entry.pending_reason = "; ".join(no_room)[:1000]
@@ -386,6 +391,23 @@ def put_on_roll_call(db: Session, cls: Class, entry: RollCallEntry, account: Use
         if has_signed_in(account):
             entry.status = RollCallStatus.signed_in.value
             entry.signed_in_at = _now()
+        else:
+            notify_in_app(db, cls, entry, account)
+
+
+def notify_in_app(db: Session, cls: Class, entry: RollCallEntry, account: User) -> None:
+    """Tell a linked account it is on the roll call, in the app (#319). It counts as telling
+    them only once they have signed in since (``forfeit.notified``). Does not commit."""
+    from ..notifications import inbox
+
+    sent = inbox.notify(
+        db, tenant_id=cls.tenant_id, user_ids=[account.id], actor_id=None,
+        title=f"You are on the roll call for {_subject_safe(cls.name)}",
+        message=f"You have been added to the class {cls.name}, {_dates(cls)}. See My classes.",
+        link="/my-classes", kind="roll_call_added",
+    )
+    if sent:
+        entry.in_app_notified_at = _now()
 
 
 def assert_domain_allowed(db: Session, cls: Class, email: str) -> None:
@@ -453,9 +475,13 @@ def reject_addition(db: Session, cls: Class, entry: RollCallEntry, actor: Curren
         raise HTTPException(409, "A closed class is read-only; an admin reopens it first")
     entry.status = RollCallStatus.removed.value
     entry.removed_at = _now()
-    entry.pending_reason = f"rejected: {reason}"[:1000]
+    entry.pending_reason = f"{REJECTED_PREFIX}{reason}"[:1000]
     audit(db, actor.id, cls, "roll_call_addition_rejected", f"{entry.email}: {reason}"[:2000])
 
+
+# How a rejected addition's reason is kept (``pending_reason``); the roll call shows the lead
+# the reason after it (``rejection_reason``, #319).
+REJECTED_PREFIX = "rejected: "
 
 FORFEITED_REFUSAL = "lost their seat for not signing in in time; reinstate them from the roll call instead"
 
@@ -560,6 +586,9 @@ class Mail:
     to: str
     subject: str
     body: str
+    # The roll-call entry it tells to sign in (onboarding, reminder): recorded as notified
+    # once the relay accepts it (``deliver``). None for staff notices.
+    entry_id: uuid.UUID | None = None
 
 
 def sign_in_url() -> str:
@@ -590,9 +619,9 @@ def _subject_safe(value: str) -> str:
     return " ".join("".join(" " if has_control_chars(ch) else ch for ch in value).split())[:150]
 
 
-def onboarding_mail(cls: Class, course_name: str, email: str) -> Mail:
+def onboarding_mail(cls: Class, course_name: str, email: str, entry_id: uuid.UUID | None = None) -> Mail:
     return Mail(
-        to=email,
+        to=email, entry_id=entry_id,
         subject=f"You are on the roll call for {_subject_safe(cls.name)}",
         body=(
             f"You have been added to the class {cls.name} ({course_name}), {_dates(cls)}.\n\n"
@@ -601,9 +630,9 @@ def onboarding_mail(cls: Class, course_name: str, email: str) -> Mail:
     )
 
 
-def reminder_mail(cls: Class, course_name: str, email: str) -> Mail:
+def reminder_mail(cls: Class, course_name: str, email: str, entry_id: uuid.UUID | None = None) -> Mail:
     return Mail(
-        to=email,
+        to=email, entry_id=entry_id,
         subject=f"Reminder: {_subject_safe(cls.name)} starts tomorrow",
         body=(
             f"Your class {cls.name} ({course_name}) starts tomorrow, {cls.start_date:%A %d %B %Y}.\n\n"
@@ -612,17 +641,51 @@ def reminder_mail(cls: Class, course_name: str, email: str) -> Mail:
     )
 
 
-async def send(mails: list[Mail]) -> None:
+async def send(mails: list[Mail]) -> list[Mail]:
     """Through the scheduler's SMTP channel. At most once: the entry was marked sent before
-    this runs, so a failure is logged, never retried into duplicates."""
+    this runs, so a failure is logged, never retried into duplicates. Returns the mails the
+    relay accepted (none when email is off: the channel only logs them)."""
     if not mails:
-        return
+        return []
     from ..notifications import get_channel
 
     channel = get_channel("email")
+    delivered: list[Mail] = []
     for m in mails:
         try:
-            if not await channel.send(m.to, m.subject, m.body):
+            if await channel.send(m.to, m.subject, m.body):
+                delivered.append(m)
+            else:
                 logger.warning("Class email (%s) was not delivered", m.subject)
         except Exception:
             logger.exception("Class email (%s) failed", m.subject)
+    return delivered
+
+
+async def deliver(mails: list[Mail], bind) -> None:
+    """``send``, then record each Student the relay accepted a mail for as notified (#319):
+    only they can lose their seat (``forfeit.notified``). ``bind`` is the engine (or, in a
+    request, the request session's bind), so this works after the request's session closed."""
+    delivered = await send(mails)
+    ids = sorted({m.entry_id for m in delivered if m.entry_id is not None}, key=str)
+    if ids:
+        await asyncio.to_thread(record_notified, bind, ids, _now())
+
+
+def record_notified(bind, entry_ids: list[uuid.UUID], when: datetime) -> int:
+    """Mark these entries notified at ``when`` (the first time only). Its own session and commit."""
+    db = Session(bind=bind, autoflush=False)
+    try:
+        n = (
+            db.query(RollCallEntry)
+            .filter(RollCallEntry.id.in_(entry_ids), RollCallEntry.notified_at.is_(None))
+            .update({RollCallEntry.notified_at: when}, synchronize_session=False)
+        )
+        db.commit()
+        return n
+    except Exception:
+        db.rollback()
+        logger.exception("Could not record %d roll-call email(s) as delivered", len(entry_ids))
+        return 0
+    finally:
+        db.close()

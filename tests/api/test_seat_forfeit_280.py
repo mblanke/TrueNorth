@@ -298,11 +298,11 @@ def test_i3_someone_never_emailed_and_with_no_account_is_never_forfeited(client,
     """Their onboarding email was held by the daily limit: nobody told them to sign in."""
     _book(client, world)
     newbie = _entry(db_session, "newbie@corp.test")
-    newbie.onboarding_sent_at = None
+    newbie.onboarding_sent_at = newbie.notified_at = None
     db_session.flush()
     forfeit.tick(db_session, now=DUE + timedelta(hours=5))
     assert _entry(db_session, "newbie@corp.test").status == "invited"
-    assert _entry(db_session, "rosie@corp.test").status == "forfeited"  # has an account: told by it
+    assert _entry(db_session, "rosie@corp.test").status == "forfeited"  # her onboarding email was delivered
 
 
 def test_i2_a_session_approved_after_it_started_counts_from_the_approval(client, db_session, world):

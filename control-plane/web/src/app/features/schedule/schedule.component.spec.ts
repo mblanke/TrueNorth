@@ -46,9 +46,20 @@ describe('ScheduleComponent', () => {
   let classes: jasmine.SpyObj<ClassesApiService>;
   const user = signal<CurrentUser | null>(null);
 
+  /** The API sends what the caller may do with each booking (can_*, #319). Unless a test
+   *  says otherwise, these answer as the server would for a plain booking: its instructor
+   *  (or anyone, when it names none) or an admin. */
   function as(role: CurrentUser['role'], id = 'me', bookings: Booking[] = []) {
     user.set({ sub: id, id, email: `${id}@x`, display_name: `${role} person`, role } as CurrentUser);
-    scheduler.list.and.returnValue(of({ items: bookings, total: bookings.length }));
+    const items = bookings.map(b => {
+      if (b.can_change !== undefined) return b;
+      const may = role === 'admin' || (role === 'instructor' && (!b.instructor_id || b.instructor_id === id));
+      const proposal = may && b.state === 'pending_approval' && !!b.approval?.proposed_start_time;
+      return { ...b, can_change: may, can_wind_down: may && !['completed', 'cancelled', 'rejected'].includes(b.state),
+               can_move: may && ['draft', 'scheduled', 'pending_approval'].includes(b.state),
+               can_accept: proposal, can_decline: proposal };
+    });
+    scheduler.list.and.returnValue(of({ items, total: items.length }));
     fixture = TestBed.createComponent(ScheduleComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
@@ -60,8 +71,9 @@ describe('ScheduleComponent', () => {
   beforeEach(async () => {
     scheduler = jasmine.createSpyObj('SchedulerApiService',
       ['list', 'create', 'update', 'schedule', 'cancel', 'check', 'timeline', 'getPolicy', 'setPolicy', 'feedStatus', 'issueFeed', 'revokeFeed', 'courses',
-        'approvals', 'approve', 'reject', 'propose', 'acceptProposal', 'declineProposal']);
+        'approvals', 'approve', 'reject', 'propose', 'acceptProposal', 'declineProposal', 'settings']);
     scheduler.approvals.and.returnValue(of({ items: [] }));
+    scheduler.settings.and.returnValue(of({ lead_minutes: 30, grace_minutes: 15, next_free_days: 14, site_timezone: 'UTC' }));
     scheduler.acceptProposal.and.returnValue(of(booking({})));
     scheduler.declineProposal.and.returnValue(of(booking({})));
     classes = jasmine.createSpyObj('ClassesApiService', ['mine', 'list', 'pendingAdditions', 'approveAddition', 'rejectAddition']);
@@ -359,6 +371,47 @@ describe('ScheduleComponent', () => {
     expect(scheduler.acceptProposal).toHaveBeenCalledWith('p');
     button('Decline')!.click();
     expect(scheduler.declineProposal).toHaveBeenCalledWith('p');
+  });
+
+  it('#319: an assistant sees the proposal but no Accept, Decline or Move: the API says so', () => {
+    const later = new Date(at(1, 13));
+    as('instructor', 'me', [booking({
+      id: 'p', name: 'Lab 1', state: 'pending_approval', instructor_id: 'me', class_id: 'cls1',
+      approval: { proposed_start_time: later.toISOString(), proposed_end_time: new Date(later.getTime() + 3 * 3_600_000).toISOString() },
+      can_change: false, can_move: false, can_accept: false, can_decline: false,
+    } as any)]);
+    component.select(component.bookings()[0]);
+    fixture.detectChanges();
+    expect(text()).toContain('Proposed instead');
+    expect(button('Accept')).toBeUndefined();
+    expect(button('Decline')).toBeUndefined();
+    expect(button('Move or resize')).toBeUndefined();
+  });
+
+  it('#319: Cancel follows can_wind_down, not can_change (a session left under way by a cancelled class)', () => {
+    as('instructor', 'me', [booking({
+      id: 'w', name: 'Live lab', state: 'active', instructor_id: 'me', class_id: 'cls1',
+      can_change: false, can_move: false, can_accept: false, can_decline: false, can_wind_down: true,
+    } as any), booking({
+      id: 'v', name: 'Not mine', state: 'active', instructor_id: 'me', class_id: 'cls2',
+      can_change: false, can_move: false, can_accept: false, can_decline: false, can_wind_down: false,
+    } as any)]);
+    component.select(component.bookings()[0]);
+    fixture.detectChanges();
+    expect(button('Cancel booking')).toBeTruthy();
+    expect(button('Move or resize')).toBeUndefined();
+    component.select(component.bookings()[1]);
+    fixture.detectChanges();
+    expect(button('Cancel booking')).toBeUndefined();
+  });
+
+  it('#319: labels a class session with its class and says the roll call is reminded too', () => {
+    as('instructor', 'me', [booking({ id: 's', instructor_id: 'me', class_id: 'cls1', course_id: 'c204' } as any)]);
+    component.classes.set([{ id: 'cls1', name: 'C201-26-03', course_id: 'c204', status: 'open', can_edit: true } as ClassRecord]);
+    component.select(component.bookings()[0]);
+    fixture.detectChanges();
+    expect(text()).toContain('C201-26-03');
+    expect(text()).toContain('the Students on the roll call');
   });
 
   it('shows a rejected session with its reason', () => {

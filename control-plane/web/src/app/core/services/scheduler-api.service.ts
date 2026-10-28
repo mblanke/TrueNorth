@@ -18,6 +18,7 @@ export type MySession = S['MySessionOut'];
 export type CourseOption = S['CourseListOut'];
 export type ApprovalItem = S['ApprovalItemOut'];
 export type Fit = S['FitOut'];
+export type SchedulerSettings = S['SchedulerSettingsOut'];
 
 /**
  * The scheduler's HTTP contract (docs/adr/0004-scheduler-module.md), typed from the
@@ -95,6 +96,12 @@ export class SchedulerApiService {
       .set('days', days)
       .set('resolution_minutes', resolutionMinutes);
     return this.http.get<Timeline>(`${this.base}/timeline`, { params });
+  }
+
+  // ── Site settings the pages say in words (#318) ──────────
+  /** Provisioning lead, teardown grace, next-free horizon and site time zone (schedule:read). */
+  settings(): Observable<SchedulerSettings> {
+    return this.http.get<SchedulerSettings>(`${this.base}/settings`);
   }
 
   // ── Over-capacity policy (setting it is admin only) ──────

@@ -169,7 +169,7 @@ describe('auth guards', () => {
       ['range_ops', 'authoringCourses', false],
       ['range_ops', 'scoring', false],        // no aar:read
       ['range_ops', 'approvals', false],
-      ['instructor', 'approvals', true],
+      ['instructor', 'approvals', false], // an admin approves Request access (ADR 0014 §5, #319)
       ['instructor', 'authoringCourses', true],
       ['instructor', 'telemetry', true],
       ['admin', 'approvals', true],

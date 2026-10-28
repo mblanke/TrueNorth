@@ -542,7 +542,12 @@ def test_a_course_card_admits_its_course_and_pack_and_nothing_else(repo, tmp_pat
 
 
 @pytest.mark.parametrize("rel", ["scripts/check_course.py", "tools/taz/courses/AGENTS-courses.md",
-                                 "tools/taz/courses/queue.txt", "docs/interfaces/course-content.schema.json",
+                                 "tools/taz/courses/queue.txt", "tools/taz/courses/ARC2-STYLE.md",
+                                 "tools/taz/courses/TAZ-MESSAGE-ARC2.md",
+                                 "tools/taz/courses/reference/exemplar-arc2-c105.course.yaml",
+                                 "tools/taz/courses/reference/exemplar-arc2-c105.instructor-pack.yaml",
+                                 "tools/taz/courses/reference/exemplar-lab-module.yaml",
+                                 "docs/interfaces/course-content.schema.json",
                                  "docs/interfaces/course-instructor-pack.schema.json"])
 def test_the_course_oracle_and_kit_are_protected_even_from_a_card_that_allows_everything(repo, tmp_path, rel):
     t = transcript(tmp_path, said(CLAUDE))

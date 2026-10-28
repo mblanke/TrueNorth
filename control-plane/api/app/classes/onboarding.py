@@ -169,6 +169,18 @@ def _fresh_request(db: Session, identity: TokenPayload, cls: Class, email: str) 
     return req
 
 
+def admitted_from_roll_call(db: Session, user_id) -> bool:
+    """Whether ``user_id``'s account was made by a roll-call admission (``roll_call_admit``,
+    written by ``admit_from_roll_call``): they never filled in Request access, so the
+    first-run wizard does not ask them to confirm one (ADR 0014 §1, #319)."""
+    return (
+        db.query(AuditLog.id)
+        .filter(AuditLog.user_id == user_id, AuditLog.action == "roll_call_admit")
+        .first()
+        is not None
+    )
+
+
 def admit_from_roll_call(db: Session, identity: TokenPayload, client_ip: str | None) -> User | None:
     """Admit ``identity`` from a roll call and commit, or return None (Request access)."""
     email = trusted_email(identity)

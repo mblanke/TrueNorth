@@ -266,6 +266,15 @@ def class_running_course(
     )
 
 
+def classes_by_id(db: Session, class_ids: set[uuid.UUID]) -> dict[uuid.UUID, Class]:
+    """Classes by id, for bookings already loaded tenant-scoped (callers compare each class's
+    tenant with its booking's, as ``class_of`` does)."""
+    if not class_ids:
+        return {}
+    # tenant-safe: ids from links of bookings the caller loaded in its own tenant; checked per booking.
+    return {c.id: c for c in db.query(Class).filter(Class.id.in_(class_ids))}
+
+
 def class_names(db: Session, class_ids: set[uuid.UUID], tenant_id: uuid.UUID) -> dict[uuid.UUID, str]:
     if not class_ids:
         return {}

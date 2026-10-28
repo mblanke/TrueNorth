@@ -138,16 +138,25 @@ def _out(db: Session, cls: Class, user: CurrentUser) -> ClassOut:
     return _outs(db, [cls], user)[0]
 
 
-def _entry_out(e: RollCallEntry, names: dict[uuid.UUID, str], windows: list | None = None) -> RollCallEntryOut:
+def _entry_out(
+    e: RollCallEntry, names: dict[uuid.UUID, str], windows: list | None = None, seen: dict | None = None
+) -> RollCallEntryOut:
     # The deadline they missed, for a forfeited entry (as the rule computes it from the
     # class's approved sessions now).
     missed = forfeit.deadline(windows, e) if windows and e.status == RollCallStatus.forfeited.value else None
+    seen = seen or {}
+    rejected = e.pending_reason or ""
     return RollCallEntryOut(
         forfeit_deadline=missed,
         id=e.id, email=e.email, user_id=e.user_id, display_name=names.get(e.user_id) if e.user_id else None,
         status=e.status, onboarding_sent_at=e.onboarding_sent_at, reminded_at=e.reminded_at,
         signed_in_at=e.signed_in_at, removed_at=e.removed_at, created_at=e.created_at,
         pending_reason=e.pending_reason, forfeited_at=e.forfeited_at,
+        notified_at=e.notified_at, notified=forfeit.notified(e, seen),
+        seat_kept_not_notified=bool(windows) and forfeit.kept_not_notified(windows, e, seen, service._now()),
+        rejection_reason=(rejected.removeprefix(service.REJECTED_PREFIX)
+                          if e.status == RollCallStatus.removed.value and rejected.startswith(service.REJECTED_PREFIX)
+                          else None),
     )
 
 
@@ -400,8 +409,10 @@ def get_roll_call(
         q = q.filter(RollCallEntry.status != RollCallStatus.removed.value)
     entries = q.order_by(RollCallEntry.email).all()
     names = _names(db, entries, cls.tenant_id)
-    windows = forfeit.class_windows(db, cls) if any(e.status == RollCallStatus.forfeited.value for e in entries) else []
-    return [_entry_out(e, names, windows) for e in entries]
+    clocked = (RollCallStatus.forfeited.value, RollCallStatus.invited.value)
+    windows = forfeit.class_windows(db, cls) if any(e.status in clocked for e in entries) else []
+    seen = forfeit.seen_for(db, entries)
+    return [_entry_out(e, names, windows, seen) for e in entries]
 
 
 def _add(
@@ -418,7 +429,7 @@ def _add(
         mails = []
         for entry in res.to_onboard:
             entry.onboarding_sent_at = now
-            mails.append(service.onboarding_mail(cls, course.name if course else "the course", entry.email))
+            mails.append(service.onboarding_mail(cls, course.name if course else "the course", entry.email, entry.id))
         # The approved sessions' invites, for the Students who just joined (ADR 0014 §17).
         invites = scheduler.attendee_invites(db, res.sessions, [e.email for e in res.added], "REQUEST")
         db.commit()
@@ -426,7 +437,7 @@ def _add(
         # Someone else added the same address to this roll call at the same moment.
         db.rollback()
         raise HTTPException(409, "The roll call changed while this was being added; reload and try again") from None
-    background.add_task(service.send, mails)
+    background.add_task(service.deliver, mails, db.get_bind())
     background.add_task(scheduler.send_invites, invites)
     names = _names(db, res.added, cls.tenant_id)
     return RollCallAddOut(
@@ -576,10 +587,10 @@ def approve_roll_call_addition(
         # tenant-safe: the class's own course.
         course = db.get(Course, cls.course_id)
         entry.onboarding_sent_at = service._now()
-        mails.append(service.onboarding_mail(cls, course.name if course else "the course", entry.email))
+        mails.append(service.onboarding_mail(cls, course.name if course else "the course", entry.email, entry.id))
     invites = scheduler.attendee_invites(db, decision.sessions, [entry.email], "REQUEST")
     db.commit()
-    background.add_task(service.send, mails)
+    background.add_task(service.deliver, mails, db.get_bind())
     background.add_task(scheduler.send_invites, invites)
     return AdditionDecisionOut(
         entry_id=entry.id, class_id=cls.id, status=entry.status, emailed=bool(mails), not_emailed=decision.not_emailed

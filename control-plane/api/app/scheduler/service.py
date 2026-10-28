@@ -633,8 +633,9 @@ def _approval_out(a: BookingApproval | None) -> ApprovalOut | None:
     )
 
 
-def outs(db: Session, events: list[ScheduledEvent]) -> list[dict]:
-    """Bookings as the API returns them, with their class and approval, in two queries."""
+def outs(db: Session, events: list[ScheduledEvent], viewer: CurrentUser | None = None) -> list[dict]:
+    """Bookings as the API returns them, with their class and approval, and (``viewer``) what
+    that caller may do with each (``change_rule.flags``), in a fixed number of queries."""
     ids = [e.id for e in events]
     if not ids:
         return []
@@ -643,13 +644,27 @@ def outs(db: Session, events: list[ScheduledEvent]) -> list[dict]:
     # tenant-safe: rows keyed by bookings the caller already loaded tenant-scoped.
     approvals = {a.event_id: a for a in db.query(BookingApproval).filter(BookingApproval.event_id.in_(ids))}
     links = sessions.links_for(db, ids)
-    return [to_out(e, approval=approvals.get(e.id), link=links.get(e.id)) for e in events]
+    classes = sessions.classes_by_id(db, {cid for cid, _ in links.values()}) if viewer is not None else {}
+    out_rows = []
+    for e in events:
+        link = links.get(e.id)
+        cls = classes.get(link[0]) if link else None
+        # A session whose class is not in the booking's tenant has none (sessions.class_of).
+        if cls is not None and cls.tenant_id != e.tenant_id:
+            cls = None
+        out_rows.append(to_out(e, approval=approvals.get(e.id), link=link, viewer=viewer, cls=cls))
+    return out_rows
 
 
-def out(db: Session, e: ScheduledEvent, warnings: list[str] | None = None, maintenance: list[str] | None = None) -> dict:
+def out(
+    db: Session, e: ScheduledEvent, warnings: list[str] | None = None, maintenance: list[str] | None = None,
+    viewer: CurrentUser | None = None,
+) -> dict:
     from ..classes import sessions
 
-    return to_out(e, warnings, maintenance, approval=approval_of(db, e.id), link=sessions.links_for(db, [e.id]).get(e.id))
+    cls = sessions.class_of(db, e) if viewer is not None else None
+    return to_out(e, warnings, maintenance, approval=approval_of(db, e.id),
+                  link=sessions.links_for(db, [e.id]).get(e.id), viewer=viewer, cls=cls)
 
 
 def to_out(
@@ -659,9 +674,14 @@ def to_out(
     *,
     approval: BookingApproval | None = None,
     link: tuple[uuid.UUID, str] | None = None,
+    viewer: CurrentUser | None = None,
+    cls=None,
 ) -> dict:
+    from .change_rule import flags
+
     class_id, range_mode = link or (None, None)
     return EventOut(
+        **flags(e, viewer, cls, approval),
         id=str(e.id),
         name=e.name,
         description=e.description,

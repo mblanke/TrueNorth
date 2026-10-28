@@ -10,7 +10,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { AuthService } from '@core/services/auth.service';
 import {
-  AttendanceCell, AttendanceGrid, AttendanceStatus, ClassRecord, ClassesApiService, Closeout, ResultIn,
+  AttendanceCell, AttendanceCorrection, AttendanceGrid, AttendanceStatus, ClassRecord, ClassesApiService, Closeout,
+  ResultIn,
   ResultOutcome, Standing,
 } from '@core/services/classes-api.service';
 import { NotificationService } from '@core/services/notification.service';
@@ -56,8 +57,8 @@ export function courseStanding(s: Standing, numbers: boolean): string {
  * A class's attendance grid and close-out (ADR 0014 §12-13).
  *
  * Attendance is recorded automatically after each session: present when the Student opened
- * their range during it. The lead or an admin sets present, absent or excused per session
- * (audited). Close-out pre-fills each Student's result from attendance and course work; the
+ * their range during it. The lead or an admin corrects it to present or excused per session
+ * (ADR 0014 §12), with an optional note (audited). Close-out pre-fills each Student's result from attendance and course work; the
  * lead sets pass, fail or incomplete with a comment and closes the class, which makes it
  * read-only. Only an admin reopens it. On an Unclassified deployment no number is shown.
  */
@@ -78,6 +79,13 @@ export function courseStanding(s: Standing, numbers: boolean): string {
           @if (g.sessions.length === 0) {
             <p>No session has started yet.</p>
           } @else {
+            @if (g.can_edit) {
+              <p class="small">Correct a Student to present (P) or excused (E). Absent is only ever recorded by the clock.</p>
+              <mat-form-field appearance="outline" class="note">
+                <mat-label>Note for the next correction (optional, audited)</mat-label>
+                <input matInput maxlength="500" [(ngModel)]="note" placeholder="e.g. medical appointment" />
+              </mat-form-field>
+            }
             <div class="scroll">
               <table class="entries grid">
                 <thead>
@@ -99,13 +107,14 @@ export function courseStanding(s: Standing, numbers: boolean): string {
                               [attr.aria-label]="'Attendance of ' + (row.display_name || row.email)"
                               (change)="setAttendance(row.entry_id, cell.session_id, $event.value)">
                               <mat-button-toggle value="present" title="Present">P</mat-button-toggle>
-                              <mat-button-toggle value="absent" title="Absent">A</mat-button-toggle>
                               <mat-button-toggle value="excused" title="Excused">E</mat-button-toggle>
                             </mat-button-toggle-group>
+                            @if (cell.status === 'absent') { <span class="small">Absent</span> }
                           } @else {
                             {{ cellLabel(cell) }}
                           }
                           @if (cell.source === 'instructor') { <mat-icon class="tiny" title="Set by an instructor">edit</mat-icon> }
+                          @if (cell.note) { <mat-icon class="tiny" [title]="cell.note" [attr.aria-label]="'Note: ' + cell.note">sticky_note_2</mat-icon> }
                         </td>
                       }
                     </tr>
@@ -188,6 +197,7 @@ export function courseStanding(s: Standing, numbers: boolean): string {
   styles: [`
     .attendance, .closeout { margin-top: 16px; }
     .scroll { overflow-x: auto; }
+    .note { width: 100%; max-width: 480px; }
     .entries { width: 100%; border-collapse: collapse; margin-top: 8px; }
     .entries th, .entries td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--mat-sys-outline-variant); vertical-align: middle; }
     .att-absent { color: var(--mat-sys-error); }
@@ -210,6 +220,8 @@ export class ClassCloseoutComponent {
   readonly grid = signal<AttendanceGrid | null>(null);
   readonly closeout = signal<Closeout | null>(null);
   readonly drafts = signal<Record<string, ResultDraft>>({});
+  /** The note sent with the next attendance correction (ADR 0014 §12; audited). */
+  note = '';
   reopenReason = '';
 
   constructor() {
@@ -236,10 +248,10 @@ export class ClassCloseoutComponent {
     this.drafts.update(d => ({ ...d, [entryId]: { ...d[entryId], ...p } }));
   }
 
-  setAttendance(entryId: string, sessionId: string, status: AttendanceStatus): void {
+  setAttendance(entryId: string, sessionId: string, status: AttendanceCorrection): void {
     const id = this.classRecord().id;
-    this.api.setAttendance(id, sessionId, entryId, status).subscribe({
-      next: () => this.load(id),
+    this.api.setAttendance(id, sessionId, entryId, status, this.note.trim() || null).subscribe({
+      next: () => { this.note = ''; this.load(id); },
       error: err => { this.notify.error(apiError(err)); this.load(id); },
     });
   }

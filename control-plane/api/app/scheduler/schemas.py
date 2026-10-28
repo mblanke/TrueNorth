@@ -103,6 +103,20 @@ class EventOut(BaseModel):
     class_id: str | None = None
     range_mode: str | None = Field(None, description="A class session's mode: individual or collective")
     approval: ApprovalOut | None = None
+    # What the caller may do with it: the server's own rule (change_rule), so a page shows
+    # Move, Accept and Decline exactly when they would be allowed (#319).
+    can_change: bool = Field(
+        False, description="The caller may edit, move or cancel it (a class session: its lead or an admin)"
+    )
+    can_move: bool = Field(
+        False, description="can_change, and it is in a state that moves (draft, awaiting approval, scheduled)"
+    )
+    can_wind_down: bool = Field(
+        False, description="The caller may cancel or complete it: can_change, or a session left under way when "
+        "its class was cancelled"
+    )
+    can_accept: bool = Field(False, description="can_change, and an approver proposed another time to accept")
+    can_decline: bool = Field(False, description="can_change, and an approver proposed another time to decline")
 
     class Config:
         from_attributes = True
@@ -149,6 +163,16 @@ class PolicyIn(BaseModel):
 class PolicyOut(BaseModel):
     overcapacity: OvercapacityPolicy
     can_change: bool = Field(False, description="Whether the caller may change it (platform administrators only)")
+
+
+class SchedulerSettingsOut(BaseModel):
+    """The site's scheduler settings that pages show in words (#318)."""
+
+    lead_minutes: int = Field(..., description="Ranges are built this long before a session starts "
+                                               "(SCHEDULER_PROVISION_LEAD_MIN)")
+    grace_minutes: int = Field(..., description="Kept this long after it ends (SCHEDULER_TEARDOWN_GRACE_MIN)")
+    next_free_days: int = Field(..., description="How far ahead 'next free' is searched (SCHEDULER_NEXT_FREE_DAYS)")
+    site_timezone: str = Field(..., description="The site's IANA time zone (SITE_TIMEZONE); UTC when unset")
 
 
 class FeedTokenStatus(BaseModel):
