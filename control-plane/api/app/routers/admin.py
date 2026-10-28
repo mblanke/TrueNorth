@@ -89,6 +89,8 @@ def create_tenant(
         raise HTTPException(403, "Only the platform administrator can create tenants")
     if db.query(Tenant).filter(Tenant.slug == body.slug).first():
         raise HTTPException(409, f"Tenant slug '{body.slug}' already exists")
+    if db.query(Tenant).filter(Tenant.name == body.name).first():
+        raise HTTPException(409, f"Tenant name '{body.name}' already exists")
     tenant = Tenant(name=body.name, slug=body.slug)
     db.add(tenant)
     db.commit()
@@ -131,6 +133,8 @@ def update_tenant(
                                  "the name can be changed")
     if body.slug != tenant.slug and db.query(Tenant).filter(Tenant.slug == body.slug).first():
         raise HTTPException(409, f"Tenant slug '{body.slug}' already exists")
+    if body.name != tenant.name and db.query(Tenant).filter(Tenant.name == body.name).first():
+        raise HTTPException(409, f"Tenant name '{body.name}' already exists")
     tenant.name = body.name
     tenant.slug = body.slug
     db.commit()

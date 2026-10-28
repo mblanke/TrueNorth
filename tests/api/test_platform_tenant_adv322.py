@@ -40,6 +40,17 @@ def test_a_tenant_admin_cannot_rename_its_slug_but_can_rename_itself(client, db_
     assert b.name == "B renamed" and b.slug == "adv-b"
 
 
+def test_renaming_or_creating_a_tenant_to_a_taken_name_is_a_409_not_a_500(client, db_session, monkeypatch):
+    a, b = real_tenant(db_session, "nm-a"), real_tenant(db_session, "nm-b")
+    monkeypatch.setenv("PLATFORM_TENANT_ID", str(a.id))
+    act_as(real_user(db_session, UserRole.admin, b.id))
+    r = client.put(f"/tenants/{b.id}", json={"name": "nm-a", "slug": "nm-b"})
+    assert r.status_code == 409 and "name" in r.json()["detail"]
+    act_as(real_user(db_session, UserRole.admin, a.id))
+    assert client.post("/tenants", json={"name": "nm-b", "slug": "nm-new"}).status_code == 409
+    assert client.put(f"/tenants/{a.id}", json={"name": "nm-a", "slug": "nm-a"}).status_code == 200
+
+
 def test_the_platform_admin_may_change_a_slug(client, db_session, monkeypatch):
     a, b = real_tenant(db_session, "adv-pa"), real_tenant(db_session, "adv-pb")
     monkeypatch.setenv("PLATFORM_TENANT_ID", str(a.id))

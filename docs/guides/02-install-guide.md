@@ -603,7 +603,13 @@ naming both ids, if a different tenant has taken that slug. This guide installs 
 Compose, which needs nothing more. A Kubernetes install (the Helm chart) is not run by the
 installer: set `config.platformTenantId` to the operator's tenant id **before a second
 tenant exists**, or nobody is the platform administrator (the api logs an error at startup
-and refuses platform actions).
+and refuses platform actions). An explicit `tn_platform_tenant_id` is recorded too, so
+clearing it later keeps that tenant.
+
+**Upgrading a site that already has more than one tenant:** before the first upgrade onto this
+release, check which tenant owns the bootstrap slug (`SELECT id, slug FROM tenants`, compare
+with `tn_tenant_slug`). The first run records whichever tenant holds it, and it never
+changes after that. If it is not the operator's tenant, set `tn_platform_tenant_id` first.
 
 Read the report at the end. Expected on this site's first run:
 

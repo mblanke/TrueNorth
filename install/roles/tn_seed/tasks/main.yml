@@ -184,6 +184,8 @@
 
 # A different tenant on the slug is exactly the capture the review found: stop, do not
 # follow it. (No tenant on the slug is fine: the platform administrator renamed it.)
+# Only for an id the installer picked (recorded, or by slug): an explicit
+# tn_platform_tenant_id always wins and is not second-guessed by the slug.
 - name: Seed — the slug does not name another tenant
   ansible.builtin.assert:
     that: >-
@@ -195,19 +197,22 @@
       The platform tenant is NOT changed. Find out who, give the slug back (or set tn_tenant_slug
       to the platform tenant's current slug), or set tn_platform_tenant_id to the id you mean.
     quiet: true
-  when: not ansible_check_mode
+  when:
+    - not ansible_check_mode
+    - tn_platform_tenant_id | default('') | string | trim | length == 0
 
-# Never replaced: the first run's id stays (force: false), whatever the slug is later.
+# An id the installer picked is recorded once and never replaced (force: false), whatever the
+# slug is later. An explicit tn_platform_tenant_id is recorded too, and replaces what was
+# recorded, so clearing the variable later keeps that tenant instead of re-picking by slug.
 - name: Seed — record the platform tenant
   ansible.builtin.copy:
     dest: "{{ tn_state_dir }}/platform_tenant_id"
     content: "{{ tn_platform_tenant_effective }}"
     mode: "0644"
-    force: false
+    force: "{{ tn_platform_tenant_id | default('') | string | trim | length > 0 }}"
   when:
     - not ansible_check_mode
-    - tn_platform_tenant_id | default('') | string | trim | length == 0
-    - tn_recorded_platform_tenant | length == 0
+    - (tn_platform_tenant_id | default('') | string | trim | length > 0) or tn_recorded_platform_tenant | length == 0
 
 # Patched in for this run (as roles/tn_keycloak does the LDAP component id); 30-config
 # renders the same line from the state file from now on.

@@ -91,16 +91,21 @@ def test_seed_records_the_platform_tenant_once_and_checks_it_on_every_later_run(
 
     record = by_name["Seed — record the platform tenant"]["ansible.builtin.copy"]
     assert record["dest"] == "{{ tn_state_dir }}/platform_tenant_id"
-    assert record["force"] is False  # never overwritten
-    when = by_name["Seed — record the platform tenant"]["when"]
-    assert any("tn_recorded_platform_tenant" in w for w in when)  # only while none is recorded
+    # A picked id is never overwritten; an explicit one is recorded too (and replaces), so
+    # clearing tn_platform_tenant_id later cannot re-pick by slug.
+    assert "tn_platform_tenant_id" in str(record["force"]) and "length > 0" in str(record["force"])
+    when = str(by_name["Seed — record the platform tenant"]["when"])
+    assert "tn_recorded_platform_tenant" in when and "tn_platform_tenant_id" in when
 
     # Injection: ids reach SQL only after matching a UUID.
     exists = by_name["Seed — the explicit or recorded platform tenant still exists"]["ansible.builtin.command"]["cmd"]
     assert "WHERE id = " in exists
     assert "is match(" in str(by_name["Seed — the recorded platform tenant is an id"]["ansible.builtin.assert"]["that"])
 
-    disagree = by_name["Seed — the slug does not name another tenant"]["ansible.builtin.assert"]
+    guard = by_name["Seed — the slug does not name another tenant"]
+    # An explicit tn_platform_tenant_id always wins: the slug guard only checks a picked id.
+    assert any("tn_platform_tenant_id" in w and "== 0" in w for w in guard["when"])
+    disagree = guard["ansible.builtin.assert"]
     assert "tn_platform_tenant_effective" in str(disagree["that"]) and "tn_slug_tenant" in str(disagree["that"])
     assert "tn_platform_tenant_id" in disagree["fail_msg"]  # says how to resolve it
 
