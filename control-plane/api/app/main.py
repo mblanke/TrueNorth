@@ -374,6 +374,7 @@ from .acknowledgement.router import router as acknowledgement_router  # noqa: E4
 from .ad_status_sync.router import router as ad_status_sync_router  # noqa: E402 (ADR 0014 §6; + its tables)
 from .class_setup.router import router as class_setup_router  # noqa: E402 (#200)
 from .classes.closeout_router import router as class_closeout_router  # noqa: E402 (#283)
+from .classes.console_router import router as class_consoles_router  # noqa: E402 (#313, #321)
 from .classes.my_classes import router as my_classes_router  # noqa: E402 (#284)
 from .classes.range_router import router as class_ranges_router  # noqa: E402 (#282)
 from .classes.router import router as classes_router  # noqa: E402 (ADR 0014, + its tables)
@@ -491,6 +492,7 @@ app.include_router(class_setup_router)  # an instructor's own class (#200)
 app.include_router(my_classes_router)  # app/classes: a Student's My classes (#284); before /{class_id}
 app.include_router(class_closeout_router)  # app/classes: attendance and close-out (#283)
 app.include_router(class_ranges_router)  # app/classes: ranges, modes and teams (#282); before /{class_id}
+app.include_router(class_consoles_router)  # app/classes: consoles and the live view (#313, #321); before /{class_id}
 app.include_router(classes_router)  # app/classes: Class records and roll call (ADR 0014)
 app.include_router(acknowledgement_router)  # app/acknowledgement: the rules of use (ADR 0014 §3)
 app.include_router(ad_status_sync_router)  # app/ad_status_sync: nightly AD status sync (ADR 0014 §6)

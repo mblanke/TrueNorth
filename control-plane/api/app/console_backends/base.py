@@ -29,6 +29,14 @@ ConsoleReader = Callable[[], dict[Hashable, int | None]]
 
 class BaseConsoleBackend(ABC):
     kind: ClassVar[str]
+    #: The hypervisor itself refuses input on a ticket from ``open_view_only`` (an observer's
+    #: console, ADR 0014 §19). A page that merely hides the keyboard is not view-only.
+    supports_view_only: ClassVar[bool] = False
+
+    def open_view_only(self, vm: dict[str, Any], *, db=None, rng=None) -> dict[str, Any]:
+        """As ``open``, for a console the hypervisor enforces as view-only. Only when
+        ``supports_view_only``; callers fall back to ``open``, marked observed."""
+        raise ConsoleError("this hypervisor has no view-only console")
 
     @abstractmethod
     def open(self, vm: dict[str, Any], *, db=None, rng=None) -> dict[str, Any]:

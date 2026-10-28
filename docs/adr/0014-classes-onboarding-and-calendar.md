@@ -97,6 +97,27 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
 ### People on a class
 
 19. **Observers on a class** see what instructors see, read-only: the schedule, roll call, Live Class, results, the after-action review, and **live screens and consoles**. They never see range login details.
+
+    As built (#321): "observers" are the class's own observer list (`class_staff`, role
+    observer), never everyone with the observer role in the tenant. A class session's **Live**
+    view (`GET /classes/{id}/sessions/{event_id}/live`, reached from Calendar → Events and the
+    Classes page) shows its lead, assistants, observers and admins every Student on the roll
+    call with their seat's machines (or their team and the shared range) and when they last
+    opened their range; it is a status grid, not screenshots. A console from it
+    (`POST .../live/console`, by VM name) is on a machine of one of that session's ranges, only
+    during its window (live, or the provisioning lead before it); observers only on the
+    Students' machines (those Students are handed accounts on), and a platform observer always
+    as an observer whatever the staff list says. **Observers get no console tickets by
+    default** (`CLASS_OBSERVER_CONSOLES`, off; owner decision 2026-10-28): §19 says read-only,
+    and a vSphere WebMKS ticket has no read-only mode, so an observer could type into a
+    Student's machine. They see the status grid only (403 on the console route); the lead,
+    assistants and admins keep consoles. A site whose backend can enforce view-only
+    (`BaseConsoleBackend.supports_view_only`) sets the variable on: an observer's console is
+    then view-only, and where the backend cannot enforce it, a normal console marked
+    *observed*. Every
+    ticket is audited as `observer` or `staff`, and is never attendance. Live Class
+    (`/ops/exercises/{id}/class`) of a class session's exercise follows the same list for
+    observers; an exercise that is no class's session keeps the tenant-wide rule.
 20. **Students get a "My classes" page.** It covers all their classes and sessions across the week or month. It shows their status (onboarding, acknowledgement, range ready) and a **Join** button when their range is up. Email calendar invites continue as today.
 
 ### The two-view calendar (admin and instructor)
@@ -219,7 +240,8 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    range during the session, from its start to its end (exclusive): `class_range_open`,
    written when a Student loads that range's credentials (at most every 10 minutes), or
    `range_credential_reveal`. That one request proves both a signed-in session and the range
-   opened; class ranges have no console, and a reveal alone misses later days of a week-long
+   opened (a Student's console on their class range writes the same row since #313), and a
+   reveal alone misses later days of a week-long
    class. The lead or an admin sets present, absent or excused (audited). Close-out
    (`class_results`, `class_closeouts`) pre-fills attendance, course module progress (where quiz
    results land) and detections credited in the class's exercises, suggests incomplete with no
@@ -260,7 +282,16 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    that read is the Student's attendance evidence (#283), and the endpoint still decides on
    every call. The page asks again every minute. The window's times carry the viewer's UTC
    offset, so class dates are read in their calendar days; its end is exclusive. The read
-   takes a fixed number of queries whatever the number of classes. A console for class ranges has no Student endpoint yet (lab sessions only; #313).
+   takes a fixed number of queries whatever the number of classes.
+   Consoles (#313, #321; `app/classes/consoles.py`, `console_router.py`): **Console** beside
+   Join opens a one-time console ticket (the range's own console adapter, as labs use) on the
+   Student's own machines: their seat, or the shared range while a collective session on it is
+   under way, by the credentials' rule (`student_participation`), and only on machines they are
+   handed accounts on; a team has no machines of its own (no template says which is whose), so
+   every Student on a shared range reaches the same Student machines. Only while a session of
+   the class using that range is live or within its provisioning lead. Each ticket is audited
+   (`range_console_open`: who, range, machine, VM, why) and is attendance evidence like the
+   accounts read.
    Known limits: an instructor on someone else's roll call reaches My classes only by its URL;
    Join follows the current or next session's range, not every range the Student could open.
 8. **Events view:** week and month, colours, the approval queue, following the mockups.

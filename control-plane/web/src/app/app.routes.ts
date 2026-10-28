@@ -401,6 +401,15 @@ export const routes: Routes = [
     title: 'Classes - TrueNorth Range',
   },
   {
+    // ADR 0014 §19 (#321): a class session's live view, for its lead, assistants, observers
+    // and admins (the API decides who; class:read to reach the page).
+    path: 'classes/:classId/sessions/:eventId/live',
+    canActivate: [authGuard, onboardingGuard, pageGuard('classes')],
+    loadComponent: () =>
+      import('./features/classes/class-live.component').then(m => m.ClassLiveComponent),
+    title: 'Live session - TrueNorth Range',
+  },
+  {
     // ADR 0013 §7: windows in which provision, reset and normal destroy are refused.
     path: 'maintenance-windows',
     canActivate: [authGuard, onboardingGuard, pageGuard('maintenanceWindows')],
