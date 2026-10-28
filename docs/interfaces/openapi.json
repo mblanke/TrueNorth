@@ -2712,6 +2712,49 @@
         "title": "Body_import_content_feed_bundle",
         "type": "object"
       },
+      "Body_import_content_port_bundle": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The signed content-port bundle (JSON)",
+            "title": "File",
+            "type": "string"
+          },
+          "overwrite": {
+            "default": [],
+            "description": "Keys of conflicting items to overwrite",
+            "items": {
+              "type": "string"
+            },
+            "title": "Overwrite",
+            "type": "array"
+          },
+          "shared": {
+            "default": false,
+            "description": "Land as shared content every tenant reads",
+            "title": "Shared",
+            "type": "boolean"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where it lands (default: your tenant)",
+            "title": "Target Tenant Id"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_content_port_bundle",
+        "type": "object"
+      },
       "Body_import_course_content_courses_import_course_content_post": {
         "properties": {
           "file": {
@@ -2826,6 +2869,40 @@
           "state"
         ],
         "title": "Body_lti_launch_lti_launch_post",
+        "type": "object"
+      },
+      "Body_preview_content_port_bundle": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The signed content-port bundle (JSON)",
+            "title": "File",
+            "type": "string"
+          },
+          "shared": {
+            "default": false,
+            "description": "Land as shared content every tenant reads",
+            "title": "Shared",
+            "type": "boolean"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where it lands (default: your tenant)",
+            "title": "Target Tenant Id"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_preview_content_port_bundle",
         "type": "object"
       },
       "Body_upload_attachments_tickets__ticket_id__attachments_post": {
@@ -15966,6 +16043,399 @@
         "title": "PolicyOut",
         "type": "object"
       },
+      "PortExportIn": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PortItemRef"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PortExportIn",
+        "type": "object"
+      },
+      "PortGoldenBuild": {
+        "additionalProperties": false,
+        "properties": {
+          "build_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Build Id",
+            "type": "string"
+          },
+          "catalogue_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Catalogue Id",
+            "type": "string"
+          },
+          "checksum": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Checksum",
+            "type": "string"
+          }
+        },
+        "required": [
+          "catalogue_id",
+          "build_id"
+        ],
+        "title": "PortGoldenBuild",
+        "type": "object"
+      },
+      "PortImportOut": {
+        "properties": {
+          "bundle_id": {
+            "format": "uuid",
+            "title": "Bundle Id",
+            "type": "string"
+          },
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          },
+          "import_id": {
+            "format": "uuid",
+            "title": "Import Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PortPreviewItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "missing_golden_builds": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PortMissingBuildOut"
+            },
+            "title": "Missing Golden Builds",
+            "type": "array"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "import_id",
+          "bundle_id",
+          "created",
+          "updated",
+          "unchanged",
+          "skipped",
+          "items"
+        ],
+        "title": "PortImportOut",
+        "type": "object"
+      },
+      "PortImportedFromOut": {
+        "properties": {
+          "exported_at": {
+            "format": "date-time",
+            "title": "Exported At",
+            "type": "string"
+          },
+          "golden_builds": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PortGoldenBuild"
+            },
+            "title": "Golden Builds",
+            "type": "array"
+          },
+          "imported_at": {
+            "format": "date-time",
+            "title": "Imported At",
+            "type": "string"
+          },
+          "origin_key_id": {
+            "title": "Origin Key Id",
+            "type": "string"
+          },
+          "proven_at_origin": {
+            "title": "Proven At Origin",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "origin_key_id",
+          "exported_at",
+          "imported_at",
+          "proven_at_origin"
+        ],
+        "title": "PortImportedFromOut",
+        "type": "object"
+      },
+      "PortItemRef": {
+        "additionalProperties": false,
+        "properties": {
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "item_type": {
+            "enum": [
+              "course",
+              "range_template",
+              "scenario"
+            ],
+            "title": "Item Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_type",
+          "item_id"
+        ],
+        "title": "PortItemRef",
+        "type": "object"
+      },
+      "PortMissingBuildOut": {
+        "properties": {
+          "build_id": {
+            "title": "Build Id",
+            "type": "string"
+          },
+          "catalogue_id": {
+            "title": "Catalogue Id",
+            "type": "string"
+          },
+          "checksum": {
+            "default": "",
+            "title": "Checksum",
+            "type": "string"
+          },
+          "needed_by": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Needed By",
+            "type": "array"
+          }
+        },
+        "required": [
+          "catalogue_id",
+          "build_id",
+          "needed_by"
+        ],
+        "title": "PortMissingBuildOut",
+        "type": "object"
+      },
+      "PortPreviewItemOut": {
+        "properties": {
+          "action": {
+            "enum": [
+              "create",
+              "update",
+              "unchanged",
+              "conflict",
+              "refused",
+              "skipped"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "conflict": {
+            "anyOf": [
+              {
+                "enum": [
+                  "local_changed",
+                  "local_name",
+                  "older",
+                  "visibility"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflict"
+          },
+          "diff": {
+            "default": "",
+            "description": "Unified diff, local to incoming (truncated)",
+            "title": "Diff",
+            "type": "string"
+          },
+          "item_type": {
+            "enum": [
+              "course",
+              "range_template",
+              "scenario"
+            ],
+            "title": "Item Type",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "local_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "description": "What the import changes or leaves for you to do",
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "proven_at_origin": {
+            "default": true,
+            "title": "Proven At Origin",
+            "type": "boolean"
+          },
+          "reasons": {
+            "description": "Why it is a conflict, refused or skipped",
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "item_type",
+          "name",
+          "action"
+        ],
+        "title": "PortPreviewItemOut",
+        "type": "object"
+      },
+      "PortPreviewOut": {
+        "properties": {
+          "already_imported_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "This bundle was imported before: refused",
+            "title": "Already Imported At"
+          },
+          "bundle_id": {
+            "format": "uuid",
+            "title": "Bundle Id",
+            "type": "string"
+          },
+          "can_import": {
+            "title": "Can Import",
+            "type": "boolean"
+          },
+          "exported_at": {
+            "format": "date-time",
+            "title": "Exported At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PortPreviewItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "key_id": {
+            "title": "Key Id",
+            "type": "string"
+          },
+          "missing_golden_builds": {
+            "description": "Port these templates first (OVF export plus build record, S2 promotion)",
+            "items": {
+              "$ref": "#/components/schemas/PortMissingBuildOut"
+            },
+            "title": "Missing Golden Builds",
+            "type": "array"
+          },
+          "shared": {
+            "title": "Shared",
+            "type": "boolean"
+          },
+          "signed_sha256": {
+            "title": "Signed Sha256",
+            "type": "string"
+          },
+          "target_tenant_id": {
+            "format": "uuid",
+            "title": "Target Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle_id",
+          "exported_at",
+          "key_id",
+          "signed_sha256",
+          "target_tenant_id",
+          "shared",
+          "items",
+          "can_import"
+        ],
+        "title": "PortPreviewOut",
+        "type": "object"
+      },
+      "PortSigningKeyOut": {
+        "properties": {
+          "alg": {
+            "title": "Alg",
+            "type": "string"
+          },
+          "key_id": {
+            "title": "Key Id",
+            "type": "string"
+          },
+          "public_key": {
+            "description": "Base64 raw Ed25519 public key: put it in tn_content_port_trusted_keys on the importing site",
+            "title": "Public Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "alg",
+          "key_id",
+          "public_key"
+        ],
+        "title": "PortSigningKeyOut",
+        "type": "object"
+      },
       "ProfileIn": {
         "properties": {
           "enabled": {
@@ -16150,6 +16620,226 @@
           "end_time"
         ],
         "title": "ProposeIn",
+        "type": "object"
+      },
+      "ProvenConditionOut": {
+        "properties": {
+          "evidence": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ProvenEvidenceOut"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "met": {
+            "title": "Met",
+            "type": "boolean"
+          },
+          "name": {
+            "enum": [
+              "certified",
+              "used",
+              "fresh"
+            ],
+            "title": "Name",
+            "type": "string"
+          },
+          "not_applicable": {
+            "default": false,
+            "title": "Not Applicable",
+            "type": "boolean"
+          },
+          "reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "title",
+          "met"
+        ],
+        "title": "ProvenConditionOut",
+        "type": "object"
+      },
+      "ProvenDependencyOut": {
+        "properties": {
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "item_type": {
+            "enum": [
+              "course",
+              "range_template",
+              "scenario"
+            ],
+            "title": "Item Type",
+            "type": "string"
+          },
+          "proven": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None when the dependency could not be read",
+            "title": "Proven"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None: missing here, deleted, or outside the item's scope",
+            "title": "Title"
+          }
+        },
+        "required": [
+          "item_type",
+          "item_id"
+        ],
+        "title": "ProvenDependencyOut",
+        "type": "object"
+      },
+      "ProvenEvidenceOut": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "certification",
+              "class",
+              "exercise",
+              "review"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "label"
+        ],
+        "title": "ProvenEvidenceOut",
+        "type": "object"
+      },
+      "ProvenStatusOut": {
+        "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/ProvenConditionOut"
+            },
+            "title": "Conditions",
+            "type": "array"
+          },
+          "dependencies": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ProvenDependencyOut"
+            },
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "golden_builds": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PortGoldenBuild"
+            },
+            "title": "Golden Builds",
+            "type": "array"
+          },
+          "imported": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PortImportedFromOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ported here from another site; not proven here until this site's own evidence says so"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "item_type": {
+            "enum": [
+              "course",
+              "range_template",
+              "scenario"
+            ],
+            "title": "Item Type",
+            "type": "string"
+          },
+          "label": {
+            "description": "\"Proven\", or \"Not proven: <reasons>\"",
+            "title": "Label",
+            "type": "string"
+          },
+          "proven": {
+            "description": "All three conditions hold on this site",
+            "title": "Proven",
+            "type": "boolean"
+          },
+          "reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_type",
+          "item_id",
+          "title",
+          "proven",
+          "label",
+          "conditions"
+        ],
+        "title": "ProvenStatusOut",
         "type": "object"
       },
       "PublishIn": {
@@ -30689,6 +31379,265 @@
         "summary": "The release and vulnerability feeds: mode, last pull or import, errors",
         "tags": [
           "content-feeds"
+        ]
+      }
+    },
+    "/content-port/export": {
+      "post": {
+        "description": "The selected items and every item they need (a course's range templates and\nscenarios), each with its content, its proof summary and the golden-image builds it\ndepends on. No Student data, credentials or tenant data. Audit-logged.",
+        "operationId": "export_proven_content",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortExportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "The signed bundle"
+          },
+          "409": {
+            "description": "Something selected or needed is not proven"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export proven content as a signed bundle",
+        "tags": [
+          "content-port"
+        ]
+      }
+    },
+    "/content-port/import": {
+      "post": {
+        "description": "A bundle is imported once. A conflict (changed here, a same-named item here, an older\nexport, or a change between private and shared) is left as it is unless its key is in\n``overwrite``. Audit-logged.",
+        "operationId": "import_content_port_bundle",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_content_port_bundle"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortImportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import a verified bundle; every item lands not yet proven here",
+        "tags": [
+          "content-port"
+        ]
+      }
+    },
+    "/content-port/items": {
+      "get": {
+        "operationId": "list_portable_content",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProvenStatusOut"
+                  },
+                  "title": "Response List Portable Content",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Every course, range template and scenario that could be ported, with its proven status",
+        "tags": [
+          "content-port"
+        ]
+      }
+    },
+    "/content-port/items/{item_type}/{item_id}/proven": {
+      "get": {
+        "description": "Computed now: a range built from it reached Certified, a class or exercise using it\nfinished with passing evidence, and the content clock does not call it stale. Another\ntenant's private content is not found (404).",
+        "operationId": "get_content_proven_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "course",
+                "range_template",
+                "scenario"
+              ],
+              "title": "Item Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvenStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Whether a course, range template or scenario is proven, with reasons and evidence",
+        "tags": [
+          "content-port"
+        ]
+      }
+    },
+    "/content-port/preview": {
+      "post": {
+        "description": "Nothing is stored except an audit row when the bundle is refused.",
+        "operationId": "preview_content_port_bundle",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_preview_content_port_bundle"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Verify a bundle and show what importing it would do",
+        "tags": [
+          "content-port"
+        ]
+      }
+    },
+    "/content-port/signing-key": {
+      "get": {
+        "operationId": "get_content_port_signing_key",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortSigningKeyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "This site's content-port public key (for the importing site's trusted keys)",
+        "tags": [
+          "content-port"
         ]
       }
     },

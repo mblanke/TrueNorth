@@ -27,9 +27,43 @@ ALG = "Ed25519"
 CONTEXT = b"truenorth/content-feed-bundle/v1\n"
 
 
+def message_for(context: bytes, doc: dict) -> bytes:
+    """The bytes a signature covers under ``context``: the context, then the canonical JSON
+    of ``doc`` without its ``signature`` member. Each use has its own context (the feed
+    bundle's is ``CONTEXT``; the content port's is ``content_port.signing.CONTEXT``), so a
+    document signed for one never verifies as another."""
+    if not context.endswith(b"\n") or b"\n" in context[:-1]:
+        raise ValueError("a signing context is one line ending in a newline")
+    return context + canonical({k: v for k, v in doc.items() if k != "signature"})
+
+
+def sign_for(context: bytes, doc: dict, key: Ed25519PrivateKey) -> dict:
+    """``doc`` with its ``signature`` member, signed under ``context``."""
+    body = message_for(context, doc)
+    pub = key.public_key()
+    raw = pub.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    return {**doc, "signature": {"alg": ALG, "key_id": key_id(pub), "public_key": base64.b64encode(raw).decode(),
+                                 "signed_sha256": hashlib.sha256(body).hexdigest(),
+                                 "value": base64.b64encode(key.sign(body)).decode()}}
+
+
+def verify_for(context: bytes, doc: dict, public: Ed25519PublicKey) -> bool:
+    """True only when ``public`` signed exactly this document under ``context``. Never
+    raises: a document that cannot even be canonicalised (a lone surrogate, say) is simply
+    not verified."""
+    sig = doc.get("signature")
+    if not isinstance(sig, dict) or sig.get("alg") != ALG or sig.get("key_id") != key_id(public):
+        return False
+    try:
+        public.verify(base64.b64decode(sig.get("value") or "", validate=True), message_for(context, doc))
+    except (InvalidSignature, ValueError, TypeError, RecursionError):
+        return False
+    return True
+
+
 def message(doc: dict) -> bytes:
     """The bytes a bundle's signature covers."""
-    return CONTEXT + canonical({k: v for k, v in doc.items() if k != "signature"})
+    return message_for(CONTEXT, doc)
 
 
 def sha256(doc: dict) -> str:
@@ -38,22 +72,9 @@ def sha256(doc: dict) -> str:
 
 def sign(doc: dict, key: Ed25519PrivateKey) -> dict:
     """``doc`` with its ``signature`` member (scripts/build_feed_bundle.py)."""
-    body = message(doc)
-    pub = key.public_key()
-    raw = pub.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-    return {**doc, "signature": {"alg": ALG, "key_id": key_id(pub), "public_key": base64.b64encode(raw).decode(),
-                                 "signed_sha256": hashlib.sha256(body).hexdigest(),
-                                 "value": base64.b64encode(key.sign(body)).decode()}}
+    return sign_for(CONTEXT, doc, key)
 
 
 def verify(doc: dict, public: Ed25519PublicKey) -> bool:
-    """True only when ``public`` signed exactly this bundle. Never raises: a document that
-    cannot even be canonicalised (a lone surrogate, say) is simply not verified."""
-    sig = doc.get("signature")
-    if not isinstance(sig, dict) or sig.get("alg") != ALG or sig.get("key_id") != key_id(public):
-        return False
-    try:
-        public.verify(base64.b64decode(sig.get("value") or "", validate=True), message(doc))
-    except (InvalidSignature, ValueError, TypeError, RecursionError):
-        return False
-    return True
+    """True only when ``public`` signed exactly this bundle. Never raises."""
+    return verify_for(CONTEXT, doc, public)
