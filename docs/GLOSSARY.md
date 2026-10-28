@@ -315,6 +315,96 @@ infrastructure, generated from a read-only corpus (`control-plane/api/app/greysp
 _Not to be confused with_: the noise engine (`control-plane/api/app/noise/`), which simulates
 activity inside the range.
 
+## Exercise Studio (ADR 0016)
+
+**Exercise Studio**:
+The module that turns a free-text exercise request into a staged, QA-checked, dry-run-proven
+bundle for a collective exercise that an admin promotes (`docs/exercise-studio.md`;
+`tools/exstudio/`, `app/exercise_studio/`). The same mechanics as ARC², for collective training.
+It never touches courses, course modules or `lab_range`.
+_Not to be confused with_: ARC² / Course Studio (individual training); Exercise Forge (one-shot
+generation from threat indicators, no review or dry run).
+
+**Studio run**:
+One request moving through the Studio's stages, kept under `build/exstudio/<slug>/` and owned
+by the requesting tenant. States include **Needs input**, waiting at a gate, **Dry run**,
+awaiting approval, takeover.
+_Not to be confused with_: a run of an exercise (`exercise_runs`), or the dry run.
+
+**Needs input**:
+A Studio run waiting for the requester to answer the architect's follow-up questions, usually
+about sizing. Not a failure and spends no QA budget.
+
+**Exercise role**:
+A part in a collective exercise (analyst, red team, blue team, intel team, white cell, ...)
+with a participant count range, a **seat pattern** and a **VM profile**; belongs to a team.
+_Avoid_: role (alone, in the Studio's pages). _Not to be confused with_: a user role (`UserRole`).
+
+**Seat pattern**:
+How an exercise role gets machines: `per_participant`, `shared_per_team`, `shared_per_n` or
+`fixed`. **VM profile**: the machines one seat or team gets (catalogue id, what it is for,
+access).
+
+**Sizing**:
+The number of participants per exercise role. It decides how many VMs a range gets and of
+what kind. Planned on the request, then recorded on a class session (`exercise_sizing`) and
+changeable until the range is built.
+
+**Scale rules** / **derived range template**:
+The rules in `scale.yaml` that say how shared machines (targets, domain controllers, sensors)
+grow with the sizing. A deterministic renderer (`tools/exstudio/sizing.py`) applies them to a
+range template and produces a **derived range template**: an ordinary, tenant-owned template
+recording its base and the sizing. The Studio never edits the base template.
+
+**Capacity report**:
+"Needs N VMs, X vCPU, Y GB" for a sizing, against the site's supply and the capacity gate's
+free capacity, with the biggest team size that fits when it does not.
+
+**Captured inject** / **Live inject**:
+A captured inject is pre-captured, defanged evidence delivered by a simulated injector. A live
+inject is a sequence of **live action registry** calls that act on range machines through guest
+operations or a live injector. A live inject is always flagged, needs **live approval**, and
+runs only on a range proven Isolated.
+_Not to be confused with_: a live instructor inject from Ops Center (`POST /ops/exercises/{id}/inject`).
+
+**Live action registry**:
+The reviewed, in-repository list of actions a live inject may call, each with typed bounded
+parameters, node-id targets, limits and a cleanup check (`app/exercise_studio/live_actions/`).
+The generator never writes executable text.
+
+**Live approval** / **cleared admin**:
+A separate approval, by a different admin who holds `exercise_studio:approve_live`, of the
+exact live scripts of an exercise, by digest. "Cleared" is that permission plus a signed
+attestation; ADR 0016 Q1 leaves the formal meaning to the owner.
+_Not to be confused with_: the preview gate, which approves the rest of the exercise.
+
+**Dry run**:
+The automatic proof run of a Studio exercise: a range built at a minimal representative size
+on a certified, isolated build, the injects played on their timeline by **simulated players**
+(an exemplary one and a silent one), every objective checked for being scorable and not
+creditable to a silent player, then torn down. Platform code, not an agent. Its record is the
+**dry-run report**; the admin sees it before approving.
+_Not to be confused with_: a rehearsal by an instructor; a lab session.
+
+**Simulated player**:
+A synthetic Student created for a dry run, flagged `synthetic`, excluded from rosters,
+leaderboards, AARs and evidence, and deleted afterwards.
+
+**Draft range template**:
+A range template drafted by the Studio that names golden templates which may not exist at this
+site. Unusable (no range, no booking) until its images are promoted and a range built from it
+reaches Certified.
+
+**Promote** (Studio):
+The admin's separate act that creates the exercise template and its parts in the tenant from
+the stage-7 bundle. Nothing runs, books or provisions as a result. Distinct from live
+approval and from acceptance of the preview gate.
+
+**Proven by dry run**:
+The Proven chip tier an exercise template earns from a passing dry run whose digests still
+match; **Proven in use** is the tier a closed class or completed exercise gives
+(`docs/content-port.md`).
+
 ## Courses and learning records
 
 **ARC² / Course Studio**:
