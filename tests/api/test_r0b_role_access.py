@@ -12,7 +12,7 @@ role's own identity, and across tenants:
 - Self-enrolment: POST /courses/{id}/enroll — published, own tenant or global catalogue,
   not retired; a repeat answers 200 with the same enrolment; someone else's needs
   user:update. GET /courses/enrollments/mine lists the caller's own only.
-- Approvals queue: registration:read (instructors, admins); tenant-scoped.
+- Approvals queue: registration:read (admins only: ADR 0014 §5, #319); tenant-scoped.
 - Observer: reads Ops Center and Scoring, writes neither.
 """
 
@@ -277,7 +277,7 @@ def _request(db, tenant_id) -> RegistrationRequest:
     return row
 
 
-@pytest.mark.parametrize("role", [UserRole.student, UserRole.observer, UserRole.range_ops])
+@pytest.mark.parametrize("role", [UserRole.student, UserRole.observer, UserRole.range_ops, UserRole.instructor])
 def test_the_queue_is_refused_without_registration_read(client, db_session, role):
     t = real_tenant(db_session, f"queue-{role.value}")
     req = _request(db_session, t.id)
@@ -286,10 +286,12 @@ def test_the_queue_is_refused_without_registration_read(client, db_session, role
     assert client.post(f"/registration/requests/{req.id}/approve", json={"role": "student"}).status_code == 403
 
 
-def test_an_instructor_works_their_own_tenants_queue_only(client, db_session):
+def test_an_admin_works_their_own_tenants_queue_only(client, db_session, monkeypatch):
     mine_t, other_t = real_tenant(db_session, "queue-a"), real_tenant(db_session, "queue-b")
+    op = real_tenant(db_session, "queue-operator")
+    monkeypatch.setenv("PLATFORM_TENANT_ID", str(op.id))  # neither tenant's admin is the operator
     mine, theirs = _request(db_session, mine_t.id), _request(db_session, other_t.id)
-    act_as(real_user(db_session, UserRole.instructor, mine_t.id))
+    act_as(real_user(db_session, UserRole.admin, mine_t.id))
     ids = {r["id"] for r in client.get("/registration/requests").json()}
     assert str(mine.id) in ids and str(theirs.id) not in ids
     assert client.post(f"/registration/requests/{theirs.id}/approve", json={"role": "student"}).status_code == 404

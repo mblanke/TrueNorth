@@ -1731,10 +1731,11 @@
                 "type": "null"
               }
             ],
+            "description": "Why it was corrected (audited)",
             "title": "Note"
           },
           "status": {
-            "$ref": "#/components/schemas/AttendanceStatusOut"
+            "$ref": "#/components/schemas/AttendanceCorrectionOut"
           }
         },
         "required": [
@@ -1742,6 +1743,15 @@
         ],
         "title": "AttendanceCorrectIn",
         "type": "object"
+      },
+      "AttendanceCorrectionOut": {
+        "description": "What an instructor may set (ADR 0014 \u00a712): present or excused. Absent is the clock's\nfinding, never a correction (#319).",
+        "enum": [
+          "present",
+          "excused"
+        ],
+        "title": "AttendanceCorrectionOut",
+        "type": "string"
       },
       "AttendanceGridOut": {
         "properties": {
@@ -8791,6 +8801,36 @@
                 "type": "null"
               }
             ]
+          },
+          "can_accept": {
+            "default": false,
+            "description": "can_change, and an approver proposed another time to accept",
+            "title": "Can Accept",
+            "type": "boolean"
+          },
+          "can_change": {
+            "default": false,
+            "description": "The caller may edit, move or cancel it (a class session: its lead or an admin)",
+            "title": "Can Change",
+            "type": "boolean"
+          },
+          "can_decline": {
+            "default": false,
+            "description": "can_change, and an approver proposed another time to decline",
+            "title": "Can Decline",
+            "type": "boolean"
+          },
+          "can_move": {
+            "default": false,
+            "description": "can_change, and it is in a state that moves (draft, awaiting approval, scheduled)",
+            "title": "Can Move",
+            "type": "boolean"
+          },
+          "can_wind_down": {
+            "default": false,
+            "description": "The caller may cancel or complete it: can_change, or a session left under way when its class was cancelled",
+            "title": "Can Wind Down",
+            "type": "boolean"
           },
           "class_id": {
             "anyOf": [
@@ -16012,6 +16052,12 @@
             },
             "title": "Steps Done",
             "type": "array"
+          },
+          "via_roll_call": {
+            "default": false,
+            "description": "Admitted from a class roll call on first sign-in (ADR 0014 \u00a71): there was no access request, so the wizard skips the step that confirms one",
+            "title": "Via Roll Call",
+            "type": "boolean"
           }
         },
         "required": [
@@ -19895,6 +19941,25 @@
             "title": "Id",
             "type": "string"
           },
+          "notified": {
+            "default": false,
+            "description": "Actually told to sign in: an email the relay accepted, or an in-app notification they have signed in since. Only a notified Student can lose their seat (#319)",
+            "title": "Notified",
+            "type": "boolean"
+          },
+          "notified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the SMTP relay accepted their onboarding or day-before email; empty when none was sent",
+            "title": "Notified At"
+          },
           "onboarding_sent_at": {
             "anyOf": [
               {
@@ -19919,6 +19984,18 @@
             "description": "Why an addition waits for an approver, or was rejected",
             "title": "Pending Reason"
           },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An addition an approver rejected (ADR 0014 \u00a717): the reason they gave",
+            "title": "Rejection Reason"
+          },
           "reminded_at": {
             "anyOf": [
               {
@@ -19942,6 +20019,12 @@
               }
             ],
             "title": "Removed At"
+          },
+          "seat_kept_not_notified": {
+            "default": false,
+            "description": "Past their sign-in deadline and still invited, but never notified: the seat is kept",
+            "title": "Seat Kept Not Notified",
+            "type": "boolean"
           },
           "signed_in_at": {
             "anyOf": [
@@ -20007,7 +20090,6 @@
         "enum": [
           "invited",
           "signed_in",
-          "ready",
           "removed",
           "pending",
           "forfeited"
@@ -51457,7 +51539,7 @@
     },
     "/schedule/events/{event_id}/propose": {
       "post": {
-        "description": "The time must fit now (409 with the next free slot otherwise). The session stays\npending, holding nothing, until its instructor accepts or declines.",
+        "description": "The time must fit now (409 with the next free slot otherwise). The session stays\npending, holding nothing, until its instructor accepts or declines. The instructor is\ntold (in the app, and by email when email is configured).",
         "operationId": "propose_time_schedule_events__event_id__propose_post",
         "parameters": [
           {
@@ -51515,7 +51597,7 @@
     },
     "/schedule/events/{event_id}/reject": {
       "post": {
-        "description": "pending_approval -> rejected, with a reason the instructor sees. Nothing was sent, so\nnothing is withdrawn.",
+        "description": "pending_approval -> rejected, with a reason the instructor sees (in the app, and by\nemail when email is configured). Nothing was sent, so nothing is withdrawn.",
         "operationId": "reject_event_schedule_events__event_id__reject_post",
         "parameters": [
           {

@@ -2,7 +2,7 @@ import type { Booking, Timeline } from '@core/services/scheduler-api.service';
 import type { MaintenanceWindow } from '@core/services/maintenance-windows-api.service';
 import {
   ALL_ON, HOUR_PX, KIND_STYLE, MIN_BLOCK_PX, blockClasses, chipsFor, dayBlocks, dayLoad, hourWindow, inMaintenance,
-  kindOf, laneStyle, legendCounts, loadBar, loadLevel, loadText, maintenanceBands, mayChange, movedTimes, toPx,
+  kindOf, laneStyle, legendCounts, loadBar, loadLevel, loadText, maintenanceBands, movedTimes, toPx,
   visibleBookings, windowsInPeriod,
 } from './events-calendar.util';
 
@@ -164,26 +164,6 @@ describe('events-calendar.util', () => {
       const { start, end } = movedTimes(b, '2030-03-08', '23:00');
       expect(start.getTime()).toBe(new Date(2030, 2, 8, 23).getTime());
       expect(end.getTime()).toBe(new Date(2030, 2, 9, 3).getTime());
-    });
-  });
-
-  describe('who may change a booking (review L1, mirrors the server\'s _changeable)', () => {
-    const lead = (id: string) => (id === 'c1' ? 'lead' : undefined);
-    it('a class session: its lead or an admin, not the instructor it names', () => {
-      const s = booking({ class_id: 'c1', instructor_id: 'named' });
-      expect(mayChange(s, 'instructor', 'lead', lead)).toBeTrue();
-      expect(mayChange(s, 'instructor', 'named', lead)).toBeFalse();
-      expect(mayChange(s, 'admin', 'anyone', lead)).toBeTrue();
-    });
-    it('no instructor: any instructor; otherwise the instructor it names or an admin', () => {
-      expect(mayChange(booking({ instructor_id: null }), 'instructor', 'x', lead)).toBeTrue();
-      expect(mayChange(booking({ instructor_id: 'me' }), 'instructor', 'me', lead)).toBeTrue();
-      expect(mayChange(booking({ instructor_id: 'me', created_by: 'x' }), 'instructor', 'x', lead)).toBeFalse();
-      expect(mayChange(booking({ instructor_id: 'me' }), 'admin', 'x', lead)).toBeTrue();
-    });
-    it('never range ops or observers (no schedule:write)', () => {
-      expect(mayChange(booking({ instructor_id: null }), 'range_ops', 'x', lead)).toBeFalse();
-      expect(mayChange(booking({ instructor_id: null }), 'observer', 'x', lead)).toBeFalse();
     });
   });
 

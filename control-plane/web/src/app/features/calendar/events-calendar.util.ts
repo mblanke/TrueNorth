@@ -7,8 +7,6 @@
  */
 import type { Booking, Timeline } from '@core/services/scheduler-api.service';
 import type { MaintenanceWindow } from '@core/services/maintenance-windows-api.service';
-import type { UserRole } from '@core/services/auth.service';
-import { roleCan } from '@core/auth/permissions';
 import { Level, addDays, at, hourOf, layoutLanes, level, sameDay } from '../schedule/schedule.util';
 
 /** A class session with a range per Student, or an exercise on one shared range (ADR 0014 §9). */
@@ -168,22 +166,6 @@ export function movedTimes(b: Pick<Booking, 'start_time' | 'end_time'>, date: st
   const start = at(date, from);
   const length = new Date(b.end_time).getTime() - new Date(b.start_time).getTime();
   return { start, end: new Date(start.getTime() + length) };
-}
-
-/**
- * Whether the caller may change (move, accept a proposal for) a booking, as the server's
- * `_changeable` decides (scheduler/router.py): a class session by its class's lead or an
- * admin; a booking with no instructor by anyone who books; otherwise its instructor or an
- * admin. `leadOf` gives a class's lead, when the caller can see the class.
- */
-export function mayChange(
-  b: Pick<Booking, 'class_id' | 'instructor_id'>, role: UserRole | null | undefined, me: string | null | undefined,
-  leadOf: (classId: string) => string | undefined,
-): boolean {
-  if (!roleCan(role, 'schedule:write')) return false;
-  if (role === 'admin') return true;
-  if (b.class_id) return !!me && leadOf(b.class_id) === me;
-  return !b.instructor_id || b.instructor_id === me;
 }
 
 /** The month cell's chips: bookings running on the day, earliest first. */

@@ -25,11 +25,13 @@ def _module():
     return mod
 
 
-def test_it_chains_onto_the_previous_head_and_is_the_only_head():
+def test_it_chains_onto_the_previous_head_and_does_not_fork():
     mod = _module()
     assert mod.revision == REVISION and mod.down_revision == PARENT
-    others = [p for p in VERSIONS.glob("*.py") if f'down_revision: str | None = "{REVISION}"' in p.read_text()]
-    assert not others
+    # Later migrations chain after it (one head overall is test_alembic_revisions' check);
+    # two of them on the same parent would fork the history.
+    children = [p for p in VERSIONS.glob("*.py") if f'down_revision: str | None = "{REVISION}"' in p.read_text()]
+    assert len(children) <= 1
 
 
 def test_legacy_types_are_mapped_and_the_rest_left_alone():

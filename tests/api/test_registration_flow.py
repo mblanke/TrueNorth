@@ -1,4 +1,4 @@
-"""Trainee registration: AD login -> registration -> instructor approval.
+"""Trainee registration: AD login -> registration -> admin approval (ADR 0014 §5).
 
 The property under test throughout is that **AD group membership suggests but
 never grants**. A request may arrive carrying `TN-Platform-Admins`, and it still
@@ -67,13 +67,13 @@ def as_trainee(client, db_session):
 
 @pytest.fixture
 def approver(db_session, tenant):
-    """An instructor who can drain the approval queue."""
+    """An admin, who drains the approval queue (ADR 0014 §5: an admin approves; #319)."""
     row = User(
         id=uuid.uuid4(),
-        keycloak_id="ad-sub-instructor",
-        email="instructor@corp.tnrange.lab",
-        display_name="Instructor",
-        role=UserRole.instructor,
+        keycloak_id="ad-sub-approver",
+        email="approver@corp.tnrange.lab",
+        display_name="Approver",
+        role=UserRole.admin,
         tenant_id=tenant.id,
         source="ad",
     )
@@ -83,7 +83,7 @@ def approver(db_session, tenant):
         id=str(row.id),
         email=row.email,
         display_name=row.display_name,
-        role=UserRole.instructor,
+        role=UserRole.admin,
         tenant_id=str(tenant.id),
         keycloak_id=row.keycloak_id,
     )

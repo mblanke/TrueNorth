@@ -57,13 +57,13 @@ def world(postgres_engine, monkeypatch):
         db.add(BookingApproval(event_id=event, tenant_id=tenant, requested_by=lead, decided_by=lead,
                                decided_at=datetime.now(UTC)))
         db.add(RollCallSettings(tenant_id=tenant, email_domains=["corp.test"]))
-        sent = datetime.now(UTC) - timedelta(days=1)  # their onboarding emails went out
+        sent = datetime.now(UTC) - timedelta(days=1)  # their onboarding emails went out (and the relay took them: #319)
         for name in ("ann", "bob", "cat"):
             db.add(RollCallEntry(class_id=cls, tenant_id=tenant, email=f"{name}@corp.test", status="invited",
-                                 added_by=lead, onboarding_sent_at=sent))
+                                 added_by=lead, onboarding_sent_at=sent, notified_at=sent))
         # Lost their seat earlier; the lead reinstates them while the clock runs.
         db.add(RollCallEntry(class_id=cls, tenant_id=tenant, email="dan@corp.test", status="forfeited",
-                             added_by=lead, onboarding_sent_at=sent, forfeited_at=sent))
+                             added_by=lead, onboarding_sent_at=sent, notified_at=sent, forfeited_at=sent))
         db.commit()
     lead_user = CurrentUser(id=str(lead), email="lead@corp.test", display_name="Lead", role=UserRole.instructor,
                             tenant_id=str(tenant), keycloak_id=f"kc-{lead.hex[:8]}")
@@ -195,7 +195,8 @@ def test_a_kelvin_sign_lookalike_never_claims_an_entry(world):
     with Session(world["engine"]) as db:
         cls = db.get(Class, world["class"])
         db.add(RollCallEntry(class_id=cls.id, tenant_id=cls.tenant_id, email="kate@corp.test", status="invited",
-                             onboarding_sent_at=datetime.now(UTC) - timedelta(days=1)))
+                             onboarding_sent_at=datetime.now(UTC) - timedelta(days=1),
+                             notified_at=datetime.now(UTC) - timedelta(days=1)))
         fake = User(id=uuid.uuid4(), email="\u212aate@corp.test", display_name="K", role=UserRole.student,
                     tenant_id=cls.tenant_id, keycloak_id="kc-kelvin", source="ad")
         db.add(fake)

@@ -47,7 +47,7 @@ def test_upgrade_adds_the_forfeit_columns_and_downgrade_removes_them(tmp_path):
     _alembic(url, "upgrade", PARENT)
     engine = sa.create_engine(url)
     tenant, course, lead, cls = (uuid.uuid4() for _ in range(4))
-    from app.classes.models import Class, RollCallEntry
+    from app.classes.models import Class
     from app.models import Course, Tenant, User, UserRole
     from sqlalchemy.orm import Session
 
@@ -76,11 +76,10 @@ def test_upgrade_adds_the_forfeit_columns_and_downgrade_removes_them(tmp_path):
         assert [tuple(r) for r in rows] == [("ann@corp.test", "invited", None, None),
                                             ("bob@corp.test", "signed_in", None, None)]
 
-    # The ORM writes a forfeited entry on the migrated schema.
-    with Session(engine) as db:
-        ann = db.query(RollCallEntry).filter_by(email="ann@corp.test").one()
-        ann.status, ann.forfeited_at = "forfeited", datetime.now(UTC)
-        db.commit()
+    # A forfeited entry on the migrated schema (SQL: later revisions add columns the model has).
+    with engine.begin() as db:
+        db.execute(sa.text("UPDATE class_roll_call SET status = 'forfeited', forfeited_at = :t "
+                           "WHERE email = 'ann@corp.test'"), {"t": datetime.now(UTC)})
 
     _alembic(url, "downgrade", PARENT)
     assert not COLUMNS & _columns(engine)

@@ -4,8 +4,8 @@
 Endpoint                                           Who
 =================================================  ==========================================
 GET  /classes/{id}/attendance                      its lead, assistants, observers, admins
-PUT  /classes/{id}/attendance/{session_id}/        its lead or an admin: present, absent or
-     {entry_id}                                    excused, with a note. Audited
+PUT  /classes/{id}/attendance/{session_id}/        its lead or an admin: present or excused
+     {entry_id}                                    (ADR 0014 §12), with a note. Audited
 GET  /classes/{id}/closeout                        its lead, assistants, observers, admins:
                                                    the pre-filled results
 POST /classes/{id}/close                           its lead or an admin: a result per Student

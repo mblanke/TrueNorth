@@ -183,6 +183,30 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    This folds in #272 and is blocked by #276.
 2. **Acknowledgement form:** versions, signatures, re-signing yearly and on every change, audit, export.
 3. **Seat forfeit and reinstate.**
+
+   As built (#280, with #319): only a Student who was actually notified loses a seat (owner
+   direction, 2026-10-27). Notified means an onboarding or day-before email the SMTP relay
+   accepted (`class_roll_call.notified_at`, recorded after the send), or an in-app notification
+   issued to their linked account (`in_app_notified_at`) that they have signed in since
+   (`user_last_seen`). With email off, a refused send or the daily email limit, the seat is
+   kept and the roll call shows the lead "not notified — seat kept". The day-before reminder
+   uses the site's calendar day (`SITE_TIMEZONE`). The roll-call status `ready` was never
+   written and is gone: a Student's rules of use and range show on My classes. The lead sees
+   an approver's reason for rejecting an addition. The instructor is told of approve, reject
+   and propose in the app, and by email when email is configured. Only an admin approves
+   Request access (§5): instructors no longer hold `registration:read` or
+   `registration:approve`; roll-call admission (§1) still runs with the lead as approver.
+   `EventOut` carries `can_change`, `can_move`, `can_accept`, `can_decline` and `can_wind_down`
+   for the caller, from the server's own rule (`scheduler/change_rule.py`), so the pages never
+   reimplement it. `can_wind_down` (Cancel, Complete) is wider than `can_change`: a cancelled
+   class leaves a session under way to its lead.
+
+   A Student who cannot be notified keeps their seat until a lead removes them: email off, a
+   refused send, the daily limit, or an entry from before this rule (migration `7c4d2e9a1b60`
+   backfills `notified_at` from `reminded_at` where a reminder was sent; nothing recorded
+   whether older onboarding emails went out). Adding a Student again after a removal starts a
+   new stint: the old notice is cleared, they are emailed again, and only a notice in the new
+   stint can cost the seat.
 4. **Booking approval** (#281, built):
    - approve, reject, or propose a time;
    - nothing is sent or held before approval;
@@ -243,7 +267,7 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    `range_credential_reveal`. That one request proves both a signed-in session and the range
    opened (a Student's console on their class range writes the same row since #313), and a
    reveal alone misses later days of a week-long
-   class. The lead or an admin sets present, absent or excused (audited). Close-out
+   class. The lead or an admin corrects it to present or excused, with a note (audited; #319). Close-out
    (`class_results`, `class_closeouts`) pre-fills attendance, course module progress (where quiz
    results land) and detections credited in the class's exercises, suggests incomplete with no
    session held, below 80% attendance or with graded course work not yet done, fail when a

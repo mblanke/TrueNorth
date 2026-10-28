@@ -229,11 +229,11 @@ describe('DashboardComponent', () => {
     }
   });
 
-  it('gives an instructor the approvals queue but not the admin directory', () => {
+  it('gives an instructor neither the approvals queue (ADR 0014 §5) nor the admin directory', () => {
     auth.role.set('instructor');
     fixture.detectChanges();
     const links = hrefs();
-    expect(links).toContain('/approvals');
+    expect(links).not.toContain('/approvals');
     expect(links).not.toContain('/users');
     expect(links).toContain('/authoring');
   });

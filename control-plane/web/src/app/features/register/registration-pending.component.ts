@@ -8,7 +8,7 @@ import { RegistrationApiService } from '@core/services/registration-api.service'
 import { AuthService } from '@core/services/auth.service';
 
 /**
- * The waiting room between submitting a request and an instructor deciding.
+ * The waiting room between submitting a request and an administrator deciding (ADR 0014 §5).
  *
  * Polls rather than holding a socket open: this page may sit for hours or days,
  * and a poll every 30s is cheaper than a connection per waiting applicant.
@@ -37,7 +37,7 @@ import { AuthService } from '@core/services/auth.service';
           <mat-icon class="glyph">hourglass_top</mat-icon>
           <h2>Waiting for approval</h2>
           <p class="muted">
-            Your request has been sent to an instructor. This page updates on its own — you can
+            Your request has been sent to an administrator. This page updates on its own — you can
             leave it open, or sign out and come back later.
           </p>
           <div class="polling">

@@ -19,7 +19,7 @@ import { HOLDING_STATES, gb, hhmm, isoDate } from '../schedule/schedule.util';
 import { CalendarView, addDays, dayKey, gridDays, heading, shift } from './content-calendar.util';
 import {
   ALL_ON, Band, Block, EventKind, Filters, HOUR_PX, KIND_STYLE, blockClasses, chipsFor, dayBlocks, dayLoad, hourWindow,
-  inMaintenance, isPending, kindOf, laneStyle, legendCounts, loadBar, loadLevel, loadText, maintenanceBands, mayChange,
+  inMaintenance, isPending, kindOf, laneStyle, legendCounts, loadBar, loadLevel, loadText, maintenanceBands,
   movedTimes, visibleBookings, windowsInPeriod,
 } from './events-calendar.util';
 
@@ -206,10 +206,10 @@ const LIST_LIMIT = 200;
                 <p class="note">Awaiting approval by an admin or range ops. Nothing is held and nobody is invited until then.</p>
                 @if (b.approval?.proposed_start_time; as ps) {
                   <p class="note">Proposed instead: <strong>{{ whenOf(ps, b.approval!.proposed_end_time!) }}</strong></p>
-                  @if (canEdit(b)) {
+                  @if (canAnswer(b)) {
                     <div class="actions">
-                      <button mat-flat-button [disabled]="busy()" (click)="acceptProposal(b)">Accept</button>
-                      <button mat-stroked-button [disabled]="busy()" (click)="declineProposal(b)">Decline</button>
+                      @if (b.can_accept) { <button mat-flat-button [disabled]="busy()" (click)="acceptProposal(b)">Accept</button> }
+                      @if (b.can_decline) { <button mat-stroked-button [disabled]="busy()" (click)="declineProposal(b)">Decline</button> }
                     </div>
                   }
                 }
@@ -541,14 +541,10 @@ export class EventsCalendarComponent implements OnInit {
     this.actionError.set('');
   }
 
-  /** As the server's `_changeable`: a class session by its lead or an admin. */
-  canEdit(b: Booking): boolean {
-    return mayChange(b, this.role(), this.auth.user()?.id,
-      id => this.classList().find(c => c.id === id)?.lead_instructor?.id);
-  }
-  canMove(b: Booking): boolean {
-    return this.canEdit(b) && ['draft', 'scheduled', 'pending_approval'].includes(b.state);
-  }
+  /** The server's own rule, per booking (`can_*` on EventOut, scheduler/change_rule.py, #319):
+   *  a class session by its lead or an admin. The page never reimplements it. */
+  canMove(b: Booking): boolean { return !!b.can_move; }
+  canAnswer(b: Booking): boolean { return !!b.can_accept || !!b.can_decline; }
 
   startMove(b: Booking): void {
     const s = new Date(b.start_time);

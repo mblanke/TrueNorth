@@ -72,9 +72,17 @@ class AttendanceGridOut(BaseModel):
     students: list[AttendanceRowOut]
 
 
+class AttendanceCorrectionOut(str, Enum):
+    """What an instructor may set (ADR 0014 §12): present or excused. Absent is the clock's
+    finding, never a correction (#319)."""
+
+    present = "present"
+    excused = "excused"
+
+
 class AttendanceCorrectIn(BaseModel):
-    status: AttendanceStatusOut
-    note: str | None = Field(None, max_length=500)
+    status: AttendanceCorrectionOut
+    note: str | None = Field(None, max_length=500, description="Why it was corrected (audited)")
 
     @field_validator("note")
     @classmethod

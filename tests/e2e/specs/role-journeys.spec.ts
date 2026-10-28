@@ -100,12 +100,13 @@ test.describe('Role journeys (R0-B)', () => {
     await expectRefused(page, '/scoring');
   });
 
-  test('Instructor: opens the approvals queue; the admin directory is refused', async ({ page }) => {
+  test('Instructor: opens Classes; approvals (an admin approves Request access) and the admin directory are refused', async ({ page }) => {
     const me = await signInAs(page, 'instructor');
-    await page.goto('/approvals');
+    await page.goto('/classes');
     await skipIfAuthDisabled(page, me);
-    await expect(pageTitle(page, 'Registration approvals')).toBeVisible();
-    await expect(menu(page).getByRole('link', { name: 'Approvals' })).toBeVisible();
+    await expect(pageTitle(page, 'Classes')).toBeVisible();
+    await expect(menu(page).getByRole('link', { name: 'Approvals' })).toHaveCount(0);
+    await expectRefused(page, '/approvals');
     await expectRefused(page, '/users');
   });
 
