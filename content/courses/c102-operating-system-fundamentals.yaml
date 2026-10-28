@@ -6,10 +6,11 @@ course_code: C102
 title: Operating-System Fundamentals
 version: '1.0'
 difficulty: beginner
-duration_hours: 100
+duration_hours: 6
 provenance: unsourced
 status: draft
 is_published: false
+readiness: draft
 qsp_code: ALJQ
 source:
   origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
@@ -30,57 +31,91 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Distinguish a process from a thread and describe the resources each owns.
-  - Explain how a scheduler selects the next runnable task.
-  - Interpret process state from standard operating-system tooling.
+  - Distinguish a process from a thread by listing the resources each one owns
+  - Interpret process states and CPU time from the standard process table on a running host
+  - Predict how a preemptive scheduler reorders tasks when priorities or time slices change
   topics:
-  - Process control block and address space.
-  - Threads, concurrency and race conditions.
-  - Preemptive scheduling, priorities and time slices.
-  - Context switching cost.
-  lab: 'Lab: Run a multi-threaded workload, capture per-thread CPU time with ps and top, and demonstrate
-    a race condition then fix it with a lock.'
+  - 'What a process is: control block, address space and open files.'
+  - Threads, shared memory and where race conditions come from.
+  - Preemptive scheduling, priorities, time slices and context-switch cost.
+  - 'Reading the process table: states, CPU time and load averages.'
+  lab: >-
+    Lab: On the jump-box, follow one multi-threaded workload through the process table from start
+    to finish and account for the CPU time the scheduler gave it. Evidence: the workload's process
+    identifier, state and accumulated CPU time while running, while suspended and after it finished;
+    the load average and the counts of running and blocked tasks; the two processes that held the
+    most CPU time. Pass: the state is recorded at each of the three points exactly as the process
+    table shows it; each recorded state is explained in one sentence in scheduler terms; the two
+    heaviest processes are ranked with their CPU time figures.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH with the analyst account, open two terminals and note the
+        start time.
+    - hosts: [jump-box]
+      action: Start the multi-threaded workload your instructor names, then list the process table
+        sorted by CPU time and record the workload's process identifier, state and accumulated CPU
+        time.
+    - hosts: [jump-box]
+      action: Suspend the workload from the keyboard, list the process table again and record its
+        state, then resume it and record the state once more.
+    - hosts: [jump-box]
+      action: Stop the workload, then record the load average and the counts of running and blocked
+        tasks from the top header.
+    - hosts: [jump-box]
+      action: Explain each recorded state in one sentence in scheduler terms, and rank the two
+        processes that held the most CPU time together with their figures.
   refs:
   - cis-benchmarks
+  source_gaps:
+  - an operating-systems text covering processes, threads and scheduling is not in the reference
+    library
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: Threads within one process share which of the following?
+    - question: A data-entry application runs two threads that both update one shared counter, and
+        the counter's final value differs from run to run. What does this behaviour show?
       options:
-      - A) Program counter
-      - B) Stack
-      - C) Address space
-      - D) Register set
+      - A) The scheduler stopped the process early
+      - B) A race condition between unsynchronised threads
+      - C) Memory exhaustion in the heap
+      - D) A context switch that failed halfway
+      answer: B
+    - question: A developer reads that one program has four execution paths sharing one address
+        space. How should these be counted?
+      options:
+      - A) Four processes with private memory each
+      - B) One process with four threads
+      - C) Four processes with one thread each
+      - D) One thread with four separate stacks
+      answer: B
+    - question: A process has finished its work but still appears in the process table because its
+        parent has not collected its exit status. Which state is it in?
+      options:
+      - A) Waiting for keyboard input
+      - B) Stopped by a signal
+      - C) Terminated, awaiting its parent's collection
+      - D) Swapped out to disk
       answer: C
-    - question: 'A context switch requires the kernel to:'
+    - question: A video export and a background file index run on one workstation, and the index
+        resumes at fixed intervals before the export finishes. Which scheduling behaviour explains
+        this?
       options:
-      - A) Reboot the scheduler
-      - B) Save and restore process execution state
-      - C) Flush the disk cache
-      - D) Reload firmware
-      answer: B
-    - question: 'A race condition occurs when:'
+      - A) Cooperative scheduling where tasks run until they volunteer to stop
+      - B) Strict priority ordering that starves the export completely
+      - C) Preemptive time slicing between runnable tasks
+      - D) Batch processing that runs one task to completion
+      answer: C
+    - question: A monitoring chart shows the load average rising while the CPUs stay mostly idle,
+        and the process table lists many tasks waiting on disk input. What is the most likely cause?
       options:
-      - A) A process exceeds its time slice
-      - B) Output depends on unsynchronised timing of concurrent access
-      - C) Memory is exhausted
-      - D) A file descriptor leaks
-      answer: B
-    - question: 'A zombie process is one that has:'
-      options:
-      - A) Consumed all CPU
-      - B) Terminated but whose exit status has not been reaped
-      - C) Been swapped to disk
-      - D) Lost its controlling terminal
-      answer: B
-    - question: 'Preemptive scheduling means the kernel can:'
-      options:
-      - A) Never interrupt a running task
-      - B) Interrupt a running task before it yields voluntarily
-      - C) Only schedule kernel threads
-      - D) Run tasks in strict arrival order
-      answer: B
+      - A) Waiting tasks on slow input count toward the load
+      - B) The scheduler has stopped dispatching new work to the CPU cores
+      - C) The CPUs have overheated and dropped their clock speed
+      - D) The process table has overflowed with entries
+      answer: A
 - ordinal: 2
   title: Memory Management
   content_type: reading
@@ -88,58 +123,89 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain virtual memory, paging and demand loading.
-  - Describe how memory protection prevents cross-process access.
-  - Recognise memory-related failure and attack patterns.
+  - Trace a virtual address from a running process to its physical frame through the page tables
+  - Distinguish minor from major page faults using a running system's fault counters
+  - Judge which memory-protection feature blocks each described misuse of memory
   topics:
-  - Virtual address spaces and page tables.
-  - Page faults, swapping and thrashing.
-  - Heap, stack and memory allocators.
-  - ASLR, NX/DEP and stack canaries.
-  lab: 'Lab: Observe ASLR by printing a stack address across repeated runs, then disable ASLR in a test
-    VM and show the address becomes predictable.'
+  - Virtual address spaces, page tables and demand loading.
+  - Page faults, swapping and what thrashing looks like on a busy host.
+  - The stack, the heap and how allocators serve a running process.
+  - Address-space layout randomisation, no-execute pages and stack canaries.
+  lab: >-
+    Lab: On the jump-box, decide whether the system randomises the location of a process's memory
+    regions and what the fault counters say about a newly started workload. Evidence: the stack
+    region's start address from three repeated runs of the self-mapping command; the minor and
+    major fault counts and resident size of the freshly started workload; the same address record
+    after the instructor turns address-space layout randomisation off. Pass: the three addresses
+    are recorded exactly as the command prints them; the before-and-after comparison states in one
+    sentence whether the layout was randomised; each fault count is explained in one sentence in
+    demand-loading terms.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH with the analyst account and note the start time.
+    - hosts: [jump-box]
+      action: Run cat /proc/self/maps three times and record the start address of the stack region
+        from each run.
+    - hosts: [jump-box]
+      action: Start the workload your instructor names, then read its minor and major fault counts
+        and resident size from the process table and record all three figures.
+    - hosts: [jump-box]
+      action: After the instructor turns address-space layout randomisation off, run the same
+        mapping command twice and record the stack region's start address from each run.
+    - hosts: [jump-box]
+      action: Write one sentence stating whether the layout was randomised before and after the
+        change, and one sentence explaining each fault count in demand-loading terms.
   refs:
   - cis-benchmarks
-  - nist-sp-800-218
+  source_gaps:
+  - an operating-systems text covering virtual memory, paging and memory protection is not in
+    the reference library
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Address Space Layout Randomisation makes exploitation harder by:'
+    - question: A hardening review finds that a service's stack lands at the same address on every
+        restart. Which protection is missing on that host?
       options:
-      - A) Encrypting the stack
-      - B) Randomising the location of memory regions
-      - C) Preventing all buffer overflows
-      - D) Disabling the heap
+      - A) A stack canary that guards the return path
+      - B) The no-execute marking on data pages
+      - C) Address-space layout randomisation
+      - D) A quota on the file system
+      answer: C
+    - question: A process touches a page of its own address space that the kernel has not yet read
+        in from the executable file on disk. What does the kernel record?
+      options:
+      - A) A minor fault, served from the page cache
+      - B) A major fault, satisfied from disk
+      - C) A protection violation on the page
+      - D) A stopped task awaiting input
       answer: B
-    - question: 'A page fault occurs when a process accesses:'
+    - question: A buffer on the stack receives data an adversary controls, and the processor refuses
+        to run code placed there. Which feature produced that refusal?
       options:
-      - A) A page not currently mapped in physical memory
-      - B) A closed file descriptor
-      - C) An invalid system call number
-      - D) A busy network socket
+      - A) The no-execute marking on data pages
+      - B) Address-space layout randomisation
+      - C) A canary checked before each return
+      - D) Read-only permission bits on the file
       answer: A
-    - question: 'The NX (no-execute) bit prevents:'
-      options:
-      - A) Reading protected memory
-      - B) Executing code from data pages
-      - C) Writing to the stack
-      - D) Swapping pages to disk
-      answer: B
-    - question: 'Thrashing describes a system that is:'
-      options:
-      - A) Spending more time paging than executing
-      - B) Running too many threads
-      - C) Saturating the network
-      - D) Rejecting new logins
-      answer: A
-    - question: 'A stack canary detects:'
+    - question: A compute server slows to a crawl, its disks show constant paging traffic and the
+        CPUs sit idle waiting on memory. What is this condition called?
       options:
       - A) Heap fragmentation
-      - B) Overwriting of the saved return address region
-      - C) Integer division by zero
-      - D) File permission errors
-      answer: B
+      - B) Process starvation
+      - C) Priority inversion
+      - D) Thrashing
+      answer: D
+    - question: A workstation runs more programs than its physical memory holds, yet every program
+        still works inside one private address space. Which mechanism makes this possible?
+      options:
+      - A) Virtual memory with page tables
+      - B) Symmetric multiprocessing
+      - C) Memory-mapped input and output queues
+      - D) Processor cache prefetching
+      answer: A
 - ordinal: 3
   title: Filesystems and Permissions
   content_type: reading
@@ -147,56 +213,89 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Describe filesystem structure including inodes, directories and links.
-  - Apply discretionary access control correctly to files and directories.
-  - Explain how special permission bits change execution context.
+  - Read a file's permission bits, ownership and link count and predict what each account may do
+  - Identify the effect of setuid, setgid and sticky bits on a program or shared directory
+  - Select mount options that reduce what a mounted filesystem allows
   topics:
-  - Inodes, hard links and symbolic links.
-  - POSIX permission bits and umask.
-  - setuid, setgid and the sticky bit.
-  - Access control lists and mount options.
-  lab: 'Lab: Create a setuid binary in an isolated VM, demonstrate the privilege change, then remediate
-    it and verify with find that no unexpected setuid files remain.'
+  - Inodes, directories, hard links and symbolic links.
+  - POSIX permission bits, ownership and the umask default.
+  - Setuid, setgid and the sticky bit on programs and shared directories.
+  - Access control lists and mount options such as noexec.
+  lab: >-
+    Lab: On the jump-box, inventory the programs that run with borrowed privileges and read the
+    permission model from real files, then judge the inventory against least privilege. Evidence:
+    the permission bits, owner, inode number and link count of one file and of a second name linked
+    to it; the shell's umask and the bits of a file created under it; the full list of setuid and
+    setgid programs with their owners. Pass: both names of the linked file show the same inode
+    number and the raised link count; the created file's bits are compared with the umask rule in
+    one sentence; every setuid and setgid program is listed with its owner and marked "expected" or
+    "not expected on this base install" with a one-sentence reason.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH with the analyst account and note the start time.
+    - hosts: [jump-box]
+      action: Create an empty file in your home directory, run stat on it and record its permission
+        bits, owner, inode number and link count.
+    - hosts: [jump-box]
+      action: Create a hard link to that file, run stat on both names and record each name's inode
+        number and the new link count.
+    - hosts: [jump-box]
+      action: Record the shell's umask, create a second file and record the permission bits the
+        system gave it.
+    - hosts: [jump-box]
+      action: List every setuid and setgid program on the system together with its owner, and
+        record the complete list.
+    - hosts: [jump-box]
+      action: Mark each listed program "expected" or "not expected on this base install" with a
+        one-sentence reason, and propose a permission change for each one marked "not expected".
   refs:
   - cis-benchmarks
   quiz:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'The setuid bit on an executable causes it to run with the privileges of:'
+    - question: 'A directory holds two names for one file: one shares the file''s inode, and the
+        other stores only the file''s path as text. What is the second one?'
       options:
-      - A) The invoking user
-      - B) The file owner
-      - C) Root always
-      - D) The parent process
-      answer: B
-    - question: 'A hard link differs from a symbolic link because a hard link:'
+      - A) A symbolic link
+      - B) A hard link
+      - C) A second inode
+      - D) A copied file
+      answer: A
+    - question: A monitoring tool on a server must read one protected log file, and its executable
+        carries the setuid bit with a privileged owner. Whose privileges does the tool run with?
       options:
-      - A) Points to a path string
-      - B) References the same inode
-      - C) Can cross filesystems
-      - D) Cannot be deleted
-      answer: B
-    - question: 'The sticky bit on a shared directory such as /tmp ensures that:'
+      - A) Those of the account that started it
+      - B) Those of the file's group
+      - C) Those of the system kernel alone
+      - D) Those of the file's owner
+      answer: D
+    - question: A shared directory on a training host lets every account drop files, and the
+        administrator wants to stop accounts deleting files they do not own. Which permission
+        setting does that?
       options:
-      - A) Files are encrypted
-      - B) Only the file owner may delete their own files
-      - C) Files are read-only
-      - D) The directory cannot be listed
-      answer: B
-    - question: 'A umask of 022 results in new files being created with permissions:'
+      - A) The sticky bit on the directory
+      - B) The setgid bit on the directory
+      - C) The setuid bit on the directory
+      - D) The write bit on every file
+      answer: A
+    - question: A build server's shell has umask 027, and a script creates a new file with the
+        system's default permissions. Which permission set does the file carry?
       options:
-      - A) 755
-      - B) 644
-      - C) 600
-      - D) 777
-      answer: B
-    - question: 'Mounting a filesystem with the noexec option prevents:'
+      - A) rw-rw----
+      - B) rw-r--r--
+      - C) rwxr-x---
+      - D) rw-r-----
+      answer: D
+    - question: The removable media directory on a host is mounted with the noexec option, and an
+        analyst copies a program there and starts it. What happens?
       options:
-      - A) Reading files
-      - B) Executing binaries located on that filesystem
-      - C) Creating symbolic links
-      - D) Changing ownership
+      - A) The program runs with reduced privileges
+      - B) The kernel refuses to execute from that mount
+      - C) The program runs but writes nothing
+      - D) The mount is remounted automatically
       answer: B
 - ordinal: 4
   title: Users, Authentication and Privilege Escalation
@@ -205,16 +304,43 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain local account and credential storage on modern systems.
-  - Describe controlled privilege elevation mechanisms.
-  - Identify common local privilege escalation paths.
+  - Locate where a modern system stores accounts and hashed credentials and state who may read them
+  - Trace one controlled elevation path from a standard account to administrative privilege
+  - Rank the local escalation paths found on a host by the risk each one leaves open
   topics:
-  - Account databases and password hashing.
-  - sudo policy and least privilege.
-  - Capabilities and mandatory access control.
-  - Common escalation paths and their indicators.
-  lab: 'Lab: Audit a test system for privilege escalation exposure - writable PATH entries, permissive
-    sudo rules and setuid binaries - and produce a prioritised remediation list.'
+  - Account databases, password hashing and why hashes are salted.
+  - Sudo policy, elevation on request and least privilege.
+  - Capabilities and mandatory access control on modern systems.
+  - Common local escalation paths and what audits reveal about them.
+  lab: >-
+    Lab: On the range, audit how the Linux jump-box and the Windows domain store accounts and grant
+    elevation, then judge each finding against least privilege. Evidence: the permissions and owner
+    of the file that stores password hashes on jump-box; the sudo policy entries that apply to the
+    analyst account; the domain account policy values read from dc-01 (minimum password length,
+    lockout threshold, lockout duration); the members of the local Administrators group on ws-01.
+    Pass: every figure is recorded exactly as the host reports it; each finding is marked "follows
+    least privilege" or "does not" with a one-sentence reason; one change is proposed for every
+    finding marked "does not".
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH with the analyst account and note the start time.
+    - hosts: [jump-box]
+      action: Record the permissions and owner of the file that stores password hashes, and state
+        which accounts may read it.
+    - hosts: [jump-box]
+      action: List the sudo policy entries that apply to the analyst account and record every
+        command each entry allows and whether it demands a password.
+    - hosts: [dc-01]
+      action: From dc-01, read the domain account policy and record the minimum password length,
+        the lockout threshold and the lockout duration.
+    - hosts: [ws-01]
+      action: On ws-01, with the account your instructor assigned, list the members of the local
+        Administrators group and record each name.
+    - hosts: [jump-box]
+      action: Mark each finding "follows least privilege" or "does not" with a one-sentence reason,
+        and propose one change for each finding marked "does not".
   refs:
   - nist-sp-800-63-4
   - cis-benchmarks
@@ -222,41 +348,47 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Password hashes on a modern Linux system are normally stored in:'
+    - question: During a review, an analyst confirms that a system's password hashes cannot be read
+        by ordinary accounts. Which location holds them under that protection?
       options:
-      - A) /etc/passwd
-      - B) /etc/shadow
-      - C) /etc/group
-      - D) /etc/hosts
-      answer: B
-    - question: 'A salt is added to a password hash primarily to:'
+      - A) The shadow password file
+      - B) The world-readable account list
+      - C) The system group file
+      - D) The kernel message buffer
+      answer: A
+    - question: Two accounts on one server are set to the same password, yet their stored hashes
+        differ completely. Which mechanism produced the difference?
       options:
-      - A) Speed up verification
-      - B) Prevent precomputed rainbow-table attacks
-      - C) Reduce hash length
-      - D) Enable password recovery
-      answer: B
-    - question: 'The principle of least privilege states that a subject should have:'
+      - A) Different hash lengths
+      - B) Corrupted hash storage
+      - C) A per-host secret encryption key
+      - D) A unique salt per account
+      answer: D
+    - question: A runtime account needs to restart exactly one service and nothing else. Which sudo
+        configuration follows least privilege?
       options:
-      - A) Administrative rights by default
-      - B) Only the access required to perform its function
-      - C) Access to all data it can read
-      - D) Permanent credentials
-      answer: B
-    - question: 'A writable directory appearing early in a privileged user''s PATH enables:'
+      - A) Full root access without a password
+      - B) Membership of the administrators group
+      - C) One rule allowing that single service command
+      - D) A password prompt before every command
+      answer: C
+    - question: A file's owner cannot grant a colleague access because a central policy forbids the
+        change, even though the permission bits would allow it. Which access control model is in
+        force?
       options:
-      - A) Denial of service only
-      - B) Malicious binary substitution
-      - C) Network sniffing
-      - D) Kernel panics
+      - A) Discretionary access control
+      - B) Mandatory access control
+      - C) Role-based access control
+      - D) Capability-based access control
       answer: B
-    - question: 'Mandatory access control differs from discretionary access control because:'
+    - question: An audit finds a directory on root's command search path that every account can
+        write to. What is the greatest risk this finding creates?
       options:
-      - A) Users can always change the policy
-      - B) Policy is set centrally and users cannot override it
-      - C) It applies only to network traffic
-      - D) It requires no labels
-      answer: B
+      - A) Silent loss of the command audit trail for the host
+      - B) Slow exhaustion of the host's disk space
+      - C) A replaced command running with root's privileges
+      - D) Slower command lookup for every account
+      answer: C
 - ordinal: 5
   title: Logging, Auditing and System Observability
   content_type: reading
@@ -264,57 +396,87 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Configure system logging so that security-relevant events are captured.
-  - Explain log retention, integrity and centralisation requirements.
-  - Use audit tooling to attribute an action to a user and process.
+  - Select the events and fields a log must carry to answer a stated investigation question
+  - Attribute an action in a host's records to the account, process and time it happened
+  - Justify forwarding logs off the host and protecting their integrity and retention
   topics:
-  - syslog, journald and log facilities.
-  - Audit subsystems and rule design.
-  - Log integrity, forwarding and retention.
-  - Baseline noise versus signal.
-  lab: 'Lab: Write an audit rule that records every execution of a chosen binary, trigger it, then locate
-    the event and identify the responsible user, process and timestamp.'
+  - syslog, journald, facilities and severity levels.
+  - Audit rules and what one event record contains.
+  - Time synchronisation, forwarding, retention and integrity of logs.
+  - Separating baseline noise from security signal in log volume.
+  lab: >-
+    Lab: On the range, follow one sign-in through both operating systems' records and judge whether
+    each record would survive an attempt to remove it. Evidence: the journal lines on jump-box for
+    your sign-in, with the account, the accepting process and the timestamp; the matching sign-in
+    record in ws-01's event log, with its event identifier, account and timestamp; a marking for
+    each record of the storage it depends on. Pass: each record is quoted with its timestamp,
+    account and process or event identifier; the two records are matched to the same sign-in with
+    a one-sentence reason; each record is marked "survives local deletion" or "does not" with the
+    storage it depends on named.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH with the analyst account and note the exact time to the
+        second.
+    - hosts: [jump-box]
+      action: Query the journal for your sign-in and record the lines showing the account, the
+        accepting process and the timestamp.
+    - hosts: [ws-01]
+      action: Log on to ws-01 with the account your instructor assigned, open the event log and
+        record the event identifier, account and timestamp of the sign-in record it created.
+    - hosts: [jump-box]
+      action: Record where each host keeps its logs locally, and mark each record "survives local
+        deletion" or "does not" with the storage it depends on.
+    - hosts: [jump-box]
+      action: Match the two records to the same sign-in in one sentence, and state one field the
+        records lack that a central log store would need to correlate events across hosts.
   refs:
   - nist-sp-800-92
   quiz:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'NIST SP 800-92 is the NIST guide to:'
+    - question: A host is wiped during an incident and its local log directory is emptied with it.
+        Which logging design decision decides whether the history survives?
       options:
-      - A) Firewall policy
-      - B) Computer security log management
-      - C) Digital identity
-      - D) Container security
+      - A) The choice of severity levels
+      - B) Whether logs were forwarded off the host
+      - C) The size of the log rotation window
+      - D) The compression format of the archives
       answer: B
-    - question: 'Forwarding logs to a separate host primarily protects against:'
+    - question: Two hosts record the same sign-in nine minutes apart, and the investigation cannot
+        bind the records together. Which logging prerequisite was missed?
       options:
-      - A) Disk fragmentation
-      - B) An attacker deleting local logs to hide activity
-      - C) Clock drift
-      - D) Network congestion
-      answer: B
-    - question: 'Accurate time synchronisation matters for logging because it:'
+      - A) Common time synchronisation
+      - B) Encrypted log transport
+      - C) A larger retention window
+      - D) Matching severity levels
+      answer: A
+    - question: A policy review asks how the central log store proves its records were not altered
+        after arrival. Which property answers the reviewer?
       options:
-      - A) Reduces log size
-      - B) Allows events to be correlated across systems
-      - C) Encrypts log records
-      - D) Prevents log rotation
-      answer: B
-    - question: Which is the greatest practical risk of logging everything at maximum verbosity?
+      - A) Higher severity verbosity
+      - B) Weekly log rotation
+      - C) Local-only storage
+      - D) Integrity protection on the stored records
+      answer: D
+    - question: A team turns on maximum-verbosity logging on every host, and within days its alert
+        queue drowns in events nobody reads. Which trade-off did the team miss?
       options:
-      - A) Improved detection
-      - B) Storage exhaustion and signal lost in noise
-      - C) Loss of timestamps
-      - D) Reduced CPU usage
-      answer: B
-    - question: 'Log integrity is best supported by:'
+      - A) Missing time synchronisation
+      - B) Audit rules that were never designed for these hosts
+      - C) Signal lost in storage cost and noise
+      - D) Weak integrity on the stored logs
+      answer: C
+    - question: An audit record shows a protected file changed at 03:14 by a process whose parent
+        is a shell belonging to one account. What does the record let an analyst do?
       options:
-      - A) Storing logs only locally
-      - B) Append-only or cryptographically signed storage
-      - C) Rotating logs hourly
-      - D) Compressing logs
-      answer: B
+      - A) Attribute the change to that account and process
+      - B) Recover the overwritten file contents
+      - C) Automatically block the account for the rest of the day
+      - D) Prove that the change was authorised in advance
+      answer: A
 - ordinal: 6
   title: System Hardening and Baseline Configuration
   content_type: reading
@@ -322,16 +484,37 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Apply a recognised hardening baseline to an operating system.
-  - Justify deviations from a baseline with documented risk acceptance.
-  - Verify hardening state through repeatable automated checks.
+  - Compare a host's enabled services against a hardening baseline and list the gaps
+  - Justify each deviation from a baseline with a documented risk acceptance and approver
+  - Verify a baseline state with repeatable automated checks and report the pass rate
   topics:
   - Attack surface reduction and service minimisation.
-  - Benchmark-driven configuration.
-  - Patch management and update cadence.
-  - Configuration drift and continuous verification.
-  lab: 'Lab: Apply a CIS Benchmark profile to a test VM, script a re-check that reports the pass rate,
-    and document every control you exempted with its justification.'
+  - Benchmark-driven baselines, configuration profiles and the target states they define.
+  - Patch management, update cadence and the exposure window each patch closes.
+  - Configuration drift, its detection and continuous re-verification of the baseline.
+  lab: >-
+    Lab: On the jump-box, measure the host against a hardening baseline and decide which deviations
+    need a documented exemption. Evidence: the list of enabled services; the list of listening
+    ports with the service that holds each one where the tooling shows it; the checklist items the
+    host fails and the pass rate as a percentage. Pass: both lists are recorded completely; each
+    failed item is marked "remove or disable" or "justify with an exemption" with a one-sentence
+    reason; the pass rate is recorded as a percentage of the checklist items.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH with the analyst account and note the start time.
+    - hosts: [jump-box]
+      action: List the enabled services on the host and record every unit name the command reports.
+    - hosts: [jump-box]
+      action: List the listening ports and record each port and address, with the owning service
+        where the tooling shows one.
+    - hosts: [jump-box]
+      action: Compare both lists with the baseline checklist your instructor supplies and record
+        every checklist item the host fails.
+    - hosts: [jump-box]
+      action: Mark each failed item "remove or disable" or "justify with an exemption" with a
+        one-sentence reason, and record the pass rate as a percentage of the checklist items.
   refs:
   - cis-benchmarks
   - nist-sp-800-37r2
@@ -339,39 +522,43 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Attack surface reduction is best achieved by:'
+    - question: A file-transfer host runs a mail service nobody uses and a database left over from
+        a finished trial. Which hardening action reduces risk most?
       options:
-      - A) Adding monitoring agents
-      - B) Removing or disabling unnecessary services and software
-      - C) Increasing log verbosity
-      - D) Adding more user accounts
+      - A) Removing the unused mail and database services
+      - B) Raising the logging level to maximum
+      - C) Adding a second monitoring agent
+      - D) Changing the administrator password
+      answer: A
+    - question: A server was built to a strict baseline, and months later an audit finds the guest
+        account enabled and a new scheduled task nobody recorded. What does this describe?
+      options:
+      - A) Configuration drift from the baseline
+      - B) A patch that failed to install
+      - C) An incomplete log rotation
+      - D) A vulnerability scan that missed the host
+      answer: A
+    - question: A service cannot be disabled because a contracted partner depends on it. What must
+        accompany the decision to keep it outside the baseline?
+      options:
+      - A) A verbal note from the operator on duty
+      - B) A second identical service run in parallel
+      - C) A longer password set on the host account
+      - D) A documented exemption with a compensating control
+      answer: D
+    - question: A critical fix ships for a component exposed to the internet. Which patching choice
+        most shortens the window in which the weakness can be reached?
+      options:
+      - A) Waiting until the next scheduled quarterly review
+      - B) Applying the fix out of cycle, at once
+      - C) Patching the internal hosts first
+      - D) Testing the fix for a full month
       answer: B
-    - question: 'Configuration drift refers to:'
+    - question: A team hardens twenty hosts to a baseline and wants proof the state holds over
+        time. Which practice gives repeatable evidence?
       options:
-      - A) Clock skew between hosts
-      - B) Systems gradually diverging from their approved baseline
-      - C) Network latency variation
-      - D) Memory leakage
-      answer: B
-    - question: 'A documented exemption from a hardening control should always record:'
-      options:
-      - A) Only the control number
-      - B) The rationale, compensating control and approver
-      - C) The hostname alone
-      - D) Nothing, if approved verbally
-      answer: B
-    - question: 'The main advantage of automated baseline verification over manual review is:'
-      options:
-      - A) It removes the need for patching
-      - B) It is repeatable and detects drift consistently
-      - C) It eliminates false positives
-      - D) It replaces risk assessment
-      answer: B
-    - question: 'Within the NIST Risk Management Framework, authorisation to operate is granted based
-        on:'
-      options:
-      - A) Vendor assurances
-      - B) Assessed residual risk accepted by an authorising official
-      - C) Passing a single scan
-      - D) Completion of training
+      - A) One manual review performed at project handover
+      - B) Scheduled automated baseline checks
+      - C) A single vulnerability scan
+      - D) Signed assurance documents from the vendor
       answer: B
