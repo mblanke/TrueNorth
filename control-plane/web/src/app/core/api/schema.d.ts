@@ -11630,6 +11630,11 @@ export interface components {
             /** Class Name */
             class_name: string;
             /**
+             * Consoles For You
+             * @description Your part may open consoles at all: false for an observer while CLASS_OBSERVER_CONSOLES is off (the status grid only)
+             */
+            consoles_for_you: boolean;
+            /**
              * Consoles Open
              * @description Consoles can be opened now (the session's window)
              */

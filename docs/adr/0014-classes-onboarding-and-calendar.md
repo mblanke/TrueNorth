@@ -107,10 +107,14 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
     (`POST .../live/console`, by VM name) is on a machine of one of that session's ranges, only
     during its window (live, or the provisioning lead before it); observers only on the
     Students' machines (those Students are handed accounts on), and a platform observer always
-    as an observer whatever the staff list says. An observer's is view-only where the
-    hypervisor enforces it (`BaseConsoleBackend.supports_view_only`); vSphere WebMKS tickets
-    have no read-only mode, so on vSphere it is a normal console marked *observed* (an open
-    owner decision: §19 says read-only). Every
+    as an observer whatever the staff list says. **Observers get no console tickets by
+    default** (`CLASS_OBSERVER_CONSOLES`, off; owner decision 2026-10-28): §19 says read-only,
+    and a vSphere WebMKS ticket has no read-only mode, so an observer could type into a
+    Student's machine. They see the status grid only (403 on the console route); the lead,
+    assistants and admins keep consoles. A site whose backend can enforce view-only
+    (`BaseConsoleBackend.supports_view_only`) sets the variable on: an observer's console is
+    then view-only, and where the backend cannot enforce it, a normal console marked
+    *observed*. Every
     ticket is audited as `observer` or `staff`, and is never attendance. Live Class
     (`/ops/exercises/{id}/class`) of a class session's exercise follows the same list for
     observers; an exercise that is no class's session keeps the tenant-wide rule.

@@ -16,7 +16,7 @@ const SEAT = (id: string) => ({
 const LIVE: ClassLive = {
   class_id: 'c1', class_name: 'C201-26-03', event_id: 'ev1', session_name: 'Mon lab',
   start_time: '2026-11-02T09:00:00Z', end_time: '2026-11-02T12:00:00Z', range_mode: 'individual',
-  role: 'observer', live: true, consoles_open: true, view_only_consoles: false, shared_range: null,
+  role: 'observer', live: true, consoles_open: true, consoles_for_you: true, view_only_consoles: false, shared_range: null,
   students: [
     { entry_id: 'e1', user_id: 'u1', display_name: 'Ann', team: null, range: SEAT('g1'), last_seen_at: '2026-11-02T09:05:00Z' },
     { entry_id: 'e2', user_id: 'u2', display_name: 'Bob', team: null, range: SEAT('g2'), last_seen_at: null },
@@ -29,6 +29,7 @@ describe('observedNote', () => {
     expect(observedNote(LIVE)).toContain('marked observed');
     expect(observedNote({ ...LIVE, view_only_consoles: true })).toContain('view-only');
     expect(observedNote({ ...LIVE, role: 'lead' })).toBe('');
+    expect(observedNote({ ...LIVE, consoles_for_you: false, consoles_open: false })).toContain('status only');
   });
 });
 

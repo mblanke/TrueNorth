@@ -4035,6 +4035,11 @@
             "title": "Class Name",
             "type": "string"
           },
+          "consoles_for_you": {
+            "description": "Your part may open consoles at all: false for an observer while CLASS_OBSERVER_CONSOLES is off (the status grid only)",
+            "title": "Consoles For You",
+            "type": "boolean"
+          },
           "consoles_open": {
             "description": "Consoles can be opened now (the session's window)",
             "title": "Consoles Open",
@@ -4113,6 +4118,7 @@
           "role",
           "live",
           "consoles_open",
+          "consoles_for_you",
           "view_only_consoles",
           "students",
           "generated_at"

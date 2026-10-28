@@ -19,6 +19,7 @@ export const LIVE_REFRESH_MS = 30_000;
 /** What an observer is told about their consoles (ADR 0014 §19). */
 export function observedNote(live: ClassLive): string {
   if (live.role !== 'observer') return '';
+  if (!live.consoles_for_you) return 'Observers see the live status only: consoles are off for observers on this site.';
   return live.view_only_consoles
     ? 'Your consoles are view-only: the hypervisor ignores your keyboard and mouse.'
     : 'Your consoles are marked observed: this hypervisor cannot make them view-only, so do not type '
@@ -48,7 +49,7 @@ export function observedNote(live: ClassLive): string {
             @if (l.live) { · <span class="now">Live now</span> }
           </p>
           @if (note()) { <p class="observed" role="note"><mat-icon>visibility</mat-icon> {{ note() }}</p> }
-          @if (!l.consoles_open) { <p class="muted">Consoles open during the session, from shortly before it starts.</p> }
+          @if (!l.consoles_open && l.consoles_for_you) { <p class="muted">Consoles open during the session, from shortly before it starts.</p> }
         </header>
 
         @if (l.shared_range; as r) {

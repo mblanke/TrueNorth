@@ -14,9 +14,10 @@ a Student (``student``)    their own seat (an individual session), or    a sessi
                            are handed accounts on (``student_visible``   been reached (the
                            and set by the last build): the same          shared range: under
                            machines on every team                        way only)
-the class's observers      the Students' machines (as above) of a range  the session's window
-(``observer``)             the session uses (every seat, or its shared   as above
-                           range)
+the class's observers      none by default (status grid only). With      the session's window
+(``observer``)             ``CLASS_OBSERVER_CONSOLES`` on: the Students'
+                           machines (as above) of a range the session
+                           uses (every seat, or its shared range)
 its lead, assistants and   any machine of those ranges                   as above
 admins (``staff``)
 =========================  ============================================  ====================
@@ -46,6 +47,7 @@ listing the accounts is (``attendance.note_range_open``).
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -75,6 +77,7 @@ from .models import (
 from .schemas import ClassRole
 
 AUDIT_ACTION = "range_console_open"
+OBSERVER_CONSOLES_ENV = "CLASS_OBSERVER_CONSOLES"
 # Why a ticket was issued, in its audit row.
 AS_STUDENT, AS_OBSERVER, AS_STAFF = "student", "observer", "staff"
 # A range whose machines take a console: built and powered on.
@@ -85,6 +88,18 @@ SEEN_ACTIONS = (*attendance.EVIDENCE_ACTIONS, AUDIT_ACTION)
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def observer_consoles_enabled() -> bool:
+    """``CLASS_OBSERVER_CONSOLES`` (default off): whether observers get console tickets from
+    the live view. Off until a site's hypervisor can enforce view-only: a vSphere WebMKS
+    ticket cannot, so an observer could type into a Student's machine. Observers then get the
+    status grid only; the lead, assistants and admins keep consoles."""
+    return os.getenv(OBSERVER_CONSOLES_ENV, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def may_open_console(role: ClassRole) -> bool:
+    return role != ClassRole.observer or observer_consoles_enabled()
 
 
 def _aware(t: datetime) -> datetime:
@@ -374,6 +389,9 @@ def staff_console(db: Session, user: CurrentUser, live: LiveSession, range_id: u
         raise HTTPException(404, "That range is not one of this session's")
     vm = _vm(rng, vm_name)
     observer = live.role == ClassRole.observer
+    if not may_open_console(live.role):
+        raise HTTPException(403, "Observers see the live status only; consoles are off for observers "
+                                 f"({OBSERVER_CONSOLES_ENV})")
     if observer and machine_of(vm, rng.id) not in student_machines(db, rng):
         raise HTTPException(403, "Observers watch the Students' machines only")
     ticket = _open(db, rng, vm, view_only=observer)

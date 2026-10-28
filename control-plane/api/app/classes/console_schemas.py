@@ -85,6 +85,9 @@ class ClassLiveOut(BaseModel):
     role: str = Field(description="The caller's part in the class: lead, assistant, observer or admin")
     live: bool = Field(description="The session is under way now")
     consoles_open: bool = Field(description="Consoles can be opened now (the session's window)")
+    consoles_for_you: bool = Field(
+        description="Your part may open consoles at all: false for an observer while CLASS_OBSERVER_CONSOLES is "
+                    "off (the status grid only)")
     view_only_consoles: bool = Field(
         description="An observer's console is view-only on this hypervisor; otherwise it is marked observed")
     shared_range: LiveRangeOut | None = Field(None, description="The range a collective session books")

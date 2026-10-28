@@ -105,7 +105,9 @@ def _staff(db, cls, who: CurrentUser, role: str) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _mock_console():
+def _mock_console(monkeypatch):
+    # Observer consoles are off by default; most tests exercise them on (the setting).
+    monkeypatch.setenv("CLASS_OBSERVER_CONSOLES", "on")
     MockConsole.supports_view_only = False
     yield
     MockConsole.supports_view_only = False
@@ -368,6 +370,23 @@ def test_an_observers_console_is_marked_observed_and_audited(client, world, db_s
     assert row["event_id"] == str(evt.id) and row["class_role"] == "observer"
     # An observer's console is never anyone's attendance.
     assert db_session.query(AuditLog).filter(AuditLog.action == "class_range_open").count() == 0
+
+
+def test_observers_get_the_status_grid_but_no_console_by_default(client, world, db_session, monkeypatch):
+    monkeypatch.delenv("CLASS_OBSERVER_CONSOLES", raising=False)
+    evt, ann, _ = _individual(db_session, world)
+    body = _live(client, world["observer"], world["cls"], evt).json()
+    assert len(body["students"]) == 2 and body["consoles_open"] is False
+    assert _watch(client, world["observer"], world["cls"], evt, ann.range_id).status_code == 403
+    assert _audits(db_session) == []
+    # Staff keep theirs, and say so.
+    assert _live(client, world["lead"], world["cls"], evt).json()["consoles_open"] is True
+    assert _watch(client, world["lead"], world["cls"], evt, ann.range_id).status_code == 200
+    assert _watch(client, world["admin"], world["cls"], evt, ann.range_id, "dc").status_code == 200
+    # A demoted assistant who is now a platform observer is an observer here too.
+    _staff(db_session, world["cls"], world["other_observer"], "assistant")
+    db_session.commit()
+    assert _watch(client, world["other_observer"], world["cls"], evt, ann.range_id).status_code == 403
 
 
 def test_an_observer_watches_only_the_students_machines(client, world, db_session):
