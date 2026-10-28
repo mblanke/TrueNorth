@@ -1052,35 +1052,7 @@ class RegistrationBulkApproveOut(BaseModel):
     results: list[RegistrationBulkResultItem]
 
 
-# ── Onboarding ──────────────────────────────────────────────────────────
-class OnboardingStateOut(BaseModel):
-    state: str
-    steps_done: list[str] = []
-    missing_profile_fields: list[str] = []
-    qualification_id: uuid.UUID | None = None
-    learning_path_id: uuid.UUID | None = None
-    enrolled_course_count: int = 0
-    onboarded_at: datetime | None = None
-
-
-class OnboardingProfileIn(BaseModel):
-    """Self-service profile completion.
-
-    Deliberately excludes role, tenant_id, clearance_level and is_active — a
-    trainee may describe themselves, never promote themselves.
-    """
-
-    rank: str | None = None
-    service_branch: str | None = None
-    unit: str | None = None
-    callsign: str | None = None
-    nation_id: uuid.UUID | None = None
-    timezone: str | None = None
-
-
-class OnboardingPathIn(BaseModel):
-    qualification_id: uuid.UUID | None = None
-    learning_path_id: uuid.UUID | None = None
+# Onboarding shapes live in app/onboarding_schemas.py (ADR 0003).
 
 
 class UserUpdateIn(BaseModel):

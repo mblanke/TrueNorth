@@ -176,7 +176,7 @@ describe('AppComponent', () => {
     // Student progress (learning_record:read) and Teams (user:read): instructors and admins.
     instructor: ['/dashboard', '/learning', '/learning/admin/progress', '/authoring', '/exercises',
       '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/wiki', '/support',
-      '/approvals', '/teams',
+      '/teams',
       '/infrastructure', '/ai-orchestrator'],
     admin: ['/dashboard', '/learning', '/learning/admin/progress', '/authoring', '/exercises',
       '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/wiki', '/support',
@@ -226,8 +226,11 @@ describe('AppComponent', () => {
     expect(headings).not.toContain('Admin');
   });
 
-  it('has an approvals entry for instructors and a telemetry entry for roles with telemetry:read', () => {
+  it('has an approvals entry for admins only (ADR 0014 §5) and a telemetry entry for roles with telemetry:read', () => {
     auth.role.set('instructor');
+    fixture.detectChanges();
+    expect(menu()).not.toContain('/approvals');
+    auth.role.set('admin');
     fixture.detectChanges();
     expect(menu()).toContain('/approvals');
     auth.role.set('observer');

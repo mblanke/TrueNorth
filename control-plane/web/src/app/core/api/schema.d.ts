@@ -8361,7 +8361,8 @@ export interface paths {
         /**
          * Propose another time for a class session
          * @description The time must fit now (409 with the next free slot otherwise). The session stays
-         *     pending, holding nothing, until its instructor accepts or declines.
+         *     pending, holding nothing, until its instructor accepts or declines. The instructor is
+         *     told (in the app, and by email when email is configured).
          */
         post: operations["propose_time_schedule_events__event_id__propose_post"];
         delete?: never;
@@ -8381,8 +8382,8 @@ export interface paths {
         put?: never;
         /**
          * Reject a class session
-         * @description pending_approval -> rejected, with a reason the instructor sees. Nothing was sent, so
-         *     nothing is withdrawn.
+         * @description pending_approval -> rejected, with a reason the instructor sees (in the app, and by
+         *     email when email is configured). Nothing was sent, so nothing is withdrawn.
          */
         post: operations["reject_event_schedule_events__event_id__reject_post"];
         delete?: never;
@@ -10445,10 +10446,20 @@ export interface components {
         };
         /** AttendanceCorrectIn */
         AttendanceCorrectIn: {
-            /** Note */
+            /**
+             * Note
+             * @description Why it was corrected (audited)
+             */
             note?: string | null;
-            status: components["schemas"]["AttendanceStatusOut"];
+            status: components["schemas"]["AttendanceCorrectionOut"];
         };
+        /**
+         * AttendanceCorrectionOut
+         * @description What an instructor may set (ADR 0014 §12): present or excused. Absent is the clock's
+         *     finding, never a correction (#319).
+         * @enum {string}
+         */
+        AttendanceCorrectionOut: "present" | "excused";
         /** AttendanceGridOut */
         AttendanceGridOut: {
             /** Can Edit */
@@ -13465,6 +13476,30 @@ export interface components {
         /** EventOut */
         EventOut: {
             approval?: components["schemas"]["ApprovalOut"] | null;
+            /**
+             * Can Accept
+             * @description can_change, and an approver proposed another time to accept
+             * @default false
+             */
+            can_accept?: boolean;
+            /**
+             * Can Change
+             * @description The caller may edit, move or cancel it (a class session: its lead or an admin)
+             * @default false
+             */
+            can_change?: boolean;
+            /**
+             * Can Decline
+             * @description can_change, and an approver proposed another time to decline
+             * @default false
+             */
+            can_decline?: boolean;
+            /**
+             * Can Move
+             * @description can_change, and it is in a state that moves (draft, awaiting approval, scheduled)
+             * @default false
+             */
+            can_move?: boolean;
             /** Class Id */
             class_id?: string | null;
             /** Course Id */
@@ -16384,6 +16419,12 @@ export interface components {
              * @default []
              */
             steps_done?: string[];
+            /**
+             * Via Roll Call
+             * @description Admitted from a class roll call on first sign-in (ADR 0014 §1): there was no access request, so the wizard skips the step that confirms one
+             * @default false
+             */
+            via_roll_call?: boolean;
         };
         /** OpenAction */
         OpenAction: {
@@ -17574,6 +17615,17 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Notified
+             * @description Actually told to sign in: an email the relay accepted, or an in-app notification they have signed in since. Only a notified Student can lose their seat (#319)
+             * @default false
+             */
+            notified?: boolean;
+            /**
+             * Notified At
+             * @description When the SMTP relay accepted their onboarding or day-before email; empty when none was sent
+             */
+            notified_at?: string | null;
             /** Onboarding Sent At */
             onboarding_sent_at: string | null;
             /**
@@ -17581,10 +17633,21 @@ export interface components {
              * @description Why an addition waits for an approver, or was rejected
              */
             pending_reason?: string | null;
+            /**
+             * Rejection Reason
+             * @description An addition an approver rejected (ADR 0014 §17): the reason they gave
+             */
+            rejection_reason?: string | null;
             /** Reminded At */
             reminded_at: string | null;
             /** Removed At */
             removed_at: string | null;
+            /**
+             * Seat Kept Not Notified
+             * @description Past their sign-in deadline and still invited, but never notified: the seat is kept
+             * @default false
+             */
+            seat_kept_not_notified?: boolean;
             /** Signed In At */
             signed_in_at: string | null;
             status: components["schemas"]["RollCallStatusOut"];
@@ -17602,7 +17665,7 @@ export interface components {
          * RollCallStatusOut
          * @enum {string}
          */
-        RollCallStatusOut: "invited" | "signed_in" | "ready" | "removed" | "pending" | "forfeited";
+        RollCallStatusOut: "invited" | "signed_in" | "removed" | "pending" | "forfeited";
         /** RosterIn */
         RosterIn: {
             /**

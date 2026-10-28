@@ -33,7 +33,6 @@ class ClassStatusOut(str, Enum):
 class RollCallStatusOut(str, Enum):
     invited = "invited"
     signed_in = "signed_in"
-    ready = "ready"
     removed = "removed"
     pending = "pending"  # added after approval with no room: waits for an approver (ADR 0014 §17)
     forfeited = "forfeited"  # not signed in by 2 hours after the start: seat lost (ADR 0014 §4)
@@ -119,6 +118,19 @@ class RollCallEntryOut(BaseModel):
     )
     forfeit_deadline: datetime | None = Field(
         None, description="A forfeited Student: the time by which they had to sign in (2 hours after the start)"
+    )
+    notified_at: datetime | None = Field(
+        None, description="When the SMTP relay accepted their onboarding or day-before email; empty when none was sent"
+    )
+    notified: bool = Field(
+        False, description="Actually told to sign in: an email the relay accepted, or an in-app notification they "
+        "have signed in since. Only a notified Student can lose their seat (#319)",
+    )
+    seat_kept_not_notified: bool = Field(
+        False, description="Past their sign-in deadline and still invited, but never notified: the seat is kept",
+    )
+    rejection_reason: str | None = Field(
+        None, description="An addition an approver rejected (ADR 0014 §17): the reason they gave"
     )
 
 

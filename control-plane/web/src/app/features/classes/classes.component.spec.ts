@@ -13,7 +13,9 @@ import {
 import { NotificationService } from '@core/services/notification.service';
 import { OperatorRecordsApiService } from '@core/services/operator-records-api.service';
 import { EmailStatusService } from '@core/services/email-status.service';
-import { ClassForm, ClassesComponent, addSummary, rangeOwner, reinstateSummary, toClassBody } from './classes.component';
+import {
+  ClassForm, ClassesComponent, addSummary, entryNote, formFrom, handoverBody, rangeOwner, reinstateSummary, toClassBody,
+} from './classes.component';
 
 const CLASS: ClassRecord = {
   id: 'c1', tenant_id: 't', name: 'C201-26-03', course_id: 'k1', course_name: 'SOC Analyst',
@@ -103,6 +105,26 @@ describe('class form helpers', () => {
   });
 });
 
+describe('class edit, hand-over and roll-call notes (#319)', () => {
+  const staffed = { ...CLASS, assistants: [{ id: 'u9', display_name: 'Capt Next' }],
+    observers: [{ id: 'u7', display_name: 'Obs' }] } as ClassRecord;
+  it('edits the class as it is', () => {
+    expect(formFrom(staffed)).toEqual({ id: 'c1', name: 'C201-26-03', courseId: 'k1', start: '2026-11-02',
+      end: '2026-11-06', leadId: 'u1', assistantIds: ['u9'], observerIds: ['u7'] });
+  });
+  it('hands over with the new lead off the assistants', () => {
+    const body = handoverBody(staffed, 'u9');
+    expect(body.lead_instructor_id).toBe('u9');
+    expect(body.assistant_ids).toEqual([]);
+    expect(body.observer_ids).toEqual(['u7']);
+  });
+  it('says why a seat was kept or an addition turned down', () => {
+    expect(entryNote({ seat_kept_not_notified: true } as RollCallEntry)).toBe('not notified — seat kept');
+    expect(entryNote({ rejection_reason: 'class full' } as RollCallEntry)).toBe('rejected: class full');
+    expect(entryNote({} as RollCallEntry)).toBe('');
+  });
+});
+
 describe('ClassesComponent', () => {
   let fixture: ComponentFixture<ClassesComponent>;
   let component: ClassesComponent;
@@ -112,7 +134,12 @@ describe('ClassesComponent', () => {
 
   function setup(role: string, cls: ClassRecord = CLASS, emailOff = false, query: Record<string, string> = {}) {
     api = jasmine.createSpyObj('ClassesApiService', ['mine', 'list', 'create', 'rollCall', 'addPasted', 'addCsv', 'remove',
-      'reinstate', 'ranges', 'retryRange', 'sessionTeams', 'splitTeams', 'moveTeamMember', 'attendance', 'closeout']);
+      'reinstate', 'ranges', 'retryRange', 'sessionTeams', 'splitTeams', 'moveTeamMember', 'attendance', 'closeout',
+      'update', 'cancel', 'courseRangeMode', 'setCourseRangeMode']);
+    api.update.and.callFake((_id, body) => of({ ...cls, name: body.name }));
+    api.cancel.and.returnValue(of(undefined));
+    api.courseRangeMode.and.returnValue(of({ course_id: 'k1', mode: 'individual', source: 'setting' }));
+    api.setCourseRangeMode.and.returnValue(of({ course_id: 'k1', mode: 'collective', source: 'setting' }));
     api.attendance.and.returnValue(of({ class_id: 'c1', class_status: 'open', can_edit: true, sessions: [], students: [] }));
     api.closeout.and.returnValue(of({ class_id: 'c1', class_status: 'open', numbers_shown: false, sessions_held: 0,
       students: [] }));
@@ -129,7 +156,9 @@ describe('ClassesComponent', () => {
     api.reinstate.and.returnValue(of({ entry_id: 'e4', class_id: 'c1', status: 'invited' }));
     const records = jasmine.createSpyObj('OperatorRecordsApiService', ['listCourses', 'listUsers']);
     records.listCourses.and.returnValue(of({ items: [{ id: 'k1', name: 'SOC Analyst' }], total: 1, limit: 200, offset: 0 }));
-    records.listUsers.and.returnValue(of([]));
+    records.listUsers.and.returnValue(of([
+      { id: 'u1', display_name: 'Lead', role: 'instructor' }, { id: 'u9', display_name: 'Capt Next', role: 'instructor' },
+    ]));
     const notify = jasmine.createSpyObj('NotificationService', ['success', 'error', 'info']);
     email = { load: jasmine.createSpy('load'), notConfigured: signal(emailOff) };
     TestBed.configureTestingModule({
@@ -288,6 +317,72 @@ describe('ClassesComponent', () => {
     expect(api.splitTeams).toHaveBeenCalledWith('c1', 'ev2', 3);
     component.move(CLASS, 'u2', 'tB');
     expect(api.moveTeamMember).toHaveBeenCalledWith('c1', 'ev2', 'u2', 'tB');
+  });
+
+  it('shows the lead "not notified — seat kept" and a rejection reason (#319)', () => {
+    setup('instructor');
+    api.rollCall.and.returnValue(of([
+      { id: 'n1', email: 'quiet@corp.test', user_id: null, display_name: null, status: 'invited',
+        seat_kept_not_notified: true },
+      { id: 'n2', email: 'late@corp.test', user_id: null, display_name: null, status: 'removed',
+        rejection_reason: 'next intake' },
+    ] as RollCallEntry[]));
+    component.open(CLASS);
+    fixture.detectChanges();
+    expect(el.textContent).toContain('not notified — seat kept');
+    expect(el.textContent).toContain('rejected: next intake');
+  });
+
+  it('the lead edits a class through update, and sees the course default range mode', () => {
+    setup('instructor');
+    buttons('Edit')[0].click();
+    fixture.detectChanges();
+    expect(api.courseRangeMode).toHaveBeenCalledWith('k1');
+    expect(el.textContent).toContain('Sessions of this course default to');
+    expect(el.textContent).toContain('Individual: a range per Student');
+    component.patch({ name: 'C201-26-04' });
+    component.save();
+    expect(api.update).toHaveBeenCalledWith('c1', jasmine.objectContaining({ name: 'C201-26-04', course_id: 'k1' }));
+    expect(api.create).not.toHaveBeenCalled();
+  });
+
+  it('a course author sets the course default range mode from the class form', () => {
+    setup('instructor');
+    component.startCreate();
+    component.pickCourse('k1');
+    fixture.detectChanges();
+    const select = el.querySelector('select[aria-label="Course default range mode"]') as HTMLSelectElement;
+    expect(select).toBeTruthy();
+    component.setCourseMode('k1', 'collective');
+    expect(api.setCourseRangeMode).toHaveBeenCalledWith('k1', 'collective');
+    expect(component.courseMode()?.mode).toBe('collective');
+  });
+
+  it('the lead hands the class to another instructor', () => {
+    setup('instructor');
+    buttons('Hand over')[0].click();
+    fixture.detectChanges();
+    component.handover.set({ classId: 'c1', leadId: 'u9' });
+    fixture.detectChanges();
+    buttons('Hand over').at(-1)!.click();
+    expect(api.update).toHaveBeenCalledWith('c1', jasmine.objectContaining({ lead_instructor_id: 'u9' }));
+  });
+
+  it('cancelling a class asks first, then cancels it', () => {
+    setup('instructor');
+    buttons('Cancel class')[0].click();
+    fixture.detectChanges();
+    expect(api.cancel).not.toHaveBeenCalled();
+    expect(el.textContent).toContain('calendar cancellation');
+    buttons('Yes, cancel the class')[0].click();
+    expect(api.cancel).toHaveBeenCalledWith('c1');
+  });
+
+  it('an observer gets no edit, hand-over or cancel', () => {
+    setup('observer', { ...CLASS, my_role: 'observer', can_edit: false } as ClassRecord);
+    expect(buttons('Edit').length).toBe(0);
+    expect(buttons('Hand over').length).toBe(0);
+    expect(buttons('Cancel class').length).toBe(0);
   });
 
   it('an admin sees every class and may create one; a refusal is shown', () => {

@@ -11,8 +11,8 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { AuthService } from '@core/services/auth.service';
 import {
-  ClassIn, ClassRange, ClassRangeStatus, ClassRanges, ClassRecord, ClassSessionMode, ClassesApiService, RangeMode,
-  ReinstateResult, RollCallAddResult, RollCallEntry, RollCallStatus, SessionTeams,
+  ClassIn, ClassRange, ClassRangeStatus, ClassRanges, ClassRecord, ClassSessionMode, ClassesApiService,
+  CourseRangeMode, RangeMode, ReinstateResult, RollCallAddResult, RollCallEntry, RollCallStatus, SessionTeams,
 } from '@core/services/classes-api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { EmailStatusService } from '@core/services/email-status.service';
@@ -25,6 +25,7 @@ import { ClassCloseoutComponent } from './class-closeout.component';
 import { apiError } from '../ranges/range-capabilities';
 
 export interface ClassForm {
+  id?: string; // set when editing an existing class
   name: string;
   courseId: string;
   start: string; // yyyy-mm-dd
@@ -35,7 +36,7 @@ export interface ClassForm {
 }
 
 export const STATUS_LABEL: Record<RollCallStatus, string> = {
-  invited: 'Invited', signed_in: 'Signed in', ready: 'Ready', removed: 'Removed',
+  invited: 'Invited', signed_in: 'Signed in', removed: 'Removed',
   pending: 'Awaiting approval', forfeited: 'Lost seat',
 };
 
@@ -75,6 +76,33 @@ export function toClassBody(f: ClassForm): ClassIn | string {
   };
 }
 
+/** The form for editing an existing class, from the class as the API shows it. */
+export function formFrom(c: ClassRecord): ClassForm {
+  return {
+    id: c.id, name: c.name, courseId: c.course_id, start: c.start_date, end: c.end_date,
+    leadId: c.lead_instructor?.id ?? '', assistantIds: c.assistants.map(a => a.id), observerIds: c.observers.map(o => o.id),
+  };
+}
+
+/**
+ * Hand a class to another lead (ADR 0014 §8): the class as it is, with `leadId` as its lead.
+ * The new lead is taken off the assistants and observers (one person, one part).
+ */
+export function handoverBody(c: ClassRecord, leadId: string): ClassIn {
+  return {
+    name: c.name, course_id: c.course_id, start_date: c.start_date, end_date: c.end_date, lead_instructor_id: leadId,
+    assistant_ids: c.assistants.map(a => a.id).filter(id => id !== leadId),
+    observer_ids: c.observers.map(o => o.id).filter(id => id !== leadId),
+  };
+}
+
+/** The roll call's word for a Student whose seat the forfeit rule kept, or an addition turned down. */
+export function entryNote(e: RollCallEntry): string {
+  if (e.seat_kept_not_notified) return 'not notified — seat kept';
+  if (e.rejection_reason) return `rejected: ${e.rejection_reason}`;
+  return '';
+}
+
 /** One line saying what an add did. */
 export function addSummary(r: RollCallAddResult): string {
   const parts = [`Added ${r.added.length}`];
@@ -95,6 +123,9 @@ export function addSummary(r: RollCallAddResult): string {
  *
  * A Student not signed in by 2 hours after the class's first approved session started loses
  * their seat (ADR 0014 §4): shown as "Lost seat", with Reinstate for the lead or an admin.
+ * Only a Student who was actually notified loses it (#319); one never notified shows
+ * "not notified — seat kept". The lead edits, hands over (§8) or cancels the class here, and
+ * sees a course's default range mode (§9) on the class form.
  */
 @Component({
   selector: 'tn-classes',
@@ -119,7 +150,7 @@ export function addSummary(r: RollCallAddResult): string {
 
       @if (form(); as f) {
         <mat-card class="form-card">
-          <mat-card-header><mat-card-title>New class</mat-card-title></mat-card-header>
+          <mat-card-header><mat-card-title>{{ f.id ? 'Edit class' : 'New class' }}</mat-card-title></mat-card-header>
           <mat-card-content class="form-grid">
             <mat-form-field appearance="outline">
               <mat-label>Name or serial</mat-label>
@@ -127,10 +158,23 @@ export function addSummary(r: RollCallAddResult): string {
             </mat-form-field>
             <mat-form-field appearance="outline">
               <mat-label>Course</mat-label>
-              <mat-select [ngModel]="f.courseId" (ngModelChange)="patch({ courseId: $event })">
+              <mat-select [ngModel]="f.courseId" (ngModelChange)="pickCourse($event)">
                 @for (c of courses(); track c.id) { <mat-option [value]="c.id">{{ c.name }}</mat-option> }
               </mat-select>
             </mat-form-field>
+            @if (courseMode(); as m) {
+              <div class="course-mode" role="note">
+                <span>Sessions of this course default to <strong>{{ modeName(m.mode) }}</strong>
+                  ({{ m.source === 'setting' ? 'set for your organisation' : 'no default set' }}). Each session can override it.</span>
+                @if (canAuthor()) {
+                  <select class="input" aria-label="Course default range mode" [ngModel]="m.mode"
+                    (ngModelChange)="setCourseMode(f.courseId, $event)">
+                    <option value="individual">{{ modeName('individual') }}</option>
+                    <option value="collective">{{ modeName('collective') }}</option>
+                  </select>
+                }
+              </div>
+            }
             <mat-form-field appearance="outline">
               <mat-label>Start date</mat-label>
               <input matInput type="date" [ngModel]="f.start" (ngModelChange)="patch({ start: $event })" />
@@ -162,7 +206,7 @@ export function addSummary(r: RollCallAddResult): string {
           @if (formError()) { <p class="error" role="alert">{{ formError() }}</p> }
           <mat-card-actions align="end">
             <button mat-button (click)="form.set(null)">Cancel</button>
-            <button mat-flat-button color="primary" (click)="save()">Create</button>
+            <button mat-flat-button color="primary" (click)="save()">{{ f.id ? 'Save' : 'Create' }}</button>
           </mat-card-actions>
         </mat-card>
       }
@@ -188,7 +232,37 @@ export function addSummary(r: RollCallAddResult): string {
             </mat-card-content>
             <mat-card-actions>
               <button mat-button (click)="open(c)"><mat-icon>fact_check</mat-icon> Roll call</button>
+              @if (c.can_edit) {
+                <button mat-button (click)="startEdit(c)"><mat-icon>edit</mat-icon> Edit</button>
+                <button mat-button (click)="startHandover(c)"><mat-icon>swap_horiz</mat-icon> Hand over</button>
+                @if (confirmCancel() !== c.id) {
+                  <button mat-button color="warn" (click)="confirmCancel.set(c.id)"><mat-icon>event_busy</mat-icon> Cancel class</button>
+                }
+              }
             </mat-card-actions>
+            @if (confirmCancel() === c.id) {
+              <div class="confirm" role="alertdialog" [attr.aria-label]="'Cancel ' + c.name">
+                <p>Cancel {{ c.name }}? Its sessions that have not started are cancelled, its ranges torn down, and the
+                  Students on the roll call get a calendar cancellation. The class is kept on record; it cannot be undone.</p>
+                <button mat-flat-button color="warn" [disabled]="busy()" (click)="cancelClass(c)">Yes, cancel the class</button>
+                <button mat-button (click)="confirmCancel.set(null)">Keep it</button>
+              </div>
+            }
+            @if (handover()?.classId === c.id) {
+              <div class="confirm">
+                <mat-form-field appearance="outline">
+                  <mat-label>New lead instructor</mat-label>
+                  <mat-select [ngModel]="handover()!.leadId" (ngModelChange)="handover.set({ classId: c.id, leadId: $event })">
+                    @for (u of instructors(); track u.id) {
+                      @if (u.id !== c.lead_instructor?.id) { <mat-option [value]="u.id">{{ u.display_name }}</mat-option> }
+                    }
+                  </mat-select>
+                </mat-form-field>
+                <p class="small">The new lead changes the roll call and books the sessions from now on. Sessions follow the class.</p>
+                <button mat-flat-button color="primary" [disabled]="busy() || !handover()!.leadId" (click)="handOver(c)">Hand over</button>
+                <button mat-button (click)="handover.set(null)">Cancel</button>
+              </div>
+            }
           </mat-card>
         }
       </div>
@@ -234,6 +308,7 @@ export function addSummary(r: RollCallAddResult): string {
                       @if (e.status === 'forfeited' && (e.forfeit_deadline ?? e.forfeited_at); as by) {
                         <span class="when">not signed in by {{ by | date:'short' }}</span>
                       }
+                      @if (note(e); as n) { <span class="when" [class.kept]="e.seat_kept_not_notified">{{ n }}</span> }
                     </td>
                     <td>
                       @if (c.can_edit && e.status === 'forfeited') {
@@ -347,6 +422,10 @@ export function addSummary(r: RollCallAddResult): string {
     .entries tr.removed td { opacity: 0.6; }
     .entries tr.forfeited td { color: var(--mat-sys-error); }
     .when { margin-left: 8px; font-size: 12px; }
+    .when.kept { font-weight: 600; }
+    .confirm { padding: 0 16px 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .confirm p { flex-basis: 100%; margin: 0; }
+    .course-mode { grid-column: 1 / -1; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
     .error { color: var(--mat-sys-error); padding: 0 16px; }
     .email-off {
       display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 8px 12px; border-radius: 8px;
@@ -382,6 +461,12 @@ export class ClassesComponent implements OnInit {
   readonly instructors = computed(() => this.users().filter(u => u.role === 'instructor' || u.role === 'admin'));
   readonly observers = computed(() => this.users().filter(u => u.role !== 'student' && u.role !== 'range_ops'));
   readonly canCreate = computed(() => roleCan(this.auth.user()?.role, 'class:create'));
+  /** Sets a course's default range mode (the API's course:author). */
+  readonly canAuthor = computed(() => roleCan(this.auth.user()?.role, 'course:author'));
+  readonly courseMode = signal<CourseRangeMode | null>(null);
+  readonly confirmCancel = signal<string | null>(null);
+  readonly handover = signal<{ classId: string; leadId: string } | null>(null);
+  readonly busy = signal(false);
   readonly classRanges = signal<ClassRanges | null>(null);
   readonly teams = signal<SessionTeams | null>(null);
   readonly teamsSession = signal<ClassSessionMode | null>(null);
@@ -430,9 +515,78 @@ export class ClassesComponent implements OnInit {
 
   startCreate(): void {
     this.formError.set('');
+    this.courseMode.set(null);
     this.form.set({ name: '', courseId: '', start: '', end: '', leadId: '', assistantIds: [], observerIds: [] });
+    this.loadPeople();
+  }
+
+  /** Edit a class (its lead or an admin): name, course, dates, staff. Naming another lead hands it over. */
+  startEdit(c: ClassRecord): void {
+    this.formError.set('');
+    this.form.set(formFrom(c));
+    this.loadPeople();
+    this.loadCourseMode(c.course_id);
+  }
+
+  startHandover(c: ClassRecord): void {
+    this.handover.set({ classId: c.id, leadId: '' });
+    this.loadPeople();
+  }
+
+  private loadPeople(): void {
     this.records.listCourses().subscribe({ next: p => this.courses.set(p.items), error: () => {} });
     this.records.listUsers().subscribe({ next: u => this.users.set(u), error: () => {} });
+  }
+
+  pickCourse(courseId: string): void {
+    this.patch({ courseId });
+    this.loadCourseMode(courseId);
+  }
+
+  private loadCourseMode(courseId: string): void {
+    this.courseMode.set(null);
+    if (!courseId) return;
+    this.api.courseRangeMode(courseId).subscribe({ next: m => this.courseMode.set(m), error: () => {} });
+  }
+
+  setCourseMode(courseId: string, mode: RangeMode): void {
+    this.api.setCourseRangeMode(courseId, mode).subscribe({
+      next: m => { this.courseMode.set(m); this.notify.success(`Course default: ${MODE_LABEL[mode]}`); },
+      error: err => this.notify.error(apiError(err)),
+    });
+  }
+
+  modeName(m: RangeMode): string { return MODE_LABEL[m]; }
+  note(e: RollCallEntry): string { return entryNote(e); }
+
+  handOver(c: ClassRecord): void {
+    const h = this.handover();
+    if (!h?.leadId) return;
+    this.busy.set(true);
+    this.api.update(c.id, handoverBody(c, h.leadId)).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.handover.set(null);
+        this.notify.success(`${c.name} handed over`);
+        this.selected.set(null);
+        this.load();
+      },
+      error: err => { this.busy.set(false); this.notify.error(apiError(err)); },
+    });
+  }
+
+  cancelClass(c: ClassRecord): void {
+    this.busy.set(true);
+    this.api.cancel(c.id).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.confirmCancel.set(null);
+        if (this.selected()?.id === c.id) this.selected.set(null);
+        this.notify.success(`${c.name} cancelled; its Students get a calendar cancellation`);
+        this.load();
+      },
+      error: err => { this.busy.set(false); this.notify.error(apiError(err)); },
+    });
   }
 
   patch(p: Partial<ClassForm>): void {
@@ -444,12 +598,12 @@ export class ClassesComponent implements OnInit {
     if (!f) return;
     const body = toClassBody(f);
     if (typeof body === 'string') { this.formError.set(body); return; }
-    this.api.create(body).subscribe({
+    (f.id ? this.api.update(f.id, body) : this.api.create(body)).subscribe({
       next: c => {
         this.form.set(null);
-        this.notify.success(`Class ${c.name} created`);
+        this.notify.success(`Class ${c.name} ${f.id ? 'saved' : 'created'}`);
         this.load();
-        this.open(c);
+        if (c.my_role) this.open(c); else this.selected.set(null);
       },
       error: err => this.formError.set(apiError(err)),
     });

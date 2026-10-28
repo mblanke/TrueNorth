@@ -1,10 +1,9 @@
 """The day-before reminder (ADR 0014 §2).
 
 Every roll-call Student who has not signed in yet (``invited``) is emailed once, the day
-before their class starts. "The day before" is the UTC date: a class has dates, not
-times or a time zone, and a tenant has no time zone setting yet. Where the site is far
-from UTC the reminder lands up to a day early or late in local terms; per-tenant time
-zones would change that, here only. Each entry is claimed with a guarded update
+before their class starts. "The day before" is the site's calendar day (``SITE_TIMEZONE``,
+``app.site_time``, as the self-serve lab gate reads it; UTC when unset): a class has dates,
+not times, and they are the site's dates (#319). Each entry is claimed with a guarded update
 (``reminded_at IS NULL``) before its email is built, so any number of API replicas can tick
 and each Student still gets one reminder. Someone added that same day already had their
 onboarding email that day and is not reminded on top of it.
@@ -22,6 +21,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from ..models import Course, User, UserRole
+from ..site_time import site_timezone
 from . import service
 from .models import Class, ClassStatus, RollCallEntry, RollCallStatus
 
@@ -33,7 +33,9 @@ TICK_SECONDS = float(os.getenv("CLASS_REMINDER_TICK_SECONDS", "900"))
 def tick(db: Session, now: datetime | None = None) -> list[service.Mail]:
     """Claim and build the reminders due now. Commits per class."""
     now = now or datetime.now(UTC)
-    tomorrow = (now + timedelta(days=1)).date()
+    tz = site_timezone()
+    today = now.astimezone(tz).date()
+    tomorrow = today + timedelta(days=1)
     out: list[service.Mail] = []
     for cls in _classes_starting(db, tomorrow):
         # tenant-safe: the class's own course, which was checked against its tenant when set.
@@ -51,7 +53,7 @@ def tick(db: Session, now: datetime | None = None) -> list[service.Mail]:
         sent = 0
         held = 0
         for entry in due:
-            if entry.onboarding_sent_at is not None and entry.onboarding_sent_at.date() == now.date():
+            if entry.onboarding_sent_at is not None and _local_day(entry.onboarding_sent_at, tz) == today:
                 continue
             if _has_signed_in(db, cls, entry):
                 # Linked to an account that has signed in (adopted another way): in effect
@@ -71,7 +73,7 @@ def tick(db: Session, now: datetime | None = None) -> list[service.Mail]:
                 .update({RollCallEntry.reminded_at: now}, synchronize_session=False)
             )
             if claimed == 1:
-                out.append(service.reminder_mail(cls, course_name, entry.email))
+                out.append(service.reminder_mail(cls, course_name, entry.email, entry.id))
                 sent += 1
         if sent or held:
             service.audit(
@@ -83,6 +85,10 @@ def tick(db: Session, now: datetime | None = None) -> list[service.Mail]:
 
 
 PAGE = 500
+
+
+def _local_day(at: datetime, tz):
+    return (at.replace(tzinfo=UTC) if at.tzinfo is None else at).astimezone(tz).date()
 
 
 def _has_signed_in(db: Session, cls: Class, entry: RollCallEntry) -> bool:
@@ -129,6 +135,8 @@ def _tick_in_own_session() -> list[service.Mail]:
 
 async def run_forever() -> None:
     """Started from the API lifespan. Sleeps first, so a test client does not tick."""
+    from ..db import engine
+
     logger.info("Class reminder clock started (every %ss)", TICK_SECONDS)
     while True:
         await asyncio.sleep(TICK_SECONDS)
@@ -136,7 +144,7 @@ async def run_forever() -> None:
             mails = await asyncio.to_thread(_tick_in_own_session)
             if mails:
                 logger.info("Class reminders: %d", len(mails))
-            await service.send(mails)
+            await service.deliver(mails, engine)
         except asyncio.CancelledError:
             raise
         except Exception:

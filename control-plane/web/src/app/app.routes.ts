@@ -344,7 +344,7 @@ export const routes: Routes = [
     title: 'Users & Teams - TrueNorth Range',
   },
   {
-    // The registration queue on its own page, for instructors (registration:read); the
+    // The registration queue on its own page (registration:read: admins, ADR 0014 §5); the
     // same panel is also a tab of the admin's /users.
     path: 'approvals',
     canActivate: [authGuard, onboardingGuard, pageGuard('approvals')],

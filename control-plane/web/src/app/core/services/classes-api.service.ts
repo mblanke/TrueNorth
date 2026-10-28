@@ -25,6 +25,8 @@ export type ReinstateResult = S['ReinstateOut'];
 export type AttendanceGrid = S['AttendanceGridOut'];
 export type AttendanceCell = S['AttendanceCellOut'];
 export type AttendanceStatus = S['AttendanceStatusOut'];
+/** What the lead may set (ADR 0014 §12): present or excused, never absent. */
+export type AttendanceCorrection = S['AttendanceCorrectionOut'];
 export type Closeout = S['CloseoutOut'];
 export type Standing = S['StandingOut'];
 export type ResultOutcome = S['ResultOutcomeOut'];
@@ -149,8 +151,9 @@ export class ClassesApiService {
   attendance(id: string): Observable<AttendanceGrid> {
     return this.http.get<AttendanceGrid>(`${this.base}/${id}/attendance`);
   }
-  /** The lead or an admin sets one Student's attendance at one session; audited. */
-  setAttendance(id: string, sessionId: string, entryId: string, status: AttendanceStatus,
+  /** The lead or an admin corrects one Student's attendance at one session to present or
+   *  excused, with an optional note; audited. */
+  setAttendance(id: string, sessionId: string, entryId: string, status: AttendanceCorrection,
                 note: string | null = null): Observable<AttendanceCell> {
     return this.http.put<AttendanceCell>(`${this.base}/${id}/attendance/${sessionId}/${entryId}`, { status, note });
   }

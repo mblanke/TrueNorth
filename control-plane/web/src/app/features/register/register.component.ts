@@ -68,7 +68,7 @@ interface RegistrationForm {
           <mat-card-subtitle>
             You are signed in as
             <strong>{{ prefill()?.display_name || prefill()?.email }}</strong
-            >. An instructor reviews every request before an account is created.
+            >. An administrator reviews every request before an account is created.
           </mat-card-subtitle>
         </mat-card-header>
 

@@ -1,8 +1,10 @@
 """Registration approval may not mint authority the approver does not hold (C1).
 
-An instructor holds registration:approve. Before the fix, ``role`` on the approve body
+An instructor held registration:approve. Before the fix, ``role`` on the approve body
 accepted ``admin``, so an instructor could create an administrator — and, with
-PLATFORM_TENANT_ID unset, a platform administrator.
+PLATFORM_TENANT_ID unset, a platform administrator. Since #319 only an admin approves
+Request access (ADR 0014 §5); the grant rule still guards ``_approve_one``, which roll-call
+admission runs with the class's lead (an instructor) as approver.
 """
 
 from __future__ import annotations
@@ -45,14 +47,16 @@ def test_instructor_cannot_approve_a_staff_role(client, db_session, tenant_a, ro
 
 
 @pytest.mark.parametrize("role", ["student", "observer"])
-def test_instructor_can_still_approve_a_student_or_observer(client, db_session, tenant_a, role):
+def test_instructor_cannot_approve_request_access_at_all(client, db_session, tenant_a, role):
+    """ADR 0014 §5 (#319): an admin approves Request access. An instructor's Students come in
+    through their class's roll call instead (§1), which ``_approve_one`` serves below."""
     act_as(real_user(db_session, UserRole.instructor, tenant_a.id))
     req = _pending(db_session, tenant_a.id)
 
     r = client.post(f"/registration/requests/{req.id}/approve", json={"role": role, "tenant_id": str(tenant_a.id)})
 
-    assert r.status_code == 200, r.text
-    assert db_session.query(User).filter(User.keycloak_id == req.keycloak_id).one().role == UserRole(role)
+    assert r.status_code == 403, r.text
+    assert db_session.query(User).filter(User.keycloak_id == req.keycloak_id).count() == 0
 
 
 def test_instructor_bulk_approve_as_admin_is_refused_whole(client, db_session, tenant_a):
@@ -235,28 +239,38 @@ def test_admin_of_b_cannot_adopt_tenant_a_admin_by_email(client, db_session, two
     assert req.status == RegistrationStatus.pending
 
 
-def test_instructor_cannot_adopt_an_admin_account_in_own_tenant(client, db_session, tenant_a):
+def _approve_as(db, approver, req, tenant_id):
+    """The approval path a roll-call admission takes with the class's lead as approver
+    (``classes.onboarding.admit_from_roll_call``): instructors no longer reach it over HTTP."""
+    from app.routers.registration import _approve_one
+
+    return _approve_one(db, req, approver, role="student", tenant_id=tenant_id, qualification_id=None,
+                        learning_path_id=None, note="roll call")
+
+
+def test_instructor_cannot_adopt_an_admin_account_in_own_tenant(db_session, tenant_a):
+    from fastapi import HTTPException
+
     admin_row = _local_account(db_session, tenant_a.id, UserRole.admin, "chief@alpha.example")
     req = _pending_for(db_session, tenant_a.id, "chief@alpha.example")
-    act_as(real_user(db_session, UserRole.instructor, tenant_a.id))
+    lead = real_user(db_session, UserRole.instructor, tenant_a.id)
 
-    r = client.post(f"/registration/requests/{req.id}/approve", json={"role": "student", "tenant_id": str(tenant_a.id)})
+    with pytest.raises(HTTPException) as refused:
+        _approve_as(db_session, lead, req, tenant_a.id)
 
-    assert r.status_code == 409, r.text
-    assert "cannot grant" in r.json()["detail"]
+    assert refused.value.status_code == 409 and "cannot grant" in refused.value.detail
     db_session.refresh(admin_row)
     assert admin_row.role == UserRole.admin
 
 
-def test_roster_student_in_the_target_tenant_is_still_adopted(client, db_session, tenant_a):
+def test_roster_student_in_the_target_tenant_is_still_adopted(db_session, tenant_a):
     roster = _local_account(db_session, tenant_a.id, UserRole.student, "cadet@alpha.example")
     roster.source = "csv_import"
     req = _pending_for(db_session, tenant_a.id, "cadet@alpha.example")
-    act_as(real_user(db_session, UserRole.instructor, tenant_a.id))
+    lead = real_user(db_session, UserRole.instructor, tenant_a.id)
 
-    r = client.post(f"/registration/requests/{req.id}/approve", json={"role": "student", "tenant_id": str(tenant_a.id)})
+    _approve_as(db_session, lead, req, tenant_a.id)
 
-    assert r.status_code == 200, r.text
     db_session.refresh(roster)
     assert roster.keycloak_id == req.keycloak_id and roster.source == "ad"
 

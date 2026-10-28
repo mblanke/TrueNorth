@@ -79,7 +79,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {
     'content_review:read', 'content_review:review_own',
     'class:create', 'class:read', 'class:attend',
     'user:read',
-    'registration:read', 'registration:approve',
     'infra:read', 'ai_config:read', 'integration:read',
     'learning_record:read', 'learning_record:write',
     'enrollment:manage_own', 'team:manage_own',

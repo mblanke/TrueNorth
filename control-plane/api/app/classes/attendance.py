@@ -2,8 +2,9 @@
 
 **The rule.** A Student is *present* at a class session when they signed in and opened their
 range during it: between the session's start (inclusive) and its end (exclusive). Otherwise
-*absent*. Only the lead or an admin sets *excused*, or corrects either way; every correction
-is audited and the clock never overwrites it.
+*absent*. Only the lead or an admin corrects it, to *present* or *excused* (ADR 0014 §12; #319:
+absent is the clock's finding, never a correction); every correction is audited, with its
+note, and the clock never overwrites it.
 
 **The signal: an audit row of the Student opening their own class range.** What counts:
 

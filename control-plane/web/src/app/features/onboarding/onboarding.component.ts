@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { MatStepperModule } from '@angular/material/stepper';
@@ -38,7 +38,9 @@ interface ProfileForm {
 }
 
 /**
- * First run, immediately after an instructor approves the account.
+ * First run, immediately after an administrator approves the account, or after a class
+ * roll call admits a Student on their first sign-in (ADR 0014 §1). A roll-call Student made
+ * no access request, so the step that confirms one is skipped for them (`via_roll_call`).
  *
  * Confirm rather than re-ask: registration already collected the profile, so
  * this step shows it back and lets it be corrected. Making a newly approved
@@ -71,7 +73,9 @@ interface ProfileForm {
             <div class="centred"><mat-spinner diameter="36" /></div>
           } @else {
             <mat-stepper orientation="vertical" [linear]="false" #stepper>
-              <!-- 1. Profile -->
+              <!-- 1. Profile: confirms the access request. A Student admitted from a class roll
+                   call made none (ADR 0014 §1, #319), so they skip this step. -->
+              @if (!viaRollCall()) {
               <mat-step label="Confirm your details">
                 <p class="muted">
                   Carried over from your access request. Correct anything that has changed.
@@ -112,12 +116,18 @@ interface ProfileForm {
                   </button>
                 </div>
               </mat-step>
+              }
 
               <!-- 2. Path -->
               <mat-step label="Your training path">
                 <p class="muted">
-                  This is the developmental progression you have been enrolled on. Your instructor
-                  can change it later.
+                  @if (viaRollCall()) {
+                    Your instructor put you on a class roll call, so you are already enrolled on its course.
+                    You can also pick a qualification to work towards.
+                  } @else {
+                    This is the developmental progression you have been enrolled on. Your instructor
+                    can change it later.
+                  }
                 </p>
                 <mat-form-field appearance="outline" class="full">
                   <mat-label>Qualification</mat-label>
@@ -228,6 +238,8 @@ export class OnboardingComponent implements OnInit {
   loading = signal(true);
   busy = signal(false);
   state = signal<OnboardingState | null>(null);
+  /** Admitted from a class roll call: no access request to confirm (#319). */
+  readonly viaRollCall = computed(() => !!this.state()?.via_roll_call);
   nations = signal<Nation[]>([]);
   qualifications = signal<Qualification[]>([]);
   selectedQualification: string | null = null;

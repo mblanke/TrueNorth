@@ -73,9 +73,16 @@ describe('EventsCalendarComponent', () => {
   let maintenance: jasmine.SpyObj<MaintenanceWindowsApiService>;
   const user = signal<CurrentUser | null>(null);
 
+  /** The API decides what the caller may do (can_* on each booking, #319): the defaults
+   *  answer as it would for the classes' lead or an admin, and nothing for anyone else. */
   function as(role: CurrentUser['role'], bookings: Booking[] = [CLASS_SESSION, EXERCISE, PENDING, GONE]) {
     user.set({ sub: 'me', id: 'me', email: 'me@x', display_name: `${role} person`, role } as CurrentUser);
-    scheduler.list.and.returnValue(of({ items: bookings, total: bookings.length }));
+    const staff = role === 'instructor' || role === 'admin';
+    const items = bookings.map(b => (b.can_move !== undefined ? b : {
+      ...b, can_change: staff, can_move: staff && b.state !== 'cancelled',
+      can_accept: staff && !!b.approval?.proposed_start_time, can_decline: staff && !!b.approval?.proposed_start_time,
+    }));
+    scheduler.list.and.returnValue(of({ items, total: items.length }));
     fixture = TestBed.createComponent(EventsCalendarComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
@@ -356,16 +363,24 @@ describe('EventsCalendarComponent', () => {
       expect(head.textContent).not.toContain('0%');
     });
 
-    it('L1: an instructor named on a class session they do not lead cannot move it', () => {
-      const s = booking({ id: 'other', name: 'Not mine', class_id: 'c9', range_mode: 'individual', instructor_id: 'me' });
+    it('#319: no Move, Accept or Decline where the API says the caller may not (an assistant)', () => {
+      const s = booking({
+        id: 'other', name: 'Not mine', class_id: 'c9', range_mode: 'individual', instructor_id: 'me',
+        state: 'pending_approval',
+        approval: { proposed_start_time: at(2, 9), proposed_end_time: at(2, 11) } as Booking['approval'],
+        can_change: false, can_move: false, can_accept: false, can_decline: false,
+      });
       as('instructor', [s]);
       block('Not mine').click();
       fixture.detectChanges();
+      expect(el.textContent).toContain('Proposed instead');
       expect(button('Move')).toBeUndefined();
+      expect(button('Accept')).toBeUndefined();
+      expect(button('Decline')).toBeUndefined();
     });
 
-    it('L1: any instructor moves a booking with no instructor', () => {
-      const s = booking({ id: 'free', name: 'Unassigned', instructor_id: null, created_by: 'someone' });
+    it('#319: Move where the API says the caller may', () => {
+      const s = booking({ id: 'free', name: 'Unassigned', instructor_id: null, created_by: 'someone', can_move: true });
       as('instructor', [s]);
       block('Unassigned').click();
       fixture.detectChanges();

@@ -74,9 +74,8 @@ SLACK = timedelta(days=1)
 EPSILON = timedelta(microseconds=1)
 
 # Entries that are the caller's classes: on the roll call, or forfeited (to be reinstated).
-MINE = (RollCallStatus.invited.value, RollCallStatus.signed_in.value, RollCallStatus.ready.value,
-        RollCallStatus.forfeited.value)
-ONBOARDED = (RollCallStatus.signed_in.value, RollCallStatus.ready.value)
+MINE = (RollCallStatus.invited.value, RollCallStatus.signed_in.value, RollCallStatus.forfeited.value)
+ONBOARDED = (RollCallStatus.signed_in.value,)
 
 # Sessions shown: approved ones, and those already over. Never drafts, pending, rejected or cancelled.
 SHOWN = (*HOLDING, EventState.completed)

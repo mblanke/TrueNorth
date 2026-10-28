@@ -32,7 +32,6 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy.orm import Session
 
@@ -48,6 +47,7 @@ from ..scheduler.capacity import (
 )
 from ..scheduler.lifecycle import HOLDING
 from ..scheduler.models import ScheduledEvent
+from ..site_time import site_timezone
 from . import holdings
 from .models import LabSession
 
@@ -233,15 +233,6 @@ def busy_message(at: datetime | None, now: datetime) -> str:
     if local.date() == now.astimezone(tz).date():
         return f"{BUSY}, next free at {local:%H:%M}"
     return f"{BUSY}, next free at {local:%H:%M} on {local:%a %d %b}"
-
-
-def site_timezone() -> ZoneInfo:
-    name = os.getenv("SITE_TIMEZONE", "UTC").strip() or "UTC"
-    try:
-        return ZoneInfo(name)
-    except (ZoneInfoNotFoundError, ValueError):
-        logger.warning("SITE_TIMEZONE=%r is not a time zone; using UTC", name)
-        return ZoneInfo("UTC")
 
 
 # ── internals ────────────────────────────────────────────────────────

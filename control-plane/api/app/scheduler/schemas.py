@@ -103,6 +103,16 @@ class EventOut(BaseModel):
     class_id: str | None = None
     range_mode: str | None = Field(None, description="A class session's mode: individual or collective")
     approval: ApprovalOut | None = None
+    # What the caller may do with it: the server's own rule (change_rule), so a page shows
+    # Move, Accept and Decline exactly when they would be allowed (#319).
+    can_change: bool = Field(
+        False, description="The caller may edit, move or cancel it (a class session: its lead or an admin)"
+    )
+    can_move: bool = Field(
+        False, description="can_change, and it is in a state that moves (draft, awaiting approval, scheduled)"
+    )
+    can_accept: bool = Field(False, description="can_change, and an approver proposed another time to accept")
+    can_decline: bool = Field(False, description="can_change, and an approver proposed another time to decline")
 
     class Config:
         from_attributes = True

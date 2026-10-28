@@ -6,8 +6,8 @@ import { ApprovalsPanelComponent } from '../users/approvals-panel.component';
 /**
  * The registration approval queue as a page of its own.
  *
- * Instructors hold registration:read and registration:approve (rbac.py) but not the
- * admin-only /users, where this queue used to be the only way in. Same panel, same
+ * Only administrators hold registration:read and registration:approve (rbac.py; ADR 0014
+ * §5, #319): instructors' Students come in through their class roll call. Same panel, same
  * API calls (GET /registration/requests, POST .../approve, .../reject, bulk-approve);
  * the API scopes the queue to the approver's tenant and refuses roles they may not grant.
  */

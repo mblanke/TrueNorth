@@ -92,8 +92,14 @@ describe('ClassCloseoutComponent', () => {
     expect(api.attendance).toHaveBeenCalledWith('c1');
     expect(el.textContent).toContain('Mon lab');
     expect(el.querySelectorAll('mat-button-toggle-group').length).toBe(2);
+    // Present or excused only (ADR 0014 §12): no Absent toggle.
+    const toggles = Array.from(el.querySelectorAll('mat-button-toggle')).map(t => t.textContent?.trim());
+    expect(toggles).not.toContain('A');
+    expect(toggles).toContain('E');
+    fixture.componentInstance.note = ' medical ';
     fixture.componentInstance.setAttendance('e2', 's1', 'excused');
-    expect(api.setAttendance).toHaveBeenCalledWith('c1', 's1', 'e2', 'excused');
+    expect(api.setAttendance).toHaveBeenCalledWith('c1', 's1', 'e2', 'excused', 'medical');
+    expect(fixture.componentInstance.note).toBe('');
     expect(el.textContent).toContain('Passed (90%)');
     buttons('Close the class')[0].click();
     expect(api.close).toHaveBeenCalledWith('c1', [

@@ -306,6 +306,21 @@ def test_the_clock_skips_unapproved_old_and_closed(db_session, w):
 # ── Corrections ──────────────────────────────────────────────────────────────
 
 
+def test_a_correction_is_present_or_excused_only(client, db_session, w):
+    """ADR 0014 §12 (#319): the instructor corrects attendance to present or excused. Absent
+    is the clock's finding, never an instructor's."""
+    attendance.tick(db_session, now=NOW)
+    db_session.commit()
+    cs, _ = w["s1"]
+    bob = w["entries"]["bob"]
+    act_as(w["lead"])
+    r = client.put(_url(w, f"/attendance/{cs.id}/{bob.id}"), json={"status": "absent"})
+    assert r.status_code == 422, r.text
+    assert db_session.query(AuditLog).filter_by(action="class_attendance_correct").count() == 0
+    r = client.put(_url(w, f"/attendance/{cs.id}/{bob.id}"), json={"status": "excused", "note": "  court date "})
+    assert r.status_code == 200 and r.json()["note"] == "court date"
+
+
 def test_the_lead_corrects_attendance_and_it_is_audited(client, db_session, w):
     db = db_session
     attendance.tick(db, now=NOW)

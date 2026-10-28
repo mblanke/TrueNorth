@@ -47,7 +47,7 @@ def test_upgrade_adds_the_attendance_and_closeout_tables_and_downgrade_removes_t
     engine = sa.create_engine(url)
     tenant, course, lead, cls, event, entry, link = (uuid.uuid4() for _ in range(7))
     start = datetime.now(UTC) - timedelta(days=1)
-    from app.classes.models import Class, ClassSession, RollCallEntry
+    from app.classes.models import Class, ClassSession
     from app.models import Course, Tenant, User, UserRole
     from app.scheduler.models import EventState, ScheduledEvent
     from sqlalchemy.orm import Session
@@ -64,9 +64,12 @@ def test_upgrade_adds_the_attendance_and_closeout_tables_and_downgrade_removes_t
         db.add(ScheduledEvent(id=event, name="Session 1", state=EventState.completed, tenant_id=tenant,
                               start_time=start, end_time=start + timedelta(hours=2)))
         db.flush()
-        db.add(RollCallEntry(id=entry, class_id=cls, tenant_id=tenant, email="ann@corp.test", status="invited"))
         db.add(ClassSession(id=link, class_id=cls, event_id=event, tenant_id=tenant))
         db.commit()
+    with engine.begin() as db:  # SQL, not the ORM: the table is this revision's, older than the model's columns
+        db.execute(sa.text("INSERT INTO class_roll_call (id, class_id, tenant_id, email, status) "
+                           "VALUES (:i, :c, :t, 'ann@corp.test', 'invited')"),
+                   {"i": str(entry), "c": str(cls), "t": str(tenant)})
     classes_before = {c["name"] for c in sa.inspect(engine).get_columns("classes")}
     assert not TABLES & set(sa.inspect(engine).get_table_names())
 

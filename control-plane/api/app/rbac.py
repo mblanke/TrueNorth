@@ -226,9 +226,8 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.CLASS_ATTEND,
         # Users
         Permission.USER_READ,
-        # Trainee intake: instructors drain the approval queue for their cohort.
-        Permission.REGISTRATION_READ,
-        Permission.REGISTRATION_APPROVE,
+        # No registration:read or registration:approve: an admin approves Request access
+        # (ADR 0014 §5, #319). A class's Students are approved by its roll call instead (§1).
         # Read-only: an instructor should be able to see whether the platform is
         # healthy without being able to reconfigure or power-cycle it.
         Permission.INFRA_READ,

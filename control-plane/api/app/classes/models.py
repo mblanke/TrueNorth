@@ -57,7 +57,8 @@ class StaffRole(str, enum.Enum):
 class RollCallStatus(str, enum.Enum):
     invited = "invited"  # on the roll call; no TrueNorth sign-in yet
     signed_in = "signed_in"  # linked to an account that has signed in
-    ready = "ready"  # set by later slices (acknowledgement signed, range up)
+    # No "ready": ADR 0014 defines none. A Student's rules of use and range are shown on My
+    # classes from their own records (#284), not as a roll-call status (#319).
     # Added after the class's sessions were approved, and they had no room for one more
     # Student (ADR 0014 §17): waits for an approver. Not on the roll call until approved:
     # not linked, enrolled, emailed, invited or admitted.
@@ -143,6 +144,13 @@ class RollCallEntry(TimestampMixin, Base):
     # after the class started gets their own 2 hours from here. None (entries older than the
     # rule): the class's first approved session is the only clock.
     joined_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When the Student was actually told to sign in (#319): the first onboarding or day-before
+    # email the SMTP relay accepted. ``onboarding_sent_at`` / ``reminded_at`` only record that
+    # one was due and claimed; with email off, or a send that failed, this stays empty.
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When an in-app notification about this roll call was issued to the linked account. It
+    # counts as telling them only once that account has signed in since (``forfeit.notified``).
+    in_app_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class RollCallSettings(TimestampMixin, Base):
