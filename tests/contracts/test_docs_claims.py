@@ -1,7 +1,8 @@
 """Docs that promise what the code does not have (R0-B, audit 2).
 
-* docs/user-guide.md may name a UI feature only if the code has it. The "Not in v1.2.0"
-  section is where absent features are listed, so it is exempt.
+* docs/user-guide.md and the role guides (docs/guides/) may name a UI feature only if the
+  code has it. The user guide's "Not in v1.2.0" section is where absent features are
+  listed, so it is exempt.
 * Every repository path cited as evidence in docs/security.md's compliance mapping exists.
 """
 
@@ -12,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 GUIDE = ROOT / "docs/user-guide.md"
+ROLE_GUIDES = sorted((ROOT / "docs/guides").glob("*.md"))
 SECURITY = ROOT / "docs/security.md"
 WEB = ROOT / "control-plane/web/src/app"
 OPENAPI = ROOT / "docs/interfaces/openapi.json"
@@ -32,6 +34,7 @@ def _web_source() -> str:
 
 def test_user_guide_names_only_features_the_code_has():
     guide = _without_section(GUIDE.read_text(encoding="utf-8"), "Not in v1.2.0")
+    guide += "\n".join(p.read_text(encoding="utf-8") for p in ROLE_GUIDES)
     web = _web_source()
     api_paths = OPENAPI.read_text(encoding="utf-8").lower()
     claims = {
@@ -44,11 +47,16 @@ def test_user_guide_names_only_features_the_code_has():
         "leaderboard": "leaderboard" in api_paths,
     }
     promised = [p for p, exists in claims.items() if p.lower() in guide.lower() and not exists]
-    assert not promised, f"docs/user-guide.md promises features the code lacks: {promised}"
+    assert not promised, f"the user guides promise features the code lacks: {promised}"
 
 
 def test_user_guide_lists_what_is_missing():
     assert "\n## Not in v1.2.0\n" in GUIDE.read_text(encoding="utf-8")
+
+
+def test_the_role_guides_are_checked():
+    names = {p.name for p in ROLE_GUIDES}
+    assert {"03-admin-first-day.md", "04-instructor-guide.md", "05-student-quick-start.md"} <= names
 
 
 def test_security_compliance_evidence_paths_exist():

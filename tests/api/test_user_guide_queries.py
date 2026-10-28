@@ -1,6 +1,6 @@
-"""Every telemetry query the user guide shows parses in the search grammar.
+"""Every telemetry query the instructor guide shows parses in the search grammar.
 
-docs/user-guide.md once listed Lucene queries (``AND NOT``, ``destination.ip:10.*``) that
+The guide (docs/guides/04-instructor-guide.md, which replaced docs/user-guide.md) once listed Lucene queries (``AND NOT``, ``destination.ip:10.*``) that
 the closed grammar in ``app/search_backends/query.py`` refuses with 422, so a Student
 copying them got an error. These tests parse every example in its "Search Syntax" and
 "Common Queries" tables, and check that what the guide says is refused is refused.
@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from app.search_backends.query import QueryError, parse_query
 
-GUIDE = Path(__file__).resolve().parents[2] / "docs/user-guide.md"
+GUIDE = Path(__file__).resolve().parents[2] / "docs/guides/04-instructor-guide.md"
 
 
 def _section(title: str) -> str:
