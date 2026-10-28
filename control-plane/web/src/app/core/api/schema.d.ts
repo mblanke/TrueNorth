@@ -2062,7 +2062,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Every course, range template and scenario that could be ported, with its proven status */
+        /** Every course, range template, scenario and exercise template that could be ported, with its proven status */
         get: operations["list_portable_content"];
         put?: never;
         post?: never;
@@ -2080,7 +2080,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Whether a course, range template or scenario is proven, with reasons and evidence
+         * Whether a course, range template, scenario or exercise template is proven, with reasons and evidence
          * @description Computed now: a range built from it reached Certified, a class or exercise using it
          *     finished with passing evidence, and the content clock does not call it stale. Another
          *     tenant's private content is not found (404).
@@ -3389,6 +3389,78 @@ export interface paths {
          * @description Generate a scenario preview without creating DB records.
          */
         post: operations["preview_forge_exercise_forge_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exercise-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Exercise templates of this tenant and the shared ones */
+        get: operations["list_exercise_templates"];
+        put?: never;
+        /** Create an exercise template */
+        post: operations["create_exercise_template"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exercise-templates/from-exercise/{exercise_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save an existing exercise as a template (the exercise is not changed) */
+        post: operations["save_exercise_as_template"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exercise-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One exercise template (this tenant's, or a shared one) */
+        get: operations["get_exercise_template"];
+        /** Edit an exercise template (never changes exercises already made from it) */
+        put: operations["update_exercise_template"];
+        post?: never;
+        /** Delete an exercise template no exercise was made from */
+        delete: operations["delete_exercise_template"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/exercise-templates/{template_id}/exercises": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** This tenant's exercises made from a template, with the revision each came from */
+        get: operations["list_exercises_from_template"];
+        put?: never;
+        /** Create an exercise from a template: its objectives and MESL are copied */
+        post: operations["create_exercise_from_template"];
         delete?: never;
         options?: never;
         head?: never;
@@ -12747,7 +12819,7 @@ export interface components {
              * Item Type
              * @enum {string}
              */
-            item_type: "course" | "module" | "lab" | "scenario" | "range_template" | "golden_template";
+            item_type: "course" | "module" | "lab" | "scenario" | "range_template" | "exercise_template" | "golden_template";
             /** Retired */
             retired: boolean;
             /** Stale */
@@ -12807,7 +12879,7 @@ export interface components {
              * Item Type
              * @enum {string}
              */
-            item_type: "course" | "module" | "lab" | "scenario" | "range_template" | "golden_template";
+            item_type: "course" | "module" | "lab" | "scenario" | "range_template" | "exercise_template" | "golden_template";
             /** Last Reviewed At */
             last_reviewed_at?: string | null;
             /** Last Reviewed By Name */
@@ -12910,7 +12982,7 @@ export interface components {
              * Item Type
              * @enum {string}
              */
-            item_type: "course" | "module" | "lab" | "scenario" | "range_template" | "golden_template";
+            item_type: "course" | "module" | "lab" | "scenario" | "range_template" | "exercise_template" | "golden_template";
             /** Last Reviewed At */
             last_reviewed_at?: string | null;
             /** Last Reviewed By Name */
@@ -13418,7 +13490,7 @@ export interface components {
              * Item Type
              * @enum {string}
              */
-            item_type: "course" | "module" | "lab" | "scenario" | "range_template" | "golden_template";
+            item_type: "course" | "module" | "lab" | "scenario" | "range_template" | "exercise_template" | "golden_template";
             /**
              * Source
              * @enum {string}
@@ -14117,6 +14189,50 @@ export interface components {
              */
             students?: components["schemas"]["ClassStudentOut"][];
         };
+        /** ExerciseFromTemplateIn */
+        ExerciseFromTemplateIn: {
+            /** Max Score */
+            max_score?: number | null;
+            /** Name */
+            name: string;
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+        };
+        /** ExerciseFromTemplateOut */
+        ExerciseFromTemplateOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Max Score */
+            max_score: number;
+            /** Mesl Events */
+            mesl_events: number;
+            /** Name */
+            name: string;
+            /** Objectives */
+            objectives: number;
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /** Scenario Id */
+            scenario_id?: string | null;
+            /** State */
+            state: string;
+            /**
+             * Template Id
+             * Format: uuid
+             */
+            template_id: string;
+            /** Template Revision */
+            template_revision: number;
+        };
         /** ExerciseIn */
         ExerciseIn: {
             /**
@@ -14162,6 +14278,110 @@ export interface components {
             /** Total Score */
             total_score: number;
         };
+        /** ExerciseMadeFromTemplateOut */
+        ExerciseMadeFromTemplateOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Max Score */
+            max_score: number;
+            /** Name */
+            name: string;
+            /** State */
+            state: string;
+            /** Template Revision */
+            template_revision: number;
+            /** Total Score */
+            total_score: number;
+        };
+        /**
+         * ExerciseMeslSpec
+         * @description One serial of the MESL. Its delivery status is the exercise's, never the template's.
+         */
+        ExerciseMeslSpec: {
+            /**
+             * Attack Technique
+             * @default
+             */
+            attack_technique?: string;
+            /**
+             * Delivery Method
+             * @default cyber
+             * @enum {string}
+             */
+            delivery_method?: "cyber" | "white_cell" | "email" | "radio" | "physical" | "opfor";
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /**
+             * Expected Action
+             * @default
+             */
+            expected_action?: string;
+            /**
+             * From Cell
+             * @default
+             */
+            from_cell?: string;
+            /**
+             * Moe
+             * @default
+             */
+            moe?: string;
+            /**
+             * Objective Ref
+             * @default
+             */
+            objective_ref?: string;
+            /**
+             * Phase
+             * @default
+             */
+            phase?: string;
+            /**
+             * Scenario Time
+             * @default
+             */
+            scenario_time?: string;
+            /** Serial */
+            serial: number;
+            /** Title */
+            title: string;
+            /**
+             * To Participant
+             * @default
+             */
+            to_participant?: string;
+        };
+        /** ExerciseObjectiveSpec */
+        ExerciseObjectiveSpec: {
+            /**
+             * Competency Code
+             * @default
+             */
+            competency_code?: string;
+            /**
+             * Moe
+             * @default
+             */
+            moe?: string;
+            /** Ref */
+            ref: string;
+            /**
+             * Text
+             * @default
+             */
+            text?: string;
+        };
         /** ExerciseOut */
         ExerciseOut: {
             /** Completed At */
@@ -14204,12 +14424,294 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * ExerciseRoleSpec
+         * @description A participant role (analyst, red team, intel ...): how many Students may take it, how many
+         *     by default, and the machines each one gets. ``max_participants`` 0: no limit. ``team``
+         *     optionally names one of the template's teams. Sizing itself is not done here (Exercise Studio).
+         */
+        ExerciseRoleSpec: {
+            /**
+             * Default Count
+             * @default 0
+             */
+            default_count?: number;
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /**
+             * Max Participants
+             * @default 0
+             */
+            max_participants?: number;
+            /**
+             * Min Participants
+             * @default 0
+             */
+            min_participants?: number;
+            /** Name */
+            name: string;
+            /**
+             * Team
+             * @default
+             */
+            team?: string;
+            /** Vm Profile */
+            vm_profile?: components["schemas"]["ExerciseVmSpec"][];
+        };
+        /** ExerciseSaveAsTemplateIn */
+        ExerciseSaveAsTemplateIn: {
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * ExerciseScalingRuleSpec
+         * @description Shared infrastructure that scales with the exercise: ``count`` machines of ``node_type``
+         *     per network segment (``per_segment``), per ``per`` participants (``per_participants``,
+         *     steps of N; ``role`` limits the count to one role), or just once (``fixed``).
+         */
+        ExerciseScalingRuleSpec: {
+            /**
+             * Count
+             * @default 1
+             */
+            count?: number;
+            /**
+             * Kind
+             * @default fixed
+             * @enum {string}
+             */
+            kind?: "per_segment" | "per_participants" | "fixed";
+            /** Name */
+            name: string;
+            /** Node Type */
+            node_type: string;
+            /**
+             * Per
+             * @default 0
+             */
+            per?: number;
+            /**
+             * Role
+             * @default
+             */
+            role?: string;
+            /**
+             * Segment
+             * @default
+             */
+            segment?: string;
+        };
+        /**
+         * ExerciseTeamSpec
+         * @description A team the exercise needs. ``max_students`` 0: no limit.
+         */
+        ExerciseTeamSpec: {
+            /**
+             * Max Students
+             * @default 0
+             */
+            max_students?: number;
+            /**
+             * Min Students
+             * @default 0
+             */
+            min_students?: number;
+            /** Name */
+            name: string;
+            /**
+             * Side
+             * @default other
+             * @enum {string}
+             */
+            side?: "blue" | "red" | "white" | "green" | "other";
+        };
+        /** ExerciseTemplateIn */
+        ExerciseTemplateIn: {
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /**
+             * Instructor Notes
+             * @default
+             */
+            instructor_notes?: string;
+            /**
+             * Is Public
+             * @description Share with every tenant (platform administrator only)
+             * @default false
+             */
+            is_public?: boolean;
+            /** Mesl */
+            mesl?: components["schemas"]["ExerciseMeslSpec"][];
+            /** Name */
+            name: string;
+            /** Objectives */
+            objectives?: components["schemas"]["ExerciseObjectiveSpec"][];
+            /** Range Template Id */
+            range_template_id?: string | null;
+            /** Roles */
+            roles?: components["schemas"]["ExerciseRoleSpec"][];
+            /** Scaling Rules */
+            scaling_rules?: components["schemas"]["ExerciseScalingRuleSpec"][];
+            /** Scenario Id */
+            scenario_id?: string | null;
+            /** Tags */
+            tags?: string[];
+            /** Teams */
+            teams?: components["schemas"]["ExerciseTeamSpec"][];
+        };
+        /**
+         * ExerciseTemplateListOut
+         * @description A row of the list: counts, never the MESL or the notes (the exercise-control plan).
+         */
+        ExerciseTemplateListOut: {
+            /** Description */
+            description: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Is Public */
+            is_public: boolean;
+            /** Mesl Events */
+            mesl_events: number;
+            /** Name */
+            name: string;
+            /** Objectives */
+            objectives: number;
+            /** Range Template Id */
+            range_template_id?: string | null;
+            /** Revision */
+            revision: number;
+            /** Role Names */
+            role_names: string[];
+            /** Scenario Id */
+            scenario_id?: string | null;
+            /** Shared */
+            shared: boolean;
+            /** Tags */
+            tags: string[];
+            /** Team Names */
+            team_names: string[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ExerciseTemplateOut */
+        ExerciseTemplateOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Instructor Notes */
+            instructor_notes: string;
+            /** Is Public */
+            is_public: boolean;
+            /** Mesl */
+            mesl: components["schemas"]["ExerciseMeslSpec"][];
+            /** Name */
+            name: string;
+            /** Objectives */
+            objectives: components["schemas"]["ExerciseObjectiveSpec"][];
+            /** Range Template Id */
+            range_template_id?: string | null;
+            /** Revision */
+            revision: number;
+            /** Roles */
+            roles: components["schemas"]["ExerciseRoleSpec"][];
+            /** Scaling Rules */
+            scaling_rules: components["schemas"]["ExerciseScalingRuleSpec"][];
+            /** Scenario Id */
+            scenario_id?: string | null;
+            /**
+             * Shared
+             * @description Another tenant's template, shared with this one: read-only here
+             * @default false
+             */
+            shared?: boolean;
+            /** Tags */
+            tags: string[];
+            /** Teams */
+            teams: components["schemas"]["ExerciseTeamSpec"][];
+            /** Tenant Id */
+            tenant_id?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ExerciseTemplateUpdate
+         * @description Only the fields sent change; an explicit null clears the scenario or range template.
+         */
+        ExerciseTemplateUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Instructor Notes */
+            instructor_notes?: string | null;
+            /** Is Public */
+            is_public?: boolean | null;
+            /** Mesl */
+            mesl?: components["schemas"]["ExerciseMeslSpec"][] | null;
+            /** Name */
+            name?: string | null;
+            /** Objectives */
+            objectives?: components["schemas"]["ExerciseObjectiveSpec"][] | null;
+            /** Range Template Id */
+            range_template_id?: string | null;
+            /** Roles */
+            roles?: components["schemas"]["ExerciseRoleSpec"][] | null;
+            /** Scaling Rules */
+            scaling_rules?: components["schemas"]["ExerciseScalingRuleSpec"][] | null;
+            /** Scenario Id */
+            scenario_id?: string | null;
+            /** Tags */
+            tags?: string[] | null;
+            /** Teams */
+            teams?: components["schemas"]["ExerciseTeamSpec"][] | null;
+        };
         /** ExerciseUpdate */
         ExerciseUpdate: {
             /** Max Score */
             max_score?: number;
             /** Name */
             name?: string;
+        };
+        /**
+         * ExerciseVmSpec
+         * @description What each participant of a role gets: ``count`` machines of a node type of the range
+         *     template (matched against a node's id, type or os; the range template is the authority).
+         */
+        ExerciseVmSpec: {
+            /**
+             * Count
+             * @default 1
+             */
+            count?: number;
+            /** Node Type */
+            node_type: string;
         };
         /** ExportSignatureOut */
         ExportSignatureOut: {
@@ -17255,7 +17757,7 @@ export interface components {
              * Item Type
              * @enum {string}
              */
-            item_type: "course" | "range_template" | "scenario";
+            item_type: "course" | "range_template" | "scenario" | "exercise_template";
         };
         /** PortMissingBuildOut */
         PortMissingBuildOut: {
@@ -17290,7 +17792,7 @@ export interface components {
              * Item Type
              * @enum {string}
              */
-            item_type: "course" | "range_template" | "scenario";
+            item_type: "course" | "range_template" | "scenario" | "exercise_template";
             /** Key */
             key: string;
             /** Local Id */
@@ -17456,7 +17958,7 @@ export interface components {
              * Item Type
              * @enum {string}
              */
-            item_type: "course" | "range_template" | "scenario";
+            item_type: "course" | "range_template" | "scenario" | "exercise_template";
             /**
              * Proven
              * @description None when the dependency could not be read
@@ -17504,7 +18006,7 @@ export interface components {
              * Item Type
              * @enum {string}
              */
-            item_type: "course" | "range_template" | "scenario";
+            item_type: "course" | "range_template" | "scenario" | "exercise_template";
             /**
              * Label
              * @description "Proven", or "Not proven: <reasons>"
@@ -25206,7 +25708,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                item_type: "course" | "range_template" | "scenario";
+                item_type: "course" | "range_template" | "scenario" | "exercise_template";
                 item_id: string;
             };
             cookie?: never;
@@ -27685,6 +28187,262 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ForgePreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_exercise_templates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExerciseTemplateListOut"][];
+                };
+            };
+        };
+    };
+    create_exercise_template: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExerciseTemplateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExerciseTemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_exercise_as_template: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExerciseSaveAsTemplateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExerciseTemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_exercise_template: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExerciseTemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_exercise_template: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExerciseTemplateUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExerciseTemplateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_exercise_template: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Exercises were made from it */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_exercises_from_template: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExerciseMadeFromTemplateOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_exercise_from_template: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExerciseFromTemplateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExerciseFromTemplateOut"];
                 };
             };
             /** @description Validation Error */

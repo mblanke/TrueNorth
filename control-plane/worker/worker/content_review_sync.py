@@ -2,8 +2,8 @@
 
 Each run, under a Redis lock (redis_lock.py) so two never overlap:
 
-1. **Items.** Every course, course module, scenario, range template and golden template that
-   exists gets a review row (``content_review_items``); a renamed one gets its new title, a
+1. **Items.** Every course, course module, scenario, range template, exercise template and golden
+   template that exists gets a review row (``content_review_items``); a renamed one gets its new title, a
    deleted one is marked ``missing`` (kept for its history, hidden). A new course takes the
    instructor of its latest booking as its owner, and its modules the course's; a new item
    whose own tags name a theme gets that theme. Labs have no record of their own yet (they
@@ -14,6 +14,7 @@ Each run, under a Redis lock (redis_lock.py) so two never overlap:
      else ``type``, else the default, exactly as render.py builds it) matched to a golden
      template's catalogue id or one of its OS aliases;
    * scenario -> range template: its ``range_template`` (a template's id or name);
+   * exercise template -> its scenario and its range template (ADR 0017: the ids it names);
    * module -> scenario: ``module_content.scenario_id`` and the module's legacy
      ``content_ref`` ``scenario_id``;
    * course -> its modules, and course -> range template where a booking
@@ -61,6 +62,7 @@ from .tables import (
     content_review_themes,
     course_modules,
     courses,
+    exercise_templates,
     golden_images,
     module_content,
     scenarios,
@@ -213,6 +215,17 @@ def read_content(db) -> Content:
                                                                                if tenant is None]
         if pick:
             c.dep(key, ("range_template", sorted(pick)[0]))
+    # exercise templates -> the scenario and the range template they name (ADR 0017)
+    for e in db.execute(sa.select(exercise_templates.c.id, exercise_templates.c.name, exercise_templates.c.tenant_id,
+                                  exercise_templates.c.tags, exercise_templates.c.scenario_id,
+                                  exercise_templates.c.range_template_id)
+                        .where(exercise_templates.c.deleted_at.is_(None))).all():
+        key = ("exercise_template", str(e.id))
+        c.add(key, e.tenant_id, e.name, tags=_tags(e.tags))
+        if e.scenario_id is not None:
+            c.dep(key, ("scenario", str(e.scenario_id)))
+        if e.range_template_id is not None:
+            c.dep(key, ("range_template", str(e.range_template_id)))
     # courses, their latest booking's instructor, and the templates their bookings use
     owners: dict[str, str] = {}
     booked: list[tuple[str, str]] = []

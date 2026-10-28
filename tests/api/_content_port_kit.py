@@ -12,6 +12,7 @@ from datetime import UTC, date, datetime, timedelta
 from app.auth import CurrentUser, get_current_user
 from app.classes.models import Class, ClassCloseout, ClassRange, ClassResult, RollCallEntry
 from app.content_review.models import ContentReviewItem
+from app.exercise_templates.models import ExerciseTemplate, ExerciseTemplateUse
 from app.main import app as fastapi_app
 from app.models import (
     ContentKind,
@@ -250,3 +251,60 @@ def golden_build(db, catalogue_id="ubuntu-2404", build_id="b-2026-10-01", checks
     db.add(GoldenImageBuild(id=uuid.uuid4(), golden_image_id=g.id, build_id=build_id, checksum=checksum,
                             copies="{}", promoted=True))
     db.flush()
+
+
+# ── exercise templates ──────────────────────────────────────────────────────────
+def ex_template(db, sc: Scenario | None = None, tmpl: Template | None = None, *, name: str | None = None,
+                tenant=DEV, public=False) -> ExerciseTemplate:
+    """A reusable exercise template of ``tenant``: two objectives, three serials, two teams."""
+    row = ExerciseTemplate(
+        id=uuid.uuid4(), name=name or f"IR drill {uuid.uuid4().hex[:6]}", description="Respond to the intrusion.",
+        revision=1, tenant_id=tenant, is_public=public,
+        scenario_id=sc.id if sc is not None else None, range_template_id=tmpl.id if tmpl is not None else None,
+        teams=[{"name": "Blue", "side": "blue", "min_students": 2, "max_students": 6},
+               {"name": "White cell", "side": "white", "min_students": 0, "max_students": 0}]
+        ,
+        objectives=[{"ref": "O1", "text": "Detect the phish", "moe": "within 15 minutes", "competency_code": "DCWF-1"},
+                    {"ref": "O2", "text": "Contain the host", "moe": "", "competency_code": ""}],
+        mesl=[{"serial": i, "phase": "D1", "scenario_time": f"D1 09{i}0", "title": f"Serial {i}", "description": "",
+               "objective_ref": "O1" if i == 1 else "", "attack_technique": "T1566" if i == 1 else "",
+               "delivery_method": "email" if i == 1 else "white_cell", "from_cell": "OPFOR",
+               "to_participant": "Blue", "expected_action": "Report it", "moe": ""} for i in (1, 2, 3)]
+        ,
+        roles=[{"name": "Analyst", "description": "Triage alerts", "team": "Blue", "min_participants": 2,
+                "max_participants": 12, "default_count": 4,
+                "vm_profile": [{"node_type": "ubuntu-2404", "count": 1}]},
+               {"name": "Defender", "description": "", "team": "", "min_participants": 0, "max_participants": 0,
+                "default_count": 2, "vm_profile": [{"node_type": "srv2022", "count": 1}]}],
+        scaling_rules=[{"name": "Sensor", "node_type": "srv2022", "kind": "per_segment", "count": 1, "per": 0,
+                        "role": "", "segment": ""},
+                       {"name": "Targets", "node_type": "ubuntu-2404", "kind": "per_participants", "count": 1,
+                        "per": 4, "role": "Analyst", "segment": ""}],
+        instructor_notes="Hold serial 2 until Blue has reported.", tags=["DFIR"], created_by=None)
+    db.add(row)
+    db.flush()
+    return row
+
+
+def made_from(db, et: ExerciseTemplate, *, score=(80, 100), tenant=DEV, state=ExerciseState.completed
+              ) -> Exercise:
+    """An exercise made from ``et`` on a range built from its range template."""
+    ex = exercise(db, db.get(Template, et.range_template_id), None, score=score, tenant=tenant, state=state)
+    db.add(ExerciseTemplateUse(exercise_id=ex.id, template_id=et.id, template_revision=et.revision,
+                               tenant_id=tenant))
+    db.flush()
+    return ex
+
+
+def prove_exercise_template(db, et: ExerciseTemplate) -> ExerciseTemplate:
+    made_from(db, et)
+    review(db, "exercise_template", et)
+    return et
+
+
+def exercise_template_set(db):
+    """A proven range template, scenario and exercise template that uses both."""
+    t = prove_template(db, template(db))
+    s = prove_scenario(db, scenario(db, t), t)
+    et = prove_exercise_template(db, ex_template(db, s, t))
+    return t, s, et

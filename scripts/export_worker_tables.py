@@ -43,6 +43,7 @@ WORKER_TABLES = (
     "course_modules",  # read by the content clock's sync, to find what each course depends on
     "courses",
     "exercise_runs",
+    "exercise_templates",  # read by the content clock's sync: a template depends on its scenario and range template
     "exercises",
     "forged_exercises",
     "golden_image_builds",
@@ -101,6 +102,7 @@ def render() -> str:
     import app.audit_integrity  # noqa: F401 — audit_exports
     import app.content_feeds  # noqa: F401 — the feeds (worker/content_feeds)
     import app.content_review  # noqa: F401 — the content clock (worker/content_review_sync.py)
+    import app.exercise_templates  # noqa: F401 — exercise_templates (the content clock's sync reads it)
     import app.golden_image_builds  # noqa: F401 — golden_image_builds (worker/template_pins.py)
     import app.greyspace.models  # noqa: F401
     import app.lab_sessions  # noqa: F401 — lab_sessions

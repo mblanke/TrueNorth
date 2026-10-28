@@ -384,6 +384,7 @@ from .content_feeds.router import router as content_feeds_router  # noqa: E402 (
 from .content_port.router import router as content_port_router  # noqa: E402 (proven content port; + tables)
 from .content_review.router import router as content_review_router  # noqa: E402 (ADR 0014 §22-24; + tables)
 from .email_status.router import router as email_status_router  # noqa: E402 (#306)
+from .exercise_templates.router import router as exercise_templates_router  # noqa: E402 (ADR 0017; + tables)
 from .golden_image_builds.router import router as golden_image_builds_router  # noqa: E402 (ADR 0013; + its table)
 from .live_class.router import router as live_class_router  # noqa: E402 (issue #199)
 from .maintenance_windows.router import emergency_router as emergency_teardown_router  # noqa: E402 (ADR 0013 §7)
@@ -482,6 +483,7 @@ app.include_router(scheduling_me_router)  # your own sessions and feed link
 app.include_router(maintenance_windows_router)  # app/maintenance_windows (ADR 0013 §7)
 app.include_router(content_review_router)  # the content clock, app/content_review (ADR 0014 §22-24)
 app.include_router(content_feeds_router)  # release and vulnerability feeds, app/content_feeds (ADR 0014 §25)
+app.include_router(exercise_templates_router)  # reusable exercises, app/exercise_templates (ADR 0017)
 app.include_router(content_port_router)  # proven content between sites, app/content_port (docs/content-port.md)
 # LMS & Integration routers
 app.include_router(courses_router)

@@ -6,6 +6,7 @@ import { EXERCISE_POLL_MS, ExercisesComponent } from './exercises.component';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { AuthService } from '@core/services/auth.service';
+import { ExerciseTemplatesApiService } from '@core/services/exercise-templates-api.service';
 import { Exercise, Range, Scenario } from '@core/models';
 import { fakeAuth } from '@core/auth/fake-auth';
 import { Subject } from 'rxjs';
@@ -15,6 +16,7 @@ describe('ExercisesComponent', () => {
   let fixture: ComponentFixture<ExercisesComponent>;
   let mockApi: jasmine.SpyObj<ApiService>;
   let mockNotify: jasmine.SpyObj<NotificationService>;
+  let mockTemplates: jasmine.SpyObj<ExerciseTemplatesApiService>;
   let auth: ReturnType<typeof fakeAuth>;
 
   const mockExercises: Partial<Exercise>[] = [
@@ -45,6 +47,7 @@ describe('ExercisesComponent', () => {
       'generateAAR',
     ]);
     mockNotify = jasmine.createSpyObj('NotificationService', ['success', 'error']);
+    mockTemplates = jasmine.createSpyObj('ExerciseTemplatesApiService', ['saveExercise']);
 
     mockApi.listExercises.and.returnValue(of(mockExercises as Exercise[]));
     mockApi.listRanges.and.returnValue(of(mockRanges as Range[]));
@@ -63,6 +66,7 @@ describe('ExercisesComponent', () => {
         provideRouter([]),
         { provide: ApiService, useValue: mockApi },
         { provide: NotificationService, useValue: mockNotify },
+        { provide: ExerciseTemplatesApiService, useValue: mockTemplates },
         { provide: AuthService, useValue: auth },
       ],
     }).compileComponents();
@@ -337,5 +341,25 @@ describe('ExercisesComponent', () => {
     const el: HTMLElement = fixture.nativeElement;
     expect(el.textContent).toContain('Exercises could not be loaded');
     expect(el.textContent).not.toContain('No exercises yet');
+  });
+
+  // ── Save as template (ADR 0017) ───────────────────────────────────
+  it('saves an exercise as a template and notifies', () => {
+    mockTemplates.saveExercise.and.returnValue(of({ id: 't1' } as any));
+    fixture.detectChanges();
+    component.startTemplate(mockExercises[0] as any);
+    expect(component.templateForm.name).toBe('IR Drill template');
+    component.saveAsTemplate();
+    expect(mockTemplates.saveExercise).toHaveBeenCalledWith('e1', { name: 'IR Drill template' });
+    expect(mockNotify.success).toHaveBeenCalled();
+    expect(component.templateFrom).toBeNull();
+  });
+
+  it('shows the API reason when an exercise cannot be saved as a template', () => {
+    mockTemplates.saveExercise.and.returnValue(throwError(() => ({ error: { detail: 'Only a collective exercise' } })));
+    fixture.detectChanges();
+    component.startTemplate(mockExercises[0] as any);
+    component.saveAsTemplate();
+    expect(mockNotify.error).toHaveBeenCalledWith('Only a collective exercise');
   });
 });

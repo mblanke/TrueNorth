@@ -35,6 +35,7 @@ listed: port those templates first.
 
 from __future__ import annotations
 
+import copy
 import difflib
 import json
 import re
@@ -46,6 +47,9 @@ import yaml
 from sqlalchemy.orm import Session
 
 from .. import engine_bridge, safe_yaml
+from ..exercise_templates.models import ExerciseTemplate
+from ..exercise_templates.schemas import CORE_FIELDS
+from ..exercise_templates.service import SIZING_FIELDS, flag_changed
 from ..golden_image_builds.models import GoldenImageBuild
 from ..models import (
     ContentKind,
@@ -69,10 +73,18 @@ from ..range_topology import network_placement_keys
 from . import bundle as bnd
 from . import proven
 from .models import ContentPortImport, ContentPortItem
-from .schemas import BundleIn, BundleItem, CourseContent, PortMissingBuildOut, PortPreviewItemOut, ScenarioContent
+from .schemas import (
+    BundleIn,
+    BundleItem,
+    CourseContent,
+    ExerciseTemplateContent,
+    PortMissingBuildOut,
+    PortPreviewItemOut,
+    ScenarioContent,
+)
 
 MAX_DIFF_LINES = 300
-ORDER = {"range_template": 0, "scenario": 1, "course": 2}
+ORDER = {"range_template": 0, "scenario": 1, "course": 2, "exercise_template": 3}
 
 
 @dataclass
@@ -129,7 +141,8 @@ def _link(db: Session, item: BundleItem, tenant: uuid.UUID | None) -> ContentPor
 
 
 def _same_name(db: Session, item_type: str, name: str, tenant: uuid.UUID | None):
-    model = {"course": Course, "range_template": Template, "scenario": Scenario}[item_type]
+    model = {"course": Course, "range_template": Template, "scenario": Scenario,
+             "exercise_template": ExerciseTemplate}[item_type]
     q = db.query(model).filter(model.name == name)
     q = q.filter(model.tenant_id.is_(None)) if tenant is None else q.filter(model.tenant_id == tenant)
     if hasattr(model, "deleted_at"):
@@ -138,7 +151,10 @@ def _same_name(db: Session, item_type: str, name: str, tenant: uuid.UUID | None)
 
 
 def _projection(item_type: str, content: dict) -> list[str]:
-    """What the preview diff compares: the YAML itself, or a course's readable outline."""
+    """What the preview diff compares: the YAML itself, or a course's or exercise template's
+    readable outline."""
+    if item_type == "exercise_template":
+        return _template_outline(content)
     if item_type != "course":
         head = [f"name: {content['name']}", f"version: {content['version']}"]
         return head + ["---"] + (content.get("yaml") or "").splitlines()
@@ -161,6 +177,24 @@ def _projection(item_type: str, content: dict) -> list[str]:
     return lines
 
 
+def _template_outline(c: dict) -> list[str]:
+    lines = [f"name: {c['name']}", f"scenario: {'yes' if c.get('scenario') else '-'}",
+             f"range template: {'yes' if c.get('range_template') else '-'}", f"tags: {', '.join(c['tags']) or '-'}",
+             "description:", *[f"  {x}" for x in (c.get("description") or "").splitlines()]]
+    lines += [f"team {t['name']} ({t['side']}, {t['min_students']}-{t['max_students'] or 'any'})" for t in c["teams"]]
+    lines += [f"role {r['name']} ({r['min_participants']}-{r['max_participants'] or 'any'}, default "
+              f"{r['default_count']}): " + ", ".join(f"{v['count']}x {v['node_type']}" for v in r["vm_profile"])
+              for r in c["roles"]]
+    lines += [f"scaling {r['name']}: {r['kind']} {r['count']}x {r['node_type']}"
+              + (f" per {r['per']}" if r["per"] else "") + (f" of {r['role']}" if r["role"] else "")
+              for r in c["scaling_rules"]]
+    lines += [f"objective {o['ref']}: {o['text']}" + (f" [{o['moe']}]" if o["moe"] else "") for o in c["objectives"]]
+    lines += [f"serial {m['serial']} {m['scenario_time']} {m['title']} ({m['delivery_method']})"
+              + (f" -> {m['objective_ref']}" if m["objective_ref"] else "") for m in c["mesl"]]
+    lines.append(f"instructor notes: {len(c['instructor_notes'])} chars")
+    return lines
+
+
 def _diff(item_type: str, local: dict | None, incoming: dict) -> str:
     new = _projection(item_type, incoming)
     old = _projection(item_type, local) if local is not None else []
@@ -172,7 +206,7 @@ def _diff(item_type: str, local: dict | None, incoming: dict) -> str:
 
 def _refusals(item: BundleItem) -> list[str]:
     """Why this site would refuse the item's content, as the API refuses it."""
-    if item.item_type == "course":
+    if item.item_type in ("course", "exercise_template"):
         return []
     text = item.content["yaml"]
     try:
@@ -210,6 +244,11 @@ def _notes(db: Session, item: BundleItem, tenant: uuid.UUID | None) -> list[str]
             notes.append(f"Performance objective(s) {', '.join(missing[:10])} are not on this site; those modules are "
                          f"imported without them")
         notes.append("A new course lands unpublished; publish it through a course release when it is proven here")
+    if item.item_type == "exercise_template":
+        notes.append("Not proven here until a range built from its range template reaches Certified on this site, an "
+                     "exercise made from it completes with a passing score here, and the content clock has reviewed "
+                     "it. It lands private to the tenant; exercises made from the origin's copy do not come with it")
+        return notes
     notes.append("Not proven here until a range built from it reaches Certified on this site, it is used in a class or "
                  "exercise here, and the content clock has reviewed it")
     return notes
@@ -360,6 +399,49 @@ def _write_scenario(db: Session, p: PlanItem, tenant: uuid.UUID | None, shared: 
             if found is None or str(found.id) != local_t:
                 notes.append("Its range_template could not be pointed at the imported template; set it here")
     return row, notes
+
+
+def _write_exercise_template(db: Session, p: PlanItem, tenant: uuid.UUID | None, shared: bool, keymap: dict,
+                             user_id: uuid.UUID | None) -> ExerciseTemplate | None:
+    """The scenario and range template are the local copies (``keymap``); a template that
+    lands is private to its tenant unless the import asked for shared. A template already
+    here is updated in place and its revision rises, as for any edit; exercises made from it
+    keep the copy they were made with."""
+    c = ExerciseTemplateContent.model_validate(p.item.content)
+    core = c.model_dump(mode="json", include=set(CORE_FIELDS))
+    scenario_id = uuid.UUID(keymap[c.scenario]) if c.scenario else None
+    template_id = uuid.UUID(keymap[c.range_template]) if c.range_template else None
+    # The scenario and range template are the local copies, which may be older or edited here (an
+    # unconfirmed conflict keeps what is here): they must still agree, as the API requires.
+    sc = db.get(Scenario, scenario_id) if scenario_id else None  # tenant-safe: the landing tenant's, from keymap
+    tmpl = db.get(Template, template_id) if template_id else None  # tenant-safe: the landing tenant's, from keymap
+    if sc is not None and tmpl is not None:
+        runs_on = proven.scenario_template(db, sc)
+        if runs_on is not None and runs_on.id != tmpl.id:
+            p.reasons = [f"Its scenario here runs on range template '{runs_on.name}', not '{tmpl.name}': resolve the "
+                         f"conflict on the scenario or the range template, then import again"]
+            return None
+    row = p.local if isinstance(p.local, ExerciseTemplate) else None
+    if row is None:
+        row = ExerciseTemplate(id=uuid.uuid4(), tenant_id=tenant, is_public=shared, revision=1, created_by=user_id,
+                               scenario_id=scenario_id, range_template_id=template_id, **core)
+        db.add(row)
+    else:
+        # Lock the row and read it as it is now, so a concurrent edit and this import cannot both
+        # take the next revision number.
+        row = (db.query(ExerciseTemplate)
+               .filter(ExerciseTemplate.id == row.id, ExerciseTemplate.tenant_id == tenant).populate_existing()
+               .with_for_update().one())
+        before = {f: copy.deepcopy(getattr(row, f)) for f in SIZING_FIELDS}
+        for field, value in core.items():
+            setattr(row, field, value)
+        row.scenario_id, row.range_template_id = scenario_id, template_id
+        row.is_public = shared  # a visibility change is a confirmed conflict (plan)
+        row.revision = (row.revision or 1) + 1
+        db.flush()
+        if moved := [f for f in SIZING_FIELDS if getattr(row, f) != before[f]]:
+            flag_changed(db, row, ", ".join(f.replace("_", " ") for f in moved))  # not reviewed as it is now
+    return row
 
 
 def _exclusive(db: Session, column, row_id, mc: ModuleContent) -> bool:
@@ -535,6 +617,12 @@ def apply(db: Session, user_id: uuid.UUID | None, pl: Plan, overwrite: set[str],
         elif p.item.item_type == "scenario":
             row, more = _write_scenario(db, p, tenant, pl.shared, keymap)
             p.notes = [*p.notes, *more]
+        elif p.item.item_type == "exercise_template":
+            row = _write_exercise_template(db, p, tenant, pl.shared, keymap, user_id)
+            if row is None:
+                p.action, p.conflict = "skipped", None
+                done.append(p)
+                continue
         else:
             row, more = _write_course(db, p, tenant, keymap)
             p.notes = [*p.notes, *more]

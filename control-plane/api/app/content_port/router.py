@@ -48,8 +48,9 @@ def _raw(file: UploadFile) -> bytes:
 
 @router.get("/items/{item_type}/{item_id}/proven", response_model=ProvenStatusOut,
             operation_id="get_content_proven_status",
-            summary="Whether a course, range template or scenario is proven, with reasons and evidence")
-def get_proven(item_type: Literal["course", "range_template", "scenario"] = Path(...),
+            summary="Whether a course, range template, scenario or exercise template is proven, with reasons and "
+                    "evidence")
+def get_proven(item_type: Literal["course", "range_template", "scenario", "exercise_template"] = Path(...),
                item_id: uuid.UUID = Path(...), db: Session = Depends(get_db),
                user: CurrentUser = Depends(_READ)) -> ProvenStatusOut:
     """Computed now: a range built from it reached Certified, a class or exercise using it
@@ -59,7 +60,8 @@ def get_proven(item_type: Literal["course", "range_template", "scenario"] = Path
 
 
 @router.get("/items", response_model=list[ProvenStatusOut], operation_id="list_portable_content",
-            summary="Every course, range template and scenario that could be ported, with its proven status")
+            summary="Every course, range template, scenario and exercise template that could be ported, with "
+                    "its proven status")
 def list_items(db: Session = Depends(get_db), user: CurrentUser = Depends(_ADMIN)) -> list[ProvenStatusOut]:
     service.require_port(db, user)
     return service.portable(db, user)

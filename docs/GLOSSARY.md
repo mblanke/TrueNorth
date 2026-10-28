@@ -244,11 +244,25 @@ against the site's configured public key (`control-plane/api/app/content_feeds/`
 _Not to be confused with_: threat intel feeds (indicators for exercises, `threat_intel_backends`).
 
 **Exercise**:
-One run of training on a range: an `assessment` (individual practical) or a `collective`
-(team exercise driven by a MESL), with objectives and a score (`Exercise` in `models.py`;
+One run of collective training on a range (team exercise driven by a MESL; the `assessment`
+kind in `models.py` is the older individual practical, which courses cover now), with objectives and a score (`Exercise` in `models.py`;
 lifecycle `control-plane/api/app/exercise_lifecycle.py`).
 _Not to be confused with_: scenario (the authored attack timeline an exercise may run);
 lab session.
+
+**Exercise template**:
+The reusable part of a collective exercise: its objectives, MESL, teams, the scenario and
+range template it runs on, the participant roles (min/max/default, and the VM profile each
+participant gets) with the rules by which shared infrastructure scales, and the instructor's
+notes (`ExerciseTemplate` in
+`control-plane/api/app/exercise_templates/`, ADR 0017). An exercise is created from it,
+copies the objectives and MESL, and keeps a reference to the template and its revision;
+editing the template never changes exercises already made. Exercises are collective training
+and courses are individual training, so a template has teams and no individual shape, is
+never attached to a course module, and does not touch a course's `lab_range`. Proven and
+portable through the content port like a scenario.
+_Not to be confused with_: range template (the design of a range); golden template (an OS
+image); scenario (the attack timeline a template names).
 
 **Lab session**:
 One Student's (or team's) own small range for one range activity of a course release,

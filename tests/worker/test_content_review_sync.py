@@ -19,7 +19,7 @@ from worker import tables
 
 NOW = datetime(2026, 10, 22, 12, 0, tzinfo=UTC)
 TENANT, OTHER = str(uuid.uuid4()), str(uuid.uuid4())
-TABLES = ("golden_images", "templates", "scenarios", "courses", "course_modules", "module_content",
+TABLES = ("golden_images", "templates", "scenarios", "exercise_templates", "courses", "course_modules", "module_content",
           "scheduled_events", "content_review_items", "content_review_edges", "content_review_themes",
           "content_review_cycles", "content_feed_entries", "content_feed_flags", "content_feed_sources",
           "content_feed_settings")
@@ -96,6 +96,11 @@ def template(engine, name, nodes, *, tenant=TENANT, tags=None):
 def scenario(engine, name, range_template, *, tenant=TENANT):
     return ins(engine, "scenarios", id=str(uuid.uuid4()), name=name, tenant_id=tenant, deleted_at=None,
                yaml=json.dumps({"name": name, "range_template": range_template}))
+
+
+def exercise_template(engine, name, *, scenario_id=None, template_id=None, tenant=TENANT, tags=None):
+    return ins(engine, "exercise_templates", id=str(uuid.uuid4()), name=name, tenant_id=tenant, deleted_at=None,
+               scenario_id=scenario_id, range_template_id=template_id, tags=tags or [])
 
 
 def course(engine, name, *, tenant=TENANT, tags="[]"):
@@ -270,6 +275,50 @@ def _flag(engine, key, text="New Ubuntu 24.04 point release"):
     with engine.begin() as conn:
         conn.execute(tables.content_review_items.update().where(tables.content_review_items.c.id == rid)
                      .values(stale_reasons=[reason], stale=True))
+
+
+class TestExerciseTemplates:
+    """ADR 0017: an exercise template is on the content clock and depends on what it names."""
+
+    def test_it_gets_a_row_and_depends_on_its_scenario_and_range_template(self, engine, chain):
+        et = exercise_template(engine, "IR drill", scenario_id=chain["scenario"], template_id=chain["template"])
+        out = run(engine)
+        assert out["created"] == 7
+        rows = review_rows(engine)
+        assert rows[("exercise_template", et)]["title"] == "IR drill"
+        assert rows[("exercise_template", et)]["tenant_id"] == TENANT
+        got = deps(engine)
+        assert (("exercise_template", et), ("scenario", chain["scenario"])) in got
+        assert (("exercise_template", et), ("range_template", chain["template"])) in got
+
+    def test_a_stale_scenario_makes_the_template_stale(self, engine, chain):
+        et = exercise_template(engine, "IR drill", scenario_id=chain["scenario"], template_id=chain["template"])
+        run(engine)
+        _flag(engine, ("scenario", chain["scenario"]))
+        run(engine)
+        rows = review_rows(engine)
+        assert rows[("scenario", chain["scenario"])]["stale"] is True
+        assert rows[("exercise_template", et)]["stale"] is True
+        assert rows[("exercise_template", et)]["stale_reasons"][0]["text"].startswith("Its scenario")
+
+    def test_it_never_depends_on_another_tenants_content(self, engine):
+        theirs_t = template(engine, "Theirs", [], tenant=OTHER)
+        theirs_s = scenario(engine, "Theirs", "Theirs", tenant=OTHER)
+        et = exercise_template(engine, "Mine", scenario_id=theirs_s, template_id=theirs_t)
+        run(engine)
+        got = deps(engine)
+        assert (("exercise_template", et), ("scenario", theirs_s)) not in got
+        assert (("exercise_template", et), ("range_template", theirs_t)) not in got
+
+    def test_a_deleted_template_is_marked_missing_and_tags_name_a_theme(self, engine):
+        ins(engine, "content_review_themes", id=str(uuid.uuid4()), tenant_id=None, name="DFIR", colour="#112233")
+        et = exercise_template(engine, "IR drill", tags=["DFIR"])
+        run(engine)
+        assert review_rows(engine)[("exercise_template", et)]["theme_ids"]
+        with engine.begin() as conn:
+            conn.execute(tables.exercise_templates.update().values(deleted_at=NOW))
+        run(engine)
+        assert review_rows(engine)[("exercise_template", et)]["missing"] is True
 
 
 class TestClock:

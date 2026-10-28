@@ -108,3 +108,21 @@ def test_verify_reads_as_strictly_as_the_api(tmp_path, raw):
 def test_an_item_is_type_and_uuid(bad):
     with pytest.raises(SystemExit):
         cli.parser().parse_args(["export", "--item", bad, "--out", "x"])
+
+
+def test_an_exercise_template_is_exported_with_what_it_needs_and_imported_not_proven(admin, db_session, tmp_path):
+    from _content_port_kit import exercise_template_set
+    from app.exercise_templates.models import ExerciseTemplate
+
+    _t, _s, et = exercise_template_set(db_session)
+    site = Tenant(id=uuid.uuid4(), name="New", slug=f"n-{uuid.uuid4().hex[:6]}")
+    db_session.add(site)
+    db_session.flush()
+    out = tmp_path / "bundle.json"
+    assert _run(admin, "export", "--item", f"exercise_template:{et.id}", "--out", str(out)) == 0
+    assert [i["item_type"] for i in json.loads(out.read_text())["items"]] == [
+        "range_template", "scenario", "exercise_template"]
+    assert cli.main(["verify", str(out), "--public-key", signing.public_info()["public_key"]]) == 0
+    assert _run(admin, "import", str(out), "--tenant", str(site.id), "--yes") == 0
+    landed = db_session.query(ExerciseTemplate).filter_by(tenant_id=site.id).one()
+    assert landed.name == et.name and landed.id != et.id

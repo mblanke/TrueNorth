@@ -565,7 +565,8 @@ class TestThemesAndCycles:
         with acting_as(world["db"], UserRole.admin):
             cycles = {c["item_type"]: c for c in client.get("/content-review/cycles").json()}
             assert cycles["course"] == {"item_type": "course", "days": 90, "source": "default"}
-            assert set(cycles) == {"course", "module", "lab", "scenario", "range_template", "golden_template"}
+            assert set(cycles) == {"course", "module", "lab", "scenario", "range_template",
+                              "exercise_template", "golden_template"}
             for bad in (89, 121, 30, 365):
                 assert client.put("/content-review/cycles/course", json={"days": bad}).status_code == 422
             got = client.put("/content-review/cycles/course", json={"days": 120})

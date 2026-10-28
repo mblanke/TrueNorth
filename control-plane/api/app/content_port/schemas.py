@@ -15,13 +15,18 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-ItemType = Literal["course", "range_template", "scenario"]
-KEY_PATTERN = (r"^(course|range_template|scenario):"
+from ..exercise_templates.schemas import ExerciseTemplateCore
+
+ItemType = Literal["course", "range_template", "scenario", "exercise_template"]
+KEY_PATTERN = (r"^(course|range_template|scenario|exercise_template):"
                r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 SCENARIO_KEY = r"^scenario:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 TEMPLATE_KEY = r"^range_template:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 HEX64 = r"^[0-9a-f]{64}$"
-FORMAT = "truenorth.content-port.v1"
+FORMAT_V1 = "truenorth.content-port.v1"
+FORMAT_V2 = "truenorth.content-port.v2"  # the same bundle, and it may carry exercise templates (ADR 0017)
+FORMAT = FORMAT_V1  # what a bundle without exercise templates is, so older sites still read it
+FORMATS = (FORMAT_V1, FORMAT_V2)
 MAX_ITEMS = 500
 MAX_YAML = 1024 * 1024  # safe_yaml.MAX_YAML_BYTES: what every reader of a template or scenario accepts
 MAX_TEXT = 200_000
@@ -58,6 +63,15 @@ class ScenarioContent(_Name):
     name: str = Field(min_length=1, max_length=255)
     version: str = Field("", max_length=50)
     yaml: str = Field(min_length=1, max_length=MAX_YAML)
+    range_template: str | None = Field(None, pattern=TEMPLATE_KEY)
+
+
+class ExerciseTemplateContent(ExerciseTemplateCore):
+    """An exercise template (ADR 0017): the same model the API validates, plus the keys of the
+    scenario and the range template it names. No tenant, owner, sharing or revision: the new
+    site decides those."""
+
+    scenario: str | None = Field(None, pattern=SCENARIO_KEY)
     range_template: str | None = Field(None, pattern=TEMPLATE_KEY)
 
 
@@ -132,8 +146,9 @@ class CourseContent(_Name):
     modules: list[ModuleItem] = Field(default_factory=list, max_length=500)
 
 
-CONTENT_MODELS: dict[str, type[_Strict]] = {
-    "range_template": TemplateContent, "scenario": ScenarioContent, "course": CourseContent}
+CONTENT_MODELS: dict[str, type[BaseModel]] = {
+    "range_template": TemplateContent, "scenario": ScenarioContent, "course": CourseContent,
+    "exercise_template": ExerciseTemplateContent}
 
 
 # ── proof and builds ──────────────────────────────────────────────────────────────
@@ -180,7 +195,7 @@ class BundleOrigin(_Strict):
 class BundleIn(_Strict):
     """A content-port bundle without its signature."""
 
-    format: Literal["truenorth.content-port.v1"]
+    format: Literal["truenorth.content-port.v1", "truenorth.content-port.v2"]
     bundle_id: uuid.UUID
     exported_at: datetime
     origin: BundleOrigin

@@ -17,7 +17,8 @@ Commands:
 
     key                                   this site's public key (for the importing site's
                                           tn_content_port_trusted_keys)
-    list [--proven-only]                  courses, range templates and scenarios, proven or why not
+    list [--proven-only]                  courses, range templates, scenarios and exercise templates,
+                                          proven or why not
     export --item TYPE:ID ... --out FILE  a signed bundle of those items and what they need;
                                           refused (exit 3) unless every one is proven
     preview FILE [--tenant ID] [--shared] what importing would do (nothing is stored)
@@ -41,7 +42,7 @@ import uuid
 from pathlib import Path
 
 CONTEXT = b"truenorth-content-port/1\n"  # app/content_port/signing.py CONTEXT
-KEY_RE_TYPES = ("course", "range_template", "scenario")
+KEY_RE_TYPES = ("course", "range_template", "scenario", "exercise_template")
 
 
 # ── offline verification (no app import) ────────────────────────────────────────

@@ -81,15 +81,19 @@ def _label(st: proven.Status) -> str:
 
 
 def status_out(db: Session, item_type: str, row, scope: proven.Scope, *,
-               with_dependencies: bool = True) -> ProvenStatusOut:
-    st = proven.status(db, item_type, row, scope)
+               with_dependencies: bool = True, viewer: uuid.UUID | None = None) -> ProvenStatusOut:
+    """``viewer``: the reading tenant. A dependency that is another tenant's private content is not
+    named and its status is not shown, whoever reads (the platform administrator's evidence is
+    every tenant's, but not their private names)."""
+    st = proven.status(db, item_type, row, scope, viewer)
     deps = []
     if with_dependencies:
         for d in st.dependencies:
             dep_row = proven.load(db, d.item_type, d.item_id) if d.title is not None else None
+            shown = dep_row is not None and (viewer is None or proven.visible(dep_row, viewer))
             deps.append(ProvenDependencyOut(
                 item_type=d.item_type, item_id=d.item_id, title=d.title,
-                proven=proven.status(db, d.item_type, dep_row, scope).proven if dep_row is not None else None))
+                proven=proven.status(db, d.item_type, dep_row, scope).proven if shown else None))
     link = (db.query(ContentPortItem)
             .filter(ContentPortItem.item_type == item_type, ContentPortItem.local_id == str(row.id)).first())
     imported = None
@@ -116,23 +120,25 @@ def item_status(db: Session, user: CurrentUser, item_type: str, item_id) -> Prov
     row = proven.any_visible(db, user, item_type, item_id)
     if row is None:
         raise HTTPException(404, f"No {proven.LABELS.get(item_type, 'item')} {item_id} here")
-    return status_out(db, item_type, row, proven.scope_for(db, user))
+    return status_out(db, item_type, row, proven.scope_for(db, user), viewer=tenant_uuid(user))
 
 
 def portable(db: Session, user: CurrentUser) -> list[ProvenStatusOut]:
     """Every course, range template and scenario the caller may port, with its status."""
+    from ..exercise_templates.models import ExerciseTemplate
     from ..models import Course, Scenario, Template
 
     tenant = tenant_uuid(user)
     scope = proven.scope_for(db, user)
     out: list[ProvenStatusOut] = []
-    for item_type, model in (("range_template", Template), ("scenario", Scenario), ("course", Course)):
+    for item_type, model in (("range_template", Template), ("scenario", Scenario), ("course", Course),
+                             ("exercise_template", ExerciseTemplate)):
         q = db.query(model)
         if hasattr(model, "deleted_at"):
             q = q.filter(model.deleted_at.is_(None))
         for row in q.order_by(model.name, model.id).all():
             if proven.visible(row, tenant):
-                out.append(status_out(db, item_type, row, scope, with_dependencies=False))
+                out.append(status_out(db, item_type, row, scope, with_dependencies=False, viewer=tenant))
     return out
 
 
@@ -158,10 +164,10 @@ def export(db: Session, user: CurrentUser, refs: list[PortItemRef]) -> dict:
     for item_type, row in items:
         k = bnd.key(item_type, str(row.id))
         if not proven.visible(row, tenant):
-            problems.append({"item_type": item_type, "item_id": str(row.id), "title": row.name,
+            problems.append({"item_type": item_type, "item_id": str(row.id), "title": None,
                              "reasons": ["Another tenant's content: it cannot be exported from here"]})
             continue
-        st = proven.status(db, item_type, row, scope)
+        st = proven.status(db, item_type, row, scope, tenant)  # no other tenant's private name in a refusal
         statuses[k] = st
         if not st.proven:
             problems.append({"item_type": item_type, "item_id": str(row.id), "title": row.name,
@@ -174,7 +180,7 @@ def export(db: Session, user: CurrentUser, refs: list[PortItemRef]) -> dict:
             except ValidationError as exc:
                 problems.append({"item_type": item_type, "item_id": str(row.id), "title": row.name,
                                  "reasons": [f"It cannot be carried in a bundle ({bnd._first(exc)})"]})
-            if item_type != "course" and not content.get("yaml"):
+            if item_type in ("range_template", "scenario") and not content.get("yaml"):
                 problems.append({"item_type": item_type, "item_id": str(row.id), "title": row.name,
                                  "reasons": ["Its YAML does not parse, so it cannot be carried"]})
     if problems:

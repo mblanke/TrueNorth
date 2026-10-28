@@ -38,6 +38,7 @@ must be in the bundle.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import uuid
@@ -47,6 +48,8 @@ from datetime import UTC, datetime, timedelta
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from ..exercise_templates.models import ExerciseTemplate
+from ..exercise_templates.schemas import CORE_FIELDS
 from ..models import (
     Course,
     CourseModule,
@@ -62,7 +65,7 @@ from ..models import (
 from ..range_certification.signing import canonical
 from ..range_credentials import accounts
 from . import proven, signing
-from .schemas import CONTENT_MODELS, FORMAT, BundleIn
+from .schemas import CONTENT_MODELS, FORMAT_V1, FORMAT_V2, FORMATS, BundleIn
 
 MAX_BUNDLE_BYTES = 50 * 1024 * 1024  # the edge's upload limit for this route (nginx 50M)
 MAX_FUTURE = timedelta(hours=24)  # clock skew allowed between the two sites
@@ -131,6 +134,23 @@ def _quiz(db: Session, owner, quiz_id) -> dict | None:
                            "explanation": q.explanation or "", "competency_code": q.competency_code or "",
                            "difficulty": q.difficulty or "intermediate", "points": q.points or 0}
                           for q in questions]}
+
+
+def exercise_template_content(db: Session, et: ExerciseTemplate, ref: Ref) -> dict:
+    """An exercise template as the bundle carries it: what it is, and the keys of its scenario
+    and range template when those are carried. The lists are copied as stored; the export
+    validates the result (``schemas.ExerciseTemplateContent``), so a record the API would
+    refuse is reported, not carried."""
+    sc = proven.load(db, "scenario", et.scenario_id) if et.scenario_id else None
+    tmpl = proven.load(db, "range_template", et.range_template_id) if et.range_template_id else None
+    core = {f: copy.deepcopy(getattr(et, f)) for f in CORE_FIELDS}
+    core["description"], core["instructor_notes"] = core["description"] or "", core["instructor_notes"] or ""
+    for field in ("teams", "roles", "scaling_rules", "objectives", "mesl", "tags"):
+        core[field] = core[field] or []
+    return {**core,
+            "scenario": ref("scenario", str(sc.id)) if sc is not None and proven._in_item_scope(sc, et) else None,
+            "range_template": (ref("range_template", str(tmpl.id))
+                               if tmpl is not None and proven._in_item_scope(tmpl, et) else None)}
 
 
 # course_meta keys that describe the course itself (programme_ingest, course_content_ingest,
@@ -220,6 +240,8 @@ def content_of(db: Session, item_type: str, row, ref: Ref) -> dict:
         return template_content(row)
     if item_type == "scenario":
         return scenario_content(db, row, ref)
+    if item_type == "exercise_template":
+        return exercise_template_content(db, row, ref)
     return course_content(db, row, ref)
 
 
@@ -231,7 +253,7 @@ def fingerprint(db: Session, item_type: str, row) -> str:
     """The local item's content, hashed: equal before and after means nobody changed it. A
     template or scenario is hashed as stored (comments and sealed values included), so any
     edit shows."""
-    if item_type == "course":
+    if item_type in ("course", "exercise_template"):
         return sha256(content_of(db, item_type, row, local_ref))
     return sha256({"name": row.name, "version": row.version or "", "yaml": row.yaml or ""})
 
@@ -240,6 +262,8 @@ def refs_in(item_type: str, content: dict) -> set[str]:
     """Every item key ``content`` refers to."""
     if item_type == "scenario":
         return {content["range_template"]} if content.get("range_template") else set()
+    if item_type == "exercise_template":
+        return {k for k in (content.get("scenario"), content.get("range_template")) if k}
     if item_type != "course":
         return set()
     out: set[str] = set()
@@ -282,7 +306,9 @@ def build(db: Session, items: list[tuple[str, object]], statuses: dict[str, prov
                           "content_sha256": sha256(content), "content": content, "depends_on": deps,
                           "proof": proof_summary(st), "golden_builds": st.golden_builds,
                           "removed_passwords": removed_passwords(row.yaml) if item_type == "range_template" else 0})
-    doc = {"format": FORMAT, "bundle_id": str(uuid.uuid4()), "exported_at": now.isoformat(),
+    # v1 when no exercise template is carried: a site older than ADR 0017 still reads it.
+    fmt = FORMAT_V2 if any(t == "exercise_template" for t, _ in items) else FORMAT_V1
+    doc = {"format": fmt, "bundle_id": str(uuid.uuid4()), "exported_at": now.isoformat(),
            "origin": {"key_id": signing.public_info()["key_id"]}, "items": out_items,
            "golden_builds": [all_builds[k] for k in sorted(all_builds)]}
     return signing.sign(doc)
@@ -326,6 +352,11 @@ def parse(raw: bytes, *, now: datetime) -> tuple[dict, BundleIn, str]:
     if kid is None:
         raise BundleRejectedError(422, "The bundle's signature does not verify against a trusted content-port key "
                                        "(tn_content_port_trusted_keys); nothing was imported")
+    fmt = doc.get("format")
+    if isinstance(fmt, str) and fmt.startswith("truenorth.content-port.") and fmt not in FORMATS:
+        raise BundleRejectedError(422, f"This bundle is format {fmt.rsplit('.', 1)[-1]}; this site reads "
+                                       f"{' and '.join(f.rsplit('.', 1)[-1] for f in FORMATS)}. Upgrade this site "
+                                       f"to read it")
     try:
         bundle = BundleIn.model_validate({k: v for k, v in doc.items() if k != "signature"})
     except RecursionError:
@@ -348,6 +379,8 @@ def _first(exc: ValidationError) -> str:
 
 
 def _check_items(bundle: BundleIn) -> None:
+    if bundle.format == FORMAT_V1 and any(i.item_type == "exercise_template" for i in bundle.items):
+        raise BundleRejectedError(422, "A v1 bundle carries no exercise templates; they travel in v2 (ADR 0017)")
     keys = [i.key for i in bundle.items]
     if len(set(keys)) != len(keys):
         raise BundleRejectedError(422, "The bundle carries an item twice")

@@ -22,6 +22,11 @@ three conditions hold:
     The content clock (ADR 0014 §22-25, #295, #312) tracks it, and it is neither stale (a
     review overdue, a release or vulnerability feed flag, or either upstream) nor retired.
 
+An **exercise template** (ADR 0017) is proven the same way: its range template (or, failing
+that, its scenario's) must be certified, and the exercises that count as use are those *made
+from the template* (``exercise_template_uses``) that completed with a passing score; a
+completed exercise on the same range that was not made from it proves nothing about it.
+
 The evidence counted is the caller's tenant's, or every tenant's for the platform
 administrator (``scope``): a tenant never learns of another tenant's classes or ranges.
 
@@ -37,6 +42,7 @@ is not this course's content.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -46,14 +52,16 @@ from sqlalchemy.orm import Session
 from .. import safe_yaml
 from ..classes.models import Class, ClassCloseout, ClassRange, ClassResult, ClassSession, ClassStatus, ResultOutcome
 from ..content_review.models import ContentReviewItem
+from ..exercise_templates.models import ExerciseTemplate, ExerciseTemplateUse
 from ..models import Course, CourseModule, Exercise, ExerciseState, ModuleContent, Range, Scenario, Template
 from ..range_certification import sections as sec
 from ..range_certification.models import RangeCertificationEntry, RangeCertificationRecord
 from ..range_certification.service import plan_hash
 from ..scheduler.models import EventState, ScheduledEvent
 
-PORTABLE = ("course", "range_template", "scenario")
-LABELS = {"course": "course", "range_template": "range template", "scenario": "scenario"}
+PORTABLE = ("course", "range_template", "scenario", "exercise_template")
+LABELS = {"course": "course", "range_template": "range template", "scenario": "scenario",
+          "exercise_template": "exercise template"}
 PASS_PERCENT = 70  # a completed exercise passes at 70% of its maximum, CourseModule.pass_threshold's default
 MAX_RECORDS = 50  # certification records read per template, newest first
 CERTIFIED, USED, FRESH = "certified", "used", "fresh"
@@ -105,9 +113,10 @@ class Status:
 
 
 # ── loading and scope ───────────────────────────────────────────────────────────
-def load(db: Session, item_type: str, item_id) -> Course | Template | Scenario | None:
+def load(db: Session, item_type: str, item_id) -> Course | Template | Scenario | ExerciseTemplate | None:
     """The item, or None (unknown type, bad id, deleted). Not tenant-checked: see ``visible``."""
-    model = {"course": Course, "range_template": Template, "scenario": Scenario}.get(item_type)
+    model = {"course": Course, "range_template": Template, "scenario": Scenario,
+             "exercise_template": ExerciseTemplate}.get(item_type)
     try:
         oid = item_id if isinstance(item_id, uuid.UUID) else uuid.UUID(str(item_id))
     except (TypeError, ValueError):
@@ -191,10 +200,34 @@ def _course_booked_templates(db: Session, course: Course) -> list[Template]:
     return [t for t in dict.fromkeys(rows) if _in_item_scope(t, course)]
 
 
+def _exercise_template_dependencies(db: Session, row: ExerciseTemplate) -> list[Dependency]:
+    """The range template it names, the scenario it names, and the range template that
+    scenario names (range templates first). A reference this site cannot read leaves a
+    dependency with no title."""
+    templates: dict[str, Dependency] = {}
+    scenarios: dict[str, Dependency] = {}
+    if row.range_template_id is not None:
+        t = load(db, "range_template", row.range_template_id)
+        ok = t is not None and _in_item_scope(t, row)
+        templates[str(row.range_template_id)] = Dependency("range_template", str(row.range_template_id),
+                                                           t.name if ok else None)
+    if row.scenario_id is not None:
+        sc = load(db, "scenario", row.scenario_id)
+        if sc is None or not _in_item_scope(sc, row):
+            scenarios[str(row.scenario_id)] = Dependency("scenario", str(row.scenario_id), None)
+        else:
+            scenarios[str(row.scenario_id)] = Dependency("scenario", str(sc.id), sc.name)
+            for dep in dependencies(db, "scenario", sc):
+                templates.setdefault(dep.item_id, dep)
+    return [*templates.values(), *scenarios.values()]
+
+
 def dependencies(db: Session, item_type: str, row) -> list[Dependency]:
     """What ``row`` needs on the new site, range templates first."""
     if item_type == "range_template":
         return []
+    if item_type == "exercise_template":
+        return _exercise_template_dependencies(db, row)
     if item_type == "scenario":
         tmpl = scenario_template(db, row)
         ref = str(_doc(row.yaml).get("range_template") or "").strip()
@@ -318,6 +351,58 @@ def scenario_use(db: Session, sc: Scenario, scope: Scope) -> Condition:
     return Condition(USED, bool(ev), [] if ev else [_NO_USE], ev)
 
 
+NODE_KEYS = ("id", "type", "os", "name")
+
+
+def node_types(templates: list[Template]) -> set[str]:
+    """What a range template's nodes can be called: each node's id, type, os or name."""
+    out: set[str] = set()
+    for t in templates:
+        nodes = _doc(t.yaml).get("nodes")
+        for n in nodes if isinstance(nodes, list) else []:
+            if isinstance(n, dict):
+                out |= {str(n[k]) for k in NODE_KEYS if n.get(k)}
+    return out
+
+
+def sizing_problems(et: ExerciseTemplate, templates: list[Template]) -> list[str]:
+    """Roles and scaling rules must name node types the range template builds (ADR 0017): a VM
+    profile that points at nothing sizes nothing. Missing evidence never passes."""
+    known = node_types(templates)
+    wanted = [(f"Role {r.get('name')}", v.get("node_type")) for r in et.roles or [] for v in r.get("vm_profile") or []]
+    wanted += [(f"Scaling rule {r.get('name')}", r.get("node_type")) for r in et.scaling_rules or []]
+    names = ", ".join(t.name for t in templates)
+    return [f"{who} needs node type '{nt}', which range template {names} does not define"
+            for who, nt in wanted if nt not in known][:5]
+
+
+def effective_range_template(db: Session, et: ExerciseTemplate) -> Template | None:
+    """The range template an exercise from ``et`` runs on: the one it names, else the one its
+    scenario names."""
+    if et.range_template_id is not None:
+        return load(db, "range_template", et.range_template_id)
+    if et.scenario_id is not None:
+        sc = load(db, "scenario", et.scenario_id)
+        return scenario_template(db, sc) if sc is not None else None
+    return None
+
+
+def exercise_template_use(db: Session, et: ExerciseTemplate, scope: Scope) -> Condition:
+    """Exercises *made from the template as it is now* that completed with a passing score: made
+    from this revision, on a range built from the range template it runs on now. An edit (a new
+    revision, another range template) needs a new exercise to prove it again."""
+    want = effective_range_template(db, et)
+    if want is None:
+        return Condition(USED, False, ["It names no range template, so no exercise made from it ran on one"])
+    ev = _exercises(db, db.query(Exercise).join(ExerciseTemplateUse, ExerciseTemplateUse.exercise_id == Exercise.id)
+                    .join(Range, Range.id == Exercise.range_id)
+                    .filter(ExerciseTemplateUse.template_id == et.id,
+                            ExerciseTemplateUse.template_revision == et.revision, Range.template_id == want.id), scope)
+    return Condition(USED, bool(ev), [] if ev else [
+        "No exercise made from its current revision, on a range built from its range template, has completed with a "
+        "passing score yet"], ev)
+
+
 def course_use(db: Session, course: Course, scope: Scope) -> Condition:
     ev = _closed_classes(db, [cid for (cid,) in db.query(Class.id).filter(Class.course_id == course.id).all()], scope)
     return Condition(USED, bool(ev), [] if ev else ["No class of it has been closed with a passing Student yet"], ev)
@@ -340,7 +425,32 @@ def freshness(db: Session, item_type: str, item_id: str) -> Condition:
 
 
 # ── per item ────────────────────────────────────────────────────────────────────
-def status(db: Session, item_type: str, row, scope: Scope) -> Status:
+def _redact(db: Session, st: Status, viewer: uuid.UUID) -> Status:
+    """What ``viewer`` (a tenant) may read of ``st``: a dependency that is another tenant's private
+    content is not named, in the dependency list or in any reason."""
+    hidden: list[str] = []
+    for d in st.dependencies:
+        dep = load(db, d.item_type, d.item_id) if d.title is not None else None
+        if dep is not None and not visible(dep, viewer):
+            hidden.append(d.title)
+            d.title = f"a {LABELS[d.item_type]} that is not shared with you"
+    if hidden:
+        # Longest first (a name inside another hidden name), whatever the case, and only the whole
+        # name (not a word that merely contains it).
+        names = sorted({n for n in hidden if n}, key=len, reverse=True)
+        pattern = re.compile("|".join(rf"(?<!\w){re.escape(n)}(?!\w)" for n in names), re.IGNORECASE)
+        for c in st.conditions:
+            c.reasons = [pattern.sub("a private item", r) for r in c.reasons]
+    return st
+
+
+def status(db: Session, item_type: str, row, scope: Scope, viewer: uuid.UUID | None = None) -> Status:
+    """``viewer``: the reading tenant (None: the platform administrator, who reads every name)."""
+    st = _status(db, item_type, row, scope)
+    return st if viewer is None else _redact(db, st, viewer)
+
+
+def _status(db: Session, item_type: str, row, scope: Scope) -> Status:
     deps = dependencies(db, item_type, row)
     builds: list[dict] = []
     if item_type == "range_template":
@@ -356,7 +466,7 @@ def status(db: Session, item_type: str, row, scope: Scope) -> Status:
             cert = Condition(CERTIFIED, False, [
                 f"It needs {LABELS[d.item_type]} {d.item_id}, which is missing here, deleted, or not shared with "
                 f"its tenant" for d in broken[:5]])
-        elif item_type == "scenario" and not templates:
+        elif item_type in ("scenario", "exercise_template") and not templates:
             cert = Condition(CERTIFIED, False, ["It names no range template this site has, so no range was built "
                                                 "from it"])
         elif not templates:
@@ -370,7 +480,13 @@ def status(db: Session, item_type: str, row, scope: Scope) -> Status:
                 if not c.met:
                     cert.met = False
                     cert.reasons += [f"Range template {t.name}: {r}" for r in c.reasons]
-        use = scenario_use(db, row, scope) if item_type == "scenario" else course_use(db, row, scope)
+        use = {"scenario": scenario_use, "exercise_template": exercise_template_use,
+               "course": course_use}[item_type](db, row, scope)
+        if item_type == "exercise_template" and templates:
+            problems = sizing_problems(row, templates)
+            if problems:  # a role or rule that names a machine the range template does not build
+                cert.met = False
+                cert.reasons += problems
     fresh = freshness(db, item_type, str(row.id))
     unique = {(b["catalogue_id"], b["build_id"], b["checksum"]): b for b in builds}
     return Status(item_type=item_type, item_id=str(row.id), title=row.name, conditions=[cert, use, fresh],
@@ -396,7 +512,7 @@ def closure(db: Session, roots: list[tuple[str, object]]) -> tuple[list[tuple[st
                 broken.append(d)
                 continue
             queue.append((d.item_type, dep))
-    order = {"range_template": 0, "scenario": 1, "course": 2}
+    order = {"range_template": 0, "scenario": 1, "course": 2, "exercise_template": 3}
     items = sorted(found.items(), key=lambda kv: (order[kv[0][0]], kv[1].name or "", kv[0][1]))
     return [(k[0], row) for k, row in items], broken
 

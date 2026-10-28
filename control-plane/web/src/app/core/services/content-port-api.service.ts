@@ -16,7 +16,7 @@ export type PortSigningKey = S['PortSigningKeyOut'];
 export type PortItemType = ProvenStatus['item_type'];
 
 /** The content types that are ported (and so get a Proven chip). */
-export const PORTABLE_TYPES: readonly string[] = ['course', 'range_template', 'scenario'];
+export const PORTABLE_TYPES: readonly string[] = ['course', 'range_template', 'scenario', 'exercise_template'];
 
 export interface PortTarget {
   tenantId?: string | null;
