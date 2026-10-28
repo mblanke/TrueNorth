@@ -58,6 +58,9 @@ control-plane/web/devtools-shots/
 # ARC² staging: every /arc2 run writes here and only here; promotion is a human PR
 build/arc2/
 
+# PDFs of the role guides (scripts/build_guides_pdf.sh)
+build/guides-pdf/
+
 # Integration / e2e lane output (scripts/itest.sh, ci.yml integration, moodle, vsphere-sim, e2e)
 build/itest/
 build/moodle/
@@ -74,8 +77,12 @@ tests/e2e/test-results/
 install/files/*.cer
 install/files/*.crt
 install/files/*.pem
+install/files/*.pub
 install/files/tls/*
 !install/files/tls/.gitkeep
+# A site's own inventory and vaulted smoke-test account (docs/guides/02-install-guide.md §5)
+/install/inventory/site.yml
+/install/smoke.yml
 
 # Controlled / third-party reference documents. Keep on the accredited host only; never
 # commit them (removed from the tree for v1.0.0). Repo-authored docs are Markdown.

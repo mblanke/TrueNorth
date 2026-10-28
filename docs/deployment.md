@@ -1,16 +1,19 @@
-# TrueNorth Range — Deployment Guide
+# TrueNorth Range — Deployment reference
 
-> Production deployment guide covering Docker Compose, Kubernetes Helm, SSL/TLS, database, monitoring, backup, and troubleshooting.
+> What the deployed platform is made of, and where each part is configured. To install
+> TrueNorth, follow the role guides instead.
 
 ---
 
-## Start here: the automated installer
+## Start here: the guides and the installer
 
-**For a vSphere deployment, do not follow this guide by hand — use
-[`install/`](../install/README.md).** It is an Ansible package that takes the
-platform host from bare Ubuntu 24.04 with `/srv/truenorth` empty (it installs a pinned
-Docker; `tn_install_docker`) to a running,
-AD-federated TrueNorth, and it handles several things that are easy to get
+**To install TrueNorth, follow [02 — Install guide](guides/02-install-guide.md)** (after
+[01 — Site prerequisites](guides/01-site-prerequisites.md)), and to run it,
+[06 — Operations runbook](guides/06-operations-runbook.md). The guides drive the Ansible
+installer in [`install/`](../install/README.md), whose README is the reference for every
+installer variable. Do not deploy by hand. The installer takes the platform host from bare
+Ubuntu 24.04 with `/srv/truenorth` empty (it installs a pinned Docker; `tn_install_docker`)
+to a running, AD-federated TrueNorth, and it handles several things that are easy to get
 wrong manually:
 
 - **Migration ordering.** `app/main.py`'s lifespan calls
@@ -18,7 +21,7 @@ wrong manually:
   the API up before Alembic on a fresh database and the migration dies on
   `DuplicateTable`. The installer brings up Postgres alone, migrates in a
   one-shot container, then starts everything else — and sets `DB_AUTO_CREATE=false`.
-- **The Keycloak claim contract.** Trainee registration reads AD group
+- **The Keycloak claim contract.** Registration reads AD group
   membership out of the access token. Miss the group-membership mapper and
   nothing errors; the platform simply loses half its input forever. See
   [identity.md](identity.md#the-claim-contract).
@@ -26,11 +29,13 @@ wrong manually:
   `POSTGRES_PASSWORD` would lock you out of your own database.
 - **The env file location.** The installer writes the real env file to
   `/srv/truenorth/config/`, outside the git checkout. `infra/platform/docker/.env.production`
-  is git-ignored (it was tracked, holding placeholder values, until 2026-10-05); start a
-  manual deployment from `.env.production.example`.
+  is git-ignored (it was tracked, holding placeholder values, until 2026-10-05).
+  `.env.production.example` documents the settings; the installer renders the real file.
 
-This guide remains the reference for what each component is, for Kubernetes, and
-for operating the stack after it is up.
+This page keeps only what the guides and `install/README.md` do not: pointers for
+Kubernetes, the Keycloak clients, metrics exposure and a few API settings. Hardware sizing
+is in guide 01; backups, upgrades and troubleshooting are in guide 06. A development stack
+(`compose.dev.yml`) is described in [development.md](development.md).
 
 > **Note on `PROVISIONER_BACKEND`:** the valid values are the registry keys in
 > `worker/provisioners/__init__.py` — `mock` and `vsphere_api` (supported), and
@@ -41,176 +46,31 @@ for operating the stack after it is up.
 
 ---
 
-## Table of Contents
+## Contents
 
-- [Prerequisites](#prerequisites)
-- [Hardware Requirements](#hardware-requirements)
-- [Docker Compose Deployment](#docker-compose-deployment)
+- [What runs where](#what-runs-where)
 - [Kubernetes Helm Deployment](#kubernetes-helm-deployment)
-- [SSL/TLS Configuration](#ssltls-configuration)
-- [Database Setup](#database-setup)
-- [Redis Configuration](#redis-configuration)
-- [MinIO Setup](#minio-setup)
-- [OpenSearch Cluster Setup](#opensearch-cluster-setup)
 - [Keycloak Realm Configuration](#keycloak-realm-configuration)
-- [AI Orchestrator Fleet Setup](#ai-orchestrator-fleet-setup)
-- [Monitoring Stack](#monitoring-stack)
-- [Backup Configuration](#backup-configuration)
-- [Health Check Endpoints](#health-check-endpoints)
-- [Environment Variables Reference](#environment-variables-reference)
+- [Metrics exposure](#metrics-exposure)
+- [Backups](#backups)
+- [Health check endpoints](#health-check-endpoints)
+- [API settings worth knowing](#api-settings-worth-knowing)
 - [Troubleshooting](#troubleshooting)
 
 ---
 
-## Prerequisites
+## What runs where
 
-- **Docker Engine** 24+ and **Docker Compose** v2.24+
-- **Python** 3.11+ (for CLI tools and local development)
-- **Node.js** 20+ (for Angular frontend builds)
-- **Terraform** 1.7+ (for Proxmox infrastructure provisioning)
-- **Packer** 1.10+ (for VM template building)
-- **(Optional)** Proxmox VE 8.x cluster with API access
-- **(Optional)** GPU-equipped nodes for local Ollama LLM inference
-- **(Optional)** Kubernetes 1.28+ cluster with Helm 3.12+
-
----
-
-## Hardware Requirements
-
-### Development (10 users)
-
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| CPU | 4 cores | 8 cores |
-| RAM | 16 GB | 32 GB |
-| Disk | 100 GB SSD | 250 GB NVMe |
-| Network | 1 Gbps | 1 Gbps |
-
-### Staging (100 users)
-
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| CPU | 16 cores | 32 cores |
-| RAM | 64 GB | 128 GB |
-| Disk | 500 GB NVMe | 1 TB NVMe |
-| Network | 10 Gbps | 10 Gbps |
-| Proxmox Nodes | 2 | 3 |
-
-### Production (1,000+ users)
-
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| API Servers | 3 instances, 8 cores / 32 GB each | 5 instances, 16 cores / 64 GB each |
-| Database | Primary + 1 replica, 16 cores / 64 GB | Primary + 2 replicas, 32 cores / 128 GB |
-| Redis | 3-node Sentinel, 8 GB each | 3-node Sentinel, 16 GB each |
-| OpenSearch | 3-node cluster, 32 GB each | 5-node cluster, 64 GB each |
-| Celery Workers | 5 workers, 8 cores / 16 GB each | 10 workers, 16 cores / 32 GB each |
-| Proxmox Cluster | 5+ nodes, 64 cores / 256 GB each | 10+ nodes, 128 cores / 512 GB each |
-| Storage | 10 TB distributed | 50 TB distributed |
-| Network | 25 Gbps spine/leaf | 100 Gbps spine/leaf |
-
----
-
-## Docker Compose Deployment
-
-### Development (Quick Start)
-
-```bash
-cd infra/platform/docker
-
-# Core services only
-docker compose -f compose.dev.yml up -d
-
-# Verify all services are running
-docker compose -f compose.dev.yml ps
-
-# Check API health
-curl http://localhost:8080/health
-```
-
-**Services launched:**
-
-| Service | Container | Port | URL |
-|---------|-----------|------|-----|
-| Control Plane API | tn-api | 8080 | http://localhost:8080 |
-| Celery Worker | tn-worker | -- | -- |
-| PostgreSQL | tn-postgres | 5432 | -- |
-| Redis | tn-redis | 6379 | -- |
-| OpenSearch | tn-opensearch | 9200 | http://localhost:9200 |
-| OpenSearch Dashboards | tn-dashboards | 5602 | http://localhost:5602 |
-| Keycloak | tn-keycloak | 8180 | http://localhost:8180 |
-| MinIO | tn-minio | 9000/9001 | http://localhost:9001 |
-| AI Orchestrator | tn-ai | 6000 | http://localhost:6000 |
-
-### With HELK (Threat Hunting) Overlay
-
-```bash
-docker compose -f compose.dev.yml \
-               -f compose.helk.yml up -d
-```
-
-Adds: Elasticsearch, Logstash, Kibana (5601), Kafka, Spark/Jupyter.
-
-### With Velociraptor Overlay
-
-```bash
-docker compose -f compose.dev.yml \
-               -f compose.velociraptor.yml up -d
-```
-
-Adds: Velociraptor server with agent management.
-
-### Full Stack (All Overlays)
-
-```bash
-docker compose -f compose.dev.yml \
-               -f compose.helk.yml \
-               -f compose.velociraptor.yml up -d
-```
-
-> **Warning:** Full stack requires 32+ GB RAM minimum.
-
-### Staging with Docker Compose
-
-For staging deployments, create a `compose.staging.yml` override:
-
-```yaml
-# compose.staging.yml
-services:
-  api:
-    environment:
-      AUTH_DISABLED: "false"
-      KEYCLOAK_URL: "https://keycloak.staging.truenorth.local"
-    deploy:
-      replicas: 2
-      resources:
-        limits:
-          cpus: "4"
-          memory: 8G
-
-  worker:
-    deploy:
-      replicas: 3
-      resources:
-        limits:
-          cpus: "4"
-          memory: 8G
-
-  postgres:
-    volumes:
-      - pgdata_staging:/var/lib/postgresql/data
-    environment:
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
-
-volumes:
-  pgdata_staging:
-    driver: local
-```
-
-```bash
-docker compose -f compose.dev.yml \
-               -f compose.staging.yml up -d
-```
+One Ubuntu 24.04 VM runs the whole platform as the Docker Compose project
+`infra/platform/docker/compose.prod.yml`, deployed by digest from a signed release
+([release.md](release.md)); ranges are built on vSphere through vCenter by the
+`vsphere_api` provisioner. Sizing, networks and accounts: [guide 01](guides/01-site-prerequisites.md).
+The containers, networks, data paths and production settings are described in
+[`install/README.md`](../install/README.md) ("Networks and exposure", "Production settings",
+"OpenSearch", "Runtime hardening"). There is no supported Proxmox, Terraform or Ollama
+deployment path: the Terraform backends were removed (ADR 0009), and AI is any
+OpenAI-compatible endpoint, normally LiteLLM in front of vLLM on a GPU node
+([guide 02 Appendix C](guides/02-install-guide.md#appendix-c--add-a-gpu-ai-node)).
 
 ---
 
@@ -221,246 +81,6 @@ The Helm chart and its documentation live with the chart under `infra/k8s/`. Fol
 image digests), install, upgrade and the smoke install CI runs. This guide no longer
 carries a copy of the values; the chart's README is the only reference, so the two
 cannot drift.
-
----
-
-## SSL/TLS Configuration
-
-### With cert-manager (Kubernetes)
-
-```yaml
-# cluster-issuer.yaml
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: letsencrypt-prod
-spec:
-  acme:
-    server: https://acme-v02.api.letsencrypt.org/directory
-    email: admin@truenorth.example.com
-    privateKeySecretRef:
-      name: letsencrypt-prod
-    solvers:
-      - http01:
-          ingress:
-            class: nginx
-```
-
-### Manual TLS (Docker Compose)
-
-```bash
-# Generate self-signed certs (development only)
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout certs/truenorth.key \
-  -out certs/truenorth.crt \
-  -subj "/CN=truenorth.local"
-
-# Or use Let's Encrypt with certbot
-certbot certonly --standalone -d truenorth.example.com
-```
-
-Configure nginx reverse proxy:
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name truenorth.example.com;
-
-    ssl_certificate     /etc/nginx/certs/truenorth.crt;
-    ssl_certificate_key /etc/nginx/certs/truenorth.key;
-    ssl_protocols       TLSv1.2 TLSv1.3;
-    ssl_ciphers         HIGH:!aNULL:!MD5;
-
-    location / {
-        proxy_pass http://api:8080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location /ws {
-        proxy_pass http://api:8080/ws;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
-```
-
----
-
-## Database Setup
-
-### PostgreSQL with PgBouncer (Production)
-
-**PostgreSQL 16 Configuration (`postgresql.conf`):**
-
-```ini
-# Connection settings
-max_connections = 200
-listen_addresses = '*'
-
-# Memory
-shared_buffers = 4GB               # 25% of available RAM
-effective_cache_size = 12GB         # 75% of available RAM
-work_mem = 64MB
-maintenance_work_mem = 512MB
-
-# WAL
-wal_level = replica
-max_wal_senders = 5
-wal_keep_size = 2GB
-
-# Performance
-random_page_cost = 1.1              # SSD storage
-effective_io_concurrency = 200
-```
-
-**PgBouncer Configuration (`pgbouncer.ini`):**
-
-```ini
-[databases]
-truenorth_range = host=postgres port=5432 dbname=truenorth_range
-
-[pgbouncer]
-listen_port = 6432
-listen_addr = 0.0.0.0
-auth_type = scram-sha-256
-pool_mode = transaction
-max_client_conn = 1000
-default_pool_size = 25
-min_pool_size = 5
-reserve_pool_size = 5
-server_idle_timeout = 300
-```
-
-### Database Migrations (Alembic)
-
-```bash
-# Initialize migrations (first time)
-cd control-plane/api
-alembic init alembic
-
-# Generate migration from model changes
-alembic revision --autogenerate -m "Add new column"
-
-# Apply migrations
-alembic upgrade head
-
-# Rollback one step
-alembic downgrade -1
-```
-
----
-
-## Redis Configuration
-
-### Production Redis Sentinel
-
-```yaml
-# docker-compose Redis Sentinel setup
-services:
-  redis-master:
-    image: redis:7-alpine
-    command: redis-server --maxmemory 2gb --maxmemory-policy allkeys-lru
-    volumes:
-      - redis-data:/data
-
-  redis-sentinel:
-    image: redis:7-alpine
-    command: redis-sentinel /etc/redis/sentinel.conf
-    volumes:
-      - ./redis-sentinel.conf:/etc/redis/sentinel.conf
-```
-
-**sentinel.conf:**
-```
-sentinel monitor truenorth redis-master 6379 2
-sentinel down-after-milliseconds truenorth 5000
-sentinel failover-timeout truenorth 60000
-sentinel parallel-syncs truenorth 1
-```
-
----
-
-## MinIO Setup
-
-### Production Multi-Node Configuration
-
-```bash
-# Create MinIO cluster (4 nodes, 4 drives each)
-minio server http://minio{1...4}/data{1...4} \
-  --console-address ":9001"
-
-# Create required buckets
-mc alias set truenorth http://minio:9000 minioadmin minioadmin
-mc mb truenorth/truenorth-artifacts
-mc mb truenorth/truenorth-reports
-mc mb truenorth/truenorth-templates
-mc mb truenorth/truenorth-packer-images
-```
-
-### Bucket Policies
-
-| Bucket | Policy | Purpose |
-|--------|--------|---------|
-| `truenorth-artifacts` | Private | Exercise artifacts, evidence uploads |
-| `truenorth-reports` | Private | AAR HTML/PDF reports |
-| `truenorth-templates` | Read-only for users | Packer and Terraform templates |
-| `truenorth-packer-images` | Private | VM disk images |
-
----
-
-## OpenSearch Cluster Setup
-
-### Production 3-Node Cluster
-
-```yaml
-# docker-compose OpenSearch cluster
-services:
-  opensearch-node1:
-    image: opensearchproject/opensearch:2.13.0
-    environment:
-      cluster.name: truenorth-cluster
-      node.name: opensearch-node1
-      discovery.seed_hosts: opensearch-node1,opensearch-node2,opensearch-node3
-      cluster.initial_cluster_manager_nodes: opensearch-node1,opensearch-node2,opensearch-node3
-      OPENSEARCH_JAVA_OPTS: "-Xms16g -Xmx16g"
-    volumes:
-      - opensearch-data1:/usr/share/opensearch/data
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-```
-
-### Index Template
-
-```json
-{
-  "index_patterns": ["tn-range-*"],
-  "template": {
-    "settings": {
-      "number_of_shards": 3,
-      "number_of_replicas": 1,
-      "refresh_interval": "5s"
-    },
-    "mappings": {
-      "properties": {
-        "timestamp": { "type": "date" },
-        "tenant_id": { "type": "keyword" },
-        "range_id": { "type": "keyword" },
-        "event.action": { "type": "keyword" },
-        "process.name": { "type": "keyword" },
-        "process.command_line": { "type": "text" },
-        "host.name": { "type": "keyword" },
-        "source": { "type": "keyword" }
-      }
-    }
-  }
-}
-```
 
 ---
 
@@ -490,95 +110,14 @@ console is 404 at the edge unless the client is in `management-cidrs.conf`.
 
 ---
 
-## AI Orchestrator Fleet Setup
+## Metrics exposure
 
-### Single Backend (OpenAI)
+The installed stack runs Prometheus, Alertmanager, Grafana and the exporters itself
+(`compose.prod.yml`, network `tn-monitoring`); the alert rules and what to do about each are
+in [operations.md](operations.md#alert-rules). Flower is at `https://<tn-fqdn>/flower/` for
+the management networks only (`infra/platform/nginx/snippets/management-cidrs.conf`).
 
-```bash
-AI_BACKEND=openai
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
-```
-
-### Multi-Backend (Fallback Chain)
-
-```bash
-AI_BACKEND=fleet
-AI_PRIMARY_BACKEND=openai
-AI_FALLBACK_BACKEND=anthropic
-AI_FINAL_FALLBACK=mock
-
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-### Ollama Fleet (Self-Hosted LLMs)
-
-```bash
-AI_BACKEND=ollama
-OLLAMA_NODES=http://gpu-node-1:11434,http://gpu-node-2:11434,http://gpu-node-3:11434
-
-# Tag-based model selection per capability
-OLLAMA_DETECTION_MODEL=codellama:7b
-OLLAMA_SCENARIO_MODEL=llama3:70b
-OLLAMA_AAR_MODEL=mixtral:8x7b
-OLLAMA_DEFAULT_MODEL=llama3:8b
-```
-
-**GPU Node Requirements:**
-
-| Model Size | GPU VRAM | Recommended GPU |
-|-----------|----------|-----------------|
-| 7B params | 8 GB | RTX 3070 / A10 |
-| 13B params | 16 GB | RTX 4090 / A16 |
-| 70B params | 40 GB | A100 40GB |
-| 8x7B (MoE) | 48 GB | A100 80GB / 2xA6000 |
-
----
-
-## Monitoring Stack
-
-### Deployment
-
-```bash
-# Deploy monitoring stack
-docker compose -f compose.dev.yml -f compose.monitoring.yml up -d
-```
-
-### OpenSearch Dashboards
-
-- **URL:** http://localhost:5602
-- **Purpose:** Telemetry visualization, range event exploration
-- **Pre-built dashboards:**
-  - Range Telemetry Overview
-  - Exercise Event Timeline
-  - Detection Rule Hits
-  - Scenario Injection Map
-
-### Celery Flower (Worker Monitoring)
-
-```bash
-pip install flower
-celery -A worker.celery_app flower --port=5555
-```
-
-- **URL:** http://localhost:5555
-- **Monitors:** Task queue depth, worker utilization, task failure rates
-
-### Application Metrics
-
-The API exposes Prometheus-compatible metrics at `/metrics`:
-
-| Metric | Type | Description |
-|--------|------|-------------|
-| `http_requests_total` | Counter | Total HTTP requests by method and status |
-| `http_request_duration_seconds` | Histogram | Request latency |
-| `websocket_connections_active` | Gauge | Active WebSocket connections |
-| `celery_tasks_total` | Counter | Total Celery tasks by name and state |
-| `ranges_by_state` | Gauge | Current ranges per state |
-| `exercises_active` | Gauge | Active exercise count |
-
-**Exposure.** Scrape `/metrics` on the internal network (`api:8080/metrics`). The bundled
+The API exposes Prometheus metrics at `/metrics`. Scrape `/metrics` on the internal network (`api:8080/metrics`). The bundled
 nginx configs (`control-plane/web/nginx.conf`, `infra/platform/nginx/conf.d/truenorth.conf`)
 answer `404` for `/api/metrics` and `/api/v1/metrics`. Under Helm the ingress forwards the
 whole `/api` prefix, so set `METRICS_SCRAPE_TOKEN` on the API there (or wherever the API is
@@ -589,182 +128,60 @@ raw path; requests that match no route are labelled `unmatched`.
 
 ---
 
-## Backup Configuration
+## Backups
 
-### Automated Backup Schedule
-
-| Component | Frequency | Retention | Method |
-|-----------|-----------|-----------|--------|
-| PostgreSQL | Every 6 hours | 30 days | pg_dump + S3 upload |
-| MinIO | Daily | 90 days | mc mirror to remote |
-| OpenSearch | Daily snapshots | 14 days | Snapshot repository |
-| Keycloak | Daily export | 30 days | Realm JSON export |
-| Configuration | On change | Indefinite | Git repository |
-
-### PostgreSQL Backup Script
-
-```bash
-#!/bin/bash
-# /scripts/backup-postgres.sh
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_FILE="truenorth_backup_${TIMESTAMP}.sql.gz"
-
-# Dump and compress
-docker exec tn-postgres pg_dump -U truenorth truenorth_range | gzip > "/backups/${BACKUP_FILE}"
-
-# Upload to MinIO
-mc cp "/backups/${BACKUP_FILE}" minio/truenorth-backups/postgres/
-
-# Cleanup local files older than 7 days
-find /backups -name "truenorth_backup_*.sql.gz" -mtime +7 -delete
-
-echo "Backup completed: ${BACKUP_FILE}"
-```
-
-### Restore Procedures
-
-```bash
-# PostgreSQL restore
-gunzip < truenorth_backup_20260115.sql.gz | docker exec -i tn-postgres psql -U truenorth truenorth_range
-
-# MinIO restore
-mc mirror minio-backup/truenorth-artifacts /restore/artifacts/
-
-# OpenSearch snapshot restore
-curl -X POST "http://opensearch:9200/_snapshot/backup/snapshot_20260115/_restore"
-```
+Nightly, encrypted secrets escrow, copied off the host, with a restore drill:
+[guide 06 §3](guides/06-operations-runbook.md#3-backup-restore-and-the-restore-drill) and
+[runbooks/backup-restore.md](runbooks/backup-restore.md).
 
 ---
 
-## Health Check Endpoints
+## Health check endpoints
 
-| Endpoint | Port | Expected Response |
-|----------|------|-------------------|
-| `GET /health` | 8080 | `{"status": "ok", "version": "1.0.0", "db": true}` |
-| `GET /` (OpenSearch) | 9200 | `{"cluster_name": "truenorth-cluster"}` |
-| `GET /health/ready` (Keycloak) | 8180 | `{"status": "UP"}` |
-| `GET /minio/health/live` | 9000 | HTTP 200 |
-| Redis `PING` | 6379 | `PONG` |
-
-### Docker Compose Healthchecks
-
-```yaml
-services:
-  api:
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  postgres:
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U truenorth"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-```
+Through the edge (`https://<tn-fqdn>`): `GET /api/health` (liveness and dependencies),
+`GET /api/health/ready` (database, Redis and OpenSearch; what the api container's healthcheck
+and `95-smoke-test` use) and `GET /api/health/deep`. On the host, `docker compose ps` shows
+every container's own healthcheck (guide 06, the `dc` helper).
 
 ---
 
-## Environment Variables Reference
+## API settings worth knowing
 
-### Control Plane API
+The installer renders every setting from its inventory (`install/README.md`, "Production
+settings"); production refuses to start with a missing or unsafe one and names it. A few
+that operators ask about:
 
 | Variable | Default | Required | Description |
 |----------|---------|----------|-------------|
-| `DATABASE_URL` | `postgresql+psycopg://truenorth:truenorth@postgres:5432/truenorth_range` | Yes | PostgreSQL connection string |
-| `REDIS_URL` | `redis://redis:6379/0` | Yes | Redis connection URL |
-| `AUTH_DISABLED` | `true` | No | Disable auth for development |
-| `KEYCLOAK_URL` | `http://keycloak:8080` | Prod | Keycloak base URL |
-| `KEYCLOAK_REALM` | `truenorth` | Prod | OIDC realm name |
-| `KEYCLOAK_CLIENT_ID` | `truenorth-api` | Prod | OIDC client ID |
-| `OPENSEARCH_URL` | `http://opensearch:9200` | Yes | OpenSearch connection URL |
-| `MINIO_ENDPOINT` | `minio:9000` | Yes | MinIO endpoint |
-| `MINIO_ACCESS_KEY` | `minioadmin` | Yes | MinIO access key |
-| `MINIO_SECRET_KEY` | `minioadmin` | Yes | MinIO secret key |
-| `CORS_ORIGINS` | `*` | Prod | Allowed CORS origins |
-| `LOG_LEVEL` | `INFO` | No | Logging level |
 | `TRUSTED_PROXY_CIDRS` | `127.0.0.0/8,::1/128,172.16.0.0/12` | Prod | Peers whose `X-Forwarded-For` is believed (comma-separated CIDRs; `none` ignores the header). Set it to your reverse proxies' addresses. Auth-zone IP allowlists, the rate limiter and `NOISE_AGENT_CIDRS` all use the resulting address. The bundled nginx configs overwrite `X-Forwarded-For` with `$remote_addr`; a proxy in front of them must be added to `set_real_ip_from` in `infra/platform/nginx/nginx.conf`. |
 | `NOISE_AGENT_CIDRS` | -- | Recommended | Management network(s) noise agents call from; `/noise/agent/*` answers 403 to anyone else. nginx does not filter this path itself: put an `allow`/`deny` `location ^~ /api/noise/agent/` in front if you want it refused at the edge too. |
 | `METRICS_SCRAPE_TOKEN` | -- | Helm | When set, `/metrics` requires `Authorization: Bearer <token>`. |
 | `SCHEDULER_FEED_BASE_URL` | -- | Prod | Public origin of calendar-feed URLs (`https://range.example`). Unset, the API uses the request's own `Host` and, with auth on, logs a warning at startup; `X-Forwarded-Host` is never used. |
 
-### Celery Worker
-
-| Variable | Default | Required | Description |
-|----------|---------|----------|-------------|
-| `PROVISIONER_BACKEND` | `mock` | No | `mock` or `vsphere_api`; experimental: `proxmox_api`, `hyperv` |
-| `EXPERIMENTAL_PROVISIONERS` | `false` | No | `true` allows the experimental `proxmox_api` and `hyperv` backends (API and workers) |
-| `PROXMOX_URL` | -- | proxmox_api | Proxmox API endpoint (experimental backend) |
-| `PROXMOX_TOKEN_ID` | -- | proxmox_api | Proxmox API token ID |
-| `PROXMOX_TOKEN_SECRET` | -- | proxmox_api | Proxmox API secret |
-| `CELERY_BROKER_URL` | `redis://redis:6379/0` | Yes | Celery broker URL |
-| `CELERY_RESULT_BACKEND` | `redis://redis:6379/1` | Yes | Result backend URL |
-
-### AI Orchestrator
-
-| Variable | Default | Required | Description |
-|----------|---------|----------|-------------|
-| `AI_BACKEND` | `mock` | No | Backend type: `openai`, `anthropic`, `ollama`, `fleet`, `mock` |
-| `OPENAI_API_KEY` | -- | If OpenAI | OpenAI API key |
-| `OPENAI_MODEL` | `gpt-4o-mini` | No | Default OpenAI model |
-| `ANTHROPIC_API_KEY` | -- | If Anthropic | Anthropic API key |
-| `OLLAMA_NODES` | -- | If Ollama | Comma-separated Ollama node URLs |
-| `AI_REQUEST_TIMEOUT` | `60` | No | LLM request timeout (seconds) |
+The provisioner (`PROVISIONER_BACKEND`, installer `tn_provisioner_backend`) and every
+`VSPHERE_*` setting are rendered from the installer's `tn_vsphere_*` variables
+(`install/inventory/group_vars/all/main.yml`); the AI orchestrator's endpoint and models
+from `tn_ai_*` ("AI (optional)" in `install/README.md`).
 
 ---
 
 ## Troubleshooting
 
-### Common Issues
-
-| Symptom | Cause | Solution |
-|---------|-------|----------|
-| API returns 500 on startup | Database not ready | Wait for PostgreSQL healthcheck, check `DATABASE_URL` |
-| Celery tasks stuck in pending | Redis not reachable | Check Redis connectivity, verify `CELERY_BROKER_URL` |
-| OpenSearch returns 503 | Cluster not formed | Check node discovery settings, verify JVM heap |
-| Keycloak login fails | CORS configuration | Add frontend URL to Keycloak client web origins |
-| WebSocket disconnects | Reverse proxy timeout | Set `proxy_read_timeout 3600s` in nginx |
-| Range provisioning fails | Proxmox API unreachable | Check `PROXMOX_API_URL`, verify API token permissions |
-| AI endpoints timeout | LLM backend slow | Increase `AI_REQUEST_TIMEOUT`, check model availability |
-| MinIO upload fails | Bucket doesn't exist | Run `mc mb truenorth/truenorth-artifacts` |
-| Database migration fails | Schema drift | Run `alembic stamp head`, then `alembic upgrade head` |
-| Permission denied (403) | Wrong role | Check user role in Keycloak, verify RBAC mapping |
-
-### Diagnostic Commands
+Common failures and their fixes are in
+[guide 06 §5](guides/06-operations-runbook.md#5-common-failures-and-their-fixes); runtime
+incidents in [runbooks/incident.md](runbooks/incident.md). On the host, with the compose
+project the installer started:
 
 ```bash
-# Check all container statuses
-docker compose -f compose.dev.yml ps
+cd /srv/truenorth/app/infra/platform/docker
+docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.production ps
+docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.production logs --tail 100 api
+docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.production logs --tail 100 worker-provision
 
-# View API logs
-docker compose -f compose.dev.yml logs -f api
-
-# View worker logs
-docker compose -f compose.dev.yml logs -f worker
-
-# Check PostgreSQL connectivity
-docker exec tn-postgres pg_isready -U truenorth
-
-# Check Redis connectivity
-docker exec tn-redis redis-cli ping
-
-# Check OpenSearch cluster health
-curl -s http://localhost:9200/_cluster/health | python -m json.tool
-
-# Check Celery worker status
-celery -A worker.celery_app inspect active
-
-# Check Keycloak's realm is up (OIDC discovery; no credentials needed).
+# Keycloak's realm is up (OIDC discovery; no credentials needed).
 # Do not test with grant_type=password: the password grant is off on every user client.
-curl -s "https://<site>/auth/realms/truenorth/.well-known/openid-configuration" | python -m json.tool
+curl -s "https://<tn-fqdn>/auth/realms/truenorth/.well-known/openid-configuration" | python3 -m json.tool
 ```
+
+Never "fix" a migration failure with `alembic stamp`: the installer stops and asks instead
+(`install/README.md`, "The migration hazard").
