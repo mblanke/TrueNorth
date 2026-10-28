@@ -1,0 +1,180 @@
+# RMC C210 - Cloud-Native Defense - staff-only instructor pack.
+# Answer keys, expected range values and lab setup live here, never in the course file.
+
+course_code: RMC C210
+audience: staff_only
+overview: 'Cloud-Native Defense is an intermediate course of six 60-minute modules for Students who have
+  completed RMC C203. Each module follows the same split: 15 minutes of teaching, 35 minutes of lab on the
+  cloud-security range, and 10 minutes of quiz. Module 1 maps the estate and its attack surface; modules 2
+  to 4 work identity, orchestrator and supply chain controls on the same range; module 5 investigates
+  runtime detections; module 6 integrates the earlier findings into an operating model. Students hand in
+  the recorded evidence named in each lab brief: service and rule listings, finding marks with reasons, and
+  the model proposed in module 6. Each module ends with a five-item quiz passed at 70 percent.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach, 35 lab (5 connect, 20 enumerate, 10 rank and justify), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach, 35 lab (5 connect, 20 collect identities and policies, 10 mark and judge), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach, 35 lab (5 connect, 20 audit bindings and pods, 10 marks and detection review), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach, 35 lab (5 connect, 20 check repository, registry, build and delivery hosts, 10 judge), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach, 35 lab (5 connect, 20 collect runtime, network and pod evidence, 10 triage and contain), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach, 35 lab (5 connect, 20 assess posture and log coverage, 10 design the model), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: immutable infrastructure replaces running instances instead of modifying them, so changes
+    an attacker made do not survive replacement; A assumes history is kept (it is not), C confuses
+    immutability with encryption, D describes network policy, not image replacement. Q2 D: a sidecar proxy
+    and the mesh control plane are new components that make and enforce decisions, so they are new trust
+    boundaries; A and C are endpoints that existed before the mesh, B is physical, not introduced by the
+    mesh. Q3 A: ephemerality means the workload may be replaced at any time, taking local evidence with it;
+    B is false while the pod runs, C is about signing, D overstates - central logs survive. Q4 C:
+    microservices turn internal calls into network calls, so each service needs its own authentication and
+    authorisation; A is the opposite of the consequence, B is not generally true, D describes unpatchable
+    images, not microservices. Q5 B: the control plane changes routing and policy for every service behind
+    the mesh, so it is a high-value target; A and C confuse it with data stores, D is false.'
+- module: 2
+  notes: 'Q1 C: mutual TLS proves both sides hold a trusted identity; it does not decide what the caller
+    may do, which is authorisation; A reverses the two, B confuses identity with health, D is wrong because
+    the handshake does authenticate both sides. Q2 A: in a mesh the sidecar proxy terminates mutual TLS for
+    the workload; B describes a library-mTLS design, C is a boundary firewall, D signs certificates and
+    does not terminate connections. Q3 D: short-lived identities that rotate automatically shrink the
+    window a stolen credential is useful; A and C are detective, not preventive, B does not shorten the
+    window. Q4 B: when many legitimate services share a network path, a network rule cannot distinguish the
+    intended caller, so identity is the meaningful boundary; A and D overstate, C confuses encryption with
+    access decisions. Q5 A: manual renewal cannot keep pace and expired certificates cause outages and
+    insecure workarounds; B is impossible with a public key, C is wrong because a certificate authority is
+    still needed, D is a distractor - private keys do not expire, certificates do.'
+- module: 3
+  notes: 'Q1 D: privileged mode plus a shared host PID namespace exposes host resources and other
+    workloads'' processes to the container; A describes the default isolation it breaks, B and C name other
+    cluster assets the setting does not grant. Q2 B: a binding that grants cluster administration to a
+    single-purpose service account is excessive privilege and should be reduced to the dashboard''s actual
+    needs; A and C accept it without justification, D assumes network location substitutes for authorisation.
+    Q3 C: a pod inherits the mounted service account token, so a compromised pod gains whatever API access
+    that account''s roles grant; A overstates to node-level control, B confuses image access with API
+    access, D is false because tokens can be revoked and rotated. Q4 A: API server auditing with records
+    shipped off the cluster is what makes attacker requests visible; B restricts reach but does not record,
+    C is an annual review, D tests images before deployment. Q5 D: a new pod requesting privileged mode and
+    an unneeded host mount is the strongest signal of abuse; A and B are routine authorised activity, C is
+    controller behaviour.'
+- module: 4
+  notes: 'Q1 A: a compromised build service injects changes into artefacts that carry valid build output and
+    pass every downstream trust check; B assumes signatures would fail (they would not, the build signs its
+    own output), C and D underestimate what the build service controls. Q2 C: an attestation records
+    verifiable claims about the source, builder and instructions that produced the artefact; A confuses
+    approval records, B describes runtime behaviour, D describes a licence report. Q3 B: verifying at
+    deployment confirms what actually deploys is what was built and approved, closing the gap where a tag is
+    swapped between build and deploy; A is false, C and D name benefits verification does not provide.
+    Q4 D: a software bill of materials checked continuously against new disclosures maps a new vulnerability
+    to running deployments; A slows release without mapping dependencies, B and C do not locate affected
+    services. Q5 C: pipeline credentials should be short-lived, single-purpose and auditable; A and B widen
+    the blast radius of a leak, D puts credentials in the repository, which the module''s lab shows is
+    exposed.'
+- module: 5
+  notes: 'Q1 C: reading the host process table plus an outbound connection no other workload makes is
+    runtime behaviour consistent with container escape; A and B read the signals as routine, D assumes a
+    scheduled job without evidence. Q2 D: deleting the pod achieves little when the orchestrator schedules a
+    replacement from the same image, which may be compromised again; A closes nothing, B is false - the
+    deleted pod''s local evidence is gone, C overstates, deletion does not stop the service. Q3 A: logs,
+    process state and network records captured before replacement preserve the most evidence; B waits for
+    the loss, C images the host after the workload is gone, D is not evidence capture. Q4 B: distributed
+    tracing reconstructs one request''s path across the services it touched; A overstates payload storage,
+    C and D assign detection or blocking work tracing does not do. Q5 D: the orchestrator reconciles toward
+    its declared state, so a manual network policy edit is undone; A and B assume operator error, C
+    misreads restart behaviour.'
+- module: 6
+  notes: 'Q1 A: a gate that adds two days of manual review to every deployment is worked around or removed
+    under delivery pressure; B and C describe the outcome the gate was meant to produce, D assumes willing
+    adoption. Q2 B: automated guardrails that make the secure path the easiest path scale with delivery
+    velocity; A and D are periodic or manual and lag the estate, C adds the friction Q1 shows fails. Q3 C:
+    writing controls once as code and evaluating them on every deployment is policy as code, and its benefit
+    is consistent enforcement across a changing estate; A and B are other practices, D is a problem, not a
+    practice. Q4 A: a dynamic estate changes faster than a periodic review can observe, so measurement must
+    be continuous; B is false, C is false, D does not replace patching. Q5 B: post-deployment monitoring
+    covers risks that only appear once the workload is running; A overpromises, C and D name things
+    monitoring does not do.'
+lab_setup:
+- module: 1
+  setup: 'Revert the cloud-security range to its baseline. Confirm jump01 reaches localstack01, azure-mock01
+    and terraform01, and that fw01 rules are readable from jump01. Values the Student should find: on
+    localstack01 the buckets company-backups, public-assets (world-readable) and secret-configs; on
+    azure-mock01 the Azure AD guest enumeration setting and the dev-secrets vault with its overly broad
+    access policy; on terraform01 the exposed state file and the credentials in the variables file.'
+- module: 2
+  setup: 'Revert the range to its baseline. Confirm jump01 reaches k3s-master and localstack01, and that
+    kubectl works from jump01. Values the Student should find: the cluster service accounts and the
+    workloads using them; the serving certificate''s validity period and issuer on k3s-master; on localstack01
+    the identity users admin, dev-deploy (holding iam:*) and lambda-exec with their attached policies.'
+- module: 3
+  setup: 'Revert the range to its baseline. Confirm jump01 reaches k3s-master and that the SIEM on
+    cloud-siem01 ingests cluster audit records. Values the Student should find: the role bindings on
+    k3s-master, including any cluster-administration binding; on k3s-worker01 the privileged-debug pod
+    running privileged with the host PID namespace; on k3s-worker02 the exposed-dashboard pod with no
+    authentication and a cluster-administration binding; in the audit records the creation event for a
+    privileged pod with its time, account and pod name.'
+- module: 4
+  setup: 'Revert the range to its baseline. Confirm jump01 reaches gitlab01, registry01, jenkins01 and
+    argocd01. Values the Student should find: on gitlab01 the secrets and pipeline variables in the public
+    repository; on registry01 that anonymous pull succeeds and the scanner''s severity counts for one image;
+    on jenkins01 that the script console is reachable without signing in; on argocd01 that the default
+    administrator password is still accepted.'
+- module: 5
+  setup: 'Revert the range to its baseline. Confirm falco01 forwards alerts and that cloud-siem01 ingests
+    runtime and network records. Values the Student should find: the runtime rules that fired on falco01
+    naming the crypto-miner simulation pod; its outbound connections in the SIEM on cloud-siem01; the pod''s
+    identifier and start time on k3s-worker02. Keep the pod running until every Student has captured the
+    evidence, then revert.'
+- module: 6
+  setup: 'Revert the range to its baseline. Confirm prowler01 completes a configuration assessment and that
+    cloud-siem01 shows its arriving log sources. Values the Student should find: the failed checks from
+    prowler01 grouped by severity and service; the log sources arriving at cloud-siem01 and the expected
+    ones missing; on argocd01 how applications are declared and whether any policy check gates a change.'
+common_faults:
+- module: 1
+  fault: Students list services without recording the permissive setting each shows, so the ranking has no
+    basis.
+  remedy: Have them add one column - what the service allows that it need not - before they rank anything.
+- module: 1
+  fault: The ranking is asserted from memory of cloud breaches instead of from the recorded findings.
+  remedy: Require one recorded finding quoted under each ranked entry point.
+- module: 2
+  fault: Students treat the cloud identity users and the cluster service accounts as one kind of identity.
+  remedy: Sort the collected identities into two groups by who issued them, then judge each group's rotation.
+- module: 2
+  fault: The over-broad grant on localstack01 is missed because the policy name looks routine.
+  remedy: Ask what the workload actually needs to do, and compare that with the rights the policy grants.
+- module: 3
+  fault: The kubectl output is piped or truncated, so the binding list is incomplete.
+  remedy: Show the full output command for listing bindings and have Students record the count they saw.
+- module: 3
+  fault: Students mark the dashboard's cluster-administration binding acceptable because it is a service
+    account, not a person.
+  remedy: Point back to the least privilege topic - the account holds rights the dashboard never exercises.
+- module: 4
+  fault: Students stop at finding the exposed credentials and never judge what each could reach.
+  remedy: Ask for the second column - what the credential reaches - before moving to the next host.
+- module: 4
+  fault: The scanner severity counts are recorded without naming the image they describe.
+  remedy: Require image and tag beside every scanner result so the evidence can be marked.
+- module: 5
+  fault: The pod is restarted before the identifier and start time are recorded, and the evidence is lost.
+  remedy: Enforce the order of the steps; evidence capture comes before any response action.
+- module: 5
+  fault: Every alert is marked true positive without comparing it with the workload's expected behaviour.
+  remedy: Have Students write the expected behaviour first, then mark each alert against it.
+- module: 6
+  fault: The proposed model is generic - automate, gate, monitor - with nothing tied to the findings.
+  remedy: Require each part of the model to cite one recorded finding it addresses.
+- module: 6
+  fault: Gates are proposed for everything, recreating the friction the quiz warns about.
+  remedy: Ask which checks can run automatically without blocking, and move them out of the gate.
