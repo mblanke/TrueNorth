@@ -1,5 +1,9 @@
 # TrueNorth Range — installer
 
+> **Installing a site?** Follow the step-by-step guides in [`docs/guides/`](../docs/guides/README.md)
+> (01 prerequisites, 02 install, 06 operations). This README is the installer's reference:
+> every stage and variable.
+
 Takes the platform host from *"bare Ubuntu 24.04, `/srv/truenorth` empty"* (Docker is
 installed by `00-docker`) to a running, AD-federated TrueNorth with a working trainee registration path. AD is optional
 (`tn_ldap_enabled`): a site without a domain controller gets local Keycloak groups and a

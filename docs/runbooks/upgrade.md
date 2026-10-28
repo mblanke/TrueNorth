@@ -1,5 +1,10 @@
 # Runbook — upgrade (and roll back)
 
+A site installed with the guides follows [06 — Operations runbook](../guides/06-operations-runbook.md)
+§2: it runs the installer from `~/truenorth/install` with `-i inventory/site.yml` and its
+smoke-test file (`-e @smoke.yml`), and sets `tn_release_version` / `tn_release_dir` in that
+inventory. The commands below show the installer's options and leave the inventory out.
+
 The installer (`install/`) owns deployment. An upgrade is the same `site.yml` (or
 `20-fetch-app` + `30-config` + `50-stack-up`) run with the new release; the installer
 detects that the running database is behind the new migrations and handles the order.
