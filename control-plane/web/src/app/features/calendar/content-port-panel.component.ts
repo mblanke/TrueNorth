@@ -11,7 +11,8 @@ import {
 import { NotificationService } from '@core/services/notification.service';
 import { apiError } from '../ranges/range-capabilities';
 
-const TYPE_LABEL: Record<string, string> = { course: 'Course', range_template: 'Range template', scenario: 'Scenario' };
+const TYPE_LABEL: Record<string, string> = { course: 'Course', range_template: 'Range template', scenario: 'Scenario',
+  exercise_template: 'Exercise template' };
 const ACTION_LABEL: Record<string, string> = {
   create: 'New', update: 'Update', unchanged: 'Unchanged', conflict: 'Conflict', refused: 'Refused',
   skipped: 'Skipped',

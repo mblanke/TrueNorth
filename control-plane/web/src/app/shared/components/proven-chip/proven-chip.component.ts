@@ -9,7 +9,8 @@ import { apiErrorMessage } from '../../kb-errors';
 const KIND_LABEL: Record<string, string> = {
   certification: 'Certification record', class: 'Class', exercise: 'Exercise', review: 'Content clock',
 };
-const TYPE_LABEL: Record<string, string> = { course: 'Course', range_template: 'Range template', scenario: 'Scenario' };
+const TYPE_LABEL: Record<string, string> = { course: 'Course', range_template: 'Range template', scenario: 'Scenario',
+  exercise_template: 'Exercise template' };
 
 /**
  * The Proven chip (docs/content-port.md): "Proven", or "Not proven: <reasons>", for a

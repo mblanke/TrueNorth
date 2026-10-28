@@ -27,7 +27,7 @@ FIX = Path(__file__).parent / "content_feeds_fixtures"
 TRACKED = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)  # when the content was first tracked
 NOW = datetime(2026, 10, 27, 4, 10, tzinfo=UTC)
 TENANT = str(uuid.uuid4())
-TABLES = ("golden_images", "templates", "scenarios", "courses", "course_modules", "module_content",
+TABLES = ("golden_images", "templates", "scenarios", "exercise_templates", "courses", "course_modules", "module_content",
           "scheduled_events", "content_review_items", "content_review_edges", "content_review_themes",
           "content_review_cycles", "content_feed_entries", "content_feed_flags", "content_feed_sources",
           "content_feed_settings")

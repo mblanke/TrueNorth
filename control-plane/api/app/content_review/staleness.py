@@ -44,6 +44,7 @@ ITEM_TYPES: dict[str, str] = {
     "lab": "lab",
     "scenario": "scenario",
     "range_template": "range template",
+    "exercise_template": "exercise template",
     "golden_template": "golden template",
 }
 

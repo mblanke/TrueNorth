@@ -38,6 +38,7 @@ must be in the bundle.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import uuid
@@ -47,6 +48,8 @@ from datetime import UTC, datetime, timedelta
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from ..exercise_templates.models import ExerciseTemplate
+from ..exercise_templates.schemas import CORE_FIELDS
 from ..models import (
     Course,
     CourseModule,
@@ -131,6 +134,23 @@ def _quiz(db: Session, owner, quiz_id) -> dict | None:
                            "explanation": q.explanation or "", "competency_code": q.competency_code or "",
                            "difficulty": q.difficulty or "intermediate", "points": q.points or 0}
                           for q in questions]}
+
+
+def exercise_template_content(db: Session, et: ExerciseTemplate, ref: Ref) -> dict:
+    """An exercise template as the bundle carries it: what it is, and the keys of its scenario
+    and range template when those are carried. The lists are copied as stored; the export
+    validates the result (``schemas.ExerciseTemplateContent``), so a record the API would
+    refuse is reported, not carried."""
+    sc = proven.load(db, "scenario", et.scenario_id) if et.scenario_id else None
+    tmpl = proven.load(db, "range_template", et.range_template_id) if et.range_template_id else None
+    core = {f: copy.deepcopy(getattr(et, f)) for f in CORE_FIELDS}
+    core["description"], core["instructor_notes"] = core["description"] or "", core["instructor_notes"] or ""
+    for field in ("teams", "roles", "scaling_rules", "objectives", "mesl", "tags"):
+        core[field] = core[field] or []
+    return {**core,
+            "scenario": ref("scenario", str(sc.id)) if sc is not None and proven._in_item_scope(sc, et) else None,
+            "range_template": (ref("range_template", str(tmpl.id))
+                               if tmpl is not None and proven._in_item_scope(tmpl, et) else None)}
 
 
 # course_meta keys that describe the course itself (programme_ingest, course_content_ingest,
@@ -220,6 +240,8 @@ def content_of(db: Session, item_type: str, row, ref: Ref) -> dict:
         return template_content(row)
     if item_type == "scenario":
         return scenario_content(db, row, ref)
+    if item_type == "exercise_template":
+        return exercise_template_content(db, row, ref)
     return course_content(db, row, ref)
 
 
@@ -231,7 +253,7 @@ def fingerprint(db: Session, item_type: str, row) -> str:
     """The local item's content, hashed: equal before and after means nobody changed it. A
     template or scenario is hashed as stored (comments and sealed values included), so any
     edit shows."""
-    if item_type == "course":
+    if item_type in ("course", "exercise_template"):
         return sha256(content_of(db, item_type, row, local_ref))
     return sha256({"name": row.name, "version": row.version or "", "yaml": row.yaml or ""})
 
@@ -240,6 +262,8 @@ def refs_in(item_type: str, content: dict) -> set[str]:
     """Every item key ``content`` refers to."""
     if item_type == "scenario":
         return {content["range_template"]} if content.get("range_template") else set()
+    if item_type == "exercise_template":
+        return {k for k in (content.get("scenario"), content.get("range_template")) if k}
     if item_type != "course":
         return set()
     out: set[str] = set()

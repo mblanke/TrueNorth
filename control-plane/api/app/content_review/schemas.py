@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from . import staleness
 
-ItemType = Literal["course", "module", "lab", "scenario", "range_template", "golden_template"]
+ItemType = Literal["course", "module", "lab", "scenario", "range_template", "exercise_template", "golden_template"]
 ClockState = Literal["green", "amber", "stale"]
 ReasonKind = Literal["time", "release", "vulnerability", "upstream"]
 _MIN, _MAX = staleness.MIN_CYCLE_DAYS, staleness.MAX_CYCLE_DAYS

@@ -1,6 +1,6 @@
 # Port content
 
-Owner decision, 2026-10-27 (v1.2.0 GA): courses, range templates and scenarios move from the
+Owner decision, 2026-10-27 (v1.2.0 GA): courses, range templates, scenarios and exercise templates move from the
 test site (the work site) to a new site **only once they are proven**. Code:
 `control-plane/api/app/content_port/`; CLI: `scripts/content_port_inprocess.py`; UI: the
 Content view (`/calendar/content`), the **Proven** chip and the **Port content** panel.
@@ -9,9 +9,10 @@ Golden templates are not ported this way. They have their own procedure (OVF exp
 build record, then S2 promotion on the new site; `infra/vsphere/packer/README.md`, "Build
 records and promotion"). A bundle only names the golden-template builds its content needs.
 
-Exercise templates are not ported either: TrueNorth has no exercise template record. A
-collective exercise's objectives and MESL belong to one exercise on one range. A scenario is
-the reusable part of an exercise, and it is ported.
+Exercise templates are ported (ADR 0016): the reusable part of a collective exercise
+(objectives, MESL, teams, instructor notes, the scenario and range template it runs on).
+Exercises themselves are one-offs and are not ported. Courses are individual training and a
+template is never attached to one.
 
 ## Proven
 
@@ -22,7 +23,7 @@ missing condition gives a reason.
 | Condition | Holds when | Evidence shown |
 |---|---|---|
 | Range certified | A range built from the template **as it is now** reached *Certified for Students* (ADR 0013 §6). The record's plan hash must equal the SHA-256 of the template's current YAML, so an edited template is unproven until a range built from the new version is certified. A scenario needs its range template's certification. A course needs the certification of every range template it uses, through its bookings and its scenarios. A course with no range has nothing to certify, and the condition says so. | the certification record |
-| Used with passing evidence | A **closed class** (ADR 0014 §13) with at least one Student whose result is *pass*, or a **completed exercise** whose score reached 70% of its maximum. For a template: classes whose ranges or sessions were built from it, and exercises on ranges built from it. For a scenario: classes whose sessions ran it, and exercises that ran it. For a course: its own closed classes. | the class or the exercise |
+| Used with passing evidence | For an exercise template: an exercise **made from it** that completed with a passing score (a completed exercise on the same range that was not made from it proves nothing). Otherwise a **closed class** (ADR 0014 §13) with at least one Student whose result is *pass*, or a **completed exercise** whose score reached 70% of its maximum. For a template: classes whose ranges or sessions were built from it, and exercises on ranges built from it. For a scenario: classes whose sessions ran it, and exercises that ran it. For a course: its own closed classes. | the class or the exercise |
 | Not stale | The content clock tracks it (ADR 0014 §22-25), and it is neither stale nor retired. | its review date |
 
 What counts as evidence is the caller's own tenant's evidence. The platform administrator
@@ -32,6 +33,7 @@ Dependencies come from the content itself, not from the content clock's hourly e
 
 - a scenario's `range_template`, given as an id or a name;
 - a course's module scenarios;
+- an exercise template's scenario and range template (and its scenario's range template); the node types its roles and scaling rules name must exist in that range template;
 - the range templates that a course's bookings and scenarios use.
 
 Only content in the item's own scope counts as a dependency. Another tenant's private
@@ -47,7 +49,7 @@ content (`GET /content-port/items/{item_type}/{item_id}/proven`).
 Only the platform administrator who also holds `content_review:admin` can export. They use
 the **Port content** panel on the Content view, or the CLI.
 
-1. Select the courses, range templates and scenarios to export. Their dependencies come
+1. Select the courses, range templates, scenarios and exercise templates to export. Their dependencies come
    along automatically: a course pulls in its range templates and scenarios.
 2. **Export proven content**. If any selected item or any dependency is not proven, the
    export is refused (409). Nothing is exported, and the refusal lists every item with its
@@ -60,6 +62,8 @@ What a bundle carries for each item:
 - its content:
   - a range template: name, version and YAML;
   - a scenario: name, version, YAML, and the key of its range template;
+  - an exercise template: name, description, teams, participant roles (with VM profiles), shared-infrastructure scaling rules, objectives, MESL (no delivery status), instructor
+    notes, tags, and the keys of its scenario and range template (no tenant, owner, sharing or revision);
   - a course: its fields, with its qualification and performance objectives given by code,
     and its modules with their authored content, lessons, quizzes and scenario links. Of
     its `course_meta`, only the keys that describe the course are carried (an allowlist,
@@ -177,7 +181,7 @@ docker compose run --rm --no-deps -w /app -e PYTHONPATH=/app \
 ```json
 {"format": "truenorth.content-port.v1", "bundle_id": "<uuid>", "exported_at": "<iso 8601>",
  "origin": {"key_id": "<16 hex>"},
- "items": [{"key": "<item_type>:<uuid>", "item_type": "course|range_template|scenario",
+ "items": [{"key": "<item_type>:<uuid>", "item_type": "course|range_template|scenario|exercise_template",
             "origin_id": "<uuid>", "content_sha256": "<hex>", "content": {},
             "depends_on": ["<key>"], "proof": {"proven": true, "conditions": []},
             "golden_builds": [], "removed_passwords": 0}],

@@ -19,6 +19,7 @@ const KINDS: Record<string, string> = {
   lab: 'Lab',
   scenario: 'Scenario',
   range_template: 'Range template',
+  exercise_template: 'Exercise template',
   golden_template: 'Golden template',
 };
 

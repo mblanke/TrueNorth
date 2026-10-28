@@ -5764,6 +5764,7 @@
               "lab",
               "scenario",
               "range_template",
+              "exercise_template",
               "golden_template"
             ],
             "title": "Item Type",
@@ -5859,6 +5860,7 @@
               "lab",
               "scenario",
               "range_template",
+              "exercise_template",
               "golden_template"
             ],
             "title": "Item Type",
@@ -6095,6 +6097,7 @@
               "lab",
               "scenario",
               "range_template",
+              "exercise_template",
               "golden_template"
             ],
             "title": "Item Type",
@@ -7283,6 +7286,7 @@
               "lab",
               "scenario",
               "range_template",
+              "exercise_template",
               "golden_template"
             ],
             "title": "Item Type",
@@ -8895,6 +8899,109 @@
         "title": "ExerciseClassOut",
         "type": "object"
       },
+      "ExerciseFromTemplateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "max_score": {
+            "anyOf": [
+              {
+                "maximum": 1000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Score"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "range_id"
+        ],
+        "title": "ExerciseFromTemplateIn",
+        "type": "object"
+      },
+      "ExerciseFromTemplateOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "max_score": {
+            "title": "Max Score",
+            "type": "integer"
+          },
+          "mesl_events": {
+            "title": "Mesl Events",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "objectives": {
+            "title": "Objectives",
+            "type": "integer"
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "template_id": {
+            "format": "uuid",
+            "title": "Template Id",
+            "type": "string"
+          },
+          "template_revision": {
+            "title": "Template Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "range_id",
+          "max_score",
+          "template_id",
+          "template_revision",
+          "objectives",
+          "mesl_events"
+        ],
+        "title": "ExerciseFromTemplateOut",
+        "type": "object"
+      },
       "ExerciseIn": {
         "properties": {
           "max_score": {
@@ -8992,6 +9099,176 @@
         "title": "ExerciseListOut",
         "type": "object"
       },
+      "ExerciseMadeFromTemplateOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "max_score": {
+            "title": "Max Score",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "template_revision": {
+            "title": "Template Revision",
+            "type": "integer"
+          },
+          "total_score": {
+            "title": "Total Score",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "state",
+          "total_score",
+          "max_score",
+          "template_revision",
+          "created_at"
+        ],
+        "title": "ExerciseMadeFromTemplateOut",
+        "type": "object"
+      },
+      "ExerciseMeslSpec": {
+        "additionalProperties": false,
+        "description": "One serial of the MESL. Its delivery status is the exercise's, never the template's.",
+        "properties": {
+          "attack_technique": {
+            "default": "",
+            "maxLength": 32,
+            "title": "Attack Technique",
+            "type": "string"
+          },
+          "delivery_method": {
+            "default": "cyber",
+            "enum": [
+              "cyber",
+              "white_cell",
+              "email",
+              "radio",
+              "physical",
+              "opfor"
+            ],
+            "title": "Delivery Method",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Description",
+            "type": "string"
+          },
+          "expected_action": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Expected Action",
+            "type": "string"
+          },
+          "from_cell": {
+            "default": "",
+            "maxLength": 80,
+            "title": "From Cell",
+            "type": "string"
+          },
+          "moe": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Moe",
+            "type": "string"
+          },
+          "objective_ref": {
+            "default": "",
+            "maxLength": 32,
+            "title": "Objective Ref",
+            "type": "string"
+          },
+          "phase": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Phase",
+            "type": "string"
+          },
+          "scenario_time": {
+            "default": "",
+            "maxLength": 40,
+            "title": "Scenario Time",
+            "type": "string"
+          },
+          "serial": {
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Serial",
+            "type": "integer"
+          },
+          "title": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "to_participant": {
+            "default": "",
+            "maxLength": 80,
+            "title": "To Participant",
+            "type": "string"
+          }
+        },
+        "required": [
+          "serial",
+          "title"
+        ],
+        "title": "ExerciseMeslSpec",
+        "type": "object"
+      },
+      "ExerciseObjectiveSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "competency_code": {
+            "default": "",
+            "maxLength": 50,
+            "title": "Competency Code",
+            "type": "string"
+          },
+          "moe": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Moe",
+            "type": "string"
+          },
+          "ref": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Ref",
+            "type": "string"
+          },
+          "text": {
+            "default": "",
+            "maxLength": 20000,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "title": "ExerciseObjectiveSpec",
+        "type": "object"
+      },
       "ExerciseOut": {
         "properties": {
           "completed_at": {
@@ -9086,6 +9363,700 @@
         "title": "ExerciseOut",
         "type": "object"
       },
+      "ExerciseRoleSpec": {
+        "additionalProperties": false,
+        "description": "A participant role (analyst, red team, intel ...): how many Students may take it, how many\nby default, and the machines each one gets. ``max_participants`` 0: no limit. ``team``\noptionally names one of the template's teams. Sizing itself is not done here (Exercise Studio).",
+        "properties": {
+          "default_count": {
+            "default": 0,
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Default Count",
+            "type": "integer"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "max_participants": {
+            "default": 0,
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Max Participants",
+            "type": "integer"
+          },
+          "min_participants": {
+            "default": 0,
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Min Participants",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "team": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Team",
+            "type": "string"
+          },
+          "vm_profile": {
+            "items": {
+              "$ref": "#/components/schemas/ExerciseVmSpec"
+            },
+            "maxItems": 20,
+            "title": "Vm Profile",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ExerciseRoleSpec",
+        "type": "object"
+      },
+      "ExerciseSaveAsTemplateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 100000,
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ExerciseSaveAsTemplateIn",
+        "type": "object"
+      },
+      "ExerciseScalingRuleSpec": {
+        "additionalProperties": false,
+        "description": "Shared infrastructure that scales with the exercise: ``count`` machines of ``node_type``\nper network segment (``per_segment``), per ``per`` participants (``per_participants``,\nsteps of N; ``role`` limits the count to one role), or just once (``fixed``).",
+        "properties": {
+          "count": {
+            "default": 1,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "kind": {
+            "default": "fixed",
+            "enum": [
+              "per_segment",
+              "per_participants",
+              "fixed"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "node_type": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Node Type",
+            "type": "string"
+          },
+          "per": {
+            "default": 0,
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Per",
+            "type": "integer"
+          },
+          "role": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Role",
+            "type": "string"
+          },
+          "segment": {
+            "default": "",
+            "maxLength": 80,
+            "title": "Segment",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "node_type"
+        ],
+        "title": "ExerciseScalingRuleSpec",
+        "type": "object"
+      },
+      "ExerciseTeamSpec": {
+        "additionalProperties": false,
+        "description": "A team the exercise needs. ``max_students`` 0: no limit.",
+        "properties": {
+          "max_students": {
+            "default": 0,
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Max Students",
+            "type": "integer"
+          },
+          "min_students": {
+            "default": 0,
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Min Students",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "side": {
+            "default": "other",
+            "enum": [
+              "blue",
+              "red",
+              "white",
+              "green",
+              "other"
+            ],
+            "title": "Side",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ExerciseTeamSpec",
+        "type": "object"
+      },
+      "ExerciseTemplateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 100000,
+            "title": "Description",
+            "type": "string"
+          },
+          "instructor_notes": {
+            "default": "",
+            "maxLength": 100000,
+            "title": "Instructor Notes",
+            "type": "string"
+          },
+          "is_public": {
+            "default": false,
+            "description": "Share with every tenant (platform administrator only)",
+            "title": "Is Public",
+            "type": "boolean"
+          },
+          "mesl": {
+            "items": {
+              "$ref": "#/components/schemas/ExerciseMeslSpec"
+            },
+            "maxItems": 1000,
+            "title": "Mesl",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "objectives": {
+            "items": {
+              "$ref": "#/components/schemas/ExerciseObjectiveSpec"
+            },
+            "maxItems": 200,
+            "title": "Objectives",
+            "type": "array"
+          },
+          "range_template_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Template Id"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/ExerciseRoleSpec"
+            },
+            "maxItems": 40,
+            "title": "Roles",
+            "type": "array"
+          },
+          "scaling_rules": {
+            "items": {
+              "$ref": "#/components/schemas/ExerciseScalingRuleSpec"
+            },
+            "maxItems": 100,
+            "title": "Scaling Rules",
+            "type": "array"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Tags",
+            "type": "array"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/ExerciseTeamSpec"
+            },
+            "maxItems": 20,
+            "title": "Teams",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "ExerciseTemplateIn",
+        "type": "object"
+      },
+      "ExerciseTemplateListOut": {
+        "description": "A row of the list: counts, never the MESL or the notes (the exercise-control plan).",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_public": {
+            "title": "Is Public",
+            "type": "boolean"
+          },
+          "mesl_events": {
+            "title": "Mesl Events",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "objectives": {
+            "title": "Objectives",
+            "type": "integer"
+          },
+          "range_template_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Template Id"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "role_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Role Names",
+            "type": "array"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "shared": {
+            "title": "Shared",
+            "type": "boolean"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "team_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Team Names",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "revision",
+          "is_public",
+          "shared",
+          "team_names",
+          "role_names",
+          "objectives",
+          "mesl_events",
+          "tags",
+          "updated_at"
+        ],
+        "title": "ExerciseTemplateListOut",
+        "type": "object"
+      },
+      "ExerciseTemplateOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "instructor_notes": {
+            "title": "Instructor Notes",
+            "type": "string"
+          },
+          "is_public": {
+            "title": "Is Public",
+            "type": "boolean"
+          },
+          "mesl": {
+            "items": {
+              "$ref": "#/components/schemas/ExerciseMeslSpec"
+            },
+            "title": "Mesl",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "objectives": {
+            "items": {
+              "$ref": "#/components/schemas/ExerciseObjectiveSpec"
+            },
+            "title": "Objectives",
+            "type": "array"
+          },
+          "range_template_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Template Id"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/ExerciseRoleSpec"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "scaling_rules": {
+            "items": {
+              "$ref": "#/components/schemas/ExerciseScalingRuleSpec"
+            },
+            "title": "Scaling Rules",
+            "type": "array"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "shared": {
+            "default": false,
+            "description": "Another tenant's template, shared with this one: read-only here",
+            "title": "Shared",
+            "type": "boolean"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "teams": {
+            "items": {
+              "$ref": "#/components/schemas/ExerciseTeamSpec"
+            },
+            "title": "Teams",
+            "type": "array"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "revision",
+          "is_public",
+          "teams",
+          "roles",
+          "scaling_rules",
+          "objectives",
+          "mesl",
+          "instructor_notes",
+          "tags",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ExerciseTemplateOut",
+        "type": "object"
+      },
+      "ExerciseTemplateUpdate": {
+        "additionalProperties": false,
+        "description": "Only the fields sent change; an explicit null clears the scenario or range template.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "instructor_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructor Notes"
+          },
+          "is_public": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Public"
+          },
+          "mesl": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ExerciseMeslSpec"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mesl"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "objectives": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ExerciseObjectiveSpec"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objectives"
+          },
+          "range_template_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Template Id"
+          },
+          "roles": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ExerciseRoleSpec"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roles"
+          },
+          "scaling_rules": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ExerciseScalingRuleSpec"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scaling Rules"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "teams": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ExerciseTeamSpec"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Teams"
+          }
+        },
+        "title": "ExerciseTemplateUpdate",
+        "type": "object"
+      },
       "ExerciseUpdate": {
         "properties": {
           "max_score": {
@@ -9098,6 +10069,30 @@
           }
         },
         "title": "ExerciseUpdate",
+        "type": "object"
+      },
+      "ExerciseVmSpec": {
+        "additionalProperties": false,
+        "description": "What each participant of a role gets: ``count`` machines of a node type of the range\ntemplate (matched against a node's id, type or os; the range template is the authority).",
+        "properties": {
+          "count": {
+            "default": 1,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "node_type": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Node Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_type"
+        ],
+        "title": "ExerciseVmSpec",
         "type": "object"
       },
       "ExportSignatureOut": {
@@ -16197,7 +17192,8 @@
             "enum": [
               "course",
               "range_template",
-              "scenario"
+              "scenario",
+              "exercise_template"
             ],
             "title": "Item Type",
             "type": "string"
@@ -16282,7 +17278,8 @@
             "enum": [
               "course",
               "range_template",
-              "scenario"
+              "scenario",
+              "exercise_template"
             ],
             "title": "Item Type",
             "type": "string"
@@ -16681,7 +17678,8 @@
             "enum": [
               "course",
               "range_template",
-              "scenario"
+              "scenario",
+              "exercise_template"
             ],
             "title": "Item Type",
             "type": "string"
@@ -16803,7 +17801,8 @@
             "enum": [
               "course",
               "range_template",
-              "scenario"
+              "scenario",
+              "exercise_template"
             ],
             "title": "Item Type",
             "type": "string"
@@ -31499,7 +32498,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Every course, range template and scenario that could be ported, with its proven status",
+        "summary": "Every course, range template, scenario and exercise template that could be ported, with its proven status",
         "tags": [
           "content-port"
         ]
@@ -31518,7 +32517,8 @@
               "enum": [
                 "course",
                 "range_template",
-                "scenario"
+                "scenario",
+                "exercise_template"
               ],
               "title": "Item Type",
               "type": "string"
@@ -31562,7 +32562,7 @@
             "HTTPBearer": []
           }
         ],
-        "summary": "Whether a course, range template or scenario is proven, with reasons and evidence",
+        "summary": "Whether a course, range template, scenario or exercise template is proven, with reasons and evidence",
         "tags": [
           "content-port"
         ]
@@ -35578,6 +36578,392 @@
         "summary": "Preview Forge",
         "tags": [
           "exercise-forge"
+        ]
+      }
+    },
+    "/exercise-templates": {
+      "get": {
+        "operationId": "list_exercise_templates",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExerciseTemplateListOut"
+                  },
+                  "title": "Response List Exercise Templates",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Exercise templates of this tenant and the shared ones",
+        "tags": [
+          "exercise-templates"
+        ]
+      },
+      "post": {
+        "operationId": "create_exercise_template",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExerciseTemplateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExerciseTemplateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create an exercise template",
+        "tags": [
+          "exercise-templates"
+        ]
+      }
+    },
+    "/exercise-templates/from-exercise/{exercise_id}": {
+      "post": {
+        "operationId": "save_exercise_as_template",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExerciseSaveAsTemplateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExerciseTemplateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Save an existing exercise as a template (the exercise is not changed)",
+        "tags": [
+          "exercise-templates"
+        ]
+      }
+    },
+    "/exercise-templates/{template_id}": {
+      "delete": {
+        "operationId": "delete_exercise_template",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Exercises were made from it"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete an exercise template no exercise was made from",
+        "tags": [
+          "exercise-templates"
+        ]
+      },
+      "get": {
+        "operationId": "get_exercise_template",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExerciseTemplateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "One exercise template (this tenant's, or a shared one)",
+        "tags": [
+          "exercise-templates"
+        ]
+      },
+      "put": {
+        "operationId": "update_exercise_template",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExerciseTemplateUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExerciseTemplateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Edit an exercise template (never changes exercises already made from it)",
+        "tags": [
+          "exercise-templates"
+        ]
+      }
+    },
+    "/exercise-templates/{template_id}/exercises": {
+      "get": {
+        "operationId": "list_exercises_from_template",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExerciseMadeFromTemplateOut"
+                  },
+                  "title": "Response List Exercises From Template",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "This tenant's exercises made from a template, with the revision each came from",
+        "tags": [
+          "exercise-templates"
+        ]
+      },
+      "post": {
+        "operationId": "create_exercise_from_template",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExerciseFromTemplateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExerciseFromTemplateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create an exercise from a template: its objectives and MESL are copied",
+        "tags": [
+          "exercise-templates"
         ]
       }
     },

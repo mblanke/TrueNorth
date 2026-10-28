@@ -300,6 +300,30 @@ exercise_runs = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+exercise_templates = sa.Table(
+    "exercise_templates",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("name", sa.String(255), nullable=False),
+    sa.Column("description", sa.Text(), nullable=False),
+    sa.Column("revision", sa.Integer(), nullable=False),
+    sa.Column("tenant_id", GUID()),
+    sa.Column("is_public", sa.Boolean(), nullable=False),
+    sa.Column("scenario_id", GUID()),
+    sa.Column("range_template_id", GUID()),
+    sa.Column("teams", sa.JSON(), nullable=False),
+    sa.Column("roles", sa.JSON(), nullable=False),
+    sa.Column("scaling_rules", sa.JSON(), nullable=False),
+    sa.Column("objectives", sa.JSON(), nullable=False),
+    sa.Column("mesl", sa.JSON(), nullable=False),
+    sa.Column("instructor_notes", sa.Text(), nullable=False),
+    sa.Column("tags", sa.JSON(), nullable=False),
+    sa.Column("created_by", GUID()),
+    sa.Column("deleted_at", sa.DateTime(timezone=True)),
+    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 exercises = sa.Table(
     "exercises",
     metadata,
@@ -878,6 +902,7 @@ __all__ = [
     "course_modules",
     "courses",
     "exercise_runs",
+    "exercise_templates",
     "exercises",
     "forged_exercises",
     "golden_image_builds",

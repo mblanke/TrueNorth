@@ -3,7 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Observable, interval } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';
 import { MatButtonModule } from '@angular/material/button';
@@ -16,6 +16,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { AuthService } from '@core/services/auth.service';
+import { ExerciseTemplatesApiService } from '@core/services/exercise-templates-api.service';
 import { ExerciseSummary, RangeSummary, ScenarioSummary } from '@core/models';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 
@@ -40,11 +41,14 @@ export const EXERCISE_POLL_MS = 5000;
             <p class="subtitle">Bring the scenario, range, and training evidence together.</p>
           </div>
         </div>
-        @if (auth.can('exercise:create')) {
-          <button mat-raised-button color="primary" (click)="showCreate = !showCreate">
-            <mat-icon>add</mat-icon> New Exercise
-          </button>
-        }
+        <div class="header-actions">
+          @if (auth.can('exercise:create')) {
+            <a mat-button routerLink="/exercises/templates"><mat-icon>library_books</mat-icon> Templates</a>
+            <button mat-raised-button color="primary" (click)="showCreate = !showCreate">
+              <mat-icon>add</mat-icon> New Exercise
+            </button>
+          }
+        </div>
       </div>
 
       @if (showCreate && auth.can('exercise:create')) {
@@ -76,6 +80,23 @@ export const EXERCISE_POLL_MS = 5000;
                 <button mat-raised-button color="primary" (click)="create()" [disabled]="!form.name || !form.range_id || !form.scenario_id">Create</button>
               <button mat-button (click)="showCreate = false">Cancel</button>
             </div>
+          </mat-card-content>
+        </mat-card>
+      }
+
+      @if (templateFrom) {
+        <mat-card class="edit-form mt-2">
+          <mat-card-content>
+            <div class="form-row">
+              <mat-form-field appearance="outline">
+                <mat-label>Template name</mat-label>
+                <input matInput [(ngModel)]="templateForm.name" placeholder="Template name">
+              </mat-form-field>
+            </div>
+            <button mat-raised-button color="primary" (click)="saveAsTemplate()" [disabled]="!templateForm.name || saving">
+              {{ saving ? 'Saving...' : 'Save as template' }}
+            </button>
+            <button mat-button (click)="templateFrom = null" [disabled]="saving">Cancel</button>
           </mat-card-content>
         </mat-card>
       }
@@ -135,6 +156,12 @@ export const EXERCISE_POLL_MS = 5000;
             @if (e.state === 'pending' && auth.can('exercise:create')) {
               <button mat-icon-button (click)="startEdit(e)" matTooltip="Rename" aria-label="Rename exercise" [disabled]="saving">
                 <mat-icon>edit</mat-icon>
+              </button>
+            }
+            @if (auth.can('exercise:create')) {
+              <button mat-icon-button (click)="startTemplate(e)" matTooltip="Save as template"
+                      aria-label="Save exercise as template" [disabled]="saving">
+                <mat-icon>library_add</mat-icon>
               </button>
             }
             @if (e.state === 'pending' && auth.can('exercise:start')) {
@@ -215,6 +242,7 @@ export const EXERCISE_POLL_MS = 5000;
   `,
   styles: [`
     .page-header { display: flex; justify-content: space-between; align-items: center; }
+    .header-actions { display: flex; gap: 8px; align-items: center; }
     .exercise-workspace { padding: 20px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-card); }
     .list-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
     .list-heading h2 { font-size: 17px; font-weight: 600; }
@@ -234,6 +262,8 @@ export const EXERCISE_POLL_MS = 5000;
 export class ExercisesComponent implements OnInit {
   private api = inject(ApiService);
   private notify = inject(NotificationService);
+  private templates = inject(ExerciseTemplatesApiService);
+  private router = inject(Router);
   private destroyRef = inject(DestroyRef);
   /** Each control follows the permission its endpoint checks (exercise:create / start /
    *  pause / complete, aar:generate / read). Start and complete are staff (sweep M3). */
@@ -249,6 +279,8 @@ export class ExercisesComponent implements OnInit {
   showCreate = false;
   form = { name: '', range_id: '', scenario_id: '' };
   columns = ['name', 'state', 'score', 'created', 'actions'];
+  templateFrom: ExerciseSummary | null = null;
+  templateForm = { name: '' };
   editingId: string | null = null;
   editForm = { name: '' };
   saving = false;
@@ -364,6 +396,26 @@ export class ExercisesComponent implements OnInit {
     this.api.updateExercise(this.editingId!, this.editForm).subscribe({
       next: () => { this.notify.success('Exercise renamed'); this.load(); this.cancelEdit(); this.saving = false; },
       error: () => { this.notify.error('Failed to rename exercise'); this.saving = false; },
+    });
+  }
+
+  /** "Save as template": a collective exercise's objectives, MESL, scenario and range template. */
+  startTemplate(e: ExerciseSummary): void {
+    this.templateFrom = e;
+    this.templateForm.name = `${e.name} template`;
+  }
+
+  saveAsTemplate(): void {
+    if (!this.templateFrom) return;
+    this.saving = true;
+    this.templates.saveExercise(this.templateFrom.id, { name: this.templateForm.name }).subscribe({
+      next: t => {
+        this.saving = false;
+        this.templateFrom = null;
+        this.notify.success('Saved as an exercise template');
+        void this.router.navigate(['/exercises/templates', t.id]);
+      },
+      error: err => { this.saving = false; this.notify.error(err?.error?.detail || 'Could not save as a template'); },
     });
   }
 

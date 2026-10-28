@@ -121,12 +121,14 @@ def item_status(db: Session, user: CurrentUser, item_type: str, item_id) -> Prov
 
 def portable(db: Session, user: CurrentUser) -> list[ProvenStatusOut]:
     """Every course, range template and scenario the caller may port, with its status."""
+    from ..exercise_templates.models import ExerciseTemplate
     from ..models import Course, Scenario, Template
 
     tenant = tenant_uuid(user)
     scope = proven.scope_for(db, user)
     out: list[ProvenStatusOut] = []
-    for item_type, model in (("range_template", Template), ("scenario", Scenario), ("course", Course)):
+    for item_type, model in (("range_template", Template), ("scenario", Scenario), ("course", Course),
+                             ("exercise_template", ExerciseTemplate)):
         q = db.query(model)
         if hasattr(model, "deleted_at"):
             q = q.filter(model.deleted_at.is_(None))
@@ -174,7 +176,7 @@ def export(db: Session, user: CurrentUser, refs: list[PortItemRef]) -> dict:
             except ValidationError as exc:
                 problems.append({"item_type": item_type, "item_id": str(row.id), "title": row.name,
                                  "reasons": [f"It cannot be carried in a bundle ({bnd._first(exc)})"]})
-            if item_type != "course" and not content.get("yaml"):
+            if item_type in ("range_template", "scenario") and not content.get("yaml"):
                 problems.append({"item_type": item_type, "item_id": str(row.id), "title": row.name,
                                  "reasons": ["Its YAML does not parse, so it cannot be carried"]})
     if problems:

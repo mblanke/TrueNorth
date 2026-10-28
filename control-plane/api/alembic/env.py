@@ -23,6 +23,7 @@ from app import (  # noqa: F401
     course_publishing,
     course_releases,
     detections,
+    exercise_templates,
     golden_image_builds,
     lab_sessions,
     lti_identity,
