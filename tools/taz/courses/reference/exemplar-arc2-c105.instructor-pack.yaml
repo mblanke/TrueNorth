@@ -1,0 +1,158 @@
+# EXEMPLAR - NOT FOR PUBLICATION. Reference copy for TAZ's course coder; do not edit.
+# An instructor pack for the exemplar course (exemplar-arc2-c105.course.yaml), in the shape
+# docs/interfaces/course-instructor-pack.schema.json requires and scripts/check_course.py checks.
+# Condensed by hand from ARC2's own staff material for ARC2-C105: 04-artifacts/instructor/
+# answer_key.md and facilitation.md in the C105 release bundle. Every answer letter below is the
+# course's key; the notes say why the keyed option is right and what each distractor tests.
+# Mentions of 'page N' point at ARC2 learner pages, which TAZ does not write: key your notes to
+# the module's topics instead. This course is all-theory, so lab_setup is paper preparation;
+# for a TAZ course it is what the instructor does on the range (see ARC2-STYLE.md).
+course_code: ARC2-C105
+audience: staff_only
+overview: 'EXEMPLAR (not for publication). Foundations of Cybersecurity is a theory course of six 150-minute modules
+  (900 minutes, 15 hours). Each module has the same split: 45 minutes contact, 40 reading, 45 practice on three
+  case tasks, and a 20-minute assessment block (10 minutes quiz, 10 minutes banked toward one 60-minute written
+  case analysis after Module 6). Each module teaches three objectives, practises each on a written case, and ends
+  with a five-item quiz passed at 70 percent. Say ''student'' throughout and keep every description defensive and
+  observable.'
+timings:
+- module: 1
+  minutes: 150
+  plan: '45 contact (about 9 per page), 40 reading, 45 practice (three cases, 15 each: 10 in pairs, 5 debrief),
+    20 assessment (10 quiz, 10 banked)'
+- module: 2
+  minutes: 150
+  plan: '45 contact (about 9 per page), 40 reading, 45 practice (three cases, 15 each: 10 in pairs, 5 debrief),
+    20 assessment (10 quiz, 10 banked)'
+- module: 3
+  minutes: 150
+  plan: '45 contact (about 9 per page), 40 reading, 45 practice (three cases, 15 each: 10 in pairs, 5 debrief),
+    20 assessment (10 quiz, 10 banked)'
+- module: 4
+  minutes: 150
+  plan: '45 contact (about 9 per page), 40 reading, 45 practice (three cases, 15 each: 10 in pairs, 5 debrief),
+    20 assessment (10 quiz, 10 banked)'
+- module: 5
+  minutes: 150
+  plan: '45 contact (about 9 per page), 40 reading, 45 practice (three cases, 15 each: 10 in pairs, 5 debrief),
+    20 assessment (10 quiz, 10 banked)'
+- module: 6
+  minutes: 150
+  plan: '45 contact (about 9 per page), 40 reading, 45 practice (three cases, 15 each: 10 in pairs, 5 debrief),
+    20 assessment (10 quiz, 10 banked)'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (Integrity), M01-O01: Values were changed without authorisation; nobody unauthorised read them (not
+    C) and the system stayed usable (not A). Q2 C (Availability), M01-O01: Taking a server offline denies authorised
+    use; page 2 says defensive actions have impact too and must still be recorded. Q3 A (Fail-safe defaults), M01-O02:
+    A block-list that allows everything else is the opposite of default deny: a forgotten rule lets traffic through.
+    Q4 D (Defence in depth), M01-O02: A permanently connected backup is not an independent layer: whatever damages
+    the server can damage the backup (Northgate example). Q5 B (A vulnerability), M01-O03: An unsupported OS is
+    a weakness a threat could exploit; the threat would be e.g. a ransomware campaign, and risk combines likelihood
+    and impact.'
+- module: 2
+  notes: 'Q1 C (Espionage, high capability), M02-O01: Long quiet theft with no ransom = espionage; custom tools
+    and return after removal = high capability (page 1 worked example). Q2 D (Victim''s industry sector), M02-O01:
+    Page 2 "classifying by the victim" error: any sector can be hit by any actor; behaviour is the evidence. Q3
+    A (Discovery), M02-O02: Listing accounts and shares is learning about the environment; Collection is gathering
+    the target data itself. Q4 B (Post-entry detail, tactics repeat and overlap), M02-O02: ATT&CK is finer-grained
+    and not strictly ordered; both models are descriptive, not predictive, and neither attributes. Q5 C (Password-only
+    RDP reachable from the internet), M02-O03: Scores high on reachability (3), weak auth (2), full control (3);
+    the printer is internal, e-mail has MFA, guest Wi-Fi is separated.'
+- module: 3
+  notes: 'Q1 B (Mandatory), M03-O01: Fixed classification labels enforced centrally, owners cannot override: MAC.
+    Q2 C (Attribute-based), M03-O01: Care-team relationship, shift time and device are context attributes roles
+    alone cannot express (page 2 hospital example). Q3 D (Not MFA, both knowledge), M03-O02: MFA counts categories,
+    not prompts; a security question is a second knowledge factor. Q4 A (Buyer + Bookkeeper), M03-O03: One person
+    could create a supplier and purchase order and then pay it; the static SoD rule on page 5. Q5 B (Privilege creep),
+    M03-O03: The mover step removed nothing; access reviews and mover processes prevent it. Not a compensating control
+    or ABAC.'
+- module: 4
+  notes: 'Q1 C (Symmetric, key stored securely), M04-O01: Same party encrypts and decrypts, large data, no distribution
+    problem. Q2 A (Signature with publisher''s private key), M04-O01: Need is authenticity for many verifiers without
+    a shared secret; a shared-key MAC would let any customer forge, a hash on the same page proves nothing about
+    origin. Q3 B (Unique hashes, defeats precomputed tables), M04-O02: Salt is not secret and does not make weak
+    passwords strong; it forces per-user attack. Q4 D (Non-repudiation), M04-O02: Both parties hold the key, so
+    a third party cannot tell who made the MAC. Q5 C (Fails, expired certificate in chain), M04-O03: Every certificate''s
+    dates are checked, intermediates included (Northwind example).'
+- module: 5
+  notes: 'Q1 B (Standard), M05-O01: Mandatory, specific and measurable (a number). Q2 C (Mislabelled: it is a standard),
+    M05-O01: "Must / must not" is mandatory; a guideline is recommended only, so the label would make it unenforceable.
+    Q3 A (Detect), M05-O02: No monitoring of logs or networks; every listed control is Protect, Recover, Respond
+    or Govern. Q4 D (Govern), M05-O02: CSF 2.0 places supply-chain risk management in Govern (page 3 table). Q5
+    B (Captured password used immediately from anywhere), M05-O03: Length and rotation do not stop a typed-in password
+    being captured; single-factor internet webmail is the open risk (page 5 worked example).'
+- module: 6
+  notes: 'Q1 C (Tier 3 detection engineer), M06-O01: Changing how the SOC detects is Tier 3 work; Tier 1 raises
+    the tuning request. Q2 B (Acknowledge and take ownership), M06-O01: Acknowledgement prevents duplicate work
+    and starts the SLA clock; containment comes much later. Q3 D (False positive / benign, with tuning request),
+    M06-O02: Known destination, inside the window, normal volume (Alert A on page 3). Q4 A (Benign true positive),
+    M06-O02: The rule detected exactly what it was designed for; the activity was authorised. Not a rule error.
+    Q5 C (Timed fact with source), M06-O03: Only C gives time, action and where it was observed; B is an interpretation
+    stated as fact.'
+lab_setup:
+- module: 1
+  setup: No range. Print the three case handouts (training database outage, community radio station, field laptop)
+    and the clinic timeline for the board.
+- module: 2
+  setup: No range. Print the loyalty-points summary, the university research lab narrative and the accounting office
+    description. Keep the fourteen ATT&CK tactic names on the board for the whole module.
+- module: 3
+  setup: No range. Print the municipal permit office, volunteer fire service and community health clinic cases,
+    plus a blank role-permission matrix with roles as rows and at least eight permission columns.
+- module: 4
+  setup: No range and no key tooling. Print the regional blood bank case, the four-mechanism table and the Lakeside
+    certificate chain. Put the table on the board before the module starts.
+- module: 5
+  setup: No range. Print the transit authority document extracts, the regional airport control list and the clinic
+    audit summary. Have the CSF 2.0 function names on the board.
+- module: 6
+  setup: No range and no SIEM. Print the alert summaries, the triage note and escalation note formats, and the Moreau
+    sample notes. Reserve 60 minutes after the Module 6 quiz for the written case analysis.
+common_faults:
+- module: 1
+  fault: Students label a whole incident with its headline ('phishing = confidentiality') instead of classifying
+    each event.
+  remedy: Put the clinic timeline on the board and classify it event by event with the class, asking what happened
+    to the data at each step, before they attempt the training database case.
+- module: 1
+  fault: A defensive action such as taking a server offline is recorded as 'no impact'.
+  remedy: 'Point to the availability definition: authorised users were denied the service. Record the action with
+    its impact, then discuss whether it was worth it.'
+- module: 2
+  fault: Students classify the actor by the victim's sector, or call it 'sophisticated' without evidence.
+  remedy: Use the two-column table (motivation evidence, capability evidence) on the ministries summary first; every
+    claim in the table must quote the case text.
+- module: 2
+  fault: Steps are mapped by the technical action instead of the adversary's goal (Discovery against Collection).
+  remedy: For each event ask 'what was the adversary trying to achieve at this moment?' and keep the tactic names
+    visible.
+- module: 3
+  fault: Students count prompts instead of factor categories (a password plus a security question taken as MFA).
+  remedy: Drill 'categories, not steps' on the four designs, then ask 'is it MFA?' and 'how strong is it?' as two
+    separate questions.
+- module: 3
+  fault: The clinic design overruns because roles and permissions are drawn from scratch.
+  remedy: Hand out the pre-drawn matrix grid; if time is short, debrief the separation-of-duties rule first.
+- module: 4
+  fault: Students say a hash can be decrypted, or that a hash next to a download proves who published it.
+  remedy: Put the four-mechanism table on the board and have each student state the protection need first, then
+    the choice, then the reason.
+- module: 4
+  fault: In the Lakeside chain only the leaf certificate's dates are checked.
+  remedy: 'Walk the Northwind chain check by check first: every certificate''s dates and issuer are checked, intermediates
+    included.'
+- module: 5
+  fault: Students trust a document's title over its language, or treat 'must' alone as making it a standard.
+  remedy: Classify by verbs first, then by specificity and measurability; procedures say 'must' too.
+- module: 5
+  fault: Controls are mapped to CSF functions by keyword, or counted under two functions.
+  remedy: Insist on one primary function per control and an interpreted gap, not just a count.
+- module: 6
+  fault: Triage notes say 'looks fine' with no cited evidence.
+  remedy: Use the triage note format exactly; have students mark each line of their own note as 'fact (source)'
+    or 'interpretation'.
+- module: 6
+  fault: Escalation notes lack times, time zones or sources, and guesses are stated as facts.
+  remedy: Read the poor and good Moreau notes aloud, then have students rewrite one line of their own note into
+    the good form.

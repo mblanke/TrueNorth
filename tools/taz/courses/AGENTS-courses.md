@@ -4,6 +4,21 @@ You are bringing **one** TrueNorth course file up to the "technically proven" ba
 disposable clone. The checker's output decides the outcome, not your summary. The prompt
 names the course file (`content/courses/<file>.yaml`) and a suggested range template.
 
+## Read first: the ARC2 house style
+
+Before your first edit, read these, in the clone, with the Read tool or `cat`. They are
+read-only to you and are not part of your write scope:
+
+1. `tools/taz/courses/ARC2-STYLE.md`: how ARC2 (the course generator that wrote our best
+   courses) writes voice, objectives, labs, quizzes, references and the instructor pack.
+2. `tools/taz/courses/reference/exemplar-arc2-c105.course.yaml`, then
+   `tools/taz/courses/reference/exemplar-lab-module.yaml`: the voice and the shape.
+3. `tools/taz/courses/reference/exemplar-arc2-c105.instructor-pack.yaml`: a finished pack.
+
+The exemplars are for reading. Never copy their wording or a quiz stem, and never write to
+`tools/taz/courses/`. A course that passes the checker but ignores ARC2-STYLE.md is sent
+back. A course drafted before this guide existed is re-done against it.
+
 ## What you may change
 
 1. **Only two files:** the course file the prompt names, and its instructor pack
@@ -45,6 +60,9 @@ names the course file (`content/courses/<file>.yaml`) and a suggested range temp
      the same template.
    - Write 3 to 8 concrete, ordered steps per module that a Student can follow on that
      range. Keep the module's `lab:` brief and make it agree with the steps.
+   - The `lab:` brief reads `Lab: <task>. Evidence: <what the Student records>. Pass:
+     <yes/no items>.` (ARC2-STYLE.md, section 4). The checker refuses a lab without
+     `Evidence:` and `Pass:`.
 7. **Cite only refs in `content/catalogue/references.yaml`.** Never invent a source, a
    title, a URL or a standard number. If no listed reference fits, keep the existing refs.
 8. **Quizzes:** each module keeps exactly 5 questions with options lettered `A) ` to `D) `
@@ -53,6 +71,12 @@ names the course file (`content/courses/<file>.yaml`) and a suggested range temp
    (the checker uses a simple word-overlap heuristic). If a question fails, fix the
    question or add the missing term to a topic it genuinely belongs to; do not pad topics
    with unrelated words. Check that every keyed answer is actually correct.
+   Also (ARC2-STYLE.md, section 5): spread the keys in each module (at least three
+   different letters, none more than twice); do not make the keyed option the longest; no
+   option may say "all of the above", "none of the above" or "both"; no stem may already
+   appear in another file in `content/courses/`. Objectives never start with understand,
+   know, be aware, appreciate or be familiar. Keep each module's `pass_threshold` and its
+   quiz's equal.
 9. **Instructor pack:** create `content/courses/instructor/<same file name>` with:
    ```yaml
    course_code: C103                     # same as the course file
@@ -68,7 +92,12 @@ names the course file (`content/courses/<file>.yaml`) and a suggested range temp
      - {module: 1, fault: "...", remedy: "..."}
    ```
    It is staff-only: answer keys and lab setup live here, never in the course file.
+   `minutes` in each timing equals that module's `duration_minutes`. Each module's
+   `answer_key_notes` text gives `Q1 <letter>:` to `Q5 <letter>:` with the letter the quiz
+   keys, and says why it is right and what each distractor tests (ARC2-STYLE.md, section 7).
 10. **Words:** say "Student" for a person taking a course. Never "Member" or "Learner".
+    No framework codes (NICE, DCWF, CSF sub-categories) in module text, and no offensive
+    payloads or tradecraft: describe what an analyst detects and decides.
 
 ## Done means the checker passes
 

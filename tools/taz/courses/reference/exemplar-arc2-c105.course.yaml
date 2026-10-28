@@ -1,0 +1,496 @@
+# EXEMPLAR - NOT FOR PUBLICATION. Reference copy for TAZ's course coder; do not edit.
+# Source: the ARC2 pilot course ARC2-C105 (content/releases/c105-foundations-d0e83b9f6c1f.tar.gz,
+# platform/02-content/arc2-c105.yaml), copied verbatim below the dashed line.
+# Read it for VOICE and SHAPE: objectives, topics, practice, five-item quizzes, refs, source gaps.
+# It is NOT the shape TAZ delivers: this ARC2 course is all-theory (`activity: theory`, no `lab`,
+# no `lab_range`, no `readiness`). A TAZ course keeps every module's `lab:` and adds `lab_range:`;
+# see exemplar-lab-module.yaml and tools/taz/courses/ARC2-STYLE.md. scripts/check_course.py is
+# never run on this file; the loader (scripts/load_content.py) reads only content/courses/*.yaml.
+# ----------------------------------------------------------------------------------------
+# ARC2-C105 - Foundations of Cybersecurity - PROPOSED course content (ARC2 pilot).
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# Every module is a theory activity; no range lab.
+
+course_code: ARC2-C105
+title: Foundations of Cybersecurity
+version: '1.0'
+difficulty: foundation
+duration_hours: 15
+provenance: unsourced
+status: proposed
+is_published: false
+qsp_code: ALJQ
+source:
+  origin: ARC2 pilot run arc2-c105-foundations, authored 2026-10-05 from the accepted outline
+  citations_verified: '2026-10-05'
+  notes:
+  - Generated draft courseware for the cyber-operator programme, DP1 Year 1 Fall (catalogue C105). Not
+    sourced from an Algonquin/RMC programme outline.
+  - '`refs` are keys into content/catalogue/references.yaml.'
+  - qsp_code ALJQ is the qualification shared by every PO candidate row; the PO mapping remains proposed,
+    not standards-validated, and no module binds a PO.
+  - 'Source gaps: Saltzer and Schroeder design principles, the Lockheed Martin intrusion kill chain, NIST
+    SP 800-162 (ABAC) and ISO/IEC 27001 are not in the reference library.'
+  - '15 student hours: 6 modules x 150 min (contact 45, reading 40, practice 45, assessment 20). The rest
+    of the 100-hour placeholder is independent study and later releases.'
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Security Principles and the CIA Triad
+  content_type: reading
+  duration_minutes: 150
+  is_required: true
+  pass_threshold: 70
+  activity: theory
+  objectives:
+  - Classify the confidentiality, integrity or availability impact of each event in a written incident
+    scenario
+  - Identify where least privilege, defence in depth and fail-safe defaults are applied or missing in
+    a system description
+  - Distinguish threat, vulnerability, risk and impact by labelling each element of a short case
+  topics:
+  - Assets and the confidentiality, integrity and availability triad.
+  - Event-by-event impact classification in incident scenarios.
+  - Least privilege, defence in depth and fail-safe defaults.
+  - Reading a system description for principles applied and missing.
+  - Threat, vulnerability, likelihood, impact and risk.
+  practice:
+  - Classify the CIA impact of each event in the training database outage case.
+  - Produce four principle findings (applied or missing, with evidence) for the community radio station
+    description.
+  - Label threat, vulnerability, likelihood, impact and risk in the field laptop case and propose two
+    controls.
+  minutes_breakdown:
+    contact: 45
+    reading: 40
+    practice: 45
+    assessment: 20
+  refs:
+  - nist-sp-800-30r1
+  - nist-cswp-29
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A hospital's lab results are silently altered so that some values are wrong, but no one
+        outside the hospital sees them. Which property has been harmed?
+      options:
+      - A) Confidentiality
+      - B) Integrity
+      - C) Availability
+      - D) Non-repudiation
+      answer: B
+    - question: To stop an intrusion, IT disconnects a file server for four hours. How should this defensive
+        action be recorded in an event-by-event impact classification?
+      options:
+      - A) It has no impact because it was authorised
+      - B) As a confidentiality impact
+      - C) As an availability impact
+      - D) As an integrity impact
+      answer: C
+    - question: A firewall rule set lists only the traffic to block and allows everything else. Which
+        principle does this design violate?
+      options:
+      - A) Fail-safe defaults
+      - B) Least privilege
+      - C) Economy of mechanism
+      - D) Open design
+      answer: A
+    - question: A company keeps its only backup disk permanently connected to the file server it protects.
+        Which principle is weakest in this arrangement?
+      options:
+      - A) Least privilege
+      - B) Fail-safe defaults
+      - C) Separation of duties
+      - D) Defence in depth
+      answer: D
+    - question: 'A public library''s computers run an operating system that no longer receives security
+        updates. In risk vocabulary, the unsupported operating system is best labelled as:'
+      options:
+      - A) A threat
+      - B) A vulnerability
+      - C) An impact
+      - D) A risk
+      answer: B
+- ordinal: 2
+  title: Threat Actors and Attack Surfaces
+  content_type: reading
+  duration_minutes: 150
+  is_required: true
+  pass_threshold: 70
+  activity: theory
+  objectives:
+  - Classify the threat actors in published case summaries by motivation and capability
+  - Map the phases of a published intrusion narrative to a recognised adversary-behaviour model
+  - Enumerate the attack surface of a described system and rank its entry points by exposure
+  topics:
+  - Threat actor categories, motivation and capability.
+  - Reading published case summaries for motivation and capability evidence.
+  - The intrusion kill chain and MITRE ATT&CK tactics, techniques and procedures.
+  - Mapping an intrusion narrative to ATT&CK tactics, with gaps and detection opportunities.
+  - Digital, physical and human attack surfaces; ranking entry points by exposure.
+  practice:
+  - Classify the actor in the loyalty-points theft summary using a two-column evidence table.
+  - Map the university research lab narrative to ATT&CK tactics with gaps and detection opportunities.
+  - Enumerate and score the accounting office's entry points and justify the top two.
+  minutes_breakdown:
+    contact: 45
+    reading: 40
+    practice: 45
+    assessment: 20
+  refs:
+  - mitre-attack
+  - nist-sp-800-150
+  - oasis-cti
+  - owasp-top-10
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A group quietly copies design documents from a supplier for eighteen months, using tools
+        never seen before, and returns days after each removal. Which classification best fits the evidence?
+      options:
+      - A) Opportunistic actor seeking status
+      - B) Hacktivist seeking publicity
+      - C) Espionage-motivated actor with high capability
+      - D) Financially motivated actor with low capability
+      answer: C
+    - question: When classifying a threat actor from a published summary, which of these is the weakest
+        basis for the classification?
+      options:
+      - A) What the actor did with the data
+      - B) Whether the actor's tools were custom
+      - C) Whether the actor adapted after detection
+      - D) The industry sector of the victim
+      answer: D
+    - question: An adversary lists the user accounts and shared folders on a server they have just compromised.
+        Which ATT&CK tactic does this activity represent?
+      options:
+      - A) Discovery
+      - B) Collection
+      - C) Persistence
+      - D) Reconnaissance
+      answer: A
+    - question: 'Compared with the seven-phase intrusion kill chain, MITRE ATT&CK is better suited to:'
+      options:
+      - A) Predicting exactly what an adversary will do next
+      - B) Detailed analysis of post-entry behaviour, with tactics that can repeat and overlap
+      - C) Replacing the need for logging
+      - D) Naming the country responsible for an intrusion
+      answer: B
+    - question: Using reachability, authentication, privilege and known weakness as ranking factors, which
+        entry point is most exposed?
+      options:
+      - A) An internal printer with a default password, reachable only from the office network
+      - B) A staff e-mail service protected by multi-factor authentication
+      - C) A password-only remote-desktop service on an office PC, reachable from the internet
+      - D) A guest Wi-Fi network separated from the office network
+      answer: C
+- ordinal: 3
+  title: Access Control and Identity
+  content_type: reading
+  duration_minutes: 150
+  is_required: true
+  pass_threshold: 70
+  activity: theory
+  objectives:
+  - Select an access control model (DAC, MAC, RBAC or ABAC) for a given scenario and justify the choice
+  - Classify the authentication factors in a login design and determine whether it meets multi-factor
+    authentication
+  - Design a role-based access model for a small organisation and identify one separation-of-duties conflict
+    it must prevent
+  topics:
+  - Subjects, objects and operations; identification, authentication, authorisation and accountability.
+  - Discretionary, mandatory, role-based and attribute-based access control.
+  - Authentication factor categories, multi-factor rules and authenticator strength.
+  - Designing roles and a role-permission matrix for a small organisation.
+  - Static and dynamic separation of duties, compensating controls and access reviews.
+  practice:
+  - Select and justify an access control model for the municipal permit office.
+  - Classify the authentication paths in the volunteer fire service case and decide whether each meets
+    MFA.
+  - Design a role-based access model for the community health clinic and state one separation-of-duties
+    rule for the student union case.
+  minutes_breakdown:
+    contact: 45
+    reading: 40
+    practice: 45
+    assessment: 20
+  refs:
+  - nist-sp-800-63-4
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A system holds documents at several national classification levels, and no user may share
+        a document outside fixed clearance rules. Which access control model fits best?
+      options:
+      - A) Discretionary access control
+      - B) Mandatory access control
+      - C) Role-based access control
+      - D) Attribute-based access control
+      answer: B
+    - question: A hospital lets clinicians open a record only if they are on that patient's care team,
+        on shift, and using a hospital device. Which model expresses these conditions most directly?
+      options:
+      - A) Discretionary access control
+      - B) Mandatory access control
+      - C) Attribute-based access control
+      - D) Role-based access control with one role per clinician
+      answer: C
+    - question: A login asks for a password and then for the user's first school. Does this design meet
+        multi-factor authentication?
+      options:
+      - A) Yes, because there are two separate prompts
+      - B) Yes, if the school answer is at least 12 characters
+      - C) No, because security questions are only allowed for account recovery
+      - D) No, because both authenticators are knowledge factors
+      answer: D
+    - question: In a small bookshop's role-based design, which pair of roles should a static separation-of-duties
+        rule forbid one person from holding?
+      options:
+      - A) Buyer, who creates suppliers and purchase orders, and Bookkeeper, who pays suppliers
+      - B) Customer Service and Warehouse
+      - C) Manager and Customer Service
+      - D) IT Admin and Warehouse
+      answer: A
+    - question: 'An employee moves from Payroll to Marketing and keeps the Payroll permissions alongside
+        the new ones. This is an example of:'
+      options:
+      - A) A dynamic separation-of-duties check
+      - B) Privilege creep from an incomplete mover process
+      - C) Attribute-based access control
+      - D) A compensating control
+      answer: B
+- ordinal: 4
+  title: Applied Cryptography Concepts
+  content_type: reading
+  duration_minutes: 150
+  is_required: true
+  pass_threshold: 70
+  activity: theory
+  objectives:
+  - Select symmetric or asymmetric cryptography for a stated protection need and justify the choice
+  - Identify which security properties a hash, a salted password hash and a digital signature each provide
+    in a given case
+  - Trace a certificate chain to its trust anchor and identify why a given certificate fails validation
+  topics:
+  - Security goals of cryptography and Kerckhoffs's principle.
+  - Symmetric encryption, the key distribution problem and key management.
+  - Asymmetric key pairs, hybrid encryption in TLS 1.3, and selecting symmetric or asymmetric.
+  - Hash functions, salted slow password hashing, MACs and digital signatures.
+  - X.509 certificates, chains to a trust anchor and common validation failures.
+  practice:
+  - Select symmetric, asymmetric or a combination for each protection need in the regional blood bank
+    case.
+  - Explain the club membership password recovery and compare the two overtime-approval options by security
+    property.
+  - Trace the Lakeside booking certificate chain and identify the failing validation check.
+  minutes_breakdown:
+    contact: 45
+    reading: 40
+    practice: 45
+    assessment: 20
+  refs:
+  - nist-sp-800-57pt1r5
+  - rfc-8446
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A server must encrypt its own nightly log archive before storing it, and only that server
+        will decrypt it. Which choice fits best?
+      options:
+      - A) Asymmetric encryption with a new key pair per file
+      - B) A digital signature over each archive
+      - C) Symmetric encryption with a securely stored key
+      - D) An unsalted hash of each archive
+      answer: C
+    - question: A software publisher wants thousands of customers to confirm that an update really came
+        from the publisher. Which mechanism meets this need?
+      options:
+      - A) A digital signature made with the publisher's private key
+      - B) A MAC using a key shared with every customer
+      - C) Symmetric encryption of the update
+      - D) Publishing a SHA-256 hash on the same download page
+      answer: A
+    - question: Compared with an unsalted hash, what does a unique per-user salt mainly add to stored
+        password hashes?
+      options:
+      - A) It makes the password readable by administrators
+      - B) It makes identical passwords produce different hashes and defeats precomputed tables
+      - C) It makes a weak password impossible to guess
+      - D) It gives the hash non-repudiation
+      answer: B
+    - question: Two systems share a secret key and attach a MAC to each approval message. Which property
+        does this NOT provide to a neutral third party in a dispute?
+      options:
+      - A) Integrity
+      - B) Detection of message changes
+      - C) Authenticity between the key holders
+      - D) Non-repudiation
+      answer: D
+    - question: A leaf certificate and the root are both within their validity dates, but the intermediate
+        certificate's 'not after' date passed last week. What happens during validation?
+      options:
+      - A) Validation succeeds because the root is still trusted
+      - B) Validation succeeds because only the leaf's dates are checked
+      - C) Validation fails because the chain contains an expired certificate
+      - D) Validation fails because the leaf's name cannot match
+      answer: C
+- ordinal: 5
+  title: Security Governance and Frameworks
+  content_type: reading
+  duration_minutes: 150
+  is_required: true
+  pass_threshold: 70
+  activity: theory
+  objectives:
+  - Classify given governance documents as policy, standard, procedure or guideline
+  - Map a set of described controls to the functions of a recognised cybersecurity framework and identify
+    the least-covered function
+  - Distinguish compliance from security by identifying a risk that a compliant control set leaves open
+    in a case
+  topics:
+  - 'Security governance roles: leadership, CISO, owners, custodians, users and auditors.'
+  - Policy, standard, procedure, guideline and baseline.
+  - Classifying governance documents by obligation, verbs and specificity.
+  - NIST CSF 2.0 functions, profiles and tiers, with the Risk Management Framework and CIS Benchmarks.
+  - Mapping controls to functions, finding the least-covered function, and compliance versus security.
+  practice:
+  - Classify the five transit authority extracts and identify any mislabelled document.
+  - Map the regional airport's controls to CSF 2.0 functions and identify the least-covered function.
+  - Identify a risk that the clinic's compliant control set leaves open, using threat, vulnerability,
+    likelihood and impact.
+  minutes_breakdown:
+    contact: 45
+    reading: 40
+    practice: 45
+    assessment: 20
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-37r2
+  - nist-sp-800-30r1
+  - cis-benchmarks
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'A document says: ''Workstations must lock automatically after no more than 10 minutes
+        of inactivity.'' How should it be classified?'
+      options:
+      - A) Policy
+      - B) Standard
+      - C) Procedure
+      - D) Guideline
+      answer: B
+    - question: A document titled 'Remote Access Guideline' states that contractors must use the jump
+        server and must not connect directly to equipment. What is the best finding?
+      options:
+      - A) It is correctly labelled because it concerns remote access
+      - B) It is a procedure because it names a server
+      - 'C) It is mislabelled: its mandatory language makes it a standard, not a guideline'
+      - D) It is a policy because it applies to contractors
+      answer: C
+    - question: A utility's control list includes firewalls, MFA, patching, training, backups and an incident
+        plan, but nothing that monitors logs or networks. Which CSF 2.0 function is least covered?
+      options:
+      - A) Detect
+      - B) Protect
+      - C) Recover
+      - D) Govern
+      answer: A
+    - question: Under CSF 2.0, assessing a supplier's security before signing a contract belongs primarily
+        to which function?
+      options:
+      - A) Identify
+      - B) Protect
+      - C) Respond
+      - D) Govern
+      answer: D
+    - question: An agency fully meets its standard of 12-character passwords changed every 90 days, but
+        uses no multi-factor authentication on internet-facing webmail. Which risk does compliance leave
+        open?
+      options:
+      - A) Passwords being too short to meet the standard
+      - B) A password captured on a fake sign-in page being used immediately from anywhere
+      - C) Users forgetting passwords after each change
+      - D) Auditors being unable to sample accounts
+      answer: B
+- ordinal: 6
+  title: Security Operations and the Analyst Role
+  content_type: reading
+  duration_minutes: 150
+  is_required: true
+  pass_threshold: 70
+  activity: theory
+  objectives:
+  - Sequence the steps of a security operations centre alert workflow and assign each step to the responsible
+    tier
+  - Triage supplied written alert summaries as true or false positives, citing the supporting evidence
+    for each
+  - Write an escalation note that states the finding, its evidence and where the evidence was observed
+  topics:
+  - 'The security operations centre: people, process and technology.'
+  - SOC tiers and roles, from triage analyst to incident response lead.
+  - The alert workflow from detection to lessons learned, and service levels.
+  - Triage outcomes, evidence, enrichment, thinking traps and alert fatigue.
+  - 'Escalation notes: finding, evidence and where it was observed.'
+  practice:
+  - Sequence the payroll-clerk alert workflow and assign each step to a tier or role.
+  - Triage the print service account alert and write a triage note for the two SALES-LT-14 alerts.
+  - Write a complete escalation note for the SALES-LT-14 case.
+  minutes_breakdown:
+    contact: 45
+    reading: 40
+    practice: 45
+    assessment: 20
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-92
+  - mitre-attack
+  - sigma
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: In a typical tiered SOC, who rewrites a detection rule that fires hundreds of times a
+        day on harmless activity?
+      options:
+      - A) The Tier 1 triage analyst on shift
+      - B) The incident response lead
+      - C) A Tier 3 detection engineer
+      - D) The system owner
+      answer: C
+    - question: Which step should come immediately after an alert is generated in a typical SOC workflow?
+      options:
+      - A) Containment of the affected host
+      - B) An analyst acknowledging the alert and taking ownership
+      - C) Lessons learned and rule tuning
+      - D) Briefing senior management
+      answer: B
+    - question: A large outbound transfer alert matches the scheduled backup window, goes to the contracted
+        backup provider, and is within the usual nightly volume. What is the best triage outcome?
+      options:
+      - A) True positive; escalate as data theft
+      - B) False negative; open a hunting task
+      - C) Uncertain; leave the alert open until morning
+      - D) False positive or benign activity, with a tuning request
+      answer: D
+    - question: An approved change record explains a new scheduled task that a detection rule correctly
+        flagged on a server. How is this alert best labelled?
+      options:
+      - A) Benign true positive
+      - B) False negative
+      - C) True negative
+      - D) False positive caused by a rule error
+      answer: A
+    - question: Which escalation note line best states evidence together with where it was observed?
+      options:
+      - A) Weird login for the clerk, looks hacked
+      - B) The adversary is clearly in another country
+      - C) 2026-10-02 03:23 UTC mailbox rule created hiding 'invoice' e-mails (mail server audit log)
+      - D) Please check this account as soon as possible
+      answer: C
