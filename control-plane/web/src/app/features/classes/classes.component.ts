@@ -1,7 +1,7 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
@@ -101,7 +101,7 @@ export function addSummary(r: RollCallAddResult): string {
 @Component({
   selector: 'tn-classes',
   imports: [
-    DatePipe, FormsModule, MatButtonModule, MatCardModule, MatChipsModule, MatFormFieldModule,
+    DatePipe, FormsModule, RouterLink, MatButtonModule, MatCardModule, MatChipsModule, MatFormFieldModule,
     MatIconModule, MatInputModule, MatSelectModule, EmptyStateComponent, ClassCloseoutComponent,
     RollCallDomainsCardComponent,
   ],
@@ -280,7 +280,9 @@ export function addSummary(r: RollCallAddResult): string {
                       <td><mat-chip [class]="'mode-' + s.range_mode">{{ modeLabel(s) }}</mat-chip></td>
                       <td>{{ s.state }}</td>
                       <td>@if (s.range_mode === 'collective') {
-                        <button mat-button (click)="openTeams(c, s)"><mat-icon>diversity_3</mat-icon> Teams</button> }</td>
+                        <button mat-button (click)="openTeams(c, s)"><mat-icon>diversity_3</mat-icon> Teams</button> }
+                        <a mat-button class="live" [routerLink]="['/classes', c.id, 'sessions', s.event_id, 'live']">
+                          <mat-icon>visibility</mat-icon> Live</a></td>
                     </tr>
                   } @empty { <tr><td colspan="5">No sessions booked yet.</td></tr> }
                 </tbody>

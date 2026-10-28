@@ -951,6 +951,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/classes/attending/ranges/{range_id}/consoles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My classes: the machines of my class range I may open a console on
+         * @description The Student's own seat, or their class's shared range while a collective session on it
+         *     is under way (the rule of their credentials); only the machines they are handed accounts
+         *     on. ``open`` says whether a session's window is open now.  **class:attend**
+         */
+        get: operations["listMyRangeConsoles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/attending/ranges/{range_id}/consoles/{vm}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * My classes: open a console on one of my machines
+         * @description A one-time console ticket on one of the Student's own machines, while a session of
+         *     the class using that range is live or within its provisioning lead. Audited
+         *     (``range_console_open``, as ``student``), and counted as attendance evidence like opening
+         *     the accounts.  **class:attend**
+         */
+        post: operations["openMyRangeConsole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/classes/course-range-modes/{course_id}": {
         parameters: {
             query?: never;
@@ -1372,6 +1417,53 @@ export interface paths {
          * @description It is removed, with the reason, which the class's lead sees. Audited.  **schedule:approve**
          */
         post: operations["rejectRollCallAddition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/sessions/{event_id}/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A class session's live view: each Student's machines and status
+         * @description Its lead, assistants, observers and admins: every Student on the roll call with their
+         *     seat's machines (individual) or team (collective, with the shared range), and when they
+         *     last opened their range. Another tenant's class, or one the caller has no part in, is 404;
+         *     a Student is 403. No credentials here.
+         */
+        get: operations["getClassSessionLive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/sessions/{event_id}/live/console": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open a console on a machine of a class session's range
+         * @description A one-time console ticket on a machine of one of the session's ranges (a Student's
+         *     seat or the shared range), during the session's window: any machine for its lead,
+         *     assistants and admins; the Students' machines only for observers, view-only where the
+         *     hypervisor enforces it, otherwise a normal console marked ``observed``.
+         *     Audited (``range_console_open``, as ``observer`` or ``staff``).
+         */
+        post: operations["openClassSessionConsole"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5767,6 +5859,7 @@ export interface paths {
          * @description The roster of a live exercise: each Student's team, lab, detection attempts, credit
          *     earned from them, last activity and what may need attention.
          *     **Permission: exercise:read + telemetry:read** (staff and observers; never Students).
+         *     An observer sees a class session's exercise only when they are on that class's staff.
          */
         get: operations["get_exercise_class_ops_exercises__exercise_id__class_get"];
         put?: never;
@@ -11575,6 +11668,61 @@ export interface components {
             /** Verdict */
             verdict: string;
         };
+        /** ClassConsoleIn */
+        ClassConsoleIn: {
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /**
+             * Vm
+             * @description The VM's name (``ConsoleMachineOut.name``)
+             */
+            vm: string;
+        };
+        /**
+         * ClassConsoleOut
+         * @description A one-time console ticket. Short-lived and single-use; never a standing credential.
+         */
+        ClassConsoleOut: {
+            /** Expires In */
+            expires_in: number;
+            /**
+             * Kind
+             * @description webmks (vSphere) or mock
+             */
+            kind: string;
+            /**
+             * Machine
+             * @description The template node id
+             */
+            machine: string;
+            /**
+             * Observed
+             * @description An observer's console the hypervisor cannot make view-only: input reaches the machine, so the page says it is observed
+             * @default false
+             */
+            observed?: boolean;
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /** Url */
+            url: string;
+            /**
+             * View Only
+             * @description The hypervisor refuses input on this console
+             * @default false
+             */
+            view_only?: boolean;
+            /**
+             * Vm
+             * @description The VM's name
+             */
+            vm: string;
+        };
         /** ClassIn */
         ClassIn: {
             /** Assistant Ids */
@@ -11653,6 +11801,72 @@ export interface components {
             session_id: string;
             /** State */
             state: string;
+        };
+        /**
+         * ClassLiveOut
+         * @description A class session's live view (ADR 0014 §19): each Student's machines and status.
+         */
+        ClassLiveOut: {
+            /**
+             * Class Id
+             * Format: uuid
+             */
+            class_id: string;
+            /** Class Name */
+            class_name: string;
+            /**
+             * Consoles For You
+             * @description Your part may open consoles at all: false for an observer while CLASS_OBSERVER_CONSOLES is off (the status grid only)
+             */
+            consoles_for_you: boolean;
+            /**
+             * Consoles Open
+             * @description Consoles can be opened now (the session's window)
+             */
+            consoles_open: boolean;
+            /**
+             * End Time
+             * Format: date-time
+             */
+            end_time: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Live
+             * @description The session is under way now
+             */
+            live: boolean;
+            /** Range Mode */
+            range_mode: string;
+            /**
+             * Role
+             * @description The caller's part in the class: lead, assistant, observer or admin
+             */
+            role: string;
+            /** Session Name */
+            session_name: string;
+            /** @description The range a collective session books */
+            shared_range?: components["schemas"]["LiveRangeOut"] | null;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+            /** Students */
+            students: components["schemas"]["LiveStudentOut"][];
+            /**
+             * View Only Consoles
+             * @description An observer's console is view-only on this hypervisor; otherwise it is marked observed
+             */
+            view_only_consoles: boolean;
         };
         /** ClassObjectiveOut */
         ClassObjectiveOut: {
@@ -12398,6 +12612,30 @@ export interface components {
              * @default false
              */
             running?: boolean;
+        };
+        /** ConsoleMachineOut */
+        ConsoleMachineOut: {
+            /**
+             * Machine
+             * @description The template node id: what the range's accounts name the machine. Several VMs share it when the template node has a count above one
+             */
+            machine: string;
+            /**
+             * Name
+             * @description The VM's name, unique in its range: a console is opened by it
+             */
+            name: string;
+            /**
+             * Power
+             * @description The VM's state as its last build or check recorded it
+             */
+            power?: string | null;
+            /**
+             * Student Machine
+             * @description A Student is handed an account on it; observers open consoles on these only
+             * @default false
+             */
+            student_machine?: boolean;
         };
         /** ConsoleOut */
         ConsoleOut: {
@@ -15442,6 +15680,56 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** LiveRangeOut */
+        LiveRangeOut: {
+            /** Machines */
+            machines: components["schemas"]["ConsoleMachineOut"][];
+            /** Name */
+            name: string;
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /**
+             * State
+             * @description The range's own state (ready, running, stopped, provisioning, failed, ...)
+             */
+            state: string;
+        };
+        /** LiveStudentOut */
+        LiveStudentOut: {
+            /**
+             * Display Name
+             * @description Their name, or their roll-call email when they have no account yet
+             */
+            display_name: string;
+            /**
+             * Entry Id
+             * Format: uuid
+             */
+            entry_id: string;
+            /**
+             * Last Seen At
+             * @description The last time they opened their range (accounts, a password or a console) since the session's provisioning lead
+             */
+            last_seen_at?: string | null;
+            /** @description Their own seat (an individual session) */
+            range?: components["schemas"]["LiveRangeOut"] | null;
+            team?: components["schemas"]["LiveTeamOut"] | null;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /** LiveTeamOut */
+        LiveTeamOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** LtiLinkCodeIn */
         LtiLinkCodeIn: {
             /** Code */
@@ -15903,6 +16191,32 @@ export interface components {
             courses: components["schemas"]["ClassItemOut"][];
             /** Exercises */
             exercises: components["schemas"]["ClassItemOut"][];
+        };
+        /**
+         * MyRangeConsolesOut
+         * @description The machines of a class range the Student may open a console on, and whether now.
+         */
+        MyRangeConsolesOut: {
+            /**
+             * Machines
+             * @description Only machines the Student is handed accounts on (as their credentials panel)
+             */
+            machines: components["schemas"]["ConsoleMachineOut"][];
+            /**
+             * Open
+             * @description A session of the class using this range is live, or within its provisioning lead: POST opens a console
+             */
+            open: boolean;
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /**
+             * Session Id
+             * @description That session, when open
+             */
+            session_id?: string | null;
         };
         /**
          * MySessionOut
@@ -22503,6 +22817,105 @@ export interface operations {
             };
         };
     };
+    listMyRangeConsoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyRangeConsolesOut"];
+                };
+            };
+            /** @description Not a class range of the caller's (another Student's seat, another tenant's) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    openMyRangeConsole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+                /** @description The VM's name, as the list gives it */
+                vm: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassConsoleOut"];
+                };
+            };
+            /** @description Outside the session's window */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a class range of the caller's (another Student's seat, another tenant's) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The machine is not built or not running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description The hypervisor gave no console */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getCourseRangeMode: {
         parameters: {
             query?: never;
@@ -23261,6 +23674,102 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    getClassSessionLive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassLiveOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    openClassSessionConsole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassConsoleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassConsoleOut"];
+                };
+            };
+            /** @description A Student, or outside the session's window */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a range of this session, or a class the caller has no part in */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The machine is not built or not running, or the class is not open */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description The hypervisor gave no console */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
