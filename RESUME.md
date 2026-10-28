@@ -1,4 +1,4 @@
-# Resume — 2026-10-11
+# Resume — 2026-10-27 (product section; the box section is older, as marked)
 
 Read this first after a restart. It describes the current state. History is in
 `git log` and `docs/hardening/`. Product state, module by module: `docs/current-state.md`.
@@ -10,20 +10,34 @@ Releasing: `docs/release.md`.
   runs on PRs into it, and releases are tags on it. Local `main` and `github/main` have
   diverged before, so check `git rev-list --left-right --count main...github/main` before
   branching "from main". `feat/aar-pdf-designer-xapi` is an old line, not the base.
-- **All 17 modules are at stage 4. Release status: `v1.2.0-rc3` is installed on staging**
-  (`tn-staging`); `v1.2.0` is not tagged yet (`v1.1.0` was released 2026-10-09).
-  Changes: `CHANGELOG.md`. Known limitations, what is proven only on simulators, and the
-  staging record: `docs/release-notes/v1.2.0.md` (v1.0.0's: `docs/release-notes/v1.0.0.md`).
-  The section modules live under `control-plane/api/app/<module>/`: scheduler + capacity,
-  range leases and range ops, lab sessions, network inventory, noise, greyspace,
-  detections, scenario runs, course releases/publishing, LMS, cmi5, wiki/support
-  tickets/notifications. Everything up to #142 is merged.
+- **Release status:** `v1.2.0` is not tagged yet (`v1.1.0` was released 2026-10-09). The
+  newest candidate is `v1.2.0-rc15` (2026-10-22). It **predates ADR 0014**: the classes,
+  approval and calendar work (#277, #291–#312) is on main but in no release candidate yet.
+  - Changes: `CHANGELOG.md`.
+  - Known limitations, simulator-only evidence and the staging record:
+    `docs/release-notes/v1.2.0.md`.
+  - How each role uses the product: `docs/guides/` (03 admin, 04 instructor, 05 Student).
+    01, 02 and 06 (site, install, operations) are on a separate docs branch.
+  - `docs/onboarding.md` and `docs/user-guide.md` now only point to the guides.
+- **Where the code lives:** section modules under `control-plane/api/app/<module>/`:
+  - scheduler and capacity, classes (ADR 0014), acknowledgement, content review and feeds,
+    AD status sync;
+  - range leases and range ops, lab sessions (with the capacity gate), network inventory;
+  - noise, greyspace, detections, scenario runs;
+  - course releases and publishing, LMS, cmi5, result transfer;
+  - wiki, support tickets, notifications.
+
+  Everything up to #314 is merged, except #315 (unit readiness), which is in review.
 - **H6 is fixed** (#131): every vSphere operation uses the range's own tenant's vCenter
   credentials. Like Greyspace on vSphere (#133) and the VyOS/OPNsense configs, it is proven
   on vcsim and fakes only: **no real vCenter run yet**.
-- **Open PRs** (2026-10-11): #143 (ARC² runner) in flight. #92 (session coordinator).
-  #3–#51 predate the re-land on main. Check each against main before acting on it, and do
-  not merge them as they are.
+- **Open PRs** (2026-10-27): #315 (unit readiness, ADR 0014 item 12), #92 (session
+  coordinator), #51 (codereview1 rev 3). Check each against main before acting on it.
+- **Open issues to know about:**
+  - #273: the installer does not pass `PLATFORM_TENANT_ID`, so after a second tenant
+    nobody is platform administrator.
+  - #313: no Student console for class ranges.
+  - #310: the AD status sync misses `ad_object_guid` on some account paths.
 - **scenario-engine:** `runner/` is live (the scenario-engine image's command, the
   documented CLI, `tests/scenario_engine/`). `template_engine/` had no importers outside a
   parity test and was deleted in v1.2.0.
