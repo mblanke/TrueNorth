@@ -23,7 +23,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { ApprovalsPanelComponent } from './approvals-panel.component';
 import { AdStatusSyncPanelComponent } from './ad-status-sync-panel.component';
-import { DEFAULT_GROUP_TYPE, DEFAULT_OU_TYPE, GROUP_TYPES, OU_TYPES } from './directory-types';
+import { DEFAULT_GROUP_TYPE, DEFAULT_OU_TYPE, GROUP_TYPES, OU_TYPES, detailText } from './directory-types';
 
 // Wire types are the contract's (core/models). OUTree is the OU tree node; AuthZone a policy.
 type OUTree = OrganizationalUnit;
@@ -71,10 +71,15 @@ type AuthZone = AuthZonePolicy;
                 <mat-card-header><mat-card-title>{{ editingUserId ? 'Edit User' : 'New User' }}</mat-card-title></mat-card-header>
                 <mat-card-content>
                   <div class="form-row">
-                    <mat-form-field appearance="outline">
-                      <mat-label>Email</mat-label>
-                      <input matInput [(ngModel)]="newUser.email" placeholder="user@example.com" [readonly]="!!editingUserId">
-                    </mat-form-field>
+                    @if (editingUserId) {
+                      <!-- The address comes from the directory (Keycloak / AD); this page cannot change it. -->
+                      <p class="email-fixed"><strong>Email</strong> {{ newUser.email }}</p>
+                    } @else {
+                      <mat-form-field appearance="outline">
+                        <mat-label>Email</mat-label>
+                        <input matInput [(ngModel)]="newUser.email" placeholder="user@example.com">
+                      </mat-form-field>
+                    }
                     <mat-form-field appearance="outline">
                       <mat-label>Display Name</mat-label>
                       <input matInput [(ngModel)]="newUser.display_name" placeholder="John Doe">
@@ -649,6 +654,7 @@ type AuthZone = AuthZonePolicy;
     .form-row { display: flex; gap: 16px; margin-bottom: 8px; }
     .form-row mat-form-field { flex: 1; }
     .rank-badge { background: var(--accent); color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 11px; margin-left: 8px; }
+    .email-fixed { margin: 0; align-self: center; }
     .deactivated-badge { border: 1px solid var(--alert); color: var(--alert); padding: 1px 8px; border-radius: 3px; font-size: 11px; margin-left: 8px; }
     .callsign { color: var(--text-secondary); font-style: italic; margin-left: 8px; }
     .teams-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
@@ -795,7 +801,7 @@ export class UsersComponent implements OnInit {
         this.loadUsers();
       },
       error: (err: any) => {
-        this.snack.open(err.error?.detail || 'Failed to create user', 'OK', { duration: 5000 });
+        this.snack.open(detailText(err, 'Failed to create user'), 'OK', { duration: 5000 });
       },
     });
   }
@@ -830,7 +836,7 @@ export class UsersComponent implements OnInit {
       },
       error: (err: any) => {
         this.userSaving = false;
-        this.snack.open(err.error?.detail || 'Failed to update user', 'OK', { duration: 5000 });
+        this.snack.open(detailText(err, 'Failed to update user'), 'OK', { duration: 5000 });
       },
     });
   }
@@ -849,7 +855,7 @@ export class UsersComponent implements OnInit {
         this.loadUsers();
       },
       error: (err: any) => {
-        this.snack.open(err.error?.detail || 'Failed to delete user', 'OK', { duration: 5000 });
+        this.snack.open(detailText(err, 'Failed to delete user'), 'OK', { duration: 5000 });
       },
     });
   }
@@ -862,7 +868,7 @@ export class UsersComponent implements OnInit {
         this.loadUsers();
       },
       error: (err: any) => {
-        this.snack.open(err.error?.detail || 'Failed to re-enable user', 'OK', { duration: 5000 });
+        this.snack.open(detailText(err, 'Failed to re-enable user'), 'OK', { duration: 5000 });
       },
     });
   }
@@ -877,7 +883,7 @@ export class UsersComponent implements OnInit {
         this.loadTeams();
       },
       error: (err: any) => {
-        this.snack.open(err.error?.detail || 'Failed to create team', 'OK', { duration: 5000 });
+        this.snack.open(detailText(err, 'Failed to create team'), 'OK', { duration: 5000 });
       },
     });
   }
@@ -906,7 +912,7 @@ export class UsersComponent implements OnInit {
       },
       error: (err: any) => {
         this.teamSaving = false;
-        this.snack.open(err.error?.detail || 'Failed to update team', 'OK', { duration: 5000 });
+        this.snack.open(detailText(err, 'Failed to update team'), 'OK', { duration: 5000 });
       },
     });
   }
@@ -925,7 +931,7 @@ export class UsersComponent implements OnInit {
         this.loadTeams();
       },
       error: (err: any) => {
-        this.snack.open(err.error?.detail || 'Failed to delete team', 'OK', { duration: 5000 });
+        this.snack.open(detailText(err, 'Failed to delete team'), 'OK', { duration: 5000 });
       },
     });
   }
@@ -940,7 +946,7 @@ export class UsersComponent implements OnInit {
         this.directory.ouTree().subscribe({ next: t => this.ouTree = t, error: () => {} });
       },
       error: (err: any) => {
-        this.snack.open(err.error?.detail || 'Failed to create OU', 'OK', { duration: 5000 });
+        this.snack.open(detailText(err, 'Failed to create OU'), 'OK', { duration: 5000 });
       },
     });
   }
@@ -967,7 +973,7 @@ export class UsersComponent implements OnInit {
       },
       error: (err: any) => {
         this.ouSaving = false;
-        this.snack.open(err.error?.detail || 'Failed to update OU', 'OK', { duration: 5000 });
+        this.snack.open(detailText(err, 'Failed to update OU'), 'OK', { duration: 5000 });
       },
     });
   }
@@ -988,7 +994,7 @@ export class UsersComponent implements OnInit {
         this.directory.securityGroups().subscribe({ next: g => this.securityGroups = g, error: () => {} });
       },
       error: (err: any) => {
-        this.snack.open(err.error?.detail || 'Failed to create group', 'OK', { duration: 5000 });
+        this.snack.open(detailText(err, 'Failed to create group'), 'OK', { duration: 5000 });
       },
     });
   }
@@ -1016,7 +1022,7 @@ export class UsersComponent implements OnInit {
       },
       error: (err: any) => {
         this.groupSaving = false;
-        this.snack.open(err.error?.detail || 'Failed to update group', 'OK', { duration: 5000 });
+        this.snack.open(detailText(err, 'Failed to update group'), 'OK', { duration: 5000 });
       },
     });
   }
@@ -1053,7 +1059,7 @@ export class UsersComponent implements OnInit {
       },
       error: (err: any) => {
         this.zoneSaving = false;
-        this.snack.open(err.error?.detail || 'Failed to update auth zone', 'OK', { duration: 5000 });
+        this.snack.open(detailText(err, 'Failed to update auth zone'), 'OK', { duration: 5000 });
       },
     });
   }
@@ -1071,7 +1077,7 @@ export class UsersComponent implements OnInit {
         this.snack.open(r.message || 'Sync triggered', '', { duration: 3000, panelClass: 'snack-success' });
       },
       error: (err: any) => {
-        this.snack.open(err.error?.detail || 'Sync failed', 'OK', { duration: 5000 });
+        this.snack.open(detailText(err, 'Sync failed'), 'OK', { duration: 5000 });
       },
     });
   }

@@ -29,3 +29,22 @@ export const GROUP_TYPES: readonly TypeOption[] = [
 export const DEFAULT_OU_TYPE = 'custom';
 /** The API's own default for a new security group. */
 export const DEFAULT_GROUP_TYPE = 'access';
+
+/**
+ * An API refusal as one readable sentence. FastAPI answers a bad field with an array of
+ * {loc, msg}; the page used to show that array as "[object Object]". A refused type names
+ * the choices the page offers.
+ */
+export function detailText(err: unknown, fallback: string): string {
+  const detail = (err as { error?: { detail?: unknown } } | null)?.error?.detail;
+  if (typeof detail === 'string' && detail) return detail;
+  if (Array.isArray(detail) && detail.length) {
+    return detail.map((d: { loc?: unknown[]; msg?: string }) => {
+      const field = String(d?.loc?.[d.loc.length - 1] ?? '');
+      if (field === 'ou_type') return `That OU type is not allowed. Choose one of: ${OU_TYPES.map(t => t.label).join(', ')}.`;
+      if (field === 'group_type') return `That group type is not allowed. Choose one of: ${GROUP_TYPES.map(t => t.label).join(', ')}.`;
+      return field && d?.msg ? `${field}: ${d.msg}` : d?.msg ?? fallback;
+    }).join(' ');
+  }
+  return fallback;
+}

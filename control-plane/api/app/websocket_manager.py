@@ -467,31 +467,6 @@ class WebSocketManager:
             "unique_users": len(self._user_connections),
         }
 
-    # ── Channel Authorization Helper ──────────────────────────────────
-    @staticmethod
-    def authorize_channel(channel: str, user_tenant_id: str | None, user_role: str | None = None) -> bool:
-        """Check whether a user may subscribe to *channel*.
-
-        Rules:
-        * ``system.*`` — admins only
-        * ``tenant.<id>`` — user must belong to that tenant (or be admin)
-        * ``range.<id>``, ``exercise.<id>`` — allowed if same tenant
-          (actual DB check should be done in the route; this is a fast pre-check)
-        * ``public.*`` — anyone
-        """
-        if channel.startswith("system."):
-            return user_role == "admin"
-        if channel.startswith("tenant."):
-            parts = channel.split(".", 1)
-            target_tenant = parts[1] if len(parts) > 1 else ""
-            if user_role == "admin":
-                return True
-            return target_tenant == user_tenant_id
-        if channel.startswith("public."):
-            return True
-        # Default: allow (more specific checks should be layered in routes)
-        return True
-
     # ── Collaboration Rooms ───────────────────────────────────────────
     async def join_room(self, conn_id: str, room_id: str, user_display_name: str | None = None) -> None:
         """Join an exercise collaboration room.

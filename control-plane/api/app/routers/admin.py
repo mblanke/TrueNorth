@@ -124,6 +124,13 @@ def update_tenant(
     if not tenant or (not is_platform_admin(user, db) and str(tenant.id) != user.tenant_id):
         # 404, not 403: another tenant's existence is not the caller's business.
         raise HTTPException(404, "Tenant not found")
+    if body.slug != tenant.slug and not is_platform_admin(user, db):
+        # The slug names a tenant to the installer and to registration; a tenant's own admin
+        # taking another's freed slug must never move the platform tenant (review of #322).
+        raise HTTPException(403, "Only a platform administrator can change a tenant's slug; "
+                                 "the name can be changed")
+    if body.slug != tenant.slug and db.query(Tenant).filter(Tenant.slug == body.slug).first():
+        raise HTTPException(409, f"Tenant slug '{body.slug}' already exists")
     tenant.name = body.name
     tenant.slug = body.slug
     db.commit()
@@ -199,7 +206,10 @@ def update_user(
     # without display_name was a 500). A query string cannot ask for null; omit the Nones.
     update_data = body.model_dump(exclude_none=True)
     if "role" in update_data:
-        update_data["role"] = UserRole(update_data["role"])
+        try:
+            update_data["role"] = UserRole(update_data["role"])
+        except ValueError:
+            raise HTTPException(422, "role must be one of: " + ", ".join(r.value for r in UserRole)) from None
     disables = update_data.get("is_active") is False
     demotes = "role" in update_data and update_data["role"] != UserRole.admin
     if target.is_active and target.deleted_at is None and (disables or demotes):

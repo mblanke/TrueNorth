@@ -91,11 +91,38 @@
     msg: "{{ (tn_bootstrap.stdout_lines + tn_bootstrap.stderr_lines) | default(['(no output)'], true) }}"
 
 # ── The platform tenant (PLATFORM_TENANT_ID; #273, #318) ──────────────
-# tn_platform_tenant_id empty (the default): the tenant just made is the operator's. Its id
-# is recorded in the state directory, which roles/tn_config renders into the env file on
-# every run (so re-runs agree), and the api is recreated with it now. Without it a second
-# tenant would leave nobody the platform administrator.
-- name: Seed — the bootstrap tenant's id
+# Which tenant is the operator's is decided ONCE and never re-picked by slug (review of
+# #322): a tenant's slug can be renamed and taken by another tenant, and its admin would
+# then become the platform administrator on the next upgrade.
+#   1. tn_platform_tenant_id, when set, always wins.
+#   2. Otherwise the id recorded in state/platform_tenant_id (written once, never replaced).
+#   3. Otherwise, on the first run only, the id of the tenant on tn_tenant_slug, which is
+#      then recorded.
+# On every later run the recorded id must still be a tenant, and the slug must not name a
+# different one; either stops the install with how to resolve it. roles/tn_config renders
+# the same id into the env file on every run, and app.bootstrap_admin finds the tenant by it.
+- name: Seed — is a platform tenant already recorded
+  ansible.builtin.slurp:
+    src: "{{ tn_state_dir }}/platform_tenant_id"
+  register: tn_platform_tenant_recorded
+  failed_when: false
+
+- name: Seed — the recorded platform tenant
+  ansible.builtin.set_fact:
+    tn_recorded_platform_tenant: >-
+      {{ (tn_platform_tenant_recorded.content | b64decode | trim | lower)
+         if tn_platform_tenant_recorded.content is defined else '' }}
+
+- name: Seed — the recorded platform tenant is an id
+  ansible.builtin.assert:
+    that: tn_recorded_platform_tenant is match('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+    fail_msg: >-
+      {{ tn_state_dir }}/platform_tenant_id does not hold a tenant id. Put the operator's tenant
+      id in it, or set tn_platform_tenant_id.
+    quiet: true
+  when: tn_recorded_platform_tenant | length > 0
+
+- name: Seed — the tenant on the bootstrap slug
   ansible.builtin.command:
     cmd: >-
       docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
@@ -103,31 +130,84 @@
       -d {{ vault_postgres_db | default('forge') }} -v ON_ERROR_STOP=1 -tAc
       "SELECT id FROM tenants WHERE slug = '{{ tn_tenant_slug | regex_replace("'", "''") }}'"
     chdir: "{{ tn_app_dir }}/infra/platform/docker"
-  register: tn_bootstrap_tenant
+  register: tn_slug_tenant
   changed_when: false
-  when: tn_platform_tenant_id | default('') | string | trim | length == 0
+  when: not ansible_check_mode
 
-- name: Seed — the bootstrap tenant exists
+- name: Seed — the explicit or recorded platform tenant still exists
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ tn_compose_file }} --env-file {{ tn_env_file }}
+      exec -T postgres psql -U {{ vault_postgres_user | default('forge') }}
+      -d {{ vault_postgres_db | default('forge') }} -v ON_ERROR_STOP=1 -tAc
+      "SELECT count(*) FROM tenants WHERE id =
+      '{{ (tn_platform_tenant_id | default('') | string | trim | lower) or tn_recorded_platform_tenant }}'"
+    chdir: "{{ tn_app_dir }}/infra/platform/docker"
+  register: tn_platform_tenant_rows
+  changed_when: false
+  when:
+    - not ansible_check_mode
+    - (tn_platform_tenant_id | default('') | string | trim | length > 0) or tn_recorded_platform_tenant | length > 0
+
+- name: Seed — the recorded platform tenant still exists
   ansible.builtin.assert:
-    that: tn_bootstrap_tenant.stdout | trim is match('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+    that: tn_platform_tenant_rows.stdout | trim == '1'
+    fail_msg: >-
+      The platform tenant {{ (tn_platform_tenant_id | default('') | string | trim | lower) or tn_recorded_platform_tenant }}
+      is not a tenant in this database. If it was restored from another site, set
+      tn_platform_tenant_id to the operator's tenant id (or fix {{ tn_state_dir }}/platform_tenant_id).
+      Nothing was changed.
+    quiet: true
+  when:
+    - not ansible_check_mode
+    - (tn_platform_tenant_id | default('') | string | trim | length > 0) or tn_recorded_platform_tenant | length > 0
+
+- name: Seed — on the first run the bootstrap tenant is the platform tenant
+  ansible.builtin.assert:
+    that: tn_slug_tenant.stdout | trim is match('^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
     fail_msg: >-
       No tenant with slug {{ tn_tenant_slug }} after app.bootstrap_admin
-      ({{ tn_bootstrap_tenant.stdout | default('') | trim or tn_bootstrap_tenant.stderr | default('') | trim }}):
+      ({{ tn_slug_tenant.stdout | default('') | trim or tn_slug_tenant.stderr | default('') | trim }}):
       PLATFORM_TENANT_ID cannot default to it. Read the bootstrap output above.
     quiet: true
   when:
-    - tn_platform_tenant_id | default('') | string | trim | length == 0
     - not ansible_check_mode
+    - tn_platform_tenant_id | default('') | string | trim | length == 0
+    - tn_recorded_platform_tenant | length == 0
 
-- name: Seed — record it as the platform tenant
+- name: Seed — the platform tenant
+  ansible.builtin.set_fact:
+    tn_platform_tenant_effective: >-
+      {{ (tn_platform_tenant_id | default('') | string | trim | lower)
+         or tn_recorded_platform_tenant
+         or ((tn_slug_tenant.stdout | default('') | trim) if not ansible_check_mode else '') }}
+
+# A different tenant on the slug is exactly the capture the review found: stop, do not
+# follow it. (No tenant on the slug is fine: the platform administrator renamed it.)
+- name: Seed — the slug does not name another tenant
+  ansible.builtin.assert:
+    that: >-
+      not ((tn_slug_tenant.stdout | default('') | trim) | length > 0
+           and (tn_slug_tenant.stdout | default('') | trim) != tn_platform_tenant_effective)
+    fail_msg: >-
+      Tenant slug {{ tn_tenant_slug }} now belongs to {{ tn_slug_tenant.stdout | default('') | trim }},
+      but the platform tenant is {{ tn_platform_tenant_effective }}. Someone renamed a tenant's slug.
+      The platform tenant is NOT changed. Find out who, give the slug back (or set tn_tenant_slug
+      to the platform tenant's current slug), or set tn_platform_tenant_id to the id you mean.
+    quiet: true
+  when: not ansible_check_mode
+
+# Never replaced: the first run's id stays (force: false), whatever the slug is later.
+- name: Seed — record the platform tenant
   ansible.builtin.copy:
     dest: "{{ tn_state_dir }}/platform_tenant_id"
-    content: "{{ tn_bootstrap_tenant.stdout | trim }}"
+    content: "{{ tn_platform_tenant_effective }}"
     mode: "0644"
-  register: tn_platform_tenant_recorded
+    force: false
   when:
-    - tn_platform_tenant_id | default('') | string | trim | length == 0
     - not ansible_check_mode
+    - tn_platform_tenant_id | default('') | string | trim | length == 0
+    - tn_recorded_platform_tenant | length == 0
 
 # Patched in for this run (as roles/tn_keycloak does the LDAP component id); 30-config
 # renders the same line from the state file from now on.
@@ -135,7 +215,7 @@
   ansible.builtin.lineinfile:
     path: "{{ tn_env_file }}"
     regexp: "^PLATFORM_TENANT_ID="
-    line: "PLATFORM_TENANT_ID={{ tn_platform_tenant_id | default('') | string | trim or tn_bootstrap_tenant.stdout | trim }}"
+    line: "PLATFORM_TENANT_ID={{ tn_platform_tenant_effective }}"
     mode: "0600"
   when: not ansible_check_mode
 

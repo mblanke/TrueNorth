@@ -7,7 +7,7 @@ import { DirectoryApiService } from '@core/services/directory-api.service';
 import { RegistrationApiService } from '@core/services/registration-api.service';
 import { UserFull } from '@core/models';
 import { UsersComponent } from './users.component';
-import { GROUP_TYPES, OU_TYPES } from './directory-types';
+import { GROUP_TYPES, OU_TYPES, detailText } from './directory-types';
 
 describe('UsersComponent', () => {
   let fixture: ComponentFixture<UsersComponent>;
@@ -122,5 +122,22 @@ describe('UsersComponent', () => {
     component.cancelGroupEdit();
     expect(ouTypes).toContain(component.newOU.ou_type);
     expect(groupTypes).toContain(component.newGroup.group_type);
+  });
+
+  it('shows a refused field as a sentence, not the API array', () => {
+    const refused = { error: { detail: [{ loc: ['body', 'ou_type'], msg: 'String should match pattern' }] } };
+    expect(detailText(refused, 'Failed')).toContain('That OU type is not allowed. Choose one of: Country');
+    expect(detailText({ error: { detail: [{ loc: ['body', 'group_type'], msg: 'x' }] } }, 'Failed')).toContain('Role-based');
+    expect(detailText({ error: { detail: [{ loc: ['query', 'role'], msg: 'bad' }] } }, 'Failed')).toBe('role: bad');
+    expect(detailText({ error: { detail: 'User not found' } }, 'Failed')).toBe('User not found');
+    expect(detailText(null, 'Failed')).toBe('Failed');
+  });
+
+  it('does not offer the email for editing: the directory owns it', () => {
+    component.startEditUser(people[0]);
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('input[placeholder="user@example.com"]')).toBeNull();
+    expect(el.querySelector('.email-fixed')?.textContent).toContain('ada@truenorth.local');
   });
 });

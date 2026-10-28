@@ -241,13 +241,14 @@ describe('ApiService', () => {
   // PATCH /users/{id} reads its fields from the query string (UserUpdateIn as a dependency):
   // a JSON body was ignored, so an edit said "User updated" and changed nothing (#318).
   it('updateUser() sends the fields as query parameters, without a body', () => {
-    service.updateUser('u1', { display_name: 'Ada L', role: 'instructor', rank: '', nation_id: null } as never).subscribe();
+    service.updateUser('u1', { display_name: 'Ada L', role: 'instructor', rank: '', nation_id: null, email: 'a@x.test' } as never).subscribe();
     const req = httpMock.expectOne(r => r.url === `${base}/users/u1`);
     expect(req.request.method).toBe('PATCH');
     expect(req.request.params.get('display_name')).toBe('Ada L');
     expect(req.request.params.get('role')).toBe('instructor');
     expect(req.request.params.get('rank')).toBe('');
     expect(req.request.params.has('nation_id')).toBeFalse();
+    expect(req.request.params.has('email')).toBeFalse(); // the directory owns the address
     expect(req.request.body).toBeNull();
     req.flush({});
   });

@@ -69,26 +69,55 @@ def test_env_tasks_resolve_the_bootstrap_tenant_and_the_host_zone():
     assert names.index("Config — the platform tenant") < names.index("Config — render .env.production")
 
 
-def test_seed_records_the_bootstrap_tenant_and_restarts_the_api_with_it():
+def test_seed_records_the_platform_tenant_once_and_checks_it_on_every_later_run():
+    """Review of #322 (B1): the slug is looked up only until an id is recorded. After that the
+    recorded id is checked to still exist, and a different tenant on the slug stops the run."""
     tasks = yaml.safe_load((INSTALL / "roles/tn_seed/tasks/main.yml").read_text())
     names = [t["name"] for t in tasks]
-    bootstrap = names.index("Seed — create the tenant and bootstrap admin")
-    lookup = names.index("Seed — the bootstrap tenant's id")
-    record = names.index("Seed — record it as the platform tenant")
-    patch = names.index("Seed — put the platform tenant in the environment")
-    restart = names.index("Seed — the api runs with the platform tenant")
-    assert bootstrap < lookup < record < patch < restart
     by_name = {t["name"]: t for t in tasks}
-    assert "WHERE slug = " in by_name["Seed — the bootstrap tenant's id"]["ansible.builtin.command"]["cmd"]
-    assert by_name["Seed — record it as the platform tenant"]["ansible.builtin.copy"]["dest"] == (
-        "{{ tn_state_dir }}/platform_tenant_id"
-    )
+    order = [
+        "Seed — create the tenant and bootstrap admin",
+        "Seed — is a platform tenant already recorded",
+        "Seed — the recorded platform tenant",
+        "Seed — the tenant on the bootstrap slug",
+        "Seed — the explicit or recorded platform tenant still exists",
+        "Seed — the platform tenant",
+        "Seed — the slug does not name another tenant",
+        "Seed — record the platform tenant",
+        "Seed — put the platform tenant in the environment",
+        "Seed — the api runs with the platform tenant",
+    ]
+    assert [names.index(n) for n in order] == sorted(names.index(n) for n in order)
+
+    record = by_name["Seed — record the platform tenant"]["ansible.builtin.copy"]
+    assert record["dest"] == "{{ tn_state_dir }}/platform_tenant_id"
+    assert record["force"] is False  # never overwritten
+    when = by_name["Seed — record the platform tenant"]["when"]
+    assert any("tn_recorded_platform_tenant" in w for w in when)  # only while none is recorded
+
+    # Injection: ids reach SQL only after matching a UUID.
+    exists = by_name["Seed — the explicit or recorded platform tenant still exists"]["ansible.builtin.command"]["cmd"]
+    assert "WHERE id = " in exists
+    assert "is match(" in str(by_name["Seed — the recorded platform tenant is an id"]["ansible.builtin.assert"]["that"])
+
+    disagree = by_name["Seed — the slug does not name another tenant"]["ansible.builtin.assert"]
+    assert "tn_platform_tenant_effective" in str(disagree["that"]) and "tn_slug_tenant" in str(disagree["that"])
+    assert "tn_platform_tenant_id" in disagree["fail_msg"]  # says how to resolve it
+
+    fact = by_name["Seed — the platform tenant"]["ansible.builtin.set_fact"]["tn_platform_tenant_effective"]
+    assert fact.index("tn_platform_tenant_id") < fact.index("tn_recorded_platform_tenant") < fact.index("tn_slug_tenant")
+
     assert by_name["Seed — put the platform tenant in the environment"]["ansible.builtin.lineinfile"]["regexp"] == (
         "^PLATFORM_TENANT_ID="
     )
     assert by_name["Seed — the api runs with the platform tenant"]["community.docker.docker_compose_v2"]["services"] == [
         "api"
     ]
+
+
+def test_group_vars_say_the_id_is_recorded_once():
+    text = (INSTALL / "inventory/group_vars/all/main.yml").read_text()
+    assert "recorded once" in text and "never re-picked" in text
 
 
 def test_preflight_checks_their_form():

@@ -454,8 +454,17 @@ def require_range_access() -> Callable[..., Any]:
 
 # ── Platform administration ────────────────────────────────────────────
 def platform_tenant_id() -> str:
-    """PLATFORM_TENANT_ID, the operator's own tenant; empty when unset."""
-    return os.getenv("PLATFORM_TENANT_ID", "").strip()
+    """PLATFORM_TENANT_ID, the operator's own tenant, in canonical form (lower case, hyphens);
+    empty when unset. A value that is not a UUID is returned as typed: it matches no tenant,
+    so nobody is the platform administrator (fail closed), and ``platform_tenant_problem``
+    says so. Never an "unset" that would make every admin of a one-tenant install the operator."""
+    raw = os.getenv("PLATFORM_TENANT_ID", "").strip()
+    if not raw:
+        return ""
+    try:
+        return str(uuid.UUID(raw))
+    except ValueError:
+        return raw
 
 
 def is_single_tenant(db: Session) -> bool:
@@ -480,7 +489,7 @@ def is_platform_admin(user: CurrentUser, db: Session) -> bool:
         return False
     platform = platform_tenant_id()
     if platform:
-        return str(user.tenant_id) == platform
+        return str(user.tenant_id).lower() == platform
     return is_single_tenant(db)
 
 
@@ -499,7 +508,10 @@ def platform_tenant_problem(db: Session) -> str | None:
         try:
             exists = db.query(Tenant.id).filter(Tenant.id == uuid.UUID(platform)).first() is not None
         except ValueError:
-            exists = False  # production refuses a non-UUID at startup (app/settings.py)
+            return (
+                f"PLATFORM_TENANT_ID={platform!r} is not a tenant id (UUID): {refused}. Set it to the "
+                "operator's tenant id (installer: tn_platform_tenant_id)."
+            )
         if exists:
             return None
         return (

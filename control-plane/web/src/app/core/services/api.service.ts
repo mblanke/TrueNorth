@@ -477,6 +477,7 @@ export class ApiService {
   updateUser(id: string, data: Partial<User>): Observable<User> {
     let params = new HttpParams();
     for (const [key, value] of Object.entries(data)) {
+      if (key === 'email') continue; // not a field of the update: the directory owns it
       if (value !== null && value !== undefined && typeof value !== 'object') params = params.set(key, String(value));
     }
     return this.http.patch<User>(`${this.base}/users/${id}`, null, { params });
