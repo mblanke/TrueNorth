@@ -369,27 +369,36 @@ def _exclusive(db: Session, column, row_id, mc: ModuleContent) -> bool:
 
 
 def _own_lesson(db: Session, mc: ModuleContent, tenant) -> Lesson | None:
-    lesson = db.get(Lesson, mc.lesson_id) if mc.lesson_id else None  # this module's own row's lesson
+    lesson = db.get(Lesson, mc.lesson_id) if mc.lesson_id else None  # tenant-safe: tenant and exclusivity checked below
     if lesson is None or lesson.deleted_at is not None or lesson.tenant_id != tenant:
         return None
     return lesson if _exclusive(db, ModuleContent.lesson_id, lesson.id, mc) else None
 
 
 def _own_quiz(db: Session, mc: ModuleContent, module: CourseModule, tenant) -> Quiz | None:
-    quiz = db.get(Quiz, mc.quiz_id) if mc.quiz_id else None  # this module's own row's quiz
+    quiz = db.get(Quiz, mc.quiz_id) if mc.quiz_id else None  # tenant-safe: tenant and exclusivity checked below
     if (quiz is None or quiz.deleted_at is not None or quiz.tenant_id != tenant
             or quiz.module_id not in (None, module.id)):
         return None
     return quiz if _exclusive(db, ModuleContent.quiz_id, quiz.id, mc) else None
 
 
-def _write_quiz(db: Session, module: CourseModule, current: Quiz | None, q, tenant) -> tuple[Quiz, str | None]:
+def _was_published(db: Session, model, row_id) -> bool:
+    """Whether the lesson or quiz a module content row pointed at was published: a new row that
+    replaces it takes that state, so Students of a published course do not lose it."""
+    row = db.get(model, row_id) if row_id else None  # tenant-safe: the row's own pointer; only a flag is read
+    return bool(row is not None and row.is_published)
+
+
+def _write_quiz(db: Session, module: CourseModule, current: Quiz | None, q, tenant, *,
+                replaced_published: bool = False) -> tuple[Quiz, str | None]:
     note = None
     if current is not None and db.query(QuizAttempt.id).filter(QuizAttempt.quiz_id == current.id).first():
         note = f"Quiz '{current.title}' has Student attempts; it is kept and a new quiz replaces it in the module"
         current = None
     if current is None:
-        current = Quiz(id=uuid.uuid4(), title=q.title, module_id=module.id, tenant_id=tenant, is_published=False)
+        current = Quiz(id=uuid.uuid4(), title=q.title, module_id=module.id, tenant_id=tenant,
+                       is_published=replaced_published)
         db.add(current)
     else:
         db.query(QuizQuestion).filter(QuizQuestion.quiz_id == current.id).delete(synchronize_session=False)
@@ -428,7 +437,8 @@ def _write_course(db: Session, p: PlanItem, tenant: uuid.UUID | None, keymap: di
     qual = _qualification(db, c.qsp_code, tenant) if c.qsp_code else None
     row.name, row.description, row.version, row.difficulty = c.name, c.description, c.version or "1.0", c.difficulty
     row.duration_hours, row.tags, row.nice_work_roles = c.duration_hours, c.tags, c.nice_work_roles
-    row.course_meta, row.qualification_id = c.course_meta, qual.id if qual else None
+    row.course_meta = bnd.merge_course_meta(row.course_meta, c.course_meta)
+    row.qualification_id = qual.id if qual else None
     db.flush()
     existing = {m.ordinal: m for m in db.query(CourseModule).filter(CourseModule.course_id == row.id)
                 .order_by(CourseModule.id).all()}
@@ -461,7 +471,8 @@ def _write_course(db: Session, p: PlanItem, tenant: uuid.UUID | None, keymap: di
             if bc.lesson is not None:
                 lesson = _own_lesson(db, mc, tenant)
                 if lesson is None:
-                    lesson = Lesson(id=uuid.uuid4(), title=bc.lesson.title, tenant_id=tenant, is_published=False)
+                    lesson = Lesson(id=uuid.uuid4(), title=bc.lesson.title, tenant_id=tenant,
+                                    is_published=_was_published(db, Lesson, mc.lesson_id))
                     db.add(lesson)
                 lesson.title, lesson.body_markdown = bc.lesson.title, bc.lesson.body_markdown
                 lesson.duration_minutes, lesson.competency_codes = bc.lesson.duration_minutes, bc.lesson.competency_codes
@@ -470,7 +481,8 @@ def _write_course(db: Session, p: PlanItem, tenant: uuid.UUID | None, keymap: di
             else:
                 mc.lesson_id = None
             if bc.quiz is not None:
-                quiz, note = _write_quiz(db, m, _own_quiz(db, mc, m, tenant), bc.quiz, tenant)
+                quiz, note = _write_quiz(db, m, _own_quiz(db, mc, m, tenant), bc.quiz, tenant,
+                                         replaced_published=_was_published(db, Quiz, mc.quiz_id))
                 mc.quiz_id = quiz.id
                 if note:
                     notes.append(note)

@@ -597,10 +597,47 @@ class TestReviewFindings:
 
     def test_origin_only_course_meta_is_not_carried(self, client, db_session, port):
         _t, _s, c = proven_set(db_session)
-        c.course_meta = json.dumps({"course_code": "C901", "superseded_by": str(uuid.uuid4())})
+        c.course_meta = json.dumps({"course_code": "C901", "superseded_by": str(uuid.uuid4()), "retired": True,
+                                    "test_content": {"label": "TEST"}, "someday_key": 1})
         db_session.flush()
         meta = json.loads(_item(_exported(client, db_session, ("course", c)), "course")["content"]["course_meta"])
-        assert meta == {"course_code": "C901"}
+        assert meta == {"course_code": "C901"}  # an allowlist: unknown keys never leave either
+
+    def test_this_sites_course_meta_state_is_kept_and_none_comes_in(self, client, db_session, port, new_site):
+        _t, _s, c = proven_set(db_session)
+        c.course_meta = json.dumps({"course_code": "C901", "test_content": {"label": "TEST"}})
+        db_session.flush()
+        self._import(client, db_session, _exported(client, db_session, ("course", c)), new_site)
+        here = db_session.query(Course).filter_by(tenant_id=new_site).one()
+        assert json.loads(here.course_meta) == {"course_code": "C901"}  # no origin test content lands
+        here.course_meta = json.dumps({"course_code": "C901", "test_content": {"label": "LOCAL"}})
+        db_session.flush()
+        link = db_session.query(ContentPortItem).filter_by(item_type="course", local_id=str(here.id)).one()
+        assert link.local_fingerprint == bnd.fingerprint(db_session, "course", here)  # site state is no edit
+        c.course_meta = json.dumps({"course_code": "C902"})
+        db_session.flush()
+        out = self._import(client, db_session, _exported(client, db_session, ("course", c)), new_site)
+        assert out["course"]["action"] == "update"
+        db_session.refresh(here)
+        assert json.loads(here.course_meta) == {"course_code": "C902", "test_content": {"label": "LOCAL"}}
+
+    def test_a_replacement_lesson_keeps_the_published_state(self, client, db_session, port, new_site):
+        from app.models import ContentKind, CourseModule, Lesson
+
+        _t, _s, c = proven_set(db_session)
+        mine = course(db_session, name=c.name, tenant=new_site)
+        shared_lesson = Lesson(id=uuid.uuid4(), title="Shared", body_markdown="original", tenant_id=None,
+                               is_published=True)
+        db_session.add(shared_lesson)
+        m = db_session.query(CourseModule).filter_by(course_id=mine.id).one()
+        row = db_session.query(ModuleContent).filter_by(module_id=m.id, content_kind=ContentKind.teach).one()
+        row.lesson_id = shared_lesson.id
+        db_session.flush()
+        self._import(client, db_session, _exported(client, db_session, ("course", c)), new_site,
+                     overwrite=[f"course:{c.id}"])
+        db_session.refresh(row)
+        assert row.lesson_id != shared_lesson.id
+        assert db_session.get(Lesson, row.lesson_id).is_published is True
 
     def test_a_course_whose_scenario_is_out_of_scope_is_not_proven(self, client, db_session, port, new_site):
         from _content_port_kit import prove_course

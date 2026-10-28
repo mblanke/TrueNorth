@@ -61,9 +61,13 @@ What a bundle carries for each item:
   - a range template: name, version and YAML;
   - a scenario: name, version, YAML, and the key of its range template;
   - a course: its fields, with its qualification and performance objectives given by code,
-    and its modules with their authored content, lessons, quizzes and scenario links. Its
-    `course_meta` is carried without `superseded_by`, which names a course of the origin
-    site;
+    and its modules with their authored content, lessons, quizzes and scenario links. Of
+    its `course_meta`, only the keys that describe the course are carried (an allowlist,
+    `PORTABLE_META` in `bundle.py`: course code, title, programme, terms, prerequisites,
+    provenance, status, locale and the like). Site state such as `test_content`, `retired`
+    and `superseded_by`, and any key not on the list, never leaves, so an origin's
+    test-content release cannot land as one. On import, this site's own non-portable keys
+    are kept;
 - its proof summary: each condition, plus the ids and dates of the evidence;
 - the golden-template builds that its certified range ran (catalogue id, build id,
   checksum).
@@ -139,7 +143,8 @@ When a course is updated:
   flag) is carried and replaced, with its scenario pointed at the local copy;
 - a lesson or quiz is updated in place only if it belongs to the landing tenant and no other
   module uses it. Otherwise a new one is made, so a lesson that other courses share is never
-  rewritten;
+  rewritten. A new lesson or quiz that replaces one takes the replaced one's publication
+  state, so Students of a published course do not lose it;
 - a quiz that already has Student attempts is kept, and a new quiz replaces it in the module;
 - lesson media references and lesson-to-EO links are not carried. An updated lesson keeps
   the ones it has here.

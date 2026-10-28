@@ -94,7 +94,7 @@ def status_out(db: Session, item_type: str, row, scope: proven.Scope, *,
             .filter(ContentPortItem.item_type == item_type, ContentPortItem.local_id == str(row.id)).first())
     imported = None
     if link is not None:
-        imp = db.get(ContentPortImport, link.import_id)
+        imp = db.get(ContentPortImport, link.import_id)  # tenant-safe: the import row of a link to a visible item
         imported = PortImportedFromOut(
             origin_key_id=link.origin_key_id, exported_at=link.exported_at,
             imported_at=imp.imported_at if imp is not None else link.created_at,

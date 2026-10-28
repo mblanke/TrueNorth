@@ -109,7 +109,7 @@ def _scenario_ref(db: Session, owner, sid, ref: Ref) -> str | None:
 
 
 def _lesson(db: Session, owner, lesson_id) -> dict | None:
-    row = db.get(Lesson, lesson_id) if lesson_id else None  # tenant-checked below
+    row = db.get(Lesson, lesson_id) if lesson_id else None  # tenant-safe: checked against the course scope below
     if row is None or row.deleted_at is not None or not proven._in_item_scope(row, owner):
         return None
     return {"title": row.title, "body_markdown": row.body_markdown or "", "duration_minutes": row.duration_minutes or 0,
@@ -117,7 +117,7 @@ def _lesson(db: Session, owner, lesson_id) -> dict | None:
 
 
 def _quiz(db: Session, owner, quiz_id) -> dict | None:
-    row = db.get(Quiz, quiz_id) if quiz_id else None  # tenant-checked below
+    row = db.get(Quiz, quiz_id) if quiz_id else None  # tenant-safe: checked against the course scope below
     if row is None or row.deleted_at is not None or not proven._in_item_scope(row, owner):
         return None
     questions = (db.query(QuizQuestion).filter(QuizQuestion.quiz_id == row.id)
@@ -133,7 +133,14 @@ def _quiz(db: Session, owner, quiz_id) -> dict | None:
                           for q in questions]}
 
 
-ORIGIN_ONLY_META = ("superseded_by",)  # course_meta keys naming the origin site's own records
+# course_meta keys that describe the course itself (programme_ingest, course_content_ingest,
+# xapi_context). Everything else is this site's state: test_content (course_releases),
+# retired and superseded_by (course_content_ingest, qsp_paths), and whatever is added later.
+PORTABLE_META = frozenset({
+    "course_code", "title", "programme", "institution", "dp_order", "term_code", "term_label", "term_start",
+    "track", "rank_level", "prerequisites", "provenance", "status", "content_provenance", "content_status",
+    "content_readiness", "content_source", "locale", "language", "lang",
+})
 
 
 def _json_text(value: object) -> str:
@@ -155,23 +162,36 @@ def module_ref(raw: str | None) -> tuple[str, str | None]:
     return (_json_text(doc) if doc else ""), (str(sid) if sid else None)
 
 
-def course_meta(raw: str | None) -> str:
+def _meta(raw: str | None) -> dict:
     try:
         doc = json.loads(raw or "{}")
     except ValueError:
-        return "{}"
-    if not isinstance(doc, dict):
-        return "{}"
-    return _json_text({k: v for k, v in doc.items() if k not in ORIGIN_ONLY_META})
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def course_meta(raw: str | None) -> str:
+    """The ``course_meta`` keys a bundle carries: only ``PORTABLE_META``, what describes the
+    course itself. Site state (``test_content``, ``retired``, ``superseded_by`` and anything
+    not listed) never leaves, so an origin's test-content release cannot land as one."""
+    return _json_text({k: v for k, v in _meta(raw).items() if k in PORTABLE_META})
+
+
+def merge_course_meta(local: str | None, carried: str) -> str:
+    """The new site's ``course_meta``: the bundle's portable keys, and every other key as it
+    is here (this site's own state is kept, never overwritten nor brought in)."""
+    here = {k: v for k, v in _meta(local).items() if k not in PORTABLE_META}
+    incoming = {k: v for k, v in _meta(carried).items() if k in PORTABLE_META}
+    return json.dumps({**here, **incoming})
 
 
 def course_content(db: Session, c: Course, ref: Ref) -> dict:
-    qual = db.get(Qualification, c.qualification_id) if c.qualification_id else None  # a code only
+    qual = db.get(Qualification, c.qualification_id) if c.qualification_id else None  # tenant-safe: the course's own link; only its code leaves
     modules = []
     for m in (db.query(CourseModule).filter(CourseModule.course_id == c.id)
               .order_by(CourseModule.ordinal, CourseModule.id).all()):
         po = db.get(PerformanceObjective, m.po_id) if m.po_id else None
-        po_qual = db.get(Qualification, po.qualification_id) if po is not None else None
+        po_qual = db.get(Qualification, po.qualification_id) if po is not None else None  # tenant-safe: the PO's own qualification; only its code leaves
         content_ref, legacy_scenario = module_ref(m.content_ref)
         contents = []
         for mc in (db.query(ModuleContent).filter(ModuleContent.module_id == m.id)
