@@ -10,6 +10,7 @@ duration_hours: 100
 provenance: unsourced
 status: draft
 is_published: false
+readiness: draft
 qsp_code: TEMP67
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
 prerequisites:
@@ -33,56 +34,85 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Execute a demanding technical project systematically.
-  - Maintain rigour under time pressure.
-  - Recognise and respond to approach failure.
+  - Execute a planned multi-step task on an enterprise range while keeping a complete lab notebook
+  - Maintain a lab notebook that records every command, its parameters and its outcome, failures included
+  - Decide whether a failing approach should persist, adjust or pivot, using pre-agreed evidence criteria
   topics:
-  - Systematic execution practice.
-  - Maintaining rigour under pressure.
-  - Recognising failure early.
-  - Pivoting with evidence.
-  lab: 'Lab: Execute your capstone''s core technical work, maintaining a lab notebook that records every
-    experiment, its parameters and its outcome including failures.'
+  - Systematic execution through plans, checklists and a notebook others can follow.
+  - Recording parameters, outcomes and failures as they happen, not afterwards.
+  - Rigour under time pressure, and the shortcuts that quietly invalidate results.
+  - Pre-agreed criteria and trigger points that reveal a failing approach.
+  - Pivoting with evidence that the current approach cannot answer the question.
+  lab: >-
+    Lab: On the large-enterprise range, execute a planned enumeration from jump01 while keeping a lab notebook
+    in which every attempt, its parameters and its outcome are recorded, failures included. Evidence: one
+    notebook entry per attempt with the command, its parameters and the exact result or error text; the group
+    names that hold administrative rights on dc01; the fw01 rules that allow traffic into the server VLAN.
+    Pass: every attempt is recorded as it happened, failures included; each failure carries the exact error
+    text; each finding is marked "as expected" or "not as expected" with a one-sentence reason; a next action
+    is proposed for every finding marked "not as expected".
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal, start the lab notebook and record the date and start time.
+    - hosts: [jump01, dc01]
+      action: From jump01, query dc01 for the groups that hold administrative rights on the domain and record each
+        group name in the notebook.
+    - hosts: [jump01, fw01]
+      action: From jump01, list the rules on fw01 and record each rule that allows traffic from other zones into
+        the server VLAN.
+    - hosts: [jump01, historian01]
+      action: Attempt one connection from jump01 to historian01 that the network does not carry, record the exact
+        error text and mark the attempt as a recorded failure.
+    - hosts: [jump01]
+      action: Review the notebook and mark each finding "as expected" or "not as expected" with one sentence of
+        reason, then propose one next action for every finding marked "not as expected".
   refs:
   - nist-sp-800-218
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'A lab notebook recording failed experiments is valuable because:'
+    - question: "A Student's scheduled scan fails halfway through its window and the deadline is close.
+        The notebook habit that best protects rigour is:"
       options:
-      - A) It shows effort
-      - B) Failures constrain the solution space and prevent repeating dead ends
-      - C) Assessors require it
-      - D) It lengthens the report
+      - A) Skip the failed attempt and rerun the scan silently
+      - B) Record the failed attempt and its parameters before rerunning
+      - C) Record only the successful rerun so the notebook stays short and tidy
+      - D) Note the failure once the whole project has finished
       answer: B
-    - question: 'Rigour is most at risk when:'
+    - question: "Halfway through an evaluation, one planned data source stops producing. The most
+        systematic response is to:"
       options:
-      - A) The project starts
-      - B) Time is short and shortcuts appear attractive
-      - C) Results are positive
-      - D) Supervision is frequent
-      answer: B
-    - question: 'Recognising that an approach has failed is best supported by:'
+      - A) Continue and note the gap only in the final report
+      - B) Substitute a different source without recording the change
+      - C) Record the deviation in the notebook and adjust the plan
+      - D) Restart the whole evaluation from the beginning
+      answer: C
+    - question: Which planning artefact best reveals that an approach is failing before the deadline
+        arrives?
       options:
-      - A) Persistence
-      - B) Pre-defined criteria and trigger points set during planning
-      - C) Supervisor instruction
-      - D) Peer opinion
-      answer: B
-    - question: 'Selectively recording only successful runs constitutes:'
+      - A) Trigger points agreed in advance, each with its evidence
+      - B) A longer list of tasks for the remaining weeks
+      - C) A supervisor check-in scheduled after submission
+      - D) Confidence in the first promising result
+      answer: A
+    - question: "Two pivots are proposed during execution. The one the evidence supports is the pivot
+        that:"
       options:
-      - A) Efficient documentation
-      - B) A form of results manipulation that invalidates conclusions
-      - C) Standard practice
-      - D) Data reduction
-      answer: B
-    - question: 'Pivoting should be justified by:'
+      - A) Reuses tools the team already knows well
+      - B) Promises a more impressive final result
+      - C) Requires the least remaining effort
+      - D) Shows the original approach cannot answer the question
+      answer: D
+    - question: "A notebook entry reads \"tested the report generator; it works\". The entry is inadequate
+        mainly because it lacks:"
       options:
-      - A) Difficulty encountered
-      - B) Evidence that the original approach cannot answer the question
-      - C) Time remaining
-      - D) Supervisor preference
+      - A) The author's opinion of the tool being tested
+      - B) The command, its parameters and the observed outcome
+      - C) The time the same test will take next week
+      - D) A list of every other tool considered
       answer: B
 - ordinal: 2
   title: Rigorous Evaluation
@@ -91,16 +121,44 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Execute the planned evaluation faithfully.
-  - Analyse results with appropriate statistical care.
-  - Distinguish signal from artefact.
+  - Execute an evaluation plan on the range exactly as written, recording any deviation
+  - Distinguish signal from artefact by repeating each measurement under the same conditions
+  - Test how each conclusion holds when one assumption changes and record the result
   topics:
-  - Faithful execution of the evaluation plan.
-  - Statistical care and significance.
-  - Artefact and confound identification.
-  - Sensitivity analysis.
-  lab: 'Lab: Run your evaluation, analyse results with attention to variance and confounds, and perform
-    a sensitivity analysis showing how conclusions change under different assumptions.'
+  - Executing the evaluation plan faithfully and recording deviations.
+  - Confounds as factors offering an alternative explanation for an observed effect.
+  - Repeating measurements to separate signal from a one-off artefact.
+  - Reporting variance and spread alongside averages.
+  - Sensitivity analysis and how conclusions change under different assumptions.
+  lab: >-
+    Lab: On the large-enterprise range, evaluate sign-in event coverage in the SIEM by running the same
+    test from two workstations, repeating it, and judging whether the coverage conclusion holds. Evidence:
+    the log sources siem01 shows before the test; the time of each sign-in attempt from ws01 and ws02; whether
+    each attempt's event appears in the siem01 search, with its timestamp; the same checks for the repeat run.
+    Pass: every attempt and its time is recorded; each event is marked "arrived" or "not arrived" for both
+    runs; the coverage conclusion is marked "held" or "changed" with a one-sentence reason; one assumption of
+    the conclusion is stated and tested by the repeat.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01, siem01]
+      action: From jump01, sign in to siem01 and record the log sources the SIEM currently shows, so the
+        baseline is known before any test.
+    - hosts: [ws01, dc01]
+      action: Sign in to ws01 as the standard user your instructor assigned, attempt one sign-in against dc01
+        and record the time of the attempt.
+    - hosts: [ws02, dc01]
+      action: Repeat the same sign-in attempt from ws02 and record its time, so both tests differ only by
+        source host.
+    - hosts: [jump01, siem01]
+      action: From siem01, search the sign-in index for both events and record whether each arrived, with its
+        timestamp.
+    - hosts: [jump01, siem01]
+      action: Repeat both sign-in attempts and the search once more, and record whether both events arrive
+        again.
+    - hosts: [jump01]
+      action: Mark the coverage conclusion "held" or "changed" with a one-sentence reason, and state whether
+        the evidence reads as signal or as a one-off artefact.
   refs:
   - nist-sp-800-30r1
   - nist-sp-800-115
@@ -108,41 +166,46 @@ modules:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'A confound is a factor that:'
+    - question: "One scanned host shows ten critical findings, but the scan ran with an out-of-date plugin
+        set. In evaluation terms, the plugin set is best treated as:"
       options:
-      - A) Improves results
-      - B) Offers an alternative explanation for the observed effect
-      - C) Increases variance
-      - D) Reduces sample size
+      - A) A signal of the host's true exposure
+      - B) A confound, an alternative explanation for what the scan observed
+      - C) Proof that the scanner itself is faulty
+      - D) A variance measure for the findings
       answer: B
-    - question: 'Sensitivity analysis examines:'
+    - question: "An evaluation observes a single success and the report declares the control effective.
+        The most rigorous next step is to:"
       options:
-      - A) Data privacy
-      - B) How robust conclusions are to changes in assumptions or parameters
-      - C) Statistical power
-      - D) Runtime performance
-      answer: B
-    - question: 'Changing the evaluation plan after seeing results risks:'
+      - A) Repeat the measurement under the same conditions first
+      - B) Report the result with a note that more work could follow
+      - C) Average the single result with the planned results
+      - D) Widen the conclusion to cover similar controls
+      answer: A
+    - question: "Halfway through an evaluation, the plan is changed to analyse only the results that look
+        strongest. This most directly risks:"
       options:
-      - A) Improved rigour
-      - B) Fitting the analysis to the desired outcome
-      - C) Better statistics
-      - D) Clearer presentation
-      answer: B
-    - question: 'A result observed once should be:'
+      - A) Losing the original data set
+      - B) Exceeding the time allowed for the analysis work that remains
+      - C) Making the report harder to read
+      - D) Fitting the analysis to the desired outcome
+      answer: D
+    - question: "A monthly report gives an average transfer volume but no spread. The decision this
+        conceals is whether:"
       options:
-      - A) Reported as established
-      - B) Repeated to establish it is not an artefact
-      - C) Discarded
-      - D) Extrapolated
+      - A) The volume was measured in the right units
+      - B) The volume is stable or varies widely between days
+      - C) The volume meets the stated policy limit
+      - D) The volume was reported to management
       answer: B
-    - question: 'Reporting variance alongside a mean is important because:'
+    - question: "A sensitivity analysis of a coverage conclusion repeats it with one assumption changed.
+        The output the assessor needs is:"
       options:
-      - A) It fills space
-      - B) A mean without spread can conceal unreliable or inconsistent behaviour
-      - C) Assessors require it
-      - D) It aids comparison only
-      answer: B
+      - A) The original conclusion copied with a new date
+      - B) A longer list of assumptions nobody tested
+      - C) Whether the conclusion holds under each changed assumption
+      - D) A promise to test the assumptions after submission
+      answer: C
 - ordinal: 3
   title: Producing the Final Artefact
   content_type: reading
@@ -150,56 +213,85 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Deliver a complete, usable technical artefact.
-  - Document it to professional standards.
-  - Ensure it can be maintained or extended by others.
+  - Produce a documented, repeatable procedure artefact for one range administration task
+  - Write runbook documentation that states purpose, assumptions, prerequisites and known limitations
+  - Verify the artefact by having a peer execute the documentation alone and record every gap they meet
   topics:
-  - Artefact completeness and quality.
-  - Professional documentation.
-  - Maintainability and extensibility.
-  - Release and packaging.
-  lab: 'Lab: Finalise your capstone artefact with complete documentation, verify a peer can build and
-    run it from documentation alone, and record every gap they encounter.'
+  - Choosing an artefact scope that one documented procedure can cover.
+  - Documentation that states purpose, assumptions, prerequisites and known limitations.
+  - Writing steps a peer can follow without the author present.
+  - Verifying the artefact through a peer's independent execution.
+  - Recording and closing the gaps the verification finds.
+  lab: >-
+    Lab: On the large-enterprise range, produce a runbook for one repeatable administration task, then
+    verify it by having a peer execute the runbook from the documentation alone. Evidence: the runbook's
+    purpose, assumptions and prerequisites; the author's own execution notes against dc01; each gap the
+    peer meets, in order, with the step where it occurred. Pass: the runbook states purpose, assumptions,
+    prerequisites and known limitations; the peer's execution is recorded attempt by attempt; every gap is
+    listed with the wording that closes it; each gap is marked "closed" or "open" with a one-sentence reason.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Choose one repeatable task, such as collecting the day's sign-in records from dc01, and write
+        the runbook's purpose, assumptions and prerequisites.
+    - hosts: [jump01, dc01]
+      action: Execute the draft runbook against dc01 and record every step that needs a fact the runbook
+        does not state.
+    - hosts: [jump01, fs01]
+      action: Hand the runbook to a peer and have them execute it against fs01 from jump01 without help,
+        recording each gap they meet in order.
+    - hosts: [jump01]
+      action: Merge the author's own notes and the peer's gap list into one record, in the order the gaps
+        occurred.
+    - hosts: [jump01]
+      action: Revise the runbook to close each recorded gap and mark each gap "closed" or "open" with a
+        one-sentence reason.
   refs:
   - nist-sp-800-218
   quiz:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'An artefact that only its author can operate:'
+    - question: "A capstone artefact runs only on the author's laptop through undocumented manual steps.
+        Its value is reduced mainly because:"
       options:
-      - A) Is acceptable for research
-      - B) Has substantially reduced value and cannot be independently verified
-      - C) Is normal
-      - D) Is more secure
+      - A) It cannot be demonstrated to an employer quickly
+      - B) It consumes too much of the author's time to maintain
+      - C) It is harder to mark and to compare
+      - D) Others cannot verify or build on the work
+      answer: D
+    - question: "A runbook states its purpose but not its prerequisites. What a peer following it cannot
+        tell is:"
+      options:
+      - A) Why the runbook exists at all and who it is written for
+      - B) What must be in place before the steps can run
+      - C) Who approved the runbook for use
+      - D) How long each step should take
       answer: B
-    - question: 'Professional documentation should include:'
+    - question: "During independent execution, a peer meets a step that names a host but not how to reach
+        it. The author's record should show:"
       options:
-      - A) The code only
-      - B) Purpose, assumptions, build and run instructions, and known limitations
-      - C) A changelog only
-      - D) API reference only
-      answer: B
-    - question: 'Known limitations should be documented because:'
+      - A) That the peer was not careful enough
+      - B) That the step should be deleted
+      - C) The gap, where it occurred and the wording that closes it
+      - D) The peer's name, which is kept only for the project's own audit trail
+      answer: C
+    - question: Which artefact scope suits one documented procedure and its verification inside the lab
+        time?
       options:
-      - A) It lowers expectations
-      - B) Users making decisions from the artefact need to know where it does not apply
-      - C) Assessors require it
-      - D) It shortens support
-      answer: B
-    - question: 'Maintainability is improved most by:'
+      - A) One repeatable task, from prerequisites to recorded outcome
+      - B) Every administration task the range supports
+      - C) A policy the whole organisation must adopt
+      - D) A comparison of three competing products
+      answer: A
+    - question: "After the peer's execution, three gaps are recorded and two are fixed. The artefact is
+        ready for handover only when:"
       options:
-      - A) Extensive comments alone
-      - B) Clear structure, tests and documented design decisions
-      - C) Fewer files
-      - D) A single language
-      answer: B
-    - question: 'The best test of build documentation is:'
-      options:
-      - A) Author review
-      - B) A peer building from it without assistance
-      - C) CI passing
-      - D) Length
+      - A) The author confirms the fixes look correct
+      - B) Every recorded gap is closed or stated as a known limitation
+      - C) The peer signs off on the original draft
+      - D) The gap list is removed from the document
       answer: B
 - ordinal: 4
   title: Written Assessment
@@ -208,56 +300,85 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Write a dissertation-standard technical report.
-  - Argue conclusions from evidence.
-  - Meet academic and professional writing standards.
+  - Write a findings report in which every conclusion traces to evidence recorded on the range
+  - Present results with their uncertainty, including negative and inconclusive findings
+  - Review a draft against report structure, attribution and academic integrity standards
   topics:
-  - Report structure at advanced level.
-  - Argumentation from evidence.
-  - Critical engagement with prior work.
-  - Academic integrity.
-  lab: 'Lab: Produce your final written report, then perform a structured self-review checking each conclusion
-    traces to specific evidence presented in the results.'
+  - Report structure covering problem, approach, results, limitations and conclusions.
+  - Arguing each conclusion from specific recorded evidence, not impressions.
+  - Reporting negative and inconclusive results honestly.
+  - Abstracts and summaries that state what was found and why it matters.
+  - Attribution, declared assistance and academic integrity in technical writing.
+  lab: >-
+    Lab: On the large-enterprise range, gather evidence with the vulnerability scanner and the SIEM, write a
+    short findings report, and self-review it so every conclusion cites a numbered notebook entry. Evidence:
+    the report's problem and approach sections; the findings vuln01 reports for one named server; the log
+    query run on siem01 with its result count; the self-review verdict for each conclusion. Pass: every
+    conclusion cites the notebook entry that produced it; each negative or inconclusive result is reported,
+    not omitted; each conclusion is marked "supported" or "unsupported" with the evidence it cites or lacks;
+    every quoted source carries attribution.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Write the report's problem and approach sections, and record the two range sources the
+        findings will cite.
+    - hosts: [jump01, vuln01]
+      action: From jump01, open vuln01 and record the findings the scanner reports for the one server VLAN
+        host the instructor names.
+    - hosts: [jump01, siem01]
+      action: From siem01, run one saved log query over the past day and record the query text and the
+        number of matching events.
+    - hosts: [jump01]
+      action: Draft the report's results, limitations and conclusions sections, citing each conclusion to a
+        numbered notebook entry.
+    - hosts: [jump01]
+      action: Self-review the draft and mark each conclusion "supported" or "unsupported", stating what
+        evidence each unsupported one lacks.
   refs:
   - nist-sp-800-218
   quiz:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Every conclusion in a technical report should:'
+    - question: "A report states \"the firewall permits unmonitored access between zones\". The statement is
+        defensible only if:"
       options:
-      - A) Be interesting
-      - B) Trace to specific evidence presented in the report
-      - C) Cite prior work
-      - D) Appear in the abstract
+      - A) The author believes it to be true on the basis of prior experience
+      - B) A cited rule or log entry recorded on the range supports it
+      - C) The report's summary repeats it prominently
+      - D) A second author agrees with the wording
       answer: B
-    - question: 'Critical engagement with prior work means:'
+    - question: "An evaluation finds no measurable difference between two configurations. The report
+        should:"
       options:
-      - A) Criticising it
-      - B) Assessing its strengths, limitations and relationship to your findings
-      - C) Citing extensively
-      - D) Summarising it
-      answer: B
-    - question: 'Using generated or third-party text without attribution is:'
+      - A) Omit the evaluation from the results section
+      - B) Restate the hypothesis so the result fits
+      - C) Extend the evaluation until a measurable difference finally appears
+      - D) Report the negative finding and analyse what it does not show
+      answer: D
+    - question: Which draft sentence traces its conclusion to evidence in the results?
       options:
-      - A) Acceptable if edited
-      - B) An academic integrity breach
-      - C) Standard practice
-      - D) Permitted for background
-      answer: B
-    - question: 'An abstract should state:'
+      - A) Latency rose 40 percent in test three, where logging changed
+      - B) Latency rose noticeably after the change under review
+      - C) Latency is widely known to rise with extra logging
+      - D) Latency would rise further under heavier load
+      answer: A
+    - question: "A report includes two paragraphs copied from a vendor document without attribution. The
+        correct classification is:"
       options:
-      - A) The motivation only
-      - B) The problem, approach, key result and its significance
-      - C) The methodology in detail
-      - D) The conclusions only
-      answer: B
-    - question: 'If results do not support the original hypothesis, the report should:'
+      - A) Fair use of public material
+      - B) A citation style error to fix later
+      - C) An academic integrity breach, whatever the licence allows
+      - D) Acceptable practice for background reading
+      answer: C
+    - question: "A self-review of a draft report checks each conclusion against the results section. The
+        question it asks is:"
       options:
-      - A) Reframe the hypothesis retroactively
-      - B) Report the finding honestly and analyse why
-      - C) Omit the hypothesis
-      - D) Extend the evaluation until it does
+      - A) Does the conclusion read smoothly after the abstract?
+      - B) Does cited evidence in the results support the conclusion as written?
+      - C) Does the conclusion cite enough prior work?
+      - D) Does the conclusion appear in the presentation slides?
       answer: B
 - ordinal: 5
   title: Oral Defence
@@ -266,57 +387,85 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Defend the work under expert examination.
-  - Demonstrate command of the subject beyond the report.
-  - Handle challenge to core assumptions.
+  - Answer examiner questions from recorded evidence rather than from recollection
+  - Explain why each major design choice was made and what would change under different conditions
+  - Acknowledge an identified error, state its impact on the conclusions and propose the correction
   topics:
-  - Defence preparation.
-  - Demonstrating depth of understanding.
-  - Responding to fundamental challenge.
-  - Professional conduct under examination.
-  lab: 'Lab: Undergo a full mock defence with expert examiners, and produce a written response to each
-    challenge you could not answer satisfactorily.'
+  - Defence preparation by anticipating challenge to the evidence.
+  - Answering from the notebook with time, source and value for every claim.
+  - Explaining design choices and the conditions that would change them.
+  - Responding to challenge of a core assumption.
+  - Professional conduct under examination, with honesty before comfort.
+  lab: >-
+    Lab: On the large-enterprise range, take a mock defence in which the examiner poses three challenges to
+    the report, and answer each from the range itself. Evidence: each challenge recorded word for word; the
+    fw01 rules cited for the boundary question; the dc01 password policy values cited for the identity
+    question; the siem01 query re-run with its count for the log question. Pass: each answer names the host
+    and the value that supports it; each answer is marked "answered from evidence" or "recalled only"; any
+    answer the evidence contradicts is corrected in writing; the error's impact on the conclusions is stated.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Record each of the three challenge questions the examiner poses, word for word, before
+        answering any of them.
+    - hosts: [jump01, fw01]
+      action: For the boundary question, answer from fw01 by listing the rules that allow traffic from the DMZ
+        into the server VLAN, and record them.
+    - hosts: [jump01, dc01]
+      action: For the identity question, answer from dc01 by recording the domain password policy values the
+        report relied on.
+    - hosts: [jump01, siem01]
+      action: For the log question, re-run on siem01 the query the report cites and record whether the
+        count still matches.
+    - hosts: [jump01]
+      action: Mark each answer "answered from evidence" or "recalled only", write the correction for any
+        answer the evidence contradicts, and state its impact on the conclusions.
   refs:
   - nist-sp-800-30r1
   quiz:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'An examiner challenging a core assumption is:'
+    - question: "During a defence, an examiner asks for the basis of a claim about log coverage. The
+        strongest answer is:"
       options:
-      - A) Being obstructive
-      - B) Testing whether you understand the foundations of your own work
-      - C) Out of scope
-      - D) Signalling failure
-      answer: B
-    - question: 'If you realise during a defence that you made an error, you should:'
+      - A) A restatement of the report's summary section
+      - B) A promise to send the evidence after the defence
+      - C) The notebook entry, its timestamp and the host it came from
+      - D) The examiner's own earlier comment on the draft
+      answer: C
+    - question: "An examiner challenges the assumption that the logging clock was reliable during the
+        evaluation. The response that shows command of the work is:"
       options:
-      - A) Defend the original position
-      - B) Acknowledge it and discuss its impact on the conclusions
-      - C) Deflect to limitations
-      - D) Request a pause
-      answer: B
-    - question: 'Demonstrating depth means being able to:'
+      - A) Naming the evidence for the clock assumption and its effect on conclusions
+      - B) Conceding immediately that the evaluation is invalid
+      - C) Answering that the question falls outside the project's scope
+      - D) Noting that examiners rarely raise this kind of concern
+      answer: A
+    - question: "A design choice in the report was made under time pressure. Demonstrating depth means
+        explaining:"
       options:
-      - A) Recite the report
-      - B) Explain why choices were made and what would change under different conditions
-      - C) Cite more work
-      - D) Present longer
+      - A) That the pressure was the supervisor's fault
+      - B) Why the choice was made and what would change it
+      - C) That the report's limitations section already covers it
+      - D) How similar projects handled the same pressure
       answer: B
-    - question: 'Preparation for defence is best done by:'
+    - question: "Midway through a defence, the Student realises one recorded value was transcribed
+        wrongly. The professional response is to:"
       options:
-      - A) Rereading the report
-      - B) Having others attack the work and identifying weak answers
-      - C) Memorising slides
-      - D) Reviewing references
-      answer: B
-    - question: 'Professional conduct under examination includes:'
+      - A) Defend the transcription as a minor detail
+      - B) Attribute the error to the range's tooling
+      - C) Move to the next question without comment
+      - D) Acknowledge the error, state its impact and propose a correction
+      answer: D
+    - question: "An examiner's challenge to a core assumption is best read as:"
       options:
-      - A) Never conceding
-      - B) Engaging with challenge honestly rather than defensively
-      - C) Deferring to examiners
-      - D) Limiting answers
-      answer: B
+      - A) A signal that the defence has already failed
+      - B) An invitation to change the project's scope
+      - C) A test of whether the foundations of the work hold
+      - D) A request to postpone the remaining defence questions
+      answer: C
 - ordinal: 6
   title: Professional Transition
   content_type: reading
@@ -324,54 +473,81 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Articulate the professional value of the capstone.
-  - Plan continued development beyond the programme.
-  - Contribute the work back to the professional community.
+  - Summarise a completed technical project for an employer in plain, capability-focused language
+  - Identify capability gaps in the project record and plan twelve months of development against them
+  - Produce a handover pack that lets another practitioner maintain the completed work
   topics:
-  - Articulating capability to employers.
-  - Continuing professional development planning.
-  - Contributing to the community.
-  - Sustaining practice after study.
-  lab: 'Lab: Produce a professional summary of your capstone suitable for a technical employer, and a
-    twelve-month development plan identifying the capabilities you will build next.'
+  - Articulating capability to employers in terms of what was done, decided and delivered.
+  - Reading the project record for capability gaps.
+  - A twelve-month development plan with evidence of progress.
+  - Handover covering documentation, access and open issues.
+  - Sustaining practice through deliberate, applied work after the programme.
+  lab: >-
+    Lab: On the large-enterprise range, produce the handover pack for the assessment work: a professional
+    summary, the recorded procedures the next practitioner needs, and a twelve-month development plan built
+    from the project record. Evidence: the one-page summary; the saved queries on siem01 with a one-line
+    purpose each; the fw01 rules the work depended on; the open issues and the development plan. Pass: the
+    summary states what was delivered, decided and evaluated; each handover item is marked "reproducible
+    from the pack" or "needs the author"; every gap in the record has one development action with a month
+    attached.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Draft a one-page professional summary of the assessment that states what was delivered,
+        decided and evaluated.
+    - hosts: [jump01, siem01]
+      action: Record the saved queries on siem01 that the report used, with a one-line purpose for each.
+    - hosts: [jump01, fw01]
+      action: Record the fw01 rules the assessment depended on, so the next practitioner can reproduce the
+        network conditions.
+    - hosts: [jump01]
+      action: List the open issues and capability gaps the project record shows, and write a twelve-month
+        plan with one development action per gap.
+    - hosts: [jump01]
+      action: Mark each handover item "reproducible from the pack" or "needs the author", and state what
+        the author must supply for every item marked "needs the author".
   refs:
   - nist-cswp-29
   quiz:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Articulating capstone value to an employer should emphasise:'
+    - question: "A graduate describes the capstone to an employer. The summary that shows capability
+        rather than effort is:"
       options:
-      - A) The grade
-      - B) The demonstrated ability to scope, execute and evaluate independent technical work
-      - C) Technologies used
-      - D) Hours invested
-      answer: B
-    - question: 'Contributing work back to the community is valuable because it:'
+      - A) The question scoped, the evaluation run and the artefact delivered
+      - B) The number of late nights the work required
+      - C) The grade the programme awarded
+      - D) The list of software packages installed
+      answer: A
+    - question: "Planning development from the project record is more reliable than planning from
+        interest, because the record shows:"
       options:
-      - A) Builds reputation only
-      - B) Allows others to verify, build on and benefit from the work
-      - C) Satisfies the programme
-      - D) Is required
-      answer: B
-    - question: 'A development plan should be based on:'
+      - A) Which employers in the field pay the highest salaries
+      - B) How many hours the project consumed
+      - C) Which capabilities the work exposed as gaps
+      - D) Which tools were easiest to use
+      answer: C
+    - question: "A handover pack lets another practitioner maintain the work. The item a summary alone
+        cannot replace is:"
       options:
-      - A) General interest
-      - B) Capability gaps identified through honest reflection
-      - C) Market trends alone
-      - D) Employer direction
-      answer: B
-    - question: 'Skills decay after a programme is best countered by:'
+      - A) The project's final grade record
+      - B) The employer's contact details
+      - C) The original timetable
+      - D) The recorded procedures, open issues and access needs
+      answer: D
+    - question: "Skills learned in a programme decay fastest without:"
       options:
-      - A) Reading
+      - A) Occasional re-reading of the finished project report
       - B) Deliberate, applied practice on real problems
-      - C) Certification
-      - D) Attending conferences
+      - C) Attendance at industry conferences
+      - D) A new certification each year
       answer: B
-    - question: 'Publishing negative or inconclusive results benefits the community because it:'
+    - question: "Publishing a project's negative result benefits the profession mainly because it:"
       options:
-      - A) Is unusual
-      - B) Prevents others repeating an approach that does not work
-      - C) Improves reputation
-      - D) Is easier to write
-      answer: B
+      - A) Adds a line to the author's record
+      - B) Is quicker to write than a full study
+      - C) Stops others repeating an approach shown not to work
+      - D) Guarantees citations from the other authors who read it
+      answer: C

@@ -1,0 +1,166 @@
+# Instructor pack for RMC C212 - Capstone Execution & Assessment. STAFF ONLY:
+# answer keys, expected range values and setup never appear in the course file.
+course_code: RMC C212
+audience: staff_only
+overview: 'Capstone Execution & Assessment is a six-module course of 60-minute sessions in which Students
+  execute, evaluate, document and defend an independent assessment of the large-enterprise range. Each
+  module has the same shape: 15 minutes of teaching, a 35-minute lab on the range run from the jump host
+  jump01, and a 10-minute five-item quiz passed at 70 percent. The labs build on one another: module 1
+  establishes the lab notebook habit, module 2 evaluates log coverage against it, module 3 documents and
+  verifies a procedure, module 4 writes the findings report, module 5 defends it against examiner
+  challenges, and module 6 hands the work over and plans development. Students hand in the notebook, the
+  runbook, the findings report and the handover pack.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach, 35 lab (enumeration from jump01 with the notebook), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach, 35 lab (sign-in coverage test from ws01 and ws02 against siem01), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach, 35 lab (runbook against dc01 and fs01 with a peer verification), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach, 35 lab (evidence from vuln01 and siem01, then the report and self-review), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach, 35 lab (mock defence answered from fw01, dc01 and siem01), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach, 35 lab (handover pack from siem01 and fw01 records), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: record the failure with its parameters before rerunning, because unrecorded failures cannot
+    be excluded later as explanations; A and C are the shortcuts the module warns about and D records too
+    late to steer the work. Q2 C: a deviation is recorded and the plan adjusted explicitly, which keeps the
+    evaluation honest; A hides the gap, B substitutes silently and D wastes the remaining window. Q3 A:
+    pre-agreed trigger points decide failing on evidence rather than mood; B adds work without a decision
+    rule, C arrives after submission and D is confidence, not evidence. Q4 D: a pivot is justified only by
+    showing the original approach cannot answer the question; A, B and C are effort, hope and convenience.
+    Q5 B: "it works" without the command, parameters and outcome cannot be repeated or audited; A is
+    opinion, C and D do not record what happened.'
+- module: 2
+  notes: 'Q1 B: the out-of-date plugin set is a confound, an alternative explanation for the findings; A
+    treats the scan at face value, C blames the scanner without evidence and D misuses the term. Q2 A: one
+    observation is repeated under the same conditions before any claim; B reports a possible artefact as
+    established, C averages unrelated numbers and D over-generalises. Q3 D: choosing what to analyse after
+    seeing results fits the analysis to the desired outcome; A, B and C are real but minor costs. Q4 B: a
+    mean without spread conceals whether the volume is stable; A is a units question, C needs the limit not
+    the spread, D is a reporting step. Q5 C: the assessor needs to know whether the conclusion holds under
+    each changed assumption; A restates, B lists without testing, D defers the work.'
+- module: 3
+  notes: 'Q1 D: an artefact others cannot run cannot be verified or built on, which is most of its value;
+    A, B and C accept the single-machine trap. Q2 B: without prerequisites the peer cannot tell what must
+    be in place first; the purpose does not help execution (A), and approval and duration (C, D) are not
+    the missing execution context. Q3 C: a gap record names the gap, where it occurred and the wording that
+    closes it; A blames the peer, B deletes the instruction instead of completing it, D is an audit trail,
+    not a fix. Q4 A: one repeatable task from prerequisites to recorded outcome fits one procedure and its
+    verification; B is the whole estate, C is not a procedure and D is a different project. Q5 B: handover
+    is complete when every gap is closed or declared a known limitation; A is self-review, C locks in the
+    draft and D hides the gaps.'
+- module: 4
+  notes: 'Q1 B: the claim is defensible only through a cited rule or log entry recorded on the range; A is
+    belief, C is emphasis and D is agreement, none of which is evidence. Q2 D: a negative finding is
+    reported and analysed for what it does not show; A hides work, B rewrites history and C hunts a
+    difference the data may not hold. Q3 A: it gives the measurement, the test and the condition, so the
+    conclusion traces; B is an impression, C is hearsay and D is speculation. Q4 C: unattributed copying is
+    an integrity breach whatever the licence allows; A and D excuse it, B under-classes it. Q5 B: the
+    self-review asks whether cited evidence supports the conclusion as written; A is style, C confuses
+    related work with evidence and D is presentation.'
+- module: 5
+  notes: 'Q1 C: the notebook entry with its timestamp and source host answers from evidence; A repeats the
+    claim, B defers it and D borrows the examiner''s words. Q2 A: command of the work means naming the
+    evidence for the assumption and its effect on the conclusions; B over-concedes, C dodges and D
+    dismisses. Q3 B: depth is why the choice was made and what would change it; A blames, C points at a
+    section instead of explaining and D is anecdote. Q4 D: the error is acknowledged, its impact stated and
+    a correction proposed; A, B and C defend, deflect or hide it. Q5 C: challenge to a core assumption
+    tests whether the foundations hold; A reads intent that is not there, B changes scope and D delays.'
+- module: 6
+  notes: 'Q1 A: capability is shown by what was scoped, run and delivered; B and D measure effort and C
+    measures the grade, not the capability. Q2 C: the record exposes which capabilities the work showed as
+    gaps; A, B and D are salaries, cost and ease, none of which is a development need. Q3 D: procedures,
+    open issues and access needs are what maintenance requires; A, B and C are context, not operating
+    material. Q4 B: skills decay without deliberate, applied practice on real problems; A, C and D are
+    passive or occasional. Q5 C: a published negative result stops others repeating an approach that does
+    not work; A, B and D are about the author, not the profession.'
+lab_setup:
+- module: 1
+  setup: 'Revert the large-enterprise range to baseline. Confirm from jump01 that dc01 and fw01 are
+    reachable and that historian01 is NOT (the OT segment is isolated, so the deliberate failing attempt
+    ends in an error). Have each Student''s lab notebook or file ready before the lab starts.'
+- module: 2
+  setup: 'Revert the range to baseline. Confirm ws01 and ws02 can attempt domain sign-in against dc01 and
+    that siem01 receives and indexes sign-in events from the corporate LAN. Assign the standard user
+    accounts for ws01 and ws02 and confirm the sign-in index name on siem01. Expected finding: both
+    attempts'' events appear in the search, and the repeat run agrees.'
+- module: 3
+  setup: 'Revert the range to baseline. Confirm dc01 and fs01 are reachable from jump01. Pair Students so
+    each has a peer to hand the runbook to; peers swap after the author''s own execution. The baseline
+    holds the domain sign-in records the sample runbook collects, so the task is completable as written.'
+- module: 4
+  setup: 'Revert the range to baseline. Name the one server VLAN host the scan will target and confirm
+    vuln01 can reach it. Confirm one saved log query exists on siem01 for the past day and note its expected
+    result count so Evidence can be marked. Remind Students the scan may take most of the lab window; have
+    them write the report sections while it runs.'
+- module: 5
+  setup: 'Revert the range to baseline. Prepare the three challenge questions (network boundary, identity,
+    log evidence) and confirm the answers exist on fw01 (the DMZ-to-server allow rules), dc01 (the domain
+    password policy) and siem01 (the query and its count) so a challenged answer can be checked live.
+    Expected values: the fw01 rules allowing 443, 8443 and 1433 from the DMZ into the server VLAN, and the
+    password policy values Students recorded in module 1.'
+- module: 6
+  setup: 'Revert the range to baseline. Confirm the saved queries Students created on siem01 during module
+    4 still exist and that the fw01 rules are unchanged from baseline, so the handover records match the
+    range. Have each Student bring the notebook, runbook and findings report from modules 1 to 4; the pack
+    is assembled from those.'
+common_faults:
+- module: 1
+  fault: The notebook records successes only, or entries are written from memory after the lab.
+  remedy: Stop at the first successful command and ask for the entry that produced it; no entry, no next
+    step. Compare a live notebook with a reconstructed one on the board.
+- module: 1
+  fault: The failing attempt against historian01 is treated as a mistake to hide rather than a recorded
+    result.
+  remedy: Point at the pre-agreed trigger points from the teaching block; the attempt was planned, so its
+    error text is the finding.
+- module: 2
+  fault: Students declare coverage proven after one workstation's event arrives.
+  remedy: Ask what a second source or a repeat run would show; have them run step 4 before concluding, then
+    discuss one-off artefacts.
+- module: 2
+  fault: The repeat run changes the baseline window, so the two runs are not comparable.
+  remedy: Have Students record the search window with each run; the comparison is valid only inside the
+    same window.
+- module: 3
+  fault: The runbook says "log in to the server" without naming how or as whom.
+  remedy: Have the peer read that step aloud and stop; the author records the gap and rewrites the step
+    with the host, the path and the account the instructor supplied.
+- module: 3
+  fault: The peer is helped through a failing step, so the gap never reaches the record.
+  remedy: The author may answer questions about intent but not about steps; sit the peer out of whispering
+    range.
+- module: 4
+  fault: Conclusions appear without the notebook entry that produced them.
+  remedy: Check the citations first; a conclusion with no entry is marked unsupported and rewritten, not
+    polished.
+- module: 4
+  fault: The negative or inconclusive scan result is dropped from the report.
+  remedy: Show where module 2's coverage conclusion sits in the report; omitted results are treated as
+    unsupported conclusions in the self-review.
+- module: 5
+  fault: Answers are recalled from the report instead of read from the range.
+  remedy: Require the host and the value in every answer; an answer without both is marked "recalled only"
+    and the Student re-runs the check.
+- module: 5
+  fault: A challenged answer is defended after the evidence contradicts it.
+  remedy: Model the module's own rule; acknowledge, state the impact on the conclusions, propose the
+    correction, then move on.
+- module: 6
+  fault: The handover pack lists saved queries without their purpose or the fw01 rules without the zones.
+  remedy: Have the Student swap packs with a neighbour and try to reproduce one item; anything the neighbour
+    cannot use is marked "needs the author".
+- module: 6
+  fault: The development plan restates interests ("cloud", "offence") instead of the gaps the record shows.
+  remedy: Open the project record from module 2 and 4 and name one concrete gap per Student before they
+    write the twelve-month actions.
