@@ -30,6 +30,7 @@ const STATE_TEXT: Record<string, string> = {
 };
 const WAITING = new Set(['queued', 'provisioning', 'baselining', 'resetting', 'cleaning', 'reconcile_required']);
 const USABLE = new Set(['ready', 'active']);
+const ENDED_STATES = new Set(['expired', 'cleaning', 'reconcile_required', 'destroyed']);
 const TOKEN_KEY = (id: string) => `tn-lab-token:${id}`;
 
 /**
@@ -40,13 +41,19 @@ const TOKEN_KEY = (id: string) => `tn-lab-token:${id}`;
 @Component({
   selector: 'tn-lab-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // Real use of the page (ADR 0014 §18): only this keeps an idle lab from closing.
+  host: {
+    '(window:keydown)': 'markActive()',
+    '(window:pointerdown)': 'markActive()',
+    '(window:focus)': 'markActive()',
+  },
   imports: [DatePipe, MatButtonModule, MatCardModule, MatIconModule, MatProgressBarModule, RangeCredentialsComponent],
   template: `
     <div class="lab">
       <mat-card class="panel">
         <h1>Lab</h1>
         @if (session(); as s) {
-          <p class="state" [class.bad]="s.state === 'failed'">{{ text(s.state) }}</p>
+          <p class="state" [class.bad]="s.state === 'failed'">{{ text(s.state, s.end_reason) }}</p>
           @if (waiting()) {
             <mat-progress-bar mode="indeterminate" />
           }
@@ -73,7 +80,12 @@ const TOKEN_KEY = (id: string) => `tn-lab-token:${id}`;
               </p>
             }
             <p class="muted">
-              Ends {{ s.max_expires_at | date: 'shortTime' }} at the latest; closes after inactivity
+              @if (s.ends_with_class) {
+                Ends with your class at {{ s.max_expires_at | date: 'shortTime' }};
+              } @else {
+                Ends {{ s.max_expires_at | date: 'shortTime' }} at the latest;
+              }
+              closes after inactivity
               ({{ s.idle_expires_at | date: 'shortTime' }}). Your submitted work is kept when it ends.
             </p>
             <!-- This lab's own logins (ADR 0013 §3): new after every reset; each reveal is recorded. -->
@@ -114,6 +126,7 @@ export class LabPageComponent implements OnInit {
   readonly waiting = computed(() => WAITING.has(this.session()?.state ?? ''));
   readonly usable = computed(() => USABLE.has(this.session()?.state ?? ''));
   private id = '';
+  private interacted = false;
   private token: string | undefined;
   /** For the credentials panel: this session, and its LTI token when it came with one. */
   sessionId = '';
@@ -148,7 +161,12 @@ export class LabPageComponent implements OnInit {
     interval(60000).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       if (this.usable()) {
         // On an error (the lab ended, the enrollment closed) reload, so the page says so.
-        this.api.labAction(this.id, 'heartbeat', this.token).subscribe({
+        // Says whether the Student used the page since the last beat; an open tab nobody
+        // uses does not keep the lab open.
+        // A page the Student is looking at counts too; a hidden tab does not.
+        const active = this.interacted || document.visibilityState === 'visible';
+        this.interacted = false;
+        this.api.labHeartbeat(this.id, active, this.token).subscribe({
           next: s => this.session.set(s),
           error: () => this.refresh(),
         });
@@ -156,7 +174,16 @@ export class LabPageComponent implements OnInit {
     });
   }
 
-  text(state: string): string {
+  /** Input, focus or a console opened since the last heartbeat. */
+  markActive(): void {
+    this.interacted = true;
+  }
+
+  text(state: string, endReason = ''): string {
+    // An idle close (ADR 0014 §18) is recorded as such; the lab ended, not the Student.
+    if (endReason === 'idle' && ENDED_STATES.has(state)) {
+      return 'This lab was closed because it was not used for a while. Your submitted work is kept.';
+    }
     return STATE_TEXT[state] ?? state;
   }
 
@@ -182,6 +209,7 @@ export class LabPageComponent implements OnInit {
   }
 
   openConsole(): void {
+    this.markActive();
     this.api.labConsole(this.id, this.token).subscribe({
       next: c => this.console.set(c),
       error: err => this.notify.error(err?.error?.detail ?? 'Could not open the console'),

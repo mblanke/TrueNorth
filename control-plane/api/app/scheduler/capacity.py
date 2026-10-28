@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
@@ -83,14 +84,23 @@ class CapacityProvider(Protocol):
 class ClusterCapacity:
     """Supply and running ranges from ``app/capacity``, bookings from the scheduler."""
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, *, ends: Mapping[uuid.UUID, datetime] | None = None) -> None:
+        """Running ranges known to end hold capacity only until then: a lab session's range
+        until its maximum lifetime (``lab_sessions.holdings.ends``), so a site full of labs
+        today does not block next week's class. Every other running range holds it from now
+        on. ``ends`` replaces that map; only a forecast passes one
+        (``lab_sessions.capacity_gate.next_free``: labs closing when unused)."""
         from .. import capacity
+        from ..lab_sessions import holdings
 
         self._capacity = capacity
         cluster = capacity.supply(db)
         self._supply = Resources(cluster.vcpu, cluster.ram_mb, cluster.disk_gb)
         self.supply_source = cluster.source
         self._running = capacity.running_ranges(db)
+        if ends is None:
+            ends = holdings.ends(db, datetime.now(UTC))
+        self._ends = {k: _utc(v) for k, v in ends.items()}
 
     def supply(self) -> Resources:
         return self._supply
@@ -129,12 +139,15 @@ class ClusterCapacity:
         re-checked (``exclude_id``) is left out, with its class's hold: its own demand is
         what is asked."""
         from ..classes import holds as class_holds
+        from ..lab_sessions import holdings
 
         excluded = db.get(ScheduledEvent, exclude_id) if exclude_id else None  # tenant-safe: loaded by get_owned
         key = class_holds.hold_key(db, excluded) if excluded is not None else None
         out = []
         absorbed: set[uuid.UUID] = set()
         skip: set[uuid.UUID] = {excluded.range_id} - {None} if excluded is not None else set()
+        if excluded is not None:  # its Students' labs are part of the demand being asked
+            skip |= holdings.drawing_on(db, [excluded.id]).get(excluded.id, (set(), None))[0]
         for h in class_holds.holds(db, start - TEARDOWN_GRACE, end + PROVISION_LEAD):
             absorbed |= h.events
             if h.key == key:
@@ -148,12 +161,16 @@ class ClusterCapacity:
         )
         if exclude_id:
             q = q.filter(ScheduledEvent.id != exclude_id)
-        for e in q.all():
-            if e.id in absorbed:
-                continue
-            need = Resources(e.vcpu_total or 0, e.ram_mb_total or 0, e.disk_gb_total or 0)
+        events = [e for e in q.all() if e.id not in absorbed]
+        # A class session's own Students' labs draw on its hold: counted through it, not again,
+        # and the booking counts as the larger of its hold and what they hold (a session
+        # shrunk under its running labs does not hide them).
+        labs = holdings.drawing_on(db, [e.id for e in events])
+        for e in events:
+            ranges, (vcpu, ram, disk) = labs.get(e.id, (set(), (0, 0, 0)))
+            need = Resources(max(e.vcpu_total or 0, vcpu), max(e.ram_mb_total or 0, ram), max(e.disk_gb_total or 0, disk))
             out.append((_utc(e.start_time) - PROVISION_LEAD, _utc(e.end_time) + TEARDOWN_GRACE, need,
-                        {e.range_id} - {None}))
+                        ({e.range_id} - {None}) | ranges))
         return out, skip
 
     def _sum(self, held, t0: datetime, t1: datetime, skip: set[uuid.UUID] | None = None) -> Committed:
@@ -166,6 +183,8 @@ class ClusterCapacity:
         if t1 > datetime.now(UTC):  # running ranges hold capacity from now on, not in the past
             for r in self._running:
                 if r.range_id in covered or r.range_id in (skip or ()):
+                    continue
+                if r.range_id in self._ends and self._ends[r.range_id] <= t0:
                     continue
                 vcpu, ram, disk, ranges = vcpu + r.vcpu, ram + r.ram_mb, disk + r.disk_gb, ranges + 1
         return Committed(Resources(vcpu, ram, disk), len(now), ranges)

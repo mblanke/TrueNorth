@@ -11153,6 +11153,18 @@
         "title": "HealthOut",
         "type": "object"
       },
+      "HeartbeatIn": {
+        "properties": {
+          "active": {
+            "default": false,
+            "description": "The Student interacted with the lab page (input, focus, console) since the last beat. Only that keeps the lab open (ADR 0014 \u00a718); an open tab nobody uses does not.",
+            "title": "Active",
+            "type": "boolean"
+          }
+        },
+        "title": "HeartbeatIn",
+        "type": "object"
+      },
       "HypervisorConnectionIn": {
         "properties": {
           "api_token": {
@@ -12351,6 +12363,12 @@
               }
             ],
             "title": "Ended At"
+          },
+          "ends_with_class": {
+            "default": false,
+            "description": "The lab draws on the Student's class session and ends with it (max_expires_at).",
+            "title": "Ends With Class",
+            "type": "boolean"
           },
           "error": {
             "title": "Error",
@@ -38203,6 +38221,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/HeartbeatIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -38761,6 +38796,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/HeartbeatIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {

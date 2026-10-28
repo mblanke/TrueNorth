@@ -14574,6 +14574,15 @@ export interface components {
             /** Version */
             version: string;
         };
+        /** HeartbeatIn */
+        HeartbeatIn: {
+            /**
+             * Active
+             * @description The Student interacted with the lab page (input, focus, console) since the last beat. Only that keeps the lab open (ADR 0014 §18); an open tab nobody uses does not.
+             * @default false
+             */
+            active?: boolean;
+        };
         /** HypervisorConnectionIn */
         HypervisorConnectionIn: {
             /** Api Token */
@@ -15048,6 +15057,12 @@ export interface components {
             end_reason: string;
             /** Ended At */
             ended_at: string | null;
+            /**
+             * Ends With Class
+             * @description The lab draws on the Student's class session and ends with it (max_expires_at).
+             * @default false
+             */
+            ends_with_class?: boolean;
             /** Error */
             error: string;
             /** Evidence Count */
@@ -28319,7 +28334,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["HeartbeatIn"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -28662,7 +28681,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["HeartbeatIn"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

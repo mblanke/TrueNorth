@@ -62,6 +62,10 @@ class LabSession(Base):
     baseline_snapshot_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True)
     vcpu: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     ram_mb: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    disk_gb: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # The booking whose hold this lab draws on: a booked class's own Student's lab (ADR 0014
+    # §18). None: a self-serve lab, admitted on the capacity left after approved classes.
+    booking_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True, index=True)
     error: Mapped[str] = mapped_column(Text, nullable=False, default="")
     probes: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # last readiness probe results (JSON)
     evidence: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # submitted evidence (JSON list)
@@ -74,7 +78,12 @@ class LabSession(Base):
     ready_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     idle_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # When the Student was told the lab closes soon for want of use (cleared by activity).
+    idle_warned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     max_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The lab's own end (profile, platform ceiling); max_expires_at is it, or earlier for a
+    # class's own lab that ends with its class (ADR 0014 §18).
+    latest_end_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     end_reason: Mapped[str] = mapped_column(String(32), nullable=False, default="")
     reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

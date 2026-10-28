@@ -35,6 +35,10 @@ class BaseHypervisorBackend(ABC):
     #: CREDENTIALS_HYPERVISOR (tests/contracts).
     provisioner_backends: frozenset[str] = frozenset()
 
+    #: Whether VMs of this family have browser/remote consoles whose open connections the lab
+    #: sweep should ask about before an idle close (ADR 0014 §18). False: idle on heartbeats.
+    has_consoles: bool = False
+
     @abstractmethod
     def check_connection(self, conn: HypervisorConnection, db: Session) -> HypervisorTestResult:
         """Reach the hypervisor with the stored credentials; update ``conn.is_active``."""

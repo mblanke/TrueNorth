@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 import uuid
 from dataclasses import dataclass
+from functools import lru_cache
 
 from sqlalchemy.orm import Session
 
@@ -106,8 +107,18 @@ def supply(db: Session) -> ClusterSupply:
 BUILT = (RangeState.provisioning, RangeState.ready, RangeState.running)
 
 
+@lru_cache(maxsize=4096)
+def _demand(template_yaml: str | None):
+    """A template's size, parsed once per template text (every poll reads every range)."""
+    return template_demand(template_yaml)
+
+
 def running_ranges(db: Session) -> list[RangeLoad]:
-    """Every range holding cluster resources now, sized from its template."""
+    """Every range holding cluster resources now, sized from its template; and each lab being
+    reset, at its size, while its range is down for the rebuild (``lab_sessions.holdings``):
+    nobody else may take its room in between."""
+    from ..lab_sessions import holdings
+
     rows = (
         db.query(Range.id, Range.state, Template.yaml)
         .join(Template, Template.id == Range.template_id)
@@ -116,11 +127,12 @@ def running_ranges(db: Session) -> list[RangeLoad]:
     )
     out: list[RangeLoad] = []
     for rid, state, yaml in rows:
-        d = template_demand(yaml)
+        d = _demand(yaml)
         if d is None:
             continue
         if state == RangeState.stopped:  # powered off: its disks remain
             out.append(RangeLoad(rid, 0, 0, d.disk_gb))
         else:
             out.append(RangeLoad(rid, d.vcpu, d.ram_mb, d.disk_gb))
+    out.extend(RangeLoad(rid, vcpu, ram, disk) for rid, vcpu, ram, disk in holdings.resetting_loads(db))
     return out
