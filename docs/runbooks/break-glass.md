@@ -123,8 +123,9 @@ turned off) the 90-day rule does not run at all and nothing alerts. Every use of
 `break_glass_sign_in` audit row: when it fires and nobody planned it, treat it as an
 incident (docs/runbooks/incident.md) and reset its password with the playbook above.
 
-Someone else's local account disabled by the rule: an administrator re-enables it in Users
-(the 90 days start again). The sync never touches Keycloak, so the Keycloak account itself
+Someone else's local account disabled by the rule: an administrator re-enables it with
+`PATCH /users/{id}?is_active=true` (a query parameter; v1.2.0 has no button for it in Users; the 90 days
+start again). The sync never touches Keycloak, so the Keycloak account itself
 was never disabled.
 
 ## The master realm admin
