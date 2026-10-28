@@ -1,8 +1,11 @@
 # TrueNorth — Current State
 
-**Refreshed 2026-10-11 for v1.2.0 on `github/main` (`ce254a18`, #142) plus the
-release-readiness branch `claude/release-ready-gaps`.** All 17 modules are at stage 4.
-`v1.2.0-rc3` runs on staging; `v1.2.0` is not tagged (`v1.1.0` was released 2026-10-09).
+**Header and the "Classes and calendars" row refreshed 2026-10-27 on `github/main`
+(`fd4f79a6`, through #312); the other rows are from 2026-10-11 (`ce254a18`, #142).** The
+newest tag is `v1.2.0-rc15` (2026-10-22). It predates all of ADR 0014, so no release
+candidate has the classes work yet. `v1.2.0` is not tagged (`v1.1.0` was released
+2026-10-09). How each role uses the product: `docs/guides/03-admin-first-day.md`,
+`04-instructor-guide.md`, `05-student-quick-start.md`.
 Changes: `CHANGELOG.md`; limitations, simulator-only evidence and the staging record:
 `docs/release-notes/v1.2.0.md` (v1.0.0's: `docs/release-notes/v1.0.0.md`).
 This replaces the 2026-08-18 reconstruction. That document's defects are fixed: the
@@ -30,7 +33,8 @@ tests > docs. Labels: `IMPLEMENTED` `PARTIAL` `UNTESTED` `PLANNED`.
 | Backups | PostgreSQL, MinIO, OpenSearch snapshot, Moodle files, ARC² runs, escrow | `scripts/backup/`, CI `backup-drill`; `docs/runbooks/backup-restore.md` |
 | Security | sealed credentials at rest (`TN_SECRETS_KEY`), non-root images (#90); pip-audit and npm audit blocking; image Trivy gate. `PARTIAL` against NIST 800-53: no KMS or disk/database encryption, internal traffic plain; login banner, privileged-user MFA and audit export/retention are being built for v1.2.0 | `ci.yml` supply-chain and build-docker; `release.yml`; control-by-control table in `docs/security.md` ("Compliance Mapping", 2026-10-12) |
 | Scenario injects | `PARTIAL`: every injector writes synthetic telemetry; only `greyspace_breadcrumb` acts on a range (vSphere, simulator-proven). No sensor is installed on range VMs | `docs/scenario-inject-execution.md` |
-| Teams | `PARTIAL`: team CRUD (admin UI) and a membership API; no team exercises, team scoring or leaderboards (planned, R2) | `control-plane/api/app/routers/admin.py`; `docs/user-guide.md` "Not in v1.2.0" |
+| Teams | `PARTIAL`: team CRUD (admin UI) and a membership API; a class's collective sessions get balanced teams (#299); no team scoring or leaderboards (planned, R2) | `control-plane/api/app/routers/admin.py`, `app/classes/teams.py`; `docs/user-guide.md` "Not in v1.2.0" |
+| Classes and calendars (ADR 0014) | `IMPLEMENTED` on main, untagged. Delivered: classes and roll call, Rules of use, seat forfeit, booking approval, per-session ranges and teams, attendance and close-out, My classes, Events and Content calendars, content clock and feeds, AD status sync, self-serve lab gate, app email. Unit readiness #315 is in review. Several settings have no screen yet (roll-call domains, a course's default mode, class edit and hand-over, review cycles and themes, trust keys); see the guides' "Known gaps" | `control-plane/api/app/classes/`, `acknowledgement/`, `content_review/`, `content_feeds/`, `ad_status_sync/`, `lab_sessions/capacity_gate.py`; `docs/adr/0014-classes-onboarding-and-calendar.md` |
 
 ## Release and deployment: `PARTIAL`
 
@@ -57,6 +61,11 @@ from CI runs, not from this count.
 
 ## Open
 
+0. ADR 0014 follow-ups (2026-10-27): #273 (the installer does not pass
+   `PLATFORM_TENANT_ID`, so a second tenant leaves nobody platform administrator), #289/#315
+   (unit readiness), #310 (AD sync `ad_object_guid`), #313 (no Student console for class
+   ranges). The code-vs-ADR differences found while writing the role guides are in the PR
+   that added them.
 1. v1.2.0 known limitations: `docs/release-notes/v1.2.0.md`. In short (checked 2026-10-12):
    all injectors simulated except the Greyspace breadcrumb; no real host sensor shipping;
    no team exercises or leaderboards (planned, R2); no i18n (English only; French is a

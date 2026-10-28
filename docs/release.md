@@ -1,5 +1,9 @@
 # Releasing TrueNorth
 
+This page is for whoever **makes** a release. To **install or upgrade** one at a site,
+follow [02 — Install guide](guides/02-install-guide.md) §4 (fetch and verify the signed
+release) and [06 — Operations runbook](guides/06-operations-runbook.md) §2 (upgrade).
+
 A release is a git tag `vX.Y.Z` (or `vX.Y.Z-suffix`, published as a pre-release) on a
 commit of `main` that CI passed. Pushing the tag runs `.github/workflows/release.yml`. It
 publishes images and evidence. **It deploys nothing.** Installation is done by the
@@ -90,9 +94,15 @@ To redo a failed release, delete the tag (`git push github :refs/tags/v1.2.3`), 
 cause on main, and tag again. Never move a published release's tag: installs pin digests,
 and the manifest must keep describing what was scanned.
 
-The application does not report the tag yet. `control-plane/api/app/main.py` hard-codes
-`APP_VERSION = "0.1.0"`. Images carry `TN_VERSION`, and the API should read it
-(follow-up for the API package).
+The application reports the tag: images carry `TN_VERSION` (the installer also renders it
+into the env file), and the API reads it at start (`APP_VERSION` in
+`control-plane/api/app/main.py`, `"dev"` when unset), logs it at start and returns it as
+`version` from `GET /health`. The OpenAPI document carries the API contract version
+instead (`API_CONTRACT_VERSION`), so a release does not drift the published contract.
+
+The role guides (`docs/guides/`) are not built by this workflow. To give a site printable
+copies, run `scripts/build_guides_pdf.sh` (pandoc) when the documentation set is cut
+([docs/guides/README.md](guides/README.md)).
 
 ## Verifying a release
 

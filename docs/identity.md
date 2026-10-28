@@ -1,7 +1,9 @@
 # Identity
 
 > How authentication, the AD claim contract and account creation fit together.
-> For the human-facing journey, see [onboarding.md](onboarding.md).
+> For the human-facing journey, see the role guides:
+> [administrator](guides/03-admin-first-day.md), [instructor](guides/04-instructor-guide.md),
+> [Student](guides/05-student-quick-start.md).
 
 ---
 
@@ -222,7 +224,8 @@ ranges at the next range tick, a CANCEL of sessions to come); an `ad_status_deac
 audit row. After the commit, each class's lead and assistants (the tenant's admins when it
 has none) get one email per class. **Nothing is deleted**: the account row, enrolments,
 results, roll-call entries (marked removed) and audit history stay. An administrator
-re-enables the account in Users; the next runs deactivate it again only if the directory
+re-enables the account with `PATCH /users/{id}?is_active=true` (a query parameter; v1.2.0 has no
+button for it in Users); the next runs deactivate it again only if the directory
 still says so. Re-enabling restarts a local account's 90 days.
 
 **Last use** of a local account is TrueNorth's own record, `user_last_seen`, written by

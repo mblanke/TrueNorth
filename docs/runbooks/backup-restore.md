@@ -1,5 +1,10 @@
 # Runbook — backup and restore
 
+The site procedures (copying backups to the second management host, disaster recovery by
+rebuilding the VM there, and the quarterly restore drill) are in
+[06 — Operations runbook](../guides/06-operations-runbook.md) §3. This runbook is the
+reference for what the scripts do.
+
 Scripts: `scripts/backup/` (`backup.sh`, `restore.sh`, `restore-secrets.sh`,
 `cron-backup.sh`, `escrow-open.sh`, `drill.sh`, shared `lib.sh`). Proof: `scripts/backup/drill.sh`, run by
 `.github/workflows/backup-drill.yml` nightly and on every change to `scripts/backup/**`,
@@ -36,6 +41,42 @@ Not included, on purpose:
 
 A backup is written to `.partial-truenorth-backup-…` and renamed only when complete; a failed
 run deletes its partial directory. One run at a time (`$BACKUP_DIR/.lock`).
+
+Only the secrets are encrypted (to the escrow key). The database dumps and bucket copies are
+not: protect every copy of a backup like the live system.
+
+## Enclave profile and trust registry
+
+**Enclave profile.** Each deployment has a stable identity and a classification:
+`tn_enclave_id` and `tn_classification_level` in the installer's inventory, rendered into
+the env file as `TN_ENCLAVE_ID` and `TN_CLASSIFICATION_LEVEL` (preflight refuses a missing
+or malformed one). They bind result-transfer routes (`docs/result-transfer.md`), so:
+
+- A backup belongs to the enclave that made it. Restore it **only** into a deployment with
+  the same `tn_enclave_id` and `tn_classification_level`: the rebuilt host takes them from the
+  same inventory (the env file is re-rendered by the installer, not restored).
+- Never restore one enclave's backup into another (a test or staging host included), and
+  never copy a classified deployment's database, secrets or keys with these values.
+- The escrowed env file carries both values: `escrow-open.sh` shows what a backup was made
+  with, if in doubt.
+
+**Trust registry.** The result-transfer trust registry (table `result_transfer_trust_keys`,
+ADR 0015) holds only **public** keys of trusted remote enclaves, each bound to a purpose,
+remote enclave, key id and validity window; retired keys stay as history. It lives in the
+application database, so:
+
+- every backup carries it, and a restore puts it back exactly as it was when the backup was
+  taken;
+- a key enrolled or retired **after** that backup is missing or active again after the
+  restore: the platform administrator enrols or retires it again
+  (`POST /result-transfer/trust-keys`, `POST /result-transfer/trust-keys/{id}/retire`), and
+  checks the list (`GET /result-transfer/trust-keys`) against the remote enclave's record;
+- private signing and decryption keys are never in the registry, the database or a backup.
+  Their custody is outside TrueNorth.
+
+Restored result-transfer state follows the database too: outbox rows, imported results and
+subject bindings are as of the backup, and packages exchanged since then are reconciled by
+the transfer's own idempotency (a re-imported package is recognised by its id).
 
 ## What the operator must set
 
@@ -146,7 +187,7 @@ scripts/backup/restore-secrets.sh /srv/truenorth/backups/<type>/<backup> /path/t
 # 2. Control node: re-run the installer. It finds the restored secrets in config/secrets/,
 #    renders the env file from them and recreates the services with them. (Vault values must
 #    equal them or be empty: 30-config refuses a differing first-start secret.)
-ansible-playbook site.yml -K --ask-vault-pass        # smoke-test credentials as usual
+ansible-playbook -i inventory/site.yml site.yml -K --ask-vault-pass -e @smoke.yml   # guide 02 §6
 # 3. Restore the data (below), then 95-smoke-test again.
 ```
 
@@ -388,5 +429,7 @@ Drill result 2026-10-08 (macOS, Docker 29 / compose 5.5): PASS — `drill_app` r
 enrollments 2500; `keycloak.user_entity` 137 (owner keycloak); `lrs.xapi_statement` 420
 (owner lrs); 3 buckets (one empty), 32 objects; identical before and after.
 
-Quarterly: restore the latest production backup onto a staging host and run the "After"
-checks above. Record the date and counts here.
+Quarterly, on the real hardware: the restore drill of guide 06 §3.6 (production powered off
+in a window, rebuilt and restored on the second management host, the "After" checks above,
+then failed back). Not onto a staging host: that would be another enclave (above). Record
+the date, the backup, the counts and the measured time here.
