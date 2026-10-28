@@ -3,6 +3,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { EmailStatus } from '@core/services/email-status.service';
 import { EmailSettingsCardComponent } from './email-settings-card.component';
+import { provideRouter } from '@angular/router';
 
 const RELAY: EmailStatus = {
   configured: true, docs: 'x', can_send_test: true,
@@ -16,7 +17,7 @@ describe('EmailSettingsCardComponent (#306)', () => {
   function render(status: EmailStatus) {
     TestBed.configureTestingModule({
       imports: [EmailSettingsCardComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     });
     http = TestBed.inject(HttpTestingController);
     const fixture = TestBed.createComponent(EmailSettingsCardComponent);
@@ -53,11 +54,12 @@ describe('EmailSettingsCardComponent (#306)', () => {
     expect(el.querySelector('.result')?.textContent).toContain('less than a minute ago');
   });
 
-  it('offers no test, and points at the install docs, while email is off', () => {
+  it('offers no test, and points at the bundled email help, while email is off', () => {
     const fixture = render({ configured: false, docs: 'x', relay: null, can_send_test: false });
     const el: HTMLElement = fixture.nativeElement;
     expect(el.textContent).toContain('Not configured');
-    expect(el.querySelector('a')?.getAttribute('href')).toContain('install/README.md#email-smtp');
+    // In the app, never GitHub: an air-gapped site cannot reach it (#318).
+    expect(el.querySelector('a')?.getAttribute('href')).toBe('/admin/help/email');
     expect(Array.from(el.querySelectorAll('button')).some(b => b.textContent?.includes('Send test'))).toBeFalse();
   });
 

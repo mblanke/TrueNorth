@@ -104,3 +104,29 @@ def require_editor(role: ClassRole) -> None:
 def require_staff(role: ClassRole) -> None:
     if role not in STAFF:
         raise HTTPException(403, "Only the class's instructors, observers and admins see its roll call")
+
+
+def classes_of_exercise(db: Session, ex) -> list[Class]:
+    """The classes whose session runs ``ex`` (a collective session's exercise), in its tenant."""
+    from ..scheduler.models import ScheduledEvent
+    from .models import ClassSession
+
+    return (
+        db.query(Class)
+        .join(ClassSession, ClassSession.class_id == Class.id)
+        .join(ScheduledEvent, ScheduledEvent.id == ClassSession.event_id)
+        .filter(ScheduledEvent.exercise_id == ex.id, ScheduledEvent.tenant_id == ex.tenant_id,
+                Class.tenant_id == ex.tenant_id)
+        .all()
+    )
+
+
+def observer_may_watch(db: Session, user: CurrentUser, ex) -> bool:
+    """For Live Class (``GET /ops/exercises/{id}/class``): a platform observer watches a class
+    session's exercise only as one of that class's staff (its observer list, ADR 0014 §19),
+    never because the class is in their tenant. An exercise that is no class's session keeps
+    the tenant-wide rule (there is no observer list to check)."""
+    if user.role != UserRole.observer:
+        return True
+    found = classes_of_exercise(db, ex)
+    return not found or any(role_in(db, cls, user) in STAFF for cls in found)

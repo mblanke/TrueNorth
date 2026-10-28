@@ -2722,6 +2722,49 @@
         "title": "Body_import_content_feed_bundle",
         "type": "object"
       },
+      "Body_import_content_port_bundle": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The signed content-port bundle (JSON)",
+            "title": "File",
+            "type": "string"
+          },
+          "overwrite": {
+            "default": [],
+            "description": "Keys of conflicting items to overwrite",
+            "items": {
+              "type": "string"
+            },
+            "title": "Overwrite",
+            "type": "array"
+          },
+          "shared": {
+            "default": false,
+            "description": "Land as shared content every tenant reads",
+            "title": "Shared",
+            "type": "boolean"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where it lands (default: your tenant)",
+            "title": "Target Tenant Id"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_content_port_bundle",
+        "type": "object"
+      },
       "Body_import_course_content_courses_import_course_content_post": {
         "properties": {
           "file": {
@@ -2836,6 +2879,40 @@
           "state"
         ],
         "title": "Body_lti_launch_lti_launch_post",
+        "type": "object"
+      },
+      "Body_preview_content_port_bundle": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "The signed content-port bundle (JSON)",
+            "title": "File",
+            "type": "string"
+          },
+          "shared": {
+            "default": false,
+            "description": "Land as shared content every tenant reads",
+            "title": "Shared",
+            "type": "boolean"
+          },
+          "target_tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where it lands (default: your tenant)",
+            "title": "Target Tenant Id"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_preview_content_port_bundle",
         "type": "object"
       },
       "Body_upload_attachments_tickets__ticket_id__attachments_post": {
@@ -3789,6 +3866,82 @@
         "title": "ClassAttemptOut",
         "type": "object"
       },
+      "ClassConsoleIn": {
+        "properties": {
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "vm": {
+            "description": "The VM's name (``ConsoleMachineOut.name``)",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$",
+            "title": "Vm",
+            "type": "string"
+          }
+        },
+        "required": [
+          "range_id",
+          "vm"
+        ],
+        "title": "ClassConsoleIn",
+        "type": "object"
+      },
+      "ClassConsoleOut": {
+        "description": "A one-time console ticket. Short-lived and single-use; never a standing credential.",
+        "properties": {
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "kind": {
+            "description": "webmks (vSphere) or mock",
+            "title": "Kind",
+            "type": "string"
+          },
+          "machine": {
+            "description": "The template node id",
+            "title": "Machine",
+            "type": "string"
+          },
+          "observed": {
+            "default": false,
+            "description": "An observer's console the hypervisor cannot make view-only: input reaches the machine, so the page says it is observed",
+            "title": "Observed",
+            "type": "boolean"
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "view_only": {
+            "default": false,
+            "description": "The hypervisor refuses input on this console",
+            "title": "View Only",
+            "type": "boolean"
+          },
+          "vm": {
+            "description": "The VM's name",
+            "title": "Vm",
+            "type": "string"
+          }
+        },
+        "required": [
+          "range_id",
+          "machine",
+          "vm",
+          "kind",
+          "url",
+          "expires_in"
+        ],
+        "title": "ClassConsoleOut",
+        "type": "object"
+      },
       "ClassIn": {
         "properties": {
           "assistant_ids": {
@@ -3955,6 +4108,109 @@
           "state"
         ],
         "title": "ClassLabOut",
+        "type": "object"
+      },
+      "ClassLiveOut": {
+        "description": "A class session's live view (ADR 0014 \u00a719): each Student's machines and status.",
+        "properties": {
+          "class_id": {
+            "format": "uuid",
+            "title": "Class Id",
+            "type": "string"
+          },
+          "class_name": {
+            "title": "Class Name",
+            "type": "string"
+          },
+          "consoles_for_you": {
+            "description": "Your part may open consoles at all: false for an observer while CLASS_OBSERVER_CONSOLES is off (the status grid only)",
+            "title": "Consoles For You",
+            "type": "boolean"
+          },
+          "consoles_open": {
+            "description": "Consoles can be opened now (the session's window)",
+            "title": "Consoles Open",
+            "type": "boolean"
+          },
+          "end_time": {
+            "format": "date-time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "live": {
+            "description": "The session is under way now",
+            "title": "Live",
+            "type": "boolean"
+          },
+          "range_mode": {
+            "title": "Range Mode",
+            "type": "string"
+          },
+          "role": {
+            "description": "The caller's part in the class: lead, assistant, observer or admin",
+            "title": "Role",
+            "type": "string"
+          },
+          "session_name": {
+            "title": "Session Name",
+            "type": "string"
+          },
+          "shared_range": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LiveRangeOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The range a collective session books"
+          },
+          "start_time": {
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          },
+          "students": {
+            "items": {
+              "$ref": "#/components/schemas/LiveStudentOut"
+            },
+            "title": "Students",
+            "type": "array"
+          },
+          "view_only_consoles": {
+            "description": "An observer's console is view-only on this hypervisor; otherwise it is marked observed",
+            "title": "View Only Consoles",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "class_id",
+          "class_name",
+          "event_id",
+          "session_name",
+          "start_time",
+          "end_time",
+          "range_mode",
+          "role",
+          "live",
+          "consoles_open",
+          "consoles_for_you",
+          "view_only_consoles",
+          "students",
+          "generated_at"
+        ],
+        "title": "ClassLiveOut",
         "type": "object"
       },
       "ClassObjectiveOut": {
@@ -5628,6 +5884,44 @@
           "connection_id"
         ],
         "title": "ConnectionDiscoveryOut",
+        "type": "object"
+      },
+      "ConsoleMachineOut": {
+        "properties": {
+          "machine": {
+            "description": "The template node id: what the range's accounts name the machine. Several VMs share it when the template node has a count above one",
+            "title": "Machine",
+            "type": "string"
+          },
+          "name": {
+            "description": "The VM's name, unique in its range: a console is opened by it",
+            "title": "Name",
+            "type": "string"
+          },
+          "power": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The VM's state as its last build or check recorded it",
+            "title": "Power"
+          },
+          "student_machine": {
+            "default": false,
+            "description": "A Student is handed an account on it; observers open consoles on these only",
+            "title": "Student Machine",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "machine",
+          "name"
+        ],
+        "title": "ConsoleMachineOut",
         "type": "object"
       },
       "ConsoleOut": {
@@ -12895,6 +13189,124 @@
         "title": "LessonBrief",
         "type": "object"
       },
+      "LiveRangeOut": {
+        "properties": {
+          "machines": {
+            "items": {
+              "$ref": "#/components/schemas/ConsoleMachineOut"
+            },
+            "title": "Machines",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "state": {
+            "description": "The range's own state (ready, running, stopped, provisioning, failed, ...)",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "range_id",
+          "name",
+          "state",
+          "machines"
+        ],
+        "title": "LiveRangeOut",
+        "type": "object"
+      },
+      "LiveStudentOut": {
+        "properties": {
+          "display_name": {
+            "description": "Their name, or their roll-call email when they have no account yet",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "entry_id": {
+            "format": "uuid",
+            "title": "Entry Id",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The last time they opened their range (accounts, a password or a console) since the session's provisioning lead",
+            "title": "Last Seen At"
+          },
+          "range": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LiveRangeOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Their own seat (an individual session)"
+          },
+          "team": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LiveTeamOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "entry_id",
+          "display_name"
+        ],
+        "title": "LiveStudentOut",
+        "type": "object"
+      },
+      "LiveTeamOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "LiveTeamOut",
+        "type": "object"
+      },
       "LtiLinkCodeIn": {
         "properties": {
           "code": {
@@ -13908,6 +14320,49 @@
           "exercises"
         ],
         "title": "MyClassesOut",
+        "type": "object"
+      },
+      "MyRangeConsolesOut": {
+        "description": "The machines of a class range the Student may open a console on, and whether now.",
+        "properties": {
+          "machines": {
+            "description": "Only machines the Student is handed accounts on (as their credentials panel)",
+            "items": {
+              "$ref": "#/components/schemas/ConsoleMachineOut"
+            },
+            "title": "Machines",
+            "type": "array"
+          },
+          "open": {
+            "description": "A session of the class using this range is live, or within its provisioning lead: POST opens a console",
+            "title": "Open",
+            "type": "boolean"
+          },
+          "range_id": {
+            "format": "uuid",
+            "title": "Range Id",
+            "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "That session, when open",
+            "title": "Session Id"
+          }
+        },
+        "required": [
+          "range_id",
+          "open",
+          "machines"
+        ],
+        "title": "MyRangeConsolesOut",
         "type": "object"
       },
       "MySessionOut": {
@@ -15309,6 +15764,7 @@
             "type": "string"
           },
           "ou_type": {
+            "pattern": "^(country|branch|division|unit|section|custom)$",
             "title": "Ou Type",
             "type": "string"
           },
@@ -16012,6 +16468,399 @@
         "title": "PolicyOut",
         "type": "object"
       },
+      "PortExportIn": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PortItemRef"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PortExportIn",
+        "type": "object"
+      },
+      "PortGoldenBuild": {
+        "additionalProperties": false,
+        "properties": {
+          "build_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Build Id",
+            "type": "string"
+          },
+          "catalogue_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Catalogue Id",
+            "type": "string"
+          },
+          "checksum": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Checksum",
+            "type": "string"
+          }
+        },
+        "required": [
+          "catalogue_id",
+          "build_id"
+        ],
+        "title": "PortGoldenBuild",
+        "type": "object"
+      },
+      "PortImportOut": {
+        "properties": {
+          "bundle_id": {
+            "format": "uuid",
+            "title": "Bundle Id",
+            "type": "string"
+          },
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          },
+          "import_id": {
+            "format": "uuid",
+            "title": "Import Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PortPreviewItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "missing_golden_builds": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PortMissingBuildOut"
+            },
+            "title": "Missing Golden Builds",
+            "type": "array"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "import_id",
+          "bundle_id",
+          "created",
+          "updated",
+          "unchanged",
+          "skipped",
+          "items"
+        ],
+        "title": "PortImportOut",
+        "type": "object"
+      },
+      "PortImportedFromOut": {
+        "properties": {
+          "exported_at": {
+            "format": "date-time",
+            "title": "Exported At",
+            "type": "string"
+          },
+          "golden_builds": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PortGoldenBuild"
+            },
+            "title": "Golden Builds",
+            "type": "array"
+          },
+          "imported_at": {
+            "format": "date-time",
+            "title": "Imported At",
+            "type": "string"
+          },
+          "origin_key_id": {
+            "title": "Origin Key Id",
+            "type": "string"
+          },
+          "proven_at_origin": {
+            "title": "Proven At Origin",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "origin_key_id",
+          "exported_at",
+          "imported_at",
+          "proven_at_origin"
+        ],
+        "title": "PortImportedFromOut",
+        "type": "object"
+      },
+      "PortItemRef": {
+        "additionalProperties": false,
+        "properties": {
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "item_type": {
+            "enum": [
+              "course",
+              "range_template",
+              "scenario"
+            ],
+            "title": "Item Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_type",
+          "item_id"
+        ],
+        "title": "PortItemRef",
+        "type": "object"
+      },
+      "PortMissingBuildOut": {
+        "properties": {
+          "build_id": {
+            "title": "Build Id",
+            "type": "string"
+          },
+          "catalogue_id": {
+            "title": "Catalogue Id",
+            "type": "string"
+          },
+          "checksum": {
+            "default": "",
+            "title": "Checksum",
+            "type": "string"
+          },
+          "needed_by": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Needed By",
+            "type": "array"
+          }
+        },
+        "required": [
+          "catalogue_id",
+          "build_id",
+          "needed_by"
+        ],
+        "title": "PortMissingBuildOut",
+        "type": "object"
+      },
+      "PortPreviewItemOut": {
+        "properties": {
+          "action": {
+            "enum": [
+              "create",
+              "update",
+              "unchanged",
+              "conflict",
+              "refused",
+              "skipped"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "conflict": {
+            "anyOf": [
+              {
+                "enum": [
+                  "local_changed",
+                  "local_name",
+                  "older",
+                  "visibility"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conflict"
+          },
+          "diff": {
+            "default": "",
+            "description": "Unified diff, local to incoming (truncated)",
+            "title": "Diff",
+            "type": "string"
+          },
+          "item_type": {
+            "enum": [
+              "course",
+              "range_template",
+              "scenario"
+            ],
+            "title": "Item Type",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "local_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "notes": {
+            "description": "What the import changes or leaves for you to do",
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "proven_at_origin": {
+            "default": true,
+            "title": "Proven At Origin",
+            "type": "boolean"
+          },
+          "reasons": {
+            "description": "Why it is a conflict, refused or skipped",
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "key",
+          "item_type",
+          "name",
+          "action"
+        ],
+        "title": "PortPreviewItemOut",
+        "type": "object"
+      },
+      "PortPreviewOut": {
+        "properties": {
+          "already_imported_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "This bundle was imported before: refused",
+            "title": "Already Imported At"
+          },
+          "bundle_id": {
+            "format": "uuid",
+            "title": "Bundle Id",
+            "type": "string"
+          },
+          "can_import": {
+            "title": "Can Import",
+            "type": "boolean"
+          },
+          "exported_at": {
+            "format": "date-time",
+            "title": "Exported At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PortPreviewItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "key_id": {
+            "title": "Key Id",
+            "type": "string"
+          },
+          "missing_golden_builds": {
+            "description": "Port these templates first (OVF export plus build record, S2 promotion)",
+            "items": {
+              "$ref": "#/components/schemas/PortMissingBuildOut"
+            },
+            "title": "Missing Golden Builds",
+            "type": "array"
+          },
+          "shared": {
+            "title": "Shared",
+            "type": "boolean"
+          },
+          "signed_sha256": {
+            "title": "Signed Sha256",
+            "type": "string"
+          },
+          "target_tenant_id": {
+            "format": "uuid",
+            "title": "Target Tenant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle_id",
+          "exported_at",
+          "key_id",
+          "signed_sha256",
+          "target_tenant_id",
+          "shared",
+          "items",
+          "can_import"
+        ],
+        "title": "PortPreviewOut",
+        "type": "object"
+      },
+      "PortSigningKeyOut": {
+        "properties": {
+          "alg": {
+            "title": "Alg",
+            "type": "string"
+          },
+          "key_id": {
+            "title": "Key Id",
+            "type": "string"
+          },
+          "public_key": {
+            "description": "Base64 raw Ed25519 public key: put it in tn_content_port_trusted_keys on the importing site",
+            "title": "Public Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "alg",
+          "key_id",
+          "public_key"
+        ],
+        "title": "PortSigningKeyOut",
+        "type": "object"
+      },
       "ProfileIn": {
         "properties": {
           "enabled": {
@@ -16196,6 +17045,226 @@
           "end_time"
         ],
         "title": "ProposeIn",
+        "type": "object"
+      },
+      "ProvenConditionOut": {
+        "properties": {
+          "evidence": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ProvenEvidenceOut"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "met": {
+            "title": "Met",
+            "type": "boolean"
+          },
+          "name": {
+            "enum": [
+              "certified",
+              "used",
+              "fresh"
+            ],
+            "title": "Name",
+            "type": "string"
+          },
+          "not_applicable": {
+            "default": false,
+            "title": "Not Applicable",
+            "type": "boolean"
+          },
+          "reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "title",
+          "met"
+        ],
+        "title": "ProvenConditionOut",
+        "type": "object"
+      },
+      "ProvenDependencyOut": {
+        "properties": {
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "item_type": {
+            "enum": [
+              "course",
+              "range_template",
+              "scenario"
+            ],
+            "title": "Item Type",
+            "type": "string"
+          },
+          "proven": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None when the dependency could not be read",
+            "title": "Proven"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None: missing here, deleted, or outside the item's scope",
+            "title": "Title"
+          }
+        },
+        "required": [
+          "item_type",
+          "item_id"
+        ],
+        "title": "ProvenDependencyOut",
+        "type": "object"
+      },
+      "ProvenEvidenceOut": {
+        "properties": {
+          "at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "certification",
+              "class",
+              "exercise",
+              "review"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "label"
+        ],
+        "title": "ProvenEvidenceOut",
+        "type": "object"
+      },
+      "ProvenStatusOut": {
+        "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/ProvenConditionOut"
+            },
+            "title": "Conditions",
+            "type": "array"
+          },
+          "dependencies": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ProvenDependencyOut"
+            },
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "golden_builds": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PortGoldenBuild"
+            },
+            "title": "Golden Builds",
+            "type": "array"
+          },
+          "imported": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PortImportedFromOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Ported here from another site; not proven here until this site's own evidence says so"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "item_type": {
+            "enum": [
+              "course",
+              "range_template",
+              "scenario"
+            ],
+            "title": "Item Type",
+            "type": "string"
+          },
+          "label": {
+            "description": "\"Proven\", or \"Not proven: <reasons>\"",
+            "title": "Label",
+            "type": "string"
+          },
+          "proven": {
+            "description": "All three conditions hold on this site",
+            "title": "Proven",
+            "type": "boolean"
+          },
+          "reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_type",
+          "item_id",
+          "title",
+          "proven",
+          "label",
+          "conditions"
+        ],
+        "title": "ProvenStatusOut",
         "type": "object"
       },
       "PublishIn": {
@@ -17429,6 +18498,341 @@
           }
         },
         "title": "RangeUpdate",
+        "type": "object"
+      },
+      "ReadinessClassOut": {
+        "properties": {
+          "awaiting_result": {
+            "title": "Awaiting Result",
+            "type": "integer"
+          },
+          "class_id": {
+            "format": "uuid",
+            "title": "Class Id",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "course_id": {
+            "format": "uuid",
+            "title": "Course Id",
+            "type": "string"
+          },
+          "course_name": {
+            "title": "Course Name",
+            "type": "string"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "enrolled": {
+            "description": "Students on the roll call shown (forfeited seats included)",
+            "title": "Enrolled",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "incomplete": {
+            "title": "Incomplete",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "integer"
+          },
+          "qualification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The NQual the course delivers, if any",
+            "title": "Qualification"
+          },
+          "sessions_held": {
+            "description": "Approved sessions that have ended",
+            "title": "Sessions Held",
+            "type": "integer"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "students": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessStudentOut"
+            },
+            "title": "Students",
+            "type": "array"
+          }
+        },
+        "required": [
+          "class_id",
+          "name",
+          "course_id",
+          "course_name",
+          "start_date",
+          "end_date",
+          "status",
+          "sessions_held",
+          "enrolled",
+          "passed",
+          "failed",
+          "incomplete",
+          "awaiting_result",
+          "students"
+        ],
+        "title": "ReadinessClassOut",
+        "type": "object"
+      },
+      "ReadinessQualificationOut": {
+        "properties": {
+          "code": {
+            "description": "The NQual granted",
+            "title": "Code",
+            "type": "string"
+          },
+          "earned": {
+            "description": "Passes, in the classes shown, on courses that deliver it",
+            "title": "Earned",
+            "type": "integer"
+          },
+          "qualification_id": {
+            "format": "uuid",
+            "title": "Qualification Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "qualification_id",
+          "code",
+          "title",
+          "earned"
+        ],
+        "title": "ReadinessQualificationOut",
+        "type": "object"
+      },
+      "ReadinessStudentOut": {
+        "properties": {
+          "absent": {
+            "title": "Absent",
+            "type": "integer"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The instructor's comment on the result",
+            "title": "Comment"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None: on the roll call, never signed in",
+            "title": "Display Name"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "enrolment_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Their enrolment on the class's course, if any",
+            "title": "Enrolment Status"
+          },
+          "entry_id": {
+            "format": "uuid",
+            "title": "Entry Id",
+            "type": "string"
+          },
+          "excused": {
+            "title": "Excused",
+            "type": "integer"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResultOutcomeOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The close-out result; None: not decided yet"
+          },
+          "present": {
+            "description": "Sessions recorded present",
+            "title": "Present",
+            "type": "integer"
+          },
+          "qualification_earned": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The course's qualification (NQual), when the result is a pass",
+            "title": "Qualification Earned"
+          },
+          "roll_call_status": {
+            "title": "Roll Call Status",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Student's unit (users.unit); None when unknown",
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "entry_id",
+          "email",
+          "roll_call_status",
+          "present",
+          "excused",
+          "absent"
+        ],
+        "title": "ReadinessStudentOut",
+        "type": "object"
+      },
+      "ReadinessSummaryOut": {
+        "properties": {
+          "absent": {
+            "title": "Absent",
+            "type": "integer"
+          },
+          "awaiting_result": {
+            "title": "Awaiting Result",
+            "type": "integer"
+          },
+          "classes": {
+            "title": "Classes",
+            "type": "integer"
+          },
+          "enrolments": {
+            "description": "Places on the classes shown: one per Student per class",
+            "title": "Enrolments",
+            "type": "integer"
+          },
+          "excused": {
+            "title": "Excused",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "incomplete": {
+            "title": "Incomplete",
+            "type": "integer"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "integer"
+          },
+          "present": {
+            "title": "Present",
+            "type": "integer"
+          },
+          "qualifications_earned": {
+            "title": "Qualifications Earned",
+            "type": "integer"
+          },
+          "sessions_held": {
+            "title": "Sessions Held",
+            "type": "integer"
+          },
+          "students": {
+            "description": "Different people",
+            "title": "Students",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "classes",
+          "enrolments",
+          "students",
+          "sessions_held",
+          "present",
+          "excused",
+          "absent",
+          "passed",
+          "failed",
+          "incomplete",
+          "awaiting_result",
+          "qualifications_earned"
+        ],
+        "title": "ReadinessSummaryOut",
         "type": "object"
       },
       "RegistrationApproveIn": {
@@ -19544,6 +20948,39 @@
         "title": "ScenarioUpdate",
         "type": "object"
       },
+      "SchedulerSettingsOut": {
+        "description": "The site's scheduler settings that pages show in words (#318).",
+        "properties": {
+          "grace_minutes": {
+            "description": "Kept this long after it ends (SCHEDULER_TEARDOWN_GRACE_MIN)",
+            "title": "Grace Minutes",
+            "type": "integer"
+          },
+          "lead_minutes": {
+            "description": "Ranges are built this long before a session starts (SCHEDULER_PROVISION_LEAD_MIN)",
+            "title": "Lead Minutes",
+            "type": "integer"
+          },
+          "next_free_days": {
+            "description": "How far ahead 'next free' is searched (SCHEDULER_NEXT_FREE_DAYS)",
+            "title": "Next Free Days",
+            "type": "integer"
+          },
+          "site_timezone": {
+            "description": "The site's IANA time zone (SITE_TIMEZONE); UTC when unset",
+            "title": "Site Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lead_minutes",
+          "grace_minutes",
+          "next_free_days",
+          "site_timezone"
+        ],
+        "title": "SchedulerSettingsOut",
+        "type": "object"
+      },
       "SecurityGroupIn": {
         "properties": {
           "description": {
@@ -19710,6 +21147,7 @@
             "title": "Description"
           },
           "group_type": {
+            "pattern": "^(access|distribution|training|role_based)$",
             "title": "Group Type",
             "type": "string"
           },
@@ -23219,6 +24657,67 @@
           "email"
         ],
         "title": "UnassignedOut",
+        "type": "object"
+      },
+      "UnitReadinessOut": {
+        "properties": {
+          "classes": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessClassOut"
+            },
+            "title": "Classes",
+            "type": "array"
+          },
+          "date_from": {
+            "format": "date",
+            "title": "Date From",
+            "type": "string"
+          },
+          "date_to": {
+            "format": "date",
+            "title": "Date To",
+            "type": "string"
+          },
+          "qualifications": {
+            "items": {
+              "$ref": "#/components/schemas/ReadinessQualificationOut"
+            },
+            "title": "Qualifications",
+            "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ReadinessSummaryOut"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The unit filter applied; None: every unit",
+            "title": "Unit"
+          },
+          "units": {
+            "description": "The units of the Students on the classes in the date range",
+            "items": {
+              "type": "string"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "date_from",
+          "date_to",
+          "units",
+          "summary",
+          "classes",
+          "qualifications"
+        ],
+        "title": "UnitReadinessOut",
         "type": "object"
       },
       "UrlIngestIn": {
@@ -27684,6 +29183,131 @@
         ]
       }
     },
+    "/classes/attending/ranges/{range_id}/consoles": {
+      "get": {
+        "description": "The Student's own seat, or their class's shared range while a collective session on it\nis under way (the rule of their credentials); only the machines they are handed accounts\non. ``open`` says whether a session's window is open now.  **class:attend**",
+        "operationId": "listMyRangeConsoles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyRangeConsolesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Not a class range of the caller's (another Student's seat, another tenant's)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "My classes: the machines of my class range I may open a console on",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/attending/ranges/{range_id}/consoles/{vm}": {
+      "post": {
+        "description": "A one-time console ticket on one of the Student's own machines, while a session of\nthe class using that range is live or within its provisioning lead. Audited\n(``range_console_open``, as ``student``), and counted as attendance evidence like opening\nthe accounts.  **class:attend**",
+        "operationId": "openMyRangeConsole",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "range_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Range Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The VM's name, as the list gives it",
+            "in": "path",
+            "name": "vm",
+            "required": true,
+            "schema": {
+              "description": "The VM's name, as the list gives it",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$",
+              "title": "Vm",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassConsoleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Outside the session's window"
+          },
+          "404": {
+            "description": "Not a class range of the caller's (another Student's seat, another tenant's)"
+          },
+          "409": {
+            "description": "The machine is not built or not running"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "The hypervisor gave no console"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "My classes: open a console on one of my machines",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
     "/classes/course-range-modes/{course_id}": {
       "get": {
         "description": "The caller's organisation's default for this course: individual (a range per Student)\nor collective (one shared range). Collective until set.  **class:create**",
@@ -28956,6 +30580,146 @@
           }
         ],
         "summary": "Reject a roll-call addition that did not fit",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/sessions/{event_id}/live": {
+      "get": {
+        "description": "Its lead, assistants, observers and admins: every Student on the roll call with their\nseat's machines (individual) or team (collective, with the shared range), and when they\nlast opened their range. Another tenant's class, or one the caller has no part in, is 404;\na Student is 403. No credentials here.",
+        "operationId": "getClassSessionLive",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassLiveOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "A class session's live view: each Student's machines and status",
+        "tags": [
+          "classes"
+        ]
+      }
+    },
+    "/classes/{class_id}/sessions/{event_id}/live/console": {
+      "post": {
+        "description": "A one-time console ticket on a machine of one of the session's ranges (a Student's\nseat or the shared range), during the session's window: any machine for its lead,\nassistants and admins; the Students' machines only for observers, view-only where the\nhypervisor enforces it, otherwise a normal console marked ``observed``.\nAudited (``range_console_open``, as ``observer`` or ``staff``).",
+        "operationId": "openClassSessionConsole",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "class_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Class Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Event Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassConsoleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassConsoleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "A Student, or outside the session's window"
+          },
+          "404": {
+            "description": "Not a range of this session, or a class the caller has no part in"
+          },
+          "409": {
+            "description": "The machine is not built or not running, or the class is not open"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "502": {
+            "description": "The hypervisor gave no console"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Open a console on a machine of a class session's range",
         "tags": [
           "classes"
         ]
@@ -30771,6 +32535,265 @@
         "summary": "The release and vulnerability feeds: mode, last pull or import, errors",
         "tags": [
           "content-feeds"
+        ]
+      }
+    },
+    "/content-port/export": {
+      "post": {
+        "description": "The selected items and every item they need (a course's range templates and\nscenarios), each with its content, its proof summary and the golden-image builds it\ndepends on. No Student data, credentials or tenant data. Audit-logged.",
+        "operationId": "export_proven_content",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortExportIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "The signed bundle"
+          },
+          "409": {
+            "description": "Something selected or needed is not proven"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export proven content as a signed bundle",
+        "tags": [
+          "content-port"
+        ]
+      }
+    },
+    "/content-port/import": {
+      "post": {
+        "description": "A bundle is imported once. A conflict (changed here, a same-named item here, an older\nexport, or a change between private and shared) is left as it is unless its key is in\n``overwrite``. Audit-logged.",
+        "operationId": "import_content_port_bundle",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_content_port_bundle"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortImportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import a verified bundle; every item lands not yet proven here",
+        "tags": [
+          "content-port"
+        ]
+      }
+    },
+    "/content-port/items": {
+      "get": {
+        "operationId": "list_portable_content",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProvenStatusOut"
+                  },
+                  "title": "Response List Portable Content",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Every course, range template and scenario that could be ported, with its proven status",
+        "tags": [
+          "content-port"
+        ]
+      }
+    },
+    "/content-port/items/{item_type}/{item_id}/proven": {
+      "get": {
+        "description": "Computed now: a range built from it reached Certified, a class or exercise using it\nfinished with passing evidence, and the content clock does not call it stale. Another\ntenant's private content is not found (404).",
+        "operationId": "get_content_proven_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "course",
+                "range_template",
+                "scenario"
+              ],
+              "title": "Item Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvenStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Whether a course, range template or scenario is proven, with reasons and evidence",
+        "tags": [
+          "content-port"
+        ]
+      }
+    },
+    "/content-port/preview": {
+      "post": {
+        "description": "Nothing is stored except an audit row when the bundle is refused.",
+        "operationId": "preview_content_port_bundle",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_preview_content_port_bundle"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Verify a bundle and show what importing it would do",
+        "tags": [
+          "content-port"
+        ]
+      }
+    },
+    "/content-port/signing-key": {
+      "get": {
+        "operationId": "get_content_port_signing_key",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PortSigningKeyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "This site's content-port public key (for the importing site's trusted keys)",
+        "tags": [
+          "content-port"
         ]
       }
     },
@@ -41477,7 +43500,7 @@
     },
     "/ops/exercises/{exercise_id}/class": {
       "get": {
-        "description": "The roster of a live exercise: each Student's team, lab, detection attempts, credit\nearned from them, last activity and what may need attention.\n**Permission: exercise:read + telemetry:read** (staff and observers; never Students).",
+        "description": "The roster of a live exercise: each Student's team, lab, detection attempts, credit\nearned from them, last activity and what may need attention.\n**Permission: exercise:read + telemetry:read** (staff and observers; never Students).\nAn observer sees a class session's exercise only when they are on that class's staff.",
         "operationId": "get_exercise_class_ops_exercises__exercise_id__class_get",
         "parameters": [
           {
@@ -47355,6 +49378,295 @@
         ]
       }
     },
+    "/readiness": {
+      "get": {
+        "description": "The caller's own tenant only. Pass, fail or incomplete with the instructor's comment;\nnever a score.  **readiness:read**",
+        "operationId": "getUnitReadiness",
+        "parameters": [
+          {
+            "description": "Classes ending on or after this day (default: a year ago)",
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Classes ending on or after this day (default: a year ago)",
+              "title": "Date From"
+            }
+          },
+          {
+            "description": "Classes starting on or before this day (default: 90 days ahead)",
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Classes starting on or before this day (default: 90 days ahead)",
+              "title": "Date To"
+            }
+          },
+          {
+            "description": "Only Students of this unit (case and spaces ignored)",
+            "in": "query",
+            "name": "unit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only Students of this unit (case and spaces ignored)",
+              "title": "Unit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitReadinessOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The unit readiness page: classes, enrolment, attendance, results and qualifications",
+        "tags": [
+          "readiness"
+        ]
+      }
+    },
+    "/readiness/export.csv": {
+      "get": {
+        "description": "One row per Student per class; cells a spreadsheet would run as a formula are\ndefused. Audited (``readiness_export``).  **readiness:read**",
+        "operationId": "exportUnitReadinessCsv",
+        "parameters": [
+          {
+            "description": "Classes ending on or after this day (default: a year ago)",
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Classes ending on or after this day (default: a year ago)",
+              "title": "Date From"
+            }
+          },
+          {
+            "description": "Classes starting on or before this day (default: 90 days ahead)",
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Classes starting on or before this day (default: 90 days ahead)",
+              "title": "Date To"
+            }
+          },
+          {
+            "description": "Only Students of this unit (case and spaces ignored)",
+            "in": "query",
+            "name": "unit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only Students of this unit (case and spaces ignored)",
+              "title": "Unit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The unit readiness page as CSV",
+        "tags": [
+          "readiness"
+        ]
+      }
+    },
+    "/readiness/export.pdf": {
+      "get": {
+        "description": "Rendered with the AAR's PDF machinery (fpdf2). Audited (``readiness_export``).\n**readiness:read**",
+        "operationId": "exportUnitReadinessPdf",
+        "parameters": [
+          {
+            "description": "Classes ending on or after this day (default: a year ago)",
+            "in": "query",
+            "name": "date_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Classes ending on or after this day (default: a year ago)",
+              "title": "Date From"
+            }
+          },
+          {
+            "description": "Classes starting on or before this day (default: 90 days ahead)",
+            "in": "query",
+            "name": "date_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Classes starting on or before this day (default: 90 days ahead)",
+              "title": "Date To"
+            }
+          },
+          {
+            "description": "Only Students of this unit (case and spaces ignored)",
+            "in": "query",
+            "name": "unit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only Students of this unit (case and spaces ignored)",
+              "title": "Unit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The unit readiness page as PDF",
+        "tags": [
+          "readiness"
+        ]
+      }
+    },
     "/registration": {
       "post": {
         "description": "Submit a registration request for the authenticated AD identity.",
@@ -49596,6 +51908,33 @@
           }
         ],
         "summary": "Set the over-capacity policy (platform admin)",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/schedule/settings": {
+      "get": {
+        "description": "Provisioning lead, teardown grace, the 'next free' search horizon and the site's time\nzone, so pages say what this site does rather than the defaults.  **schedule:read**",
+        "operationId": "getSchedulerSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchedulerSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The site's scheduler settings",
         "tags": [
           "scheduling"
         ]

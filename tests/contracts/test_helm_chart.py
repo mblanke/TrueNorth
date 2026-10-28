@@ -529,3 +529,25 @@ def test_flower_login_is_not_a_process_argument():
     flower = deployment(docs, "flower")
     argv = " ".join(flower["spec"]["template"]["spec"]["containers"][0]["command"])
     assert "basic_auth" not in argv and "FLOWER_BASIC_AUTH" not in argv
+
+
+def _config(docs: list[dict]) -> dict:
+    return next(d for d in docs if d["kind"] == "ConfigMap" and d["metadata"]["name"].endswith("-config"))["data"]
+
+
+@needs_helm
+def test_platform_tenant_and_site_timezone_are_rendered_only_when_set():
+    """#318: PLATFORM_TENANT_ID (the platform administrators' tenant) and SITE_TIMEZONE."""
+    cm = _config(render())
+    assert "PLATFORM_TENANT_ID" not in cm and "SITE_TIMEZONE" not in cm
+    tid = "0b6f3f0e-2c1d-4c8e-9a51-7f2d1e3c4b5a"
+    cm = _config(render("--set-string", f"config.platformTenantId={tid}",
+                        "--set-string", "config.siteTimezone=America/Toronto"))
+    assert cm["PLATFORM_TENANT_ID"] == tid
+    assert cm["SITE_TIMEZONE"] == "America/Toronto"
+
+
+@needs_helm
+def test_a_platform_tenant_that_is_not_a_uuid_is_refused():
+    assert "config.platformTenantId must be a tenant id (UUID)" in render_error(
+        "--set-string", "config.platformTenantId=default")

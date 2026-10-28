@@ -7,7 +7,9 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
-import { ClassesApiService, MyClass, MyClasses, MyRangeStatus } from '@core/services/classes-api.service';
+import {
+  ClassConsole, ClassesApiService, MyClass, MyClasses, MyRangeConsoles, MyRangeStatus,
+} from '@core/services/classes-api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { RangeCredentialsComponent } from '../../shared/components/range-credentials/range-credentials.component';
@@ -155,8 +157,34 @@ export function forfeitMessage(c: MyClass): string {
               <button mat-flat-button class="join" [disabled]="!c.join_range_id" (click)="join(c)">
                 <mat-icon>login</mat-icon> Join
               </button>
+              <button mat-stroked-button class="console" [disabled]="!c.join_range_id" (click)="showConsoles(c)">
+                <mat-icon>terminal</mat-icon> Console
+              </button>
               @if (!c.join_range_id) { <span class="hint">{{ hint(c) }}</span> }
             </mat-card-actions>
+            @if (consoles(); as k) {
+              @if (k.classId === c.id && c.join_range_id === k.data.range_id) {
+                <section class="my-consoles" [attr.aria-label]="'Consoles: ' + c.name">
+                  <h3>Your machines</h3>
+                  @if (!k.data.open) {
+                    <p class="hint">Your console opens during your session, from shortly before it starts.</p>
+                  }
+                  <div class="machines">
+                    @for (m of k.data.machines; track m.name) {
+                      <button mat-stroked-button [disabled]="!k.data.open || opening()" (click)="openConsole(c, m.name)"
+                              [attr.aria-label]="'Console on ' + m.name">
+                        <mat-icon>desktop_windows</mat-icon> {{ m.name }}
+                      </button>
+                    } @empty { <p class="hint">No machines of yours have a console on this range.</p> }
+                  </div>
+                  @if (ticket(); as t) {
+                    <p class="ticket">Console ticket for <b>{{ t.vm }}</b> (valid {{ t.expires_in }}s):
+                      <code>{{ t.url }}</code></p>
+                  }
+                  <p class="muted">Opening a console is recorded, and counts for your attendance like your accounts.</p>
+                </section>
+              }
+            }
             @if (joined()?.id === c.id && c.join_range_id) {
               <section class="my-range" [attr.aria-label]="'Your range: ' + c.name">
                 <h3>Your range: {{ c.name }}</h3>
@@ -197,7 +225,10 @@ export function forfeitMessage(c: MyClass): string {
     .hint, .muted { color: var(--mat-sys-on-surface-variant); font-size: 13px; }
     mat-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
     .my-range { padding: 0 16px 16px; }
-    .my-range h3 { font-size: 15px; margin: 8px 0 4px; }
+    .my-range h3, .my-consoles h3 { font-size: 15px; margin: 8px 0 4px; }
+    .my-consoles { padding: 0 16px 16px; }
+    .machines { display: flex; flex-wrap: wrap; gap: 8px; }
+    .ticket code { display: block; word-break: break-all; font-size: 0.8rem; margin-top: 4px; }
     .error { color: var(--mat-sys-error); }
   `],
 })
@@ -214,6 +245,10 @@ export class MyClassesComponent implements OnInit {
    *  under it, fetched on every press. */
   readonly joined = signal<{ id: string; press: number } | null>(null);
   private presses = 0;
+  /** The machines of the class whose Console was pressed, and the last ticket opened. */
+  readonly consoles = signal<{ classId: string; data: MyRangeConsoles } | null>(null);
+  readonly ticket = signal<ClassConsole | null>(null);
+  readonly opening = signal(false);
   readonly title = computed(() => heading(this.anchor(), this.view()));
 
   readonly range = rangeLabel;
@@ -250,6 +285,28 @@ export class MyClassesComponent implements OnInit {
    */
   join(c: MyClass): void {
     if (c.join_range_id) this.joined.set({ id: c.id, press: ++this.presses });
+  }
+
+  /** The Student's machines on their class range (the API decides which, and whether now). */
+  showConsoles(c: MyClass): void {
+    const rangeId = c.join_range_id;
+    if (!rangeId) return;
+    this.ticket.set(null);
+    this.api.myRangeConsoles(rangeId).subscribe({
+      next: data => this.consoles.set({ classId: c.id, data }),
+      error: err => this.notify.error(apiError(err)),
+    });
+  }
+
+  /** A one-time console ticket; the API audits it and counts it as attendance. */
+  openConsole(c: MyClass, vm: string): void {
+    const rangeId = c.join_range_id;
+    if (!rangeId) return;
+    this.opening.set(true);
+    this.api.openMyRangeConsole(rangeId, vm).subscribe({
+      next: t => { this.ticket.set(t); this.opening.set(false); },
+      error: err => { this.opening.set(false); this.notify.error(apiError(err)); },
+    });
   }
 
   joinKey(c: MyClass): string | null {

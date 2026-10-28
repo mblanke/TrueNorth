@@ -186,12 +186,13 @@ Core_Docs/
 | [Deployment Guide](deployment.md) | Docker, Kubernetes, production setup, monitoring |
 | [Installer](../install/README.md) | Ansible package that installs the platform onto a vSphere lab |
 | [Identity](identity.md) | AD federation, the token claim contract, guards, account creation |
-| [Onboarding](onboarding.md) | Trainee journey and the instructor approval runbook |
+| [Administrator: first day](guides/03-admin-first-day.md) | Bootstrap admin, Rules of use, roll-call domains, capacity, golden images, feeds, AD status sync, email, tenants |
+| [Instructor guide](guides/04-instructor-guide.md) | A class end to end: roll call, approval, ranges, teams, attendance, close-out, calendars, exercises |
+| [Student quick start](guides/05-student-quick-start.md) | Sign in, Rules of use, My classes, Join, self-serve labs |
 | [Development Guide](development.md) | Local setup, testing, code style, adding components |
 | [Scenario Authoring](scenarios.md) | YAML schema, injectors, validators, content creation |
 | [Operations Guide](operations.md) | Day-to-day ops, monitoring, backup, disaster recovery |
 | [Security](security.md) | Authentication, RBAC, encryption, compliance |
-| [User Guide](user-guide.md) | End-user guide for ranges, exercises, and AAR |
 | [Content Library](content-library.md) | Catalog of templates, scenarios, detections, datasets |
 | [Build Reference](BUILD.md) | CI/CD, Docker builds, Packer, Terraform, releases |
 | [Releasing](release.md) | Tagging, signed release assets, verifying a release |

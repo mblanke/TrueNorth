@@ -21,7 +21,7 @@ import pytest
 import sqlalchemy as sa
 
 API = Path(__file__).resolve().parents[2] / "control-plane" / "api"
-PARENT, REVISION = "3e8b1c7a9d42", "7c4d2e9a1b60"
+PARENT, REVISION = "c3318a0d7e51", "7c4d2e9a1b60"
 COLUMNS = {"notified_at", "in_app_notified_at"}
 
 

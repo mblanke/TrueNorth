@@ -951,6 +951,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/classes/attending/ranges/{range_id}/consoles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My classes: the machines of my class range I may open a console on
+         * @description The Student's own seat, or their class's shared range while a collective session on it
+         *     is under way (the rule of their credentials); only the machines they are handed accounts
+         *     on. ``open`` says whether a session's window is open now.  **class:attend**
+         */
+        get: operations["listMyRangeConsoles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/attending/ranges/{range_id}/consoles/{vm}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * My classes: open a console on one of my machines
+         * @description A one-time console ticket on one of the Student's own machines, while a session of
+         *     the class using that range is live or within its provisioning lead. Audited
+         *     (``range_console_open``, as ``student``), and counted as attendance evidence like opening
+         *     the accounts.  **class:attend**
+         */
+        post: operations["openMyRangeConsole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/classes/course-range-modes/{course_id}": {
         parameters: {
             query?: never;
@@ -1372,6 +1417,53 @@ export interface paths {
          * @description It is removed, with the reason, which the class's lead sees. Audited.  **schedule:approve**
          */
         post: operations["rejectRollCallAddition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/sessions/{event_id}/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A class session's live view: each Student's machines and status
+         * @description Its lead, assistants, observers and admins: every Student on the roll call with their
+         *     seat's machines (individual) or team (collective, with the shared range), and when they
+         *     last opened their range. Another tenant's class, or one the caller has no part in, is 404;
+         *     a Student is 403. No credentials here.
+         */
+        get: operations["getClassSessionLive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/classes/{class_id}/sessions/{event_id}/live/console": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open a console on a machine of a class session's range
+         * @description A one-time console ticket on a machine of one of the session's ranges (a Student's
+         *     seat or the shared range), during the session's window: any machine for its lead,
+         *     assistants and admins; the Students' machines only for observers, view-only where the
+         *     hypervisor enforces it, otherwise a normal console marked ``observed``.
+         *     Audited (``range_console_open``, as ``observer`` or ``staff``).
+         */
+        post: operations["openClassSessionConsole"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1911,6 +2003,126 @@ export interface paths {
         };
         /** The release and vulnerability feeds: mode, last pull or import, errors */
         get: operations["get_content_feeds_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-port/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export proven content as a signed bundle
+         * @description The selected items and every item they need (a course's range templates and
+         *     scenarios), each with its content, its proof summary and the golden-image builds it
+         *     depends on. No Student data, credentials or tenant data. Audit-logged.
+         */
+        post: operations["export_proven_content"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-port/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a verified bundle; every item lands not yet proven here
+         * @description A bundle is imported once. A conflict (changed here, a same-named item here, an older
+         *     export, or a change between private and shared) is left as it is unless its key is in
+         *     ``overwrite``. Audit-logged.
+         */
+        post: operations["import_content_port_bundle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-port/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every course, range template and scenario that could be ported, with its proven status */
+        get: operations["list_portable_content"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-port/items/{item_type}/{item_id}/proven": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether a course, range template or scenario is proven, with reasons and evidence
+         * @description Computed now: a range built from it reached Certified, a class or exercise using it
+         *     finished with passing evidence, and the content clock does not call it stale. Another
+         *     tenant's private content is not found (404).
+         */
+        get: operations["get_content_proven_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-port/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify a bundle and show what importing it would do
+         * @description Nothing is stored except an audit row when the bundle is refused.
+         */
+        post: operations["preview_content_port_bundle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/content-port/signing-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** This site's content-port public key (for the importing site's trusted keys) */
+        get: operations["get_content_port_signing_key"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5647,6 +5859,7 @@ export interface paths {
          * @description The roster of a live exercise: each Student's team, lab, detection attempts, credit
          *     earned from them, last activity and what may need attention.
          *     **Permission: exercise:read + telemetry:read** (staff and observers; never Students).
+         *     An observer sees a class session's exercise only when they are on that class's staff.
          */
         get: operations["get_exercise_class_ops_exercises__exercise_id__class_get"];
         put?: never;
@@ -7669,6 +7882,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The unit readiness page: classes, enrolment, attendance, results and qualifications
+         * @description The caller's own tenant only. Pass, fail or incomplete with the instructor's comment;
+         *     never a score.  **readiness:read**
+         */
+        get: operations["getUnitReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/readiness/export.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The unit readiness page as CSV
+         * @description One row per Student per class; cells a spreadsheet would run as a formula are
+         *     defused. Audited (``readiness_export``).  **readiness:read**
+         */
+        get: operations["exportUnitReadinessCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/readiness/export.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The unit readiness page as PDF
+         * @description Rendered with the AAR's PDF machinery (fpdf2). Audited (``readiness_export``).
+         *     **readiness:read**
+         */
+        get: operations["exportUnitReadinessPdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/registration": {
         parameters: {
             query?: never;
@@ -8491,6 +8767,27 @@ export interface paths {
          * @description Platform-wide, because every tenant books against the same cluster. Audit-logged.
          */
         put: operations["put_policy_schedule_policy_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/schedule/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The site's scheduler settings
+         * @description Provisioning lead, teardown grace, the 'next free' search horizon and the site's time
+         *     zone, so pages say what this site does rather than the defaults.  **schedule:read**
+         */
+        get: operations["getSchedulerSettings"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -10918,6 +11215,31 @@ export interface components {
              */
             file: string;
         };
+        /** Body_import_content_port_bundle */
+        Body_import_content_port_bundle: {
+            /**
+             * File
+             * @description The signed content-port bundle (JSON)
+             */
+            file: string;
+            /**
+             * Overwrite
+             * @description Keys of conflicting items to overwrite
+             * @default []
+             */
+            overwrite?: string[];
+            /**
+             * Shared
+             * @description Land as shared content every tenant reads
+             * @default false
+             */
+            shared?: boolean;
+            /**
+             * Target Tenant Id
+             * @description Where it lands (default: your tenant)
+             */
+            target_tenant_id?: string | null;
+        };
         /** Body_import_course_content_courses_import_course_content_post */
         Body_import_course_content_courses_import_course_content_post: {
             /** File */
@@ -10959,6 +11281,25 @@ export interface components {
             id_token: string;
             /** State */
             state: string;
+        };
+        /** Body_preview_content_port_bundle */
+        Body_preview_content_port_bundle: {
+            /**
+             * File
+             * @description The signed content-port bundle (JSON)
+             */
+            file: string;
+            /**
+             * Shared
+             * @description Land as shared content every tenant reads
+             * @default false
+             */
+            shared?: boolean;
+            /**
+             * Target Tenant Id
+             * @description Where it lands (default: your tenant)
+             */
+            target_tenant_id?: string | null;
         };
         /** Body_upload_attachments_tickets__ticket_id__attachments_post */
         Body_upload_attachments_tickets__ticket_id__attachments_post: {
@@ -11401,6 +11742,61 @@ export interface components {
             /** Verdict */
             verdict: string;
         };
+        /** ClassConsoleIn */
+        ClassConsoleIn: {
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /**
+             * Vm
+             * @description The VM's name (``ConsoleMachineOut.name``)
+             */
+            vm: string;
+        };
+        /**
+         * ClassConsoleOut
+         * @description A one-time console ticket. Short-lived and single-use; never a standing credential.
+         */
+        ClassConsoleOut: {
+            /** Expires In */
+            expires_in: number;
+            /**
+             * Kind
+             * @description webmks (vSphere) or mock
+             */
+            kind: string;
+            /**
+             * Machine
+             * @description The template node id
+             */
+            machine: string;
+            /**
+             * Observed
+             * @description An observer's console the hypervisor cannot make view-only: input reaches the machine, so the page says it is observed
+             * @default false
+             */
+            observed?: boolean;
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /** Url */
+            url: string;
+            /**
+             * View Only
+             * @description The hypervisor refuses input on this console
+             * @default false
+             */
+            view_only?: boolean;
+            /**
+             * Vm
+             * @description The VM's name
+             */
+            vm: string;
+        };
         /** ClassIn */
         ClassIn: {
             /** Assistant Ids */
@@ -11479,6 +11875,72 @@ export interface components {
             session_id: string;
             /** State */
             state: string;
+        };
+        /**
+         * ClassLiveOut
+         * @description A class session's live view (ADR 0014 §19): each Student's machines and status.
+         */
+        ClassLiveOut: {
+            /**
+             * Class Id
+             * Format: uuid
+             */
+            class_id: string;
+            /** Class Name */
+            class_name: string;
+            /**
+             * Consoles For You
+             * @description Your part may open consoles at all: false for an observer while CLASS_OBSERVER_CONSOLES is off (the status grid only)
+             */
+            consoles_for_you: boolean;
+            /**
+             * Consoles Open
+             * @description Consoles can be opened now (the session's window)
+             */
+            consoles_open: boolean;
+            /**
+             * End Time
+             * Format: date-time
+             */
+            end_time: string;
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /**
+             * Live
+             * @description The session is under way now
+             */
+            live: boolean;
+            /** Range Mode */
+            range_mode: string;
+            /**
+             * Role
+             * @description The caller's part in the class: lead, assistant, observer or admin
+             */
+            role: string;
+            /** Session Name */
+            session_name: string;
+            /** @description The range a collective session books */
+            shared_range?: components["schemas"]["LiveRangeOut"] | null;
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+            /** Students */
+            students: components["schemas"]["LiveStudentOut"][];
+            /**
+             * View Only Consoles
+             * @description An observer's console is view-only on this hypervisor; otherwise it is marked observed
+             */
+            view_only_consoles: boolean;
         };
         /** ClassObjectiveOut */
         ClassObjectiveOut: {
@@ -12224,6 +12686,30 @@ export interface components {
              * @default false
              */
             running?: boolean;
+        };
+        /** ConsoleMachineOut */
+        ConsoleMachineOut: {
+            /**
+             * Machine
+             * @description The template node id: what the range's accounts name the machine. Several VMs share it when the template node has a count above one
+             */
+            machine: string;
+            /**
+             * Name
+             * @description The VM's name, unique in its range: a console is opened by it
+             */
+            name: string;
+            /**
+             * Power
+             * @description The VM's state as its last build or check recorded it
+             */
+            power?: string | null;
+            /**
+             * Student Machine
+             * @description A Student is handed an account on it; observers open consoles on these only
+             * @default false
+             */
+            student_machine?: boolean;
         };
         /** ConsoleOut */
         ConsoleOut: {
@@ -15298,6 +15784,56 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** LiveRangeOut */
+        LiveRangeOut: {
+            /** Machines */
+            machines: components["schemas"]["ConsoleMachineOut"][];
+            /** Name */
+            name: string;
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /**
+             * State
+             * @description The range's own state (ready, running, stopped, provisioning, failed, ...)
+             */
+            state: string;
+        };
+        /** LiveStudentOut */
+        LiveStudentOut: {
+            /**
+             * Display Name
+             * @description Their name, or their roll-call email when they have no account yet
+             */
+            display_name: string;
+            /**
+             * Entry Id
+             * Format: uuid
+             */
+            entry_id: string;
+            /**
+             * Last Seen At
+             * @description The last time they opened their range (accounts, a password or a console) since the session's provisioning lead
+             */
+            last_seen_at?: string | null;
+            /** @description Their own seat (an individual session) */
+            range?: components["schemas"]["LiveRangeOut"] | null;
+            team?: components["schemas"]["LiveTeamOut"] | null;
+            /** User Id */
+            user_id?: string | null;
+        };
+        /** LiveTeamOut */
+        LiveTeamOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** LtiLinkCodeIn */
         LtiLinkCodeIn: {
             /** Code */
@@ -15759,6 +16295,32 @@ export interface components {
             courses: components["schemas"]["ClassItemOut"][];
             /** Exercises */
             exercises: components["schemas"]["ClassItemOut"][];
+        };
+        /**
+         * MyRangeConsolesOut
+         * @description The machines of a class range the Student may open a console on, and whether now.
+         */
+        MyRangeConsolesOut: {
+            /**
+             * Machines
+             * @description Only machines the Student is handed accounts on (as their credentials panel)
+             */
+            machines: components["schemas"]["ConsoleMachineOut"][];
+            /**
+             * Open
+             * @description A session of the class using this range is live, or within its provisioning lead: POST opens a console
+             */
+            open: boolean;
+            /**
+             * Range Id
+             * Format: uuid
+             */
+            range_id: string;
+            /**
+             * Session Id
+             * @description That session, when open
+             */
+            session_id?: string | null;
         };
         /**
          * MySessionOut
@@ -16615,6 +17177,192 @@ export interface components {
             can_change?: boolean;
             overcapacity: components["schemas"]["OvercapacityPolicy"];
         };
+        /** PortExportIn */
+        PortExportIn: {
+            /** Items */
+            items: components["schemas"]["PortItemRef"][];
+        };
+        /** PortGoldenBuild */
+        PortGoldenBuild: {
+            /** Build Id */
+            build_id: string;
+            /** Catalogue Id */
+            catalogue_id: string;
+            /**
+             * Checksum
+             * @default
+             */
+            checksum?: string;
+        };
+        /** PortImportOut */
+        PortImportOut: {
+            /**
+             * Bundle Id
+             * Format: uuid
+             */
+            bundle_id: string;
+            /** Created */
+            created: number;
+            /**
+             * Import Id
+             * Format: uuid
+             */
+            import_id: string;
+            /** Items */
+            items: components["schemas"]["PortPreviewItemOut"][];
+            /**
+             * Missing Golden Builds
+             * @default []
+             */
+            missing_golden_builds?: components["schemas"]["PortMissingBuildOut"][];
+            /** Skipped */
+            skipped: number;
+            /** Unchanged */
+            unchanged: number;
+            /** Updated */
+            updated: number;
+        };
+        /** PortImportedFromOut */
+        PortImportedFromOut: {
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            exported_at: string;
+            /**
+             * Golden Builds
+             * @default []
+             */
+            golden_builds?: components["schemas"]["PortGoldenBuild"][];
+            /**
+             * Imported At
+             * Format: date-time
+             */
+            imported_at: string;
+            /** Origin Key Id */
+            origin_key_id: string;
+            /** Proven At Origin */
+            proven_at_origin: boolean;
+        };
+        /** PortItemRef */
+        PortItemRef: {
+            /**
+             * Item Id
+             * Format: uuid
+             */
+            item_id: string;
+            /**
+             * Item Type
+             * @enum {string}
+             */
+            item_type: "course" | "range_template" | "scenario";
+        };
+        /** PortMissingBuildOut */
+        PortMissingBuildOut: {
+            /** Build Id */
+            build_id: string;
+            /** Catalogue Id */
+            catalogue_id: string;
+            /**
+             * Checksum
+             * @default
+             */
+            checksum?: string;
+            /** Needed By */
+            needed_by: string[];
+        };
+        /** PortPreviewItemOut */
+        PortPreviewItemOut: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "create" | "update" | "unchanged" | "conflict" | "refused" | "skipped";
+            /** Conflict */
+            conflict?: ("local_changed" | "local_name" | "older" | "visibility") | null;
+            /**
+             * Diff
+             * @description Unified diff, local to incoming (truncated)
+             * @default
+             */
+            diff?: string;
+            /**
+             * Item Type
+             * @enum {string}
+             */
+            item_type: "course" | "range_template" | "scenario";
+            /** Key */
+            key: string;
+            /** Local Id */
+            local_id?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Notes
+             * @description What the import changes or leaves for you to do
+             */
+            notes?: string[];
+            /**
+             * Proven At Origin
+             * @default true
+             */
+            proven_at_origin?: boolean;
+            /**
+             * Reasons
+             * @description Why it is a conflict, refused or skipped
+             */
+            reasons?: string[];
+        };
+        /** PortPreviewOut */
+        PortPreviewOut: {
+            /**
+             * Already Imported At
+             * @description This bundle was imported before: refused
+             */
+            already_imported_at?: string | null;
+            /**
+             * Bundle Id
+             * Format: uuid
+             */
+            bundle_id: string;
+            /** Can Import */
+            can_import: boolean;
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            exported_at: string;
+            /** Items */
+            items: components["schemas"]["PortPreviewItemOut"][];
+            /** Key Id */
+            key_id: string;
+            /**
+             * Missing Golden Builds
+             * @description Port these templates first (OVF export plus build record, S2 promotion)
+             */
+            missing_golden_builds?: components["schemas"]["PortMissingBuildOut"][];
+            /** Shared */
+            shared: boolean;
+            /** Signed Sha256 */
+            signed_sha256: string;
+            /**
+             * Target Tenant Id
+             * Format: uuid
+             */
+            target_tenant_id: string;
+        };
+        /** PortSigningKeyOut */
+        PortSigningKeyOut: {
+            /** Alg */
+            alg: string;
+            /** Key Id */
+            key_id: string;
+            /**
+             * Public Key
+             * @description Base64 raw Ed25519 public key: put it in tn_content_port_trusted_keys on the importing site
+             */
+            public_key: string;
+        };
         /** ProfileIn */
         ProfileIn: {
             /** Enabled */
@@ -16672,6 +17420,108 @@ export interface components {
              * Format: date-time
              */
             start_time: string;
+        };
+        /** ProvenConditionOut */
+        ProvenConditionOut: {
+            /**
+             * Evidence
+             * @default []
+             */
+            evidence?: components["schemas"]["ProvenEvidenceOut"][];
+            /** Met */
+            met: boolean;
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "certified" | "used" | "fresh";
+            /**
+             * Not Applicable
+             * @default false
+             */
+            not_applicable?: boolean;
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons?: string[];
+            /** Title */
+            title: string;
+        };
+        /** ProvenDependencyOut */
+        ProvenDependencyOut: {
+            /** Item Id */
+            item_id: string;
+            /**
+             * Item Type
+             * @enum {string}
+             */
+            item_type: "course" | "range_template" | "scenario";
+            /**
+             * Proven
+             * @description None when the dependency could not be read
+             */
+            proven?: boolean | null;
+            /**
+             * Title
+             * @description None: missing here, deleted, or outside the item's scope
+             */
+            title?: string | null;
+        };
+        /** ProvenEvidenceOut */
+        ProvenEvidenceOut: {
+            /** At */
+            at?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "certification" | "class" | "exercise" | "review";
+            /** Label */
+            label: string;
+        };
+        /** ProvenStatusOut */
+        ProvenStatusOut: {
+            /** Conditions */
+            conditions: components["schemas"]["ProvenConditionOut"][];
+            /**
+             * Dependencies
+             * @default []
+             */
+            dependencies?: components["schemas"]["ProvenDependencyOut"][];
+            /**
+             * Golden Builds
+             * @default []
+             */
+            golden_builds?: components["schemas"]["PortGoldenBuild"][];
+            /** @description Ported here from another site; not proven here until this site's own evidence says so */
+            imported?: components["schemas"]["PortImportedFromOut"] | null;
+            /** Item Id */
+            item_id: string;
+            /**
+             * Item Type
+             * @enum {string}
+             */
+            item_type: "course" | "range_template" | "scenario";
+            /**
+             * Label
+             * @description "Proven", or "Not proven: <reasons>"
+             */
+            label: string;
+            /**
+             * Proven
+             * @description All three conditions hold on this site
+             */
+            proven: boolean;
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons?: string[];
+            /** Title */
+            title: string;
         };
         /** PublishIn */
         PublishIn: {
@@ -17243,6 +18093,165 @@ export interface components {
             description?: string;
             /** Name */
             name?: string;
+        };
+        /** ReadinessClassOut */
+        ReadinessClassOut: {
+            /** Awaiting Result */
+            awaiting_result: number;
+            /**
+             * Class Id
+             * Format: uuid
+             */
+            class_id: string;
+            /** Closed At */
+            closed_at?: string | null;
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /** Course Name */
+            course_name: string;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /**
+             * Enrolled
+             * @description Students on the roll call shown (forfeited seats included)
+             */
+            enrolled: number;
+            /** Failed */
+            failed: number;
+            /** Incomplete */
+            incomplete: number;
+            /** Name */
+            name: string;
+            /** Passed */
+            passed: number;
+            /**
+             * Qualification
+             * @description The NQual the course delivers, if any
+             */
+            qualification?: string | null;
+            /**
+             * Sessions Held
+             * @description Approved sessions that have ended
+             */
+            sessions_held: number;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** Status */
+            status: string;
+            /** Students */
+            students: components["schemas"]["ReadinessStudentOut"][];
+        };
+        /** ReadinessQualificationOut */
+        ReadinessQualificationOut: {
+            /**
+             * Code
+             * @description The NQual granted
+             */
+            code: string;
+            /**
+             * Earned
+             * @description Passes, in the classes shown, on courses that deliver it
+             */
+            earned: number;
+            /**
+             * Qualification Id
+             * Format: uuid
+             */
+            qualification_id: string;
+            /** Title */
+            title: string;
+        };
+        /** ReadinessStudentOut */
+        ReadinessStudentOut: {
+            /** Absent */
+            absent: number;
+            /**
+             * Comment
+             * @description The instructor's comment on the result
+             */
+            comment?: string | null;
+            /** Decided At */
+            decided_at?: string | null;
+            /**
+             * Display Name
+             * @description None: on the roll call, never signed in
+             */
+            display_name?: string | null;
+            /** Email */
+            email: string;
+            /**
+             * Enrolment Status
+             * @description Their enrolment on the class's course, if any
+             */
+            enrolment_status?: string | null;
+            /**
+             * Entry Id
+             * Format: uuid
+             */
+            entry_id: string;
+            /** Excused */
+            excused: number;
+            /** @description The close-out result; None: not decided yet */
+            outcome?: components["schemas"]["ResultOutcomeOut"] | null;
+            /**
+             * Present
+             * @description Sessions recorded present
+             */
+            present: number;
+            /**
+             * Qualification Earned
+             * @description The course's qualification (NQual), when the result is a pass
+             */
+            qualification_earned?: string | null;
+            /** Roll Call Status */
+            roll_call_status: string;
+            /**
+             * Unit
+             * @description The Student's unit (users.unit); None when unknown
+             */
+            unit?: string | null;
+        };
+        /** ReadinessSummaryOut */
+        ReadinessSummaryOut: {
+            /** Absent */
+            absent: number;
+            /** Awaiting Result */
+            awaiting_result: number;
+            /** Classes */
+            classes: number;
+            /**
+             * Enrolments
+             * @description Places on the classes shown: one per Student per class
+             */
+            enrolments: number;
+            /** Excused */
+            excused: number;
+            /** Failed */
+            failed: number;
+            /** Incomplete */
+            incomplete: number;
+            /** Passed */
+            passed: number;
+            /** Present */
+            present: number;
+            /** Qualifications Earned */
+            qualifications_earned: number;
+            /** Sessions Held */
+            sessions_held: number;
+            /**
+             * Students
+             * @description Different people
+             */
+            students: number;
         };
         /**
          * RegistrationApproveIn
@@ -18003,6 +19012,32 @@ export interface components {
             version?: string;
             /** Yaml */
             yaml?: string;
+        };
+        /**
+         * SchedulerSettingsOut
+         * @description The site's scheduler settings that pages show in words (#318).
+         */
+        SchedulerSettingsOut: {
+            /**
+             * Grace Minutes
+             * @description Kept this long after it ends (SCHEDULER_TEARDOWN_GRACE_MIN)
+             */
+            grace_minutes: number;
+            /**
+             * Lead Minutes
+             * @description Ranges are built this long before a session starts (SCHEDULER_PROVISION_LEAD_MIN)
+             */
+            lead_minutes: number;
+            /**
+             * Next Free Days
+             * @description How far ahead 'next free' is searched (SCHEDULER_NEXT_FREE_DAYS)
+             */
+            next_free_days: number;
+            /**
+             * Site Timezone
+             * @description The site's IANA time zone (SITE_TIMEZONE); UTC when unset
+             */
+            site_timezone: string;
         };
         /** SecurityGroupIn */
         SecurityGroupIn: {
@@ -19577,6 +20612,34 @@ export interface components {
              * @description On the roll call with no account yet: placed once they sign in
              */
             email: string;
+        };
+        /** UnitReadinessOut */
+        UnitReadinessOut: {
+            /** Classes */
+            classes: components["schemas"]["ReadinessClassOut"][];
+            /**
+             * Date From
+             * Format: date
+             */
+            date_from: string;
+            /**
+             * Date To
+             * Format: date
+             */
+            date_to: string;
+            /** Qualifications */
+            qualifications: components["schemas"]["ReadinessQualificationOut"][];
+            summary: components["schemas"]["ReadinessSummaryOut"];
+            /**
+             * Unit
+             * @description The unit filter applied; None: every unit
+             */
+            unit?: string | null;
+            /**
+             * Units
+             * @description The units of the Students on the classes in the date range
+             */
+            units: string[];
         };
         /** UrlIngestIn */
         UrlIngestIn: {
@@ -22073,6 +23136,105 @@ export interface operations {
             };
         };
     };
+    listMyRangeConsoles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyRangeConsolesOut"];
+                };
+            };
+            /** @description Not a class range of the caller's (another Student's seat, another tenant's) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    openMyRangeConsole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                range_id: string;
+                /** @description The VM's name, as the list gives it */
+                vm: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassConsoleOut"];
+                };
+            };
+            /** @description Outside the session's window */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a class range of the caller's (another Student's seat, another tenant's) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The machine is not built or not running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description The hypervisor gave no console */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getCourseRangeMode: {
         parameters: {
             query?: never;
@@ -22831,6 +23993,102 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    getClassSessionLive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassLiveOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    openClassSessionConsole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClassConsoleIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassConsoleOut"];
+                };
+            };
+            /** @description A Student, or outside the session's window */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not a range of this session, or a class the caller has no part in */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The machine is not built or not running, or the class is not open */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description The hypervisor gave no console */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -23846,6 +25104,184 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FeedStatusOut"];
+                };
+            };
+        };
+    };
+    export_proven_content: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PortExportIn"];
+            };
+        };
+        responses: {
+            /** @description The signed bundle */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Something selected or needed is not proven */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_content_port_bundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_content_port_bundle"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortImportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_portable_content: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvenStatusOut"][];
+                };
+            };
+        };
+    };
+    get_content_proven_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_type: "course" | "range_template" | "scenario";
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProvenStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_content_port_bundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_preview_content_port_bundle"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortPreviewOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_content_port_signing_key: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortSigningKeyOut"];
                 };
             };
         };
@@ -34147,6 +35583,114 @@ export interface operations {
             };
         };
     };
+    getUnitReadiness: {
+        parameters: {
+            query?: {
+                /** @description Classes ending on or after this day (default: a year ago) */
+                date_from?: string | null;
+                /** @description Classes starting on or before this day (default: 90 days ahead) */
+                date_to?: string | null;
+                /** @description Only Students of this unit (case and spaces ignored) */
+                unit?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnitReadinessOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exportUnitReadinessCsv: {
+        parameters: {
+            query?: {
+                /** @description Classes ending on or after this day (default: a year ago) */
+                date_from?: string | null;
+                /** @description Classes starting on or before this day (default: 90 days ahead) */
+                date_to?: string | null;
+                /** @description Only Students of this unit (case and spaces ignored) */
+                unit?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exportUnitReadinessPdf: {
+        parameters: {
+            query?: {
+                /** @description Classes ending on or after this day (default: a year ago) */
+                date_from?: string | null;
+                /** @description Classes starting on or before this day (default: 90 days ahead) */
+                date_to?: string | null;
+                /** @description Only Students of this unit (case and spaces ignored) */
+                unit?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     submit_registration_registration_post: {
         parameters: {
             query?: never;
@@ -35557,6 +37101,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getSchedulerSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SchedulerSettingsOut"];
                 };
             };
         };

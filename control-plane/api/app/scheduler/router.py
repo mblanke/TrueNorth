@@ -29,7 +29,7 @@ from ..rbac import (
 )
 from ..tenancy import get_owned, tenant_uuid
 from . import approval, calendar_backends, change_rule, clock, feed, invites, lifecycle, service
-from .capacity import PROVISION_LEAD, TEARDOWN_GRACE, Resources, available, get_capacity_provider
+from .capacity import PROVISION_LEAD, TEARDOWN_GRACE, Resources, available, get_capacity_provider, site_timezone
 from .models import EventState, ScheduledEvent
 from .schemas import (
     CapacityCheck,
@@ -42,6 +42,7 @@ from .schemas import (
     MySessionOut,
     PolicyIn,
     PolicyOut,
+    SchedulerSettingsOut,
     TimelineOut,
     UtcDateTime,
     as_utc,
@@ -138,6 +139,21 @@ def check_capacity(body: CapacityCheck, db: Session = Depends(get_db), user: Cur
         reasons=a.reasons,
         policy=service.get_policy(db).value,
         supply_source=provider.supply_source,
+    )
+
+
+@router.get(
+    "/settings", response_model=SchedulerSettingsOut, operation_id="getSchedulerSettings",
+    summary="The site's scheduler settings",
+)
+def scheduler_settings() -> SchedulerSettingsOut:
+    """Provisioning lead, teardown grace, the 'next free' search horizon and the site's time
+    zone, so pages say what this site does rather than the defaults.  **schedule:read**"""
+    return SchedulerSettingsOut(
+        lead_minutes=int(PROVISION_LEAD.total_seconds() // 60),
+        grace_minutes=int(TEARDOWN_GRACE.total_seconds() // 60),
+        next_free_days=service.NEXT_FREE_DAYS,
+        site_timezone=site_timezone().key,
     )
 
 

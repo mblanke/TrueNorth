@@ -856,7 +856,7 @@ class OUIn(BaseModel):
 class OUUpdate(BaseModel):
     name: str = Field(default=None)
     slug: str = Field(default=None)
-    ou_type: str = Field(default=None)
+    ou_type: str = Field(default=None, pattern=r"^(country|branch|division|unit|section|custom)$")
     parent_id: uuid.UUID | None = None
 
 
@@ -896,7 +896,7 @@ class SecurityGroupIn(BaseModel):
 class SecurityGroupUpdate(BaseModel):
     name: str = Field(default=None)
     slug: str = Field(default=None)
-    group_type: str = Field(default=None)
+    group_type: str = Field(default=None, pattern=r"^(access|distribution|training|role_based)$")
     description: str | None = None
 
 

@@ -1,7 +1,7 @@
 """roll call: when a Student was really notified; no "ready" status
 
 Revision ID: 7c4d2e9a1b60
-Revises: 3e8b1c7a9d42
+Revises: c3318a0d7e51
 Create Date: 2026-10-27 22:00:00.000000
 
 GA gaps B (issue #319; ADR 0014 §2, §4):
@@ -26,7 +26,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "7c4d2e9a1b60"
-down_revision: str | None = "3e8b1c7a9d42"
+down_revision: str | None = "c3318a0d7e51"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

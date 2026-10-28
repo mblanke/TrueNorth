@@ -120,6 +120,24 @@ describe('AppComponent', () => {
     toolbarButtons.forEach(button => expect(button.getAttribute('aria-label')).toBeTruthy());
   });
 
+  // ── Sign out (#318) ─────────────────────────────────────────────
+  it('offers Sign out in the toolbar, which ends the session', () => {
+    const logout = spyOn(auth, 'logout');
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const button = el.querySelector('mat-toolbar button[aria-label="Sign out"]') as HTMLButtonElement;
+    expect(button).not.toBeNull();
+    expect(button.textContent).toContain('Sign out');
+    button.click();
+    expect(logout).toHaveBeenCalled();
+  });
+
+  it('shows no Sign out to someone not signed in', () => {
+    auth.role.set(null);
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelector('button[aria-label="Sign out"]')).toBeNull();
+  });
+
   // ── Sidenav ──────────────────────────────────────────────────────
   it('should have an opened sidenav by default', () => {
     fixture.detectChanges();
@@ -169,17 +187,20 @@ describe('AppComponent', () => {
     // Students reach their range through My classes' Join.
     student: ['/dashboard', '/learning', '/my-classes', '/exercises', '/scoring', '/wiki', '/support'],
     // The calendar's Events view (schedule:read, #285): observers too, read-only.
+    // Unit readiness (readiness:read, #289): commander = observer + this page (ADR 0014 decision 7).
     observer: ['/dashboard', '/learning', '/exercises', '/ops-center/select', '/telemetry', '/schedule',
-      '/calendar', '/classes', '/scoring', '/wiki'],
+      '/calendar', '/classes', '/scoring', '/readiness', '/wiki'],
     range_ops: ['/dashboard', '/learning', '/authoring', '/exercises', '/ops-center/select', '/telemetry',
       '/schedule', '/calendar', '/wiki', '/support', '/infrastructure', '/ai-orchestrator'],
     // Student progress (learning_record:read) and Teams (user:read): instructors and admins.
     instructor: ['/dashboard', '/learning', '/learning/admin/progress', '/authoring', '/exercises',
-      '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/wiki', '/support',
+      '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/readiness', '/wiki',
+      '/support',
       '/teams',
       '/infrastructure', '/ai-orchestrator'],
     admin: ['/dashboard', '/learning', '/learning/admin/progress', '/authoring', '/exercises',
-      '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/wiki', '/support',
+      '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/readiness', '/wiki',
+      '/support',
       '/approvals', '/teams',
       // Maintenance windows (range:admin, ADR 0013 §7): admins only.
       // Rules of use (ADR 0014 §3): admins export signatures; the platform admin publishes.
@@ -224,6 +245,19 @@ describe('AppComponent', () => {
       .map(h => h.textContent!.trim());
     expect(headings).not.toContain('Create');
     expect(headings).not.toContain('Admin');
+  });
+
+  it('gives observers the unit readiness page and never Students or range ops (#289)', () => {
+    for (const role of ['observer', 'instructor', 'admin'] as UserRole[]) {
+      auth.role.set(role);
+      fixture.detectChanges();
+      expect(menu()).withContext(role).toContain('/readiness');
+    }
+    for (const role of ['student', 'range_ops'] as UserRole[]) {
+      auth.role.set(role);
+      fixture.detectChanges();
+      expect(menu()).withContext(role).not.toContain('/readiness');
+    }
   });
 
   it('has an approvals entry for admins only (ADR 0014 §5) and a telemetry entry for roles with telemetry:read', () => {

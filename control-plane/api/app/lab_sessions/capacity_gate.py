@@ -44,10 +44,10 @@ from ..scheduler.capacity import (
     Committed,
     Resources,
     available,
+    site_timezone,
 )
 from ..scheduler.lifecycle import HOLDING
 from ..scheduler.models import ScheduledEvent
-from ..site_time import site_timezone
 from . import holdings
 from .models import LabSession
 

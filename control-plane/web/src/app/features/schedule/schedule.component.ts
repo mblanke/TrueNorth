@@ -11,6 +11,7 @@ import { AuthService } from '@core/services/auth.service';
 import {
   Booking, BookingIn, CapacityResult, CourseOption, OvercapacityPolicy, SchedulerApiService, Timeline,
 } from '@core/services/scheduler-api.service';
+import { durationWords } from '@core/services/scheduler-settings.service';
 import type { RangeSummary, ScenarioSummary, TemplateSummary, User } from '@core/models';
 import {
   DAY_MS, HOLDING_STATES, Level, addDays, at, diskLabel, gb, hhmm, hourOf, isLive, isoDate, layoutLanes, level,
@@ -123,7 +124,7 @@ const ROW = 46; // px per hour
                   <option value="individual">Individual: a range per Student, from this template</option>
                   <option value="collective">Collective: one shared range (an exercise)</option>
                 </select>
-                <small>Ranges are built 30 minutes before the class's first session that needs them and kept until its last.@if (f.id && f.rangeMode) { Changing this on an approved session sends it back for approval.}</small></label>
+                <small>Ranges are built {{ leadWords() }} before the class's first session that needs them and kept until its last.@if (f.id && f.rangeMode) { Changing this on an approved session sends it back for approval.}</small></label>
             }
           }
           <label class="field"><span>Course</span>
@@ -448,6 +449,8 @@ export class ScheduleComponent implements OnInit, OnDestroy {
 
   // ── Derived ────────────────────────────────────────────
   readonly lead = computed(() => this.timeline()?.lead_minutes ?? 30);
+  /** The site's provisioning lead in words (GET /schedule/timeline lead_minutes; #318). */
+  readonly leadWords = computed(() => durationWords(this.lead()));
   readonly grace = computed(() => this.timeline()?.grace_minutes ?? 15);
   readonly loads = computed(() => (this.timeline() ? slotLoads(this.timeline()!) : []));
   readonly visible = computed(() => this.bookings().filter(b => b.state !== 'cancelled'));

@@ -7,6 +7,17 @@ import { NEVER, Observable, Subject, of, throwError } from 'rxjs';
 import { ContentCatalogComponent, TemplateEditorDialogComponent } from './content-catalog.component';
 import { ApiService } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { AuthService } from '@core/services/auth.service';
+import { fakeAuth } from '@core/auth/fake-auth';
+import { ContentPortApiService } from '@core/services/content-port-api.service';
+
+/** The Proven chip on the page: a staff member, and a status this spec does not inspect. */
+function provenChipProviders() {
+  const port = jasmine.createSpyObj('ContentPortApiService', ['proven']);
+  port.proven.and.returnValue(of({ item_type: 'range_template', item_id: 'x', title: '', proven: false,
+    label: 'Not proven: test', reasons: [], conditions: [], dependencies: [], golden_builds: [] }));
+  return [{ provide: AuthService, useValue: fakeAuth('instructor') }, { provide: ContentPortApiService, useValue: port }];
+}
 import { Template, TemplateSummary } from '@core/models';
 
 /** Real GET /templates rows: host_count but no yaml, tenant_id or updated_at. */
@@ -63,6 +74,7 @@ describe('ContentCatalogComponent', () => {
       providers: [
         provideRouter([]),
         { provide: ApiService, useValue: mockApi },
+        ...provenChipProviders(),
         { provide: NotificationService, useValue: mockNotify },
         { provide: MatDialog, useValue: { open: dialogOpen } },
       ],

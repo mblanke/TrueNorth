@@ -71,8 +71,9 @@ describe('ScheduleComponent', () => {
   beforeEach(async () => {
     scheduler = jasmine.createSpyObj('SchedulerApiService',
       ['list', 'create', 'update', 'schedule', 'cancel', 'check', 'timeline', 'getPolicy', 'setPolicy', 'feedStatus', 'issueFeed', 'revokeFeed', 'courses',
-        'approvals', 'approve', 'reject', 'propose', 'acceptProposal', 'declineProposal']);
+        'approvals', 'approve', 'reject', 'propose', 'acceptProposal', 'declineProposal', 'settings']);
     scheduler.approvals.and.returnValue(of({ items: [] }));
+    scheduler.settings.and.returnValue(of({ lead_minutes: 30, grace_minutes: 15, next_free_days: 14, site_timezone: 'UTC' }));
     scheduler.acceptProposal.and.returnValue(of(booking({})));
     scheduler.declineProposal.and.returnValue(of(booking({})));
     classes = jasmine.createSpyObj('ClassesApiService', ['mine', 'list', 'pendingAdditions', 'approveAddition', 'rejectAddition']);

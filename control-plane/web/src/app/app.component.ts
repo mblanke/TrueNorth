@@ -139,6 +139,13 @@ interface NavSection {
               </div>
             </details>
 
+            @if (auth.isAuthenticated()) {
+              <button mat-stroked-button class="sign-out" (click)="auth.logout()" aria-label="Sign out"
+                      [matTooltip]="'Sign out of TrueNorth'">
+                <mat-icon>logout</mat-icon> <span class="sign-out-label">Sign out</span>
+              </button>
+            }
+
           </mat-toolbar>
 
           <main class="app-content" #content>
@@ -287,6 +294,8 @@ interface NavSection {
     a.active-link span       { color: var(--accent) !important; }
 
     .spacer { flex: 1 1 auto; }
+    .sign-out { margin-right: 8px; }
+    @media (max-width: 720px) { .sign-out-label { display: none; } }
 
     /* ── Theme picker ────────────────────────────────── */
     .theme-picker {
@@ -405,7 +414,11 @@ export class AppComponent implements OnDestroy {
     },
     {
       name: 'Review',
-      items: [{ label: 'Scoring & AAR', icon: 'assessment', route: '/scoring', access: 'scoring' }],
+      items: [
+        { label: 'Scoring & AAR', icon: 'assessment', route: '/scoring', access: 'scoring' },
+        // ADR 0014 decision 7: commander = observer + this page (#289).
+        { label: 'Unit readiness', icon: 'military_tech', route: '/readiness', access: 'readiness' },
+      ],
     },
     {
       name: 'Help',

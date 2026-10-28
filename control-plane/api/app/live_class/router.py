@@ -2,7 +2,9 @@
 
 Ops Center's own rule (web ``pageGuard('opsCenter')``): ``exercise:read`` and
 ``telemetry:read``, so instructors, admins, range ops and observers; Students hold no
-``telemetry:read`` and get 403. Another tenant's exercise is 404 (``get_owned``). Detection
+``telemetry:read`` and get 403. Another tenant's exercise is 404 (``get_owned``), and so is a
+class session's exercise to an observer who is not on that class's staff (ADR 0014 §19,
+``classes.access.observer_may_watch``; #321). Detection
 queries and precision are shown only to staff who may see the answer key
 (``scenario:update``), as ``GET /exercises/{id}/detections`` does.
 """
@@ -11,10 +13,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
+from ..classes import access as class_access
 from ..db import get_db
 from ..models import Exercise
 from ..rbac import Permission, require_permission, user_has_permission
@@ -33,6 +36,9 @@ def get_exercise_class(
 ) -> ExerciseClassOut:
     """The roster of a live exercise: each Student's team, lab, detection attempts, credit
     earned from them, last activity and what may need attention.
-    **Permission: exercise:read + telemetry:read** (staff and observers; never Students)."""
+    **Permission: exercise:read + telemetry:read** (staff and observers; never Students).
+    An observer sees a class session's exercise only when they are on that class's staff."""
     ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    if not class_access.observer_may_watch(db, user, ex):
+        raise HTTPException(404, "Exercise not found")
     return service.build(db, ex, sees_key=user_has_permission(user, Permission.SCENARIO_UPDATE))

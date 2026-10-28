@@ -710,6 +710,12 @@ services:
       # Startup check of the realm's MFA configuration (app/auth_backends/keycloak_mfa_check.py).
       TN_MFA_KEYCLOAK_CHECK: ${TN_MFA_KEYCLOAK_CHECK:-refuse}
       REGISTRATION_DEFAULT_TENANT_SLUG: ${REGISTRATION_DEFAULT_TENANT_SLUG:-default}
+      # The platform tenant: its admins are the platform administrators (app/rbac.py). The
+      # installer renders tn_platform_tenant_id, by default the bootstrap tenant. Unset with
+      # several tenants, nobody is (fail closed; the api logs an error at startup).
+      PLATFORM_TENANT_ID: ${PLATFORM_TENANT_ID:-}
+      # The site's IANA time zone for times said in words (installer tn_site_timezone).
+      SITE_TIMEZONE: ${SITE_TIMEZONE:-UTC}
       REGISTRATION_DEFAULT_PROGRESSION: ${REGISTRATION_DEFAULT_PROGRESSION}
       CSRF_SECRET: ${CSRF_SECRET}
       CORS_ORIGINS: https://${DOMAIN}
@@ -740,6 +746,8 @@ services:
       # The feeds status and the signed feed bundle import (app/content_feeds, ADR 0014 §25).
       TN_FEEDS_MODE: ${TN_FEEDS_MODE:-off}
       TN_FEEDS_BUNDLE_PUBLIC_KEY: ${TN_FEEDS_BUNDLE_PUBLIC_KEY:-}
+      # Signed content bundles from these origin sites only (app/content_port, docs/content-port.md).
+      TN_CONTENT_PORT_TRUSTED_KEYS: ${TN_CONTENT_PORT_TRUSTED_KEYS:-}
     volumes:
       # Matches SCENARIO_ENGINE_DIR above. The engine is not part of the api
       # build context, so without this mount it is simply absent at runtime.

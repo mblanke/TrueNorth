@@ -369,12 +369,38 @@ export const routes: Routes = [
     title: 'Classes - TrueNorth Range',
   },
   {
+    // ADR 0014 decision 7 (#289): commander = observer + the unit readiness page. Read-only,
+    // the caller's own organisation; observers, instructors and admins (readiness:read).
+    path: 'readiness',
+    canActivate: [authGuard, onboardingGuard, pageGuard('readiness')],
+    loadComponent: () =>
+      import('./features/readiness/unit-readiness.component').then(m => m.UnitReadinessComponent),
+    title: 'Unit readiness - TrueNorth Range',
+  },
+  {
+    // ADR 0014 §19 (#321): a class session's live view, for its lead, assistants, observers
+    // and admins (the API decides who; class:read to reach the page).
+    path: 'classes/:classId/sessions/:eventId/live',
+    canActivate: [authGuard, onboardingGuard, pageGuard('classes')],
+    loadComponent: () =>
+      import('./features/classes/class-live.component').then(m => m.ClassLiveComponent),
+    title: 'Live session - TrueNorth Range',
+  },
+  {
     // ADR 0013 §7: windows in which provision, reset and normal destroy are refused.
     path: 'maintenance-windows',
     canActivate: [authGuard, onboardingGuard, pageGuard('maintenanceWindows')],
     loadComponent: () =>
       import('./features/maintenance-windows/maintenance-windows.component').then(m => m.MaintenanceWindowsComponent),
     title: 'Maintenance windows - TrueNorth Range',
+  },
+  {
+    // Before 'admin'. How to turn email on, bundled with the app (#318): the email banner links here.
+    path: 'admin/help/email',
+    canActivate: [authGuard, adminGuard],
+    loadComponent: () =>
+      import('./features/admin/email-help.component').then(m => m.EmailHelpComponent),
+    title: 'Set up email - TrueNorth Range',
   },
   {
     // Before 'admin'. Platform administrator: drafts and publishing; any admin: the export.

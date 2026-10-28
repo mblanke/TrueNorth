@@ -148,6 +148,10 @@ class Permission(str, Enum):
     # app/classes/my_classes.py): only the caller's own roll-call entries, never anyone else's.
     CLASS_CREATE = "class:create"
     CLASS_READ = "class:read"
+    # The unit readiness page (ADR 0014 decision 7, app/classes/readiness.py): every class of
+    # the caller's own tenant, its enrolment, attendance, results and qualifications earned.
+    # Read-only. Observers (the commander), instructors and admins; never Students.
+    READINESS_READ = "readiness:read"
     CLASS_ATTEND = "class:attend"
 
     # Tenant management
@@ -221,6 +225,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         # Classes: the lead of their own classes; assistant or observer on others'.
         Permission.CLASS_CREATE,
         Permission.CLASS_READ,
+        Permission.READINESS_READ,
         # Held so an instructor may still grant the Student role (grant_refusal: never a role
         # with permissions the granter lacks). The menu shows them Classes, not My classes.
         Permission.CLASS_ATTEND,
@@ -315,6 +320,8 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.AAR_READ,
         Permission.SCHEDULE_READ,
         Permission.CLASS_READ,
+        # The unit readiness page: commander = observer + this page (ADR 0014 decision 7).
+        Permission.READINESS_READ,
         Permission.TELEMETRY_READ,
         Permission.WIKI_READ,
     },
@@ -453,8 +460,17 @@ def require_range_access() -> Callable[..., Any]:
 
 # ── Platform administration ────────────────────────────────────────────
 def platform_tenant_id() -> str:
-    """PLATFORM_TENANT_ID, the operator's own tenant; empty when unset."""
-    return os.getenv("PLATFORM_TENANT_ID", "").strip()
+    """PLATFORM_TENANT_ID, the operator's own tenant, in canonical form (lower case, hyphens);
+    empty when unset. A value that is not a UUID is returned as typed: it matches no tenant,
+    so nobody is the platform administrator (fail closed), and ``platform_tenant_problem``
+    says so. Never an "unset" that would make every admin of a one-tenant install the operator."""
+    raw = os.getenv("PLATFORM_TENANT_ID", "").strip()
+    if not raw:
+        return ""
+    try:
+        return str(uuid.UUID(raw))
+    except ValueError:
+        return raw
 
 
 def is_single_tenant(db: Session) -> bool:
@@ -479,18 +495,41 @@ def is_platform_admin(user: CurrentUser, db: Session) -> bool:
         return False
     platform = platform_tenant_id()
     if platform:
-        return str(user.tenant_id) == platform
+        return str(user.tenant_id).lower() == platform
     return is_single_tenant(db)
 
 
 def platform_tenant_problem(db: Session) -> str | None:
-    """Why the platform administrator is unassigned, or None. Logged at startup."""
-    if platform_tenant_id() or is_single_tenant(db):
+    """Why the platform administrator is unassigned, or None. Logged at startup.
+
+    Unset with several tenants, or set to an id that is no tenant: either way nobody is the
+    platform administrator (``is_platform_admin`` fails closed), so say which and what to set.
+    """
+    refused = (
+        "no administrator is the platform administrator (creating tenants, cross-tenant "
+        "approval and platform-wide settings are refused)"
+    )
+    platform = platform_tenant_id()
+    if platform:
+        try:
+            exists = db.query(Tenant.id).filter(Tenant.id == uuid.UUID(platform)).first() is not None
+        except ValueError:
+            return (
+                f"PLATFORM_TENANT_ID={platform!r} is not a tenant id (UUID): {refused}. Set it to the "
+                "operator's tenant id (installer: tn_platform_tenant_id)."
+            )
+        if exists:
+            return None
+        return (
+            f"PLATFORM_TENANT_ID={platform} names no tenant: {refused}. Set it to the operator's "
+            "tenant id (installer: tn_platform_tenant_id, empty for the bootstrap tenant)."
+        )
+    if is_single_tenant(db):
         return None
     return (
-        "PLATFORM_TENANT_ID is not set and more than one tenant exists: no administrator is the "
-        "platform administrator (creating tenants, cross-tenant approval and platform-wide "
-        "settings are refused). Set it to the operator's tenant id."
+        f"PLATFORM_TENANT_ID is not set and more than one tenant exists: {refused}. Set it to "
+        "the operator's tenant id (installer: tn_platform_tenant_id, which defaults to the "
+        "bootstrap tenant; re-run playbooks/30-config.yml and 50-stack-up.yml)."
     )
 
 

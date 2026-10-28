@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Observable, forkJoin, of, catchError } from 'rxjs';
 import { ApprovalItem, SchedulerApiService } from '@core/services/scheduler-api.service';
 import { ClassesApiService, PendingAddition } from '@core/services/classes-api.service';
+import { SchedulerSettingsService } from '@core/services/scheduler-settings.service';
 import { at, gb, hhmm, isoDate, localizeUtcWindows } from './schedule.util';
 
 interface Open { id: string; mode: 'propose' | 'reject'; date: string; from: string; to: string; reason: string }
@@ -52,7 +53,7 @@ export function whenLabel(start: string, end: string): string {
         @else {
           <span class="chip">Doesn’t fit</span>
           <ul class="small reasons">@for (r of i.fit.reasons; track r) { <li>{{ localize(r) }}</li> }</ul>
-          <p class="small">Next free: {{ i.fit.next_free ? when(i.fit.next_free.start_time, i.fit.next_free.end_time) : 'none in the next two weeks' }}</p>
+          <p class="small">Next free: {{ i.fit.next_free ? when(i.fit.next_free.start_time, i.fit.next_free.end_time) : 'none ' + horizon() }}</p>
         }
         @if (open()?.id === i.event.id) {
           @let o = open()!;
@@ -123,6 +124,9 @@ export function whenLabel(start: string, end: string): string {
 export class ApprovalQueueComponent implements OnInit {
   private readonly scheduler = inject(SchedulerApiService);
   private readonly classes = inject(ClassesApiService);
+  private readonly settings = inject(SchedulerSettingsService);
+  /** How far ahead "next free" was searched: the site's SCHEDULER_NEXT_FREE_DAYS (#318). */
+  readonly horizon = this.settings.nextFreeHorizon;
 
   /** Something was decided: the calendar should reload. */
   readonly changed = output<void>();
@@ -133,7 +137,7 @@ export class ApprovalQueueComponent implements OnInit {
   readonly busy = signal(false);
   readonly gb = gb;
 
-  ngOnInit(): void { this.load(); }
+  ngOnInit(): void { this.load(); this.settings.load(); }
 
   load(): void {
     forkJoin({

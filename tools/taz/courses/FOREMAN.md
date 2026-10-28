@@ -68,9 +68,19 @@ UTC time) so a restart resumes after the last course sent. Below, `F` is the cou
        --permission-mode acceptEdits --output-format stream-json --verbose \
      > $B/logs/$S-attempt$N.jsonl 2>&1
    ```
-   `$PROMPT` is: `Course file: $F. Suggested range template: $T.` followed by the full text
-   of `tools/taz/courses/AGENTS-courses.md` from the clone. On attempts 2 and 3, append
-   `The checker still fails. Its output:` and the checker output from step 4.
+   `$PROMPT` is, in this order, all taken from the clone so they are the current main:
+   1. `Course file: $F. Suggested range template: $T.`
+   2. the full text of `tools/taz/courses/AGENTS-courses.md`;
+   3. the full text of `tools/taz/courses/ARC2-STYLE.md`;
+   4. the line `Read these before your first edit, in this order:
+      tools/taz/courses/reference/exemplar-arc2-c105.course.yaml,
+      tools/taz/courses/reference/exemplar-lab-module.yaml,
+      tools/taz/courses/reference/exemplar-arc2-c105.instructor-pack.yaml. They are exemplars,
+      read-only to you: copy their voice and shape, never their wording or stems.`
+
+   Build it with `cat` from the clone, never from memory or an older copy. On attempts 2 and
+   3, append `The checker still fails. Its output:` and the checker output from step 4.
+   Attempts 2 and 3 repeat the whole prompt; the coder keeps no memory between attempts.
 4. **Check it yourself.** The coder's report is not evidence.
    ```bash
    cd $R && .venv/bin/python scripts/check_course.py --base origin/main $F > $B/logs/$S-check$N.txt 2>&1; echo "EXIT=$?"
@@ -95,6 +105,22 @@ UTC time) so a restart resumes after the last course sent. Below, `F` is the cou
 7. Record the result in `state.tsv` and go straight to the next course.
 
 When the queue is done, send `TAZ course run finished:` with the `state.tsv` contents.
+
+## When the kit changes
+
+`tools/taz/courses/` and `scripts/check_course.py` change by pull request on `main`, never
+on TAZ. When Claude tells you they changed (a message such as `TAZ-MESSAGE-ARC2.md`):
+
+1. Pull the read-only kit clone (`git -C $B/kit pull --ff-only`), and re-install the hooks
+   if `tools/taz/hooks/` changed.
+2. Re-read `AGENTS-courses.md` and `ARC2-STYLE.md` yourself. Every clone made from now on
+   already has them, because step 1 clones fresh.
+3. For each course already sent: run the new checker on its patch (apply the patch in a
+   fresh clone). One that fails any check is not finished: run it again from step 1 with
+   the new prompt, and send the new patch under the same `TAZ course patch:` first line
+   plus `(re-done)`. A course that passes the new checker is left alone; Claude judges
+   the rest of the style when it reviews the patch.
+4. Courses not yet started use the new prompt unchanged.
 
 ## What Claude does with each message (for reference)
 

@@ -2,7 +2,7 @@
 
 Every roll-call Student who has not signed in yet (``invited``) is emailed once, the day
 before their class starts. "The day before" is the site's calendar day (``SITE_TIMEZONE``,
-``app.site_time``, as the self-serve lab gate reads it; UTC when unset): a class has dates,
+``scheduler.capacity.site_timezone``, as the self-serve lab gate reads it; UTC when unset): a class has dates,
 not times, and they are the site's dates (#319). Each entry is claimed with a guarded update
 (``reminded_at IS NULL``) before its email is built, so any number of API replicas can tick
 and each Student still gets one reminder. Someone added that same day already had their
@@ -21,7 +21,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from ..models import Course, User, UserRole
-from ..site_time import site_timezone
+from ..scheduler.capacity import site_timezone
 from . import service
 from .models import Class, ClassStatus, RollCallEntry, RollCallStatus
 

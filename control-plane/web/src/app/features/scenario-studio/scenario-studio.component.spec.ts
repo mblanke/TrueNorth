@@ -7,6 +7,17 @@ import { Subject, of, throwError } from 'rxjs';
 import { ScenarioStudioComponent } from './scenario-studio.component';
 import { ApiService, YamlValidation } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { AuthService } from '@core/services/auth.service';
+import { fakeAuth } from '@core/auth/fake-auth';
+import { ContentPortApiService } from '@core/services/content-port-api.service';
+
+/** The Proven chip on the page: a staff member, and a status this spec does not inspect. */
+function provenChipProviders() {
+  const port = jasmine.createSpyObj('ContentPortApiService', ['proven']);
+  port.proven.and.returnValue(of({ item_type: 'range_template', item_id: 'x', title: '', proven: false,
+    label: 'Not proven: test', reasons: [], conditions: [], dependencies: [], golden_builds: [] }));
+  return [{ provide: AuthService, useValue: fakeAuth('instructor') }, { provide: ContentPortApiService, useValue: port }];
+}
 import { Scenario } from '@core/models';
 
 const stored: Scenario = {
@@ -43,6 +54,7 @@ describe('ScenarioStudioComponent', () => {
       providers: [
         provideRouter([]),
         { provide: ApiService, useValue: mockApi },
+        ...provenChipProviders(),
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['success', 'error']) },
         { provide: MatDialog, useValue: { open: jasmine.createSpy('open') } },
       ],

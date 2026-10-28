@@ -105,7 +105,9 @@ describe('EventsCalendarComponent', () => {
   beforeEach(async () => {
     scheduler = jasmine.createSpyObj('SchedulerApiService', [
       'list', 'timeline', 'update', 'approvals', 'approve', 'reject', 'propose', 'acceptProposal', 'declineProposal',
+      'settings',
     ]);
+    scheduler.settings.and.returnValue(of({ lead_minutes: 30, grace_minutes: 15, next_free_days: 14, site_timezone: 'UTC' }));
     scheduler.timeline.and.returnValue(of(timeline()));
     scheduler.approvals.and.returnValue(of({ items: [QUEUE_ITEM] }));
     scheduler.approve.and.returnValue(of({ ...PENDING, state: 'scheduled' }));
@@ -490,6 +492,7 @@ describe('EventsCalendarComponent', () => {
       fixture.detectChanges();
       expect(button('Move')).toBeUndefined();
       expect(link('Roll call')).toBeUndefined();
+      expect(el.querySelector('a.class-live')).toBeNull();  // no class:read
     });
 
     it('observers read only: no queue, no Move, no Book, no Content tab', () => {
@@ -502,6 +505,8 @@ describe('EventsCalendarComponent', () => {
       expect(button('Move')).toBeUndefined();
       expect(link('Roll call')).toBeTruthy(); // class:read
       expect(link('Live Class')).toBeTruthy();
+      // The class session's own live view (ADR 0014 §19); the API decides whether this observer is on it.
+      expect(el.querySelector('a.class-live')?.getAttribute('href')).toBe('/classes/c1/sessions/cls/live');
     });
 
     it('admins move anyone\'s booking', () => {
