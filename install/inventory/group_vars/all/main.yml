@@ -322,6 +322,10 @@ tn_feeds_http_proxy: ""
 tn_feeds_bundle_public_key: ""
 tn_feeds_nvd_api_key: "{{ vault_feeds_nvd_api_key | default('') }}"
 tn_feeds_nvd_min_cvss: 9.0
+# Content port (docs/content-port.md): the base64 Ed25519 public keys of the sites whose
+# signed content bundles this site imports, comma-separated (an origin site shows its key on
+# the Content view's Port content panel). Empty: nothing is imported (fail closed).
+tn_content_port_trusted_keys: ""
 # Empty: clone the inventory VM templates (tmpl-*). Set once a Content Library exists.
 tn_vsphere_content_library: ""
 tn_vsphere_concurrency: 4

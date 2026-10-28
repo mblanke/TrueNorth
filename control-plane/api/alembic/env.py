@@ -18,6 +18,7 @@ from app import (  # noqa: F401
     classes,
     cmi5,
     content_feeds,
+    content_port,
     content_review,
     course_publishing,
     course_releases,
