@@ -338,6 +338,10 @@ def add_to_roll_call(db: Session, cls: Class, actor: CurrentUser, emails: list[s
         entry.user_id = None
         entry.signed_in_at = None
         entry.forfeited_at = None  # a fresh addition: the forfeit rule applies to it afresh
+        # ...and so does "only forfeit a Student who was told": a new stint is emailed again and
+        # earns its own proof of notice, never the old stint's (#319).
+        entry.onboarding_sent_at = entry.reminded_at = None
+        entry.notified_at = entry.in_app_notified_at = None
         if no_room:
             entry.status = RollCallStatus.pending.value
             entry.pending_reason = "; ".join(no_room)[:1000]

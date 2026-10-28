@@ -268,11 +268,11 @@ const ROW = 46; // px per hour
         <div class="note" role="note"><strong>Rejected</strong>{{ b.approval?.reason ? ': ' + b.approval!.reason : '' }}</div>
       }
       @if (actionError(); as err) { <div class="note"><strong>Can’t do that</strong><br>{{ err }}</div> }
-      @if (b.can_change) {
+      @if (b.can_change || b.can_wind_down) {
         <div class="actions">
-          @if (b.state === 'draft') { <button class="action primary" [disabled]="busy()" (click)="scheduleDraft(b)">Schedule it</button> }
+          @if (b.can_change && b.state === 'draft') { <button class="action primary" [disabled]="busy()" (click)="scheduleDraft(b)">Schedule it</button> }
           @if (b.can_move) { <button class="action" (click)="startEditing(b)">Move or resize</button> }
-          @if (isLive(b) || b.state === 'draft' || b.state === 'pending_approval') {
+          @if (b.can_wind_down && (isLive(b) || b.state === 'draft' || b.state === 'pending_approval')) {
             @if (confirmCancel() === b.id) { <button class="action primary" [disabled]="busy()" (click)="cancel(b)">Yes, cancel it</button> }
             @else { <button class="action" (click)="confirmCancel.set(b.id)">Cancel booking</button> }
           }

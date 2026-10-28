@@ -8532,6 +8532,12 @@
             "title": "Can Move",
             "type": "boolean"
           },
+          "can_wind_down": {
+            "default": false,
+            "description": "The caller may cancel or complete it: can_change, or a session left under way when its class was cancelled",
+            "title": "Can Wind Down",
+            "type": "boolean"
+          },
           "class_id": {
             "anyOf": [
               {

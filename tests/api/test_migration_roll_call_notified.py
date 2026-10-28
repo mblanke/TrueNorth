@@ -66,6 +66,9 @@ def test_upgrade_adds_the_columns_and_retires_ready(tmp_path):
             db.execute(sa.text("INSERT INTO class_roll_call (id, class_id, tenant_id, email, status) "
                                "VALUES (:i, :c, :t, :e, :s)"),
                        {"i": str(uuid.uuid4()), "c": str(cls), "t": str(tenant), "e": email, "s": status})
+        # Reminded under the older rule: that reminder was sent, so it counts as notice.
+        db.execute(sa.text("UPDATE class_roll_call SET reminded_at = '2026-10-20 08:00:00' "
+                           "WHERE email = 'ann@corp.test'"))
     assert not COLUMNS & _columns(engine)
 
     _alembic(url, "upgrade", REVISION)
@@ -73,7 +76,7 @@ def test_upgrade_adds_the_columns_and_retires_ready(tmp_path):
     with engine.connect() as db:
         rows = db.execute(sa.text(
             "SELECT email, status, notified_at, in_app_notified_at FROM class_roll_call ORDER BY email")).all()
-        assert [tuple(r) for r in rows] == [("ann@corp.test", "invited", None, None),
+        assert [tuple(r) for r in rows] == [("ann@corp.test", "invited", "2026-10-20 08:00:00", None),
                                             ("bob@corp.test", "signed_in", None, None),
                                             ("cat@corp.test", "signed_in", None, None)]
 

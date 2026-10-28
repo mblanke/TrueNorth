@@ -8,8 +8,10 @@ GA gaps B (issue #319; ADR 0014 §2, §4):
 
 * ``class_roll_call.notified_at``: when the onboarding or day-before email was accepted by
   the SMTP relay. A seat is forfeited only once the Student was actually notified (owner
-  direction). Existing rows stay empty: nothing recorded whether their email went out, so
-  they are kept rather than forfeited on a guess.
+  direction). Rows that already have a day-before ``reminded_at`` get ``notified_at`` from it:
+  that reminder was sent under the older rule, and without the backfill those Students would
+  stay "never notified" for ever. Other existing rows stay empty (nothing recorded whether
+  their onboarding email went out), so their seat is kept until a lead removes them.
 * ``class_roll_call.in_app_notified_at``: when an in-app notification about the roll call
   was issued to the linked account (it counts once that account has signed in since).
 * The roll-call status ``ready`` is dropped: ADR 0014 never defines it and nothing wrote it.
@@ -40,7 +42,11 @@ def upgrade() -> None:
     for name in COLUMNS:
         if name not in have:
             op.add_column("class_roll_call", sa.Column(name, sa.DateTime(timezone=True), nullable=True))
-    op.get_bind().execute(sa.text("UPDATE class_roll_call SET status = 'signed_in' WHERE status = 'ready'"))
+    bind = op.get_bind()
+    bind.execute(sa.text("UPDATE class_roll_call SET status = 'signed_in' WHERE status = 'ready'"))
+    bind.execute(sa.text(
+        "UPDATE class_roll_call SET notified_at = reminded_at WHERE reminded_at IS NOT NULL AND notified_at IS NULL"
+    ))
 
 
 def downgrade() -> None:

@@ -136,8 +136,17 @@ def propose_time(
     told (in the app, and by email when email is configured)."""
     service.serialize_bookings(db)
     evt = _owned(db, event_id, user)
+    before = service.approval_of(db, evt.id)
+    same = (
+        before is not None and before.proposed_start is not None
+        and as_utc(before.proposed_start) == as_utc(body.start_time)
+        and as_utc(before.proposed_end) == as_utc(body.end_time)
+    )
     warnings = approval.propose(db, user, evt, body.start_time, body.end_time)
-    notices = approval_notices.notify(db, evt, user, "proposed", proposed=(body.start_time, body.end_time))
+    # A repeat of the proposal already standing changes nothing: the instructor is not told twice.
+    changed = not same
+    notices = approval_notices.notify(db, evt, user, "proposed", proposed=(body.start_time, body.end_time)) \
+        if changed else []
     db.commit()
     db.refresh(evt)
     background.add_task(approval_notices.send, notices)

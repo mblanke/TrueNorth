@@ -81,6 +81,9 @@ def notify(
     if not people:
         return []
     title, message = _what(decision, evt, reason, proposed)
+    from ..classes.service import _subject_safe
+
+    title = _subject_safe(title)  # a booking's name goes into an email subject: no line breaks
     me = uuid.UUID(str(actor.id))
     inbox.notify(db, tenant_id=evt.tenant_id, user_ids=[u.id for u in people], actor_id=me, title=title,
                  message=message, link=LINK, kind=f"booking_{decision}")

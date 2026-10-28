@@ -111,6 +111,10 @@ class EventOut(BaseModel):
     can_move: bool = Field(
         False, description="can_change, and it is in a state that moves (draft, awaiting approval, scheduled)"
     )
+    can_wind_down: bool = Field(
+        False, description="The caller may cancel or complete it: can_change, or a session left under way when "
+        "its class was cancelled"
+    )
     can_accept: bool = Field(False, description="can_change, and an approver proposed another time to accept")
     can_decline: bool = Field(False, description="can_change, and an approver proposed another time to decline")
 

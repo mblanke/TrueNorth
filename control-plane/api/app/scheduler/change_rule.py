@@ -28,6 +28,7 @@ S = EventState
 # What "Move or resize" applies to (router.update_event).
 MOVABLE = (S.draft, S.scheduled, S.pending_approval)
 LEAD_ROLES = (UserRole.instructor, UserRole.admin)
+S_FINISHED = (S.completed, S.cancelled, S.rejected)  # nothing left to cancel or complete
 
 
 def _edits_class(cls, user: CurrentUser) -> bool:
@@ -57,12 +58,17 @@ def refusal(evt: ScheduledEvent, user: CurrentUser, cls, *, winding_down: bool =
 def flags(evt: ScheduledEvent, user: CurrentUser | None, cls, approval) -> dict:
     """``can_change``, ``can_move``, ``can_accept``, ``can_decline`` for ``user`` (all False
     without one, or without ``schedule:write``)."""
-    none = {"can_change": False, "can_move": False, "can_accept": False, "can_decline": False}
+    none = {"can_change": False, "can_move": False, "can_accept": False, "can_decline": False,
+            "can_wind_down": False}
     if user is None or not user_has_permission(user, Permission.SCHEDULE_WRITE):
         return none
+    # Cancel and Complete have their own, wider rule: a cancelled class leaves a session under
+    # way to its lead (``_changeable(winding_down=True)``), though nothing else about it changes.
+    wind = refusal(evt, user, cls, winding_down=True) is None and evt.state not in S_FINISHED
     if refusal(evt, user, cls) is not None:
-        return none
+        return {**none, "can_wind_down": wind}
     proposal = (
         evt.state == S.pending_approval and approval is not None and approval.proposed_start is not None
     )
-    return {"can_change": True, "can_move": evt.state in MOVABLE, "can_accept": proposal, "can_decline": proposal}
+    return {"can_change": True, "can_move": evt.state in MOVABLE, "can_accept": proposal, "can_decline": proposal,
+            "can_wind_down": wind}

@@ -174,8 +174,17 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
    and propose in the app, and by email when email is configured. Only an admin approves
    Request access (§5): instructors no longer hold `registration:read` or
    `registration:approve`; roll-call admission (§1) still runs with the lead as approver.
-   `EventOut` carries `can_change`, `can_move`, `can_accept` and `can_decline` for the caller,
-   from the server's own rule (`scheduler/change_rule.py`), so the pages never reimplement it.
+   `EventOut` carries `can_change`, `can_move`, `can_accept`, `can_decline` and `can_wind_down`
+   for the caller, from the server's own rule (`scheduler/change_rule.py`), so the pages never
+   reimplement it. `can_wind_down` (Cancel, Complete) is wider than `can_change`: a cancelled
+   class leaves a session under way to its lead.
+
+   A Student who cannot be notified keeps their seat until a lead removes them: email off, a
+   refused send, the daily limit, or an entry from before this rule (migration `7c4d2e9a1b60`
+   backfills `notified_at` from `reminded_at` where a reminder was sent; nothing recorded
+   whether older onboarding emails went out). Adding a Student again after a removal starts a
+   new stint: the old notice is cleared, they are emailed again, and only a notice in the new
+   stint can cost the seat.
 4. **Booking approval** (#281, built):
    - approve, reject, or propose a time;
    - nothing is sent or held before approval;

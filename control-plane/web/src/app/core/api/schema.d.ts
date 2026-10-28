@@ -13500,6 +13500,12 @@ export interface components {
              * @default false
              */
             can_move?: boolean;
+            /**
+             * Can Wind Down
+             * @description The caller may cancel or complete it: can_change, or a session left under way when its class was cancelled
+             * @default false
+             */
+            can_wind_down?: boolean;
             /** Class Id */
             class_id?: string | null;
             /** Course Id */

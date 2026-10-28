@@ -477,3 +477,83 @@ def test_a_plain_booking_is_its_instructors(client, db_session, world):
     assert _listed(client, world["assistant"])[ev["id"]]["can_move"] is True
     assert _listed(client, world["lead"])[ev["id"]]["can_move"] is False
     assert _listed(client, world["admin"])[ev["id"]]["can_move"] is True
+
+
+# ── Review of #326: a re-added Student, winding down, notice subjects ────────
+
+
+def test_a_readded_student_is_notified_afresh_and_only_forfeits_if_told_in_this_stint(
+    client, db_session, world, smtp_on
+):
+    _add(client, world, ["newbie@corp.test"])
+    first = _entry(db_session, "newbie@corp.test")
+    assert first.notified_at is not None
+    act_as(world["lead"])
+    assert client.delete(f"/classes/{world['class']['id']}/roll-call/{first.id}").status_code == 204
+
+    smtp_on.ok = False  # the second stint's email is refused
+    smtp_on.sent.clear()
+    _add(client, world, ["newbie@corp.test"])
+    again = _entry(db_session, "newbie@corp.test")
+    assert [m["to"] for m in smtp_on.plain()] == ["newbie@corp.test"]  # emailed again, not skipped
+    assert (again.notified_at, again.in_app_notified_at) == (None, None)  # the old stint's proof is gone
+    _book(client, world)
+    assert forfeit.tick(db_session, now=DUE + SECOND).forfeited == []
+
+    smtp_on.ok = True  # and a delivered one in this stint counts
+    mails = reminder_clock.tick(db_session, now=DAY - timedelta(hours=12))
+    asyncio.run(class_service.deliver(mails, db_session.get_bind()))
+    assert len(forfeit.tick(db_session, now=DUE + SECOND).forfeited) == 1
+
+
+def test_can_wind_down_is_separate_from_can_change(client, db_session, world):
+    from app.scheduler.models import EventState, ScheduledEvent
+
+    ev = _book(client, world)
+    row = db_session.get(ScheduledEvent, uuid.UUID(ev["id"]))
+    row.state = EventState.active
+    db_session.commit()
+    act_as(world["lead"])
+    assert client.delete(f"/classes/{world['class']['id']}").status_code == 204  # the session is left under way
+    flags = _listed(client, world["lead"])[ev["id"]]
+    assert (flags["can_change"], flags["can_move"], flags["can_wind_down"]) == (False, False, True)
+    assert _listed(client, world["admin"])[ev["id"]]["can_wind_down"] is True
+    assert _listed(client, world["assistant"])[ev["id"]]["can_wind_down"] is False
+    act_as(world["lead"])
+    assert client.post(f"/schedule/events/{ev['id']}/complete").status_code == 200  # as the flag says
+
+
+def test_a_closed_class_session_cannot_wind_down(client, db_session, world):
+    from app.classes.models import Class
+
+    ev = _book(client, world)
+    db_session.get(Class, uuid.UUID(world["class"]["id"])).status = "closed"
+    db_session.commit()
+    assert _listed(client, world["lead"])[ev["id"]]["can_wind_down"] is False
+
+
+def test_approval_notice_subjects_carry_no_line_breaks(client, db_session, world, smtp_on):
+    from app.scheduler import approval_notices
+    from app.scheduler.models import ScheduledEvent
+
+    ev = _book(client, world, approve=False)
+    row = db_session.get(ScheduledEvent, uuid.UUID(ev["id"]))
+    row.name = "Lab\r\nBcc: evil@corp.test"
+    notices = approval_notices.notify(db_session, row, world["admin"], "approved")
+    assert notices
+    for n in notices:
+        assert "\r" not in n.subject and "\n" not in n.subject
+
+
+def test_proposing_the_same_time_again_notifies_once(client, db_session, world, smtp_on):
+    ev = _book(client, world, approve=False)
+    act_as(world["admin"])
+    later = NINE + timedelta(days=3)
+    body = {"start_time": later.isoformat(), "end_time": (later + timedelta(hours=3)).isoformat()}
+    assert client.post(f"/schedule/events/{ev['id']}/propose", json=body).status_code == 200
+    assert client.post(f"/schedule/events/{ev['id']}/propose", json=body).status_code == 200
+    assert len([n for n in _notes(db_session, world["lead"]) if "proposed" in n.title.lower()]) == 1
+    other = later + timedelta(days=1)
+    body = {"start_time": other.isoformat(), "end_time": (other + timedelta(hours=3)).isoformat()}
+    assert client.post(f"/schedule/events/{ev['id']}/propose", json=body).status_code == 200
+    assert len([n for n in _notes(db_session, world["lead"]) if "proposed" in n.title.lower()]) == 2

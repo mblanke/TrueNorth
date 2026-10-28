@@ -55,7 +55,8 @@ describe('ScheduleComponent', () => {
       if (b.can_change !== undefined) return b;
       const may = role === 'admin' || (role === 'instructor' && (!b.instructor_id || b.instructor_id === id));
       const proposal = may && b.state === 'pending_approval' && !!b.approval?.proposed_start_time;
-      return { ...b, can_change: may, can_move: may && ['draft', 'scheduled', 'pending_approval'].includes(b.state),
+      return { ...b, can_change: may, can_wind_down: may && !['completed', 'cancelled', 'rejected'].includes(b.state),
+               can_move: may && ['draft', 'scheduled', 'pending_approval'].includes(b.state),
                can_accept: proposal, can_decline: proposal };
     });
     scheduler.list.and.returnValue(of({ items, total: items.length }));
@@ -384,6 +385,23 @@ describe('ScheduleComponent', () => {
     expect(button('Accept')).toBeUndefined();
     expect(button('Decline')).toBeUndefined();
     expect(button('Move or resize')).toBeUndefined();
+  });
+
+  it('#319: Cancel follows can_wind_down, not can_change (a session left under way by a cancelled class)', () => {
+    as('instructor', 'me', [booking({
+      id: 'w', name: 'Live lab', state: 'active', instructor_id: 'me', class_id: 'cls1',
+      can_change: false, can_move: false, can_accept: false, can_decline: false, can_wind_down: true,
+    } as any), booking({
+      id: 'v', name: 'Not mine', state: 'active', instructor_id: 'me', class_id: 'cls2',
+      can_change: false, can_move: false, can_accept: false, can_decline: false, can_wind_down: false,
+    } as any)]);
+    component.select(component.bookings()[0]);
+    fixture.detectChanges();
+    expect(button('Cancel booking')).toBeTruthy();
+    expect(button('Move or resize')).toBeUndefined();
+    component.select(component.bookings()[1]);
+    fixture.detectChanges();
+    expect(button('Cancel booking')).toBeUndefined();
   });
 
   it('#319: labels a class session with its class and says the roll call is reminded too', () => {
