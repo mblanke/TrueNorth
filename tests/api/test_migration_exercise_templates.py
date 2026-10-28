@@ -18,7 +18,7 @@ import pytest
 import sqlalchemy as sa
 
 API = Path(__file__).resolve().parents[2] / "control-plane" / "api"
-PARENT, REVISION = "7c1d2e9f4a60", "9d4e7a2b5c18"
+PARENT, REVISION = "7c4d2e9a1b60", "9d4e7a2b5c18"
 TABLES = {"exercise_templates", "exercise_template_uses"}
 
 

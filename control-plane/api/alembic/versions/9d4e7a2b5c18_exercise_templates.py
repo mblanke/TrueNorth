@@ -1,7 +1,7 @@
 """exercise templates: the reusable exercise, and which exercises came from which
 
 Revision ID: 9d4e7a2b5c18
-Revises: 7c1d2e9f4a60
+Revises: 7c4d2e9a1b60
 Create Date: 2026-10-28 09:00:00.000000
 
 ADR 0017 (``app/exercise_templates``): an exercise template holds what is reusable about an
@@ -24,7 +24,7 @@ from alembic import op
 from app.models import GUID
 
 revision: str = "9d4e7a2b5c18"
-down_revision: str | None = "7c1d2e9f4a60"
+down_revision: str | None = "7c4d2e9a1b60"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
