@@ -9,6 +9,7 @@ difficulty: beginner
 duration_hours: 100
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 source:
@@ -30,57 +31,87 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Map protocols to layers of the OSI and TCP/IP models.
-  - Perform IPv4 subnetting and explain IPv6 address structure.
-  - Explain encapsulation as data traverses the stack.
+  - Map each protocol in a short traffic list to its layer of the OSI and TCP/IP models
+  - Compute IPv4 subnets that meet stated host counts and record each network and broadcast address
+  - Identify the header each layer adds as a packet crosses two routers between hosts
   topics:
-  - OSI seven layers and the TCP/IP model.
-  - IPv4 addressing, CIDR and subnet masks.
-  - IPv6 addressing and link-local scope.
-  - Encapsulation, headers and MTU.
-  lab: 'Lab: Given a /24 network and four host-count requirements, produce a subnet plan with network,
-    broadcast and usable ranges, then verify it by configuring interfaces in a lab topology.'
+  - The OSI seven layers and the TCP/IP model, and how the two maps line up.
+  - IPv4 addressing, CIDR notation and subnet masks.
+  - Planning subnets with network, broadcast and usable host ranges.
+  - IPv6 addressing, link-local scope and abbreviation rules.
+  - Encapsulation, headers, maximum transmission unit and fragmentation.
+  lab: >-
+    Lab: On the small-enterprise range, record how its three networks are addressed and judge whether the
+    /24 mask each network uses fits the hosts it actually holds. Evidence: the address, mask and default
+    gateway of jump-box; the address of dc-01 and of two workstations; the result of one ping to an unused
+    address in the management network; one proposed mask per network with a reason. Pass: all addresses
+    recorded exactly as the range shows them; each proposed mask marked "fits" or "wastes addresses" with
+    a one-sentence reason; the unused-address ping result recorded as it appeared.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and write the start time in the lab notes.
+    - hosts: [jump-box]
+      action: Show the network interfaces on jump-box and record its IPv4 address, subnet mask and default
+        gateway.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, ping dc-01 once and record the address that answered, then ping one unused
+        address in the management network, for example 10.0.1.99, and record what came back.
+    - hosts: [jump-box, ws-01, ws-02]
+      action: From jump-box, find the addresses of ws-01 and ws-02 and record which of the three networks
+        each host belongs to.
+    - hosts: [jump-box]
+      action: Count the hosts each network actually holds, judge the /24 mask each uses, and propose one
+        mask per network with a one-sentence reason.
   refs:
-  - nist-sp-800-41r1
+  - nist-sp-800-183
+  source_gaps:
+  - A dedicated IPv4 addressing and subnetting reference is not in the reference library.
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: At which OSI layer does a router primarily operate?
+    - question: A technician must pick one subnet mask for a floor with 40 workstations, 4 printers and 2
+        spare addresses. Which mask is the smallest that fits all of them?
       options:
-      - A) Layer 2
-      - B) Layer 3
-      - C) Layer 4
-      - D) Layer 7
+      - A) 255.255.255.240
+      - B) 255.255.255.192
+      - C) 255.255.255.248
+      - D) 255.255.255.252
       answer: B
-    - question: How many usable host addresses are in a /26 IPv4 subnet?
+    - question: A capture tool shows an Ethernet header wrapping an IP header, which wraps a TCP header,
+        which wraps the application data. Which process does this capture show?
       options:
-      - A) 30
-      - B) 62
-      - C) 126
-      - D) 254
+      - A) Fragmentation
+      - B) Encapsulation
+      - C) Name resolution
+      - D) Address translation
       answer: B
-    - question: 'Encapsulation refers to:'
+    - question: Two computers on one switch exchange files although neither has a global address configured.
+        Which IPv6 address type makes this possible?
       options:
-      - A) Encrypting a payload
-      - B) Wrapping data with headers as it moves down the stack
-      - C) Compressing frames
-      - D) Fragmenting a datagram
-      answer: B
-    - question: 'An IPv6 link-local address begins with:'
+      - A) Global unicast
+      - B) Multicast
+      - C) Link-local
+      - D) Loopback
+      answer: C
+    - question: A Student chooses a /29 subnet for a small group of devices and must state how many usable
+        host addresses it holds. What is the correct count?
       options:
-      - A) 2001::/16
-      - B) fe80::/10
-      - C) ::1/128
-      - D) fc00::/7
-      answer: B
-    - question: 'The MTU of a link determines:'
-      options:
-      - A) The maximum frame payload size
-      - B) The link speed
-      - C) The number of hops permitted
-      - D) The routing metric
+      - A) 6
+      - B) 8
+      - C) 14
+      - D) 30
       answer: A
+    - question: A diagram shows the seven layers, and an instructor asks at which layer a switch that
+        forwards by hardware address operates. Which layer is it?
+      options:
+      - A) Network
+      - B) Transport
+      - C) Session
+      - D) Data link
+      answer: D
 - ordinal: 2
   title: Switching and the Link Layer
   content_type: reading
@@ -88,57 +119,93 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain MAC learning and frame forwarding in a switch.
-  - Describe VLAN segmentation and trunking.
-  - Identify common link-layer attacks and their mitigations.
+  - Trace how a switch learns source addresses and forwards one frame between two workstations
+  - Classify which host pairs the range's VLAN segmentation separates and which it lets through
+  - Identify the evidence of ARP spoofing in a cached address table and select one mitigation
   topics:
-  - MAC address tables and broadcast domains.
-  - VLANs, tagging and trunk ports.
-  - ARP operation and ARP spoofing.
-  - Spanning tree and loop prevention.
-  lab: 'Lab: Build a two-VLAN switched topology, prove that hosts in different VLANs cannot reach each
-    other without a router, then demonstrate and mitigate an ARP spoofing attack.'
+  - MAC address tables, learning and forwarding decisions.
+  - Broadcast domains and how VLANs bound them.
+  - VLAN tagging on trunk links between switches and the firewall.
+  - ARP operation, cached entries and ARP spoofing.
+  - Spanning Tree Protocol and loop prevention.
+  lab: >-
+    Lab: On the small-enterprise range, find which hosts share a broadcast domain and which pairs the
+    VLAN layout separates, then judge one change that would separate them further. Evidence: each
+    address-to-hardware-address pair in the cached table on jump-box and in the address resolution table
+    on fw-01, each with the interface it belongs to, after pinging two workstations; the hop counts of
+    one path trace to dc-01 and one to ws-02; the pairs of VLANs the firewall connects. Pass: every
+    cached pair recorded as the range shows it; each host pair marked "same broadcast domain" or
+    "separated" with the table and trace evidence cited; one further separation change proposed with a
+    reason.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and write the start time in the lab notes.
+    - hosts: [jump-box, ws-01, ws-02]
+      action: From jump-box, ping ws-01 once and ws-02 once, then display the cached address table on
+        jump-box and record every address-to-hardware-address pair in it.
+    - hosts: [jump-box, fw-01]
+      action: Using the firewall configuration interface the instructor supplies, display the address
+        resolution table on fw-01 and record every address-to-hardware-address pair with the interface
+        it belongs to.
+    - hosts: [fw-01]
+      action: On the same interface, list the VLANs fw-01 routes between and record which pairs it
+        connects.
+    - hosts: [jump-box, ws-02]
+      action: From jump-box, run one path trace to ws-02 and one to dc-01, and record the devices at each
+        hop in order.
+    - hosts: [jump-box]
+      action: Mark each tested host pair "same broadcast domain" or "separated", citing the cached tables
+        and the trace evidence, and propose one further separation change with a reason.
   refs:
-  - nist-sp-800-41r1
+  - nist-sp-800-183
+  source_gaps:
+  - An Ethernet switching and VLAN reference is not in the reference library.
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'A switch builds its MAC address table by learning from:'
+    - question: A switch receives a frame addressed to a hardware address it has never learned. What does
+        the switch do with that frame?
       options:
-      - A) Destination addresses of received frames
-      - B) Source addresses of received frames
-      - C) Routing advertisements
-      - D) DHCP leases
+      - A) Drops it and logs an error
+      - B) Floods it out every other port
+      - C) Sends it to the default gateway
+      - D) Returns it to the sender
       answer: B
-    - question: 'VLANs primarily provide:'
+    - question: One trunk cable carries frames for two networks into a firewall. What lets the receiving
+        device tell the two networks' frames apart?
       options:
-      - A) Encryption of frames
-      - B) Segmentation into separate broadcast domains
-      - C) Increased link speed
-      - D) Redundant power
-      answer: B
-    - question: 'ARP spoofing succeeds because ARP:'
-      options:
-      - A) Is encrypted but weakly
-      - B) Has no authentication of replies
-      - C) Requires a trusted server
-      - D) Operates at layer 4
-      answer: B
-    - question: 'Spanning Tree Protocol exists to prevent:'
-      options:
-      - A) IP address conflicts
-      - B) Layer 2 forwarding loops
-      - C) Routing loops
-      - D) DNS poisoning
-      answer: B
-    - question: 'Traffic between two VLANs requires:'
-      options:
-      - A) A layer 3 device to route between them
-      - B) A crossover cable
-      - C) A shared broadcast domain
-      - D) Identical subnet masks
+      - A) A VLAN tag inside each frame
+      - B) A different source port per network
+      - C) Separate IP subnets alone
+      - D) A different cable colour
       answer: A
+    - question: A Student compares two cached address tables taken a minute apart, and the gateway entry
+        now shows a workstation's hardware address. What does this difference most suggest?
+      options:
+      - A) A normal lease renewal
+      - B) ARP spoofing
+      - C) A spanning-tree recalculation
+      - D) A duplicate name lookup
+      answer: B
+    - question: Two workstations in different broadcast domains must exchange packets. Which device does
+        the traffic pass through?
+      options:
+      - A) A layer 3 device that routes
+      - B) Either switch on its own
+      - C) Both hosts' hubs in turn
+      - D) No device at all
+      answer: A
+    - question: A cable is accidentally plugged between two switches, frames begin repeating forever, and
+        the network slows to a stop. Which protocol is designed to stop this?
+      options:
+      - A) ARP
+      - B) DHCP
+      - C) Spanning Tree Protocol
+      - D) DNS
+      answer: C
 - ordinal: 3
   title: Routing and the Network Layer
   content_type: reading
@@ -146,57 +213,90 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain how routing decisions are made from a routing table.
-  - Distinguish static routing from dynamic routing protocols.
-  - Describe network address translation and its operational effects.
+  - Read a routing table and select the route a packet to a given destination will take
+  - Trace the path between two hosts on the range and attribute each hop to a device
+  - Predict how network address translation changes the addresses a destination server observes
   topics:
   - Longest-prefix match and route selection.
-  - Interior and exterior gateway protocols.
-  - NAT, PAT and address conservation.
-  - ICMP and path troubleshooting.
-  lab: 'Lab: Configure static routes between three subnets in a lab topology, verify connectivity with
-    traceroute, then deliberately break one route and diagnose the failure from the routing table.'
+  - Static routes and dynamic routing protocols.
+  - Network address translation and port address translation.
+  - The default route as the route of last resort.
+  - Path tracing and the diagnostic use of time-to-live.
+  lab: >-
+    Lab: On the small-enterprise range, record which route jump-box uses toward each network, trace the
+    paths to two hosts and one blocked destination, and judge which device every cross-network path
+    shares. Evidence: the route jump-box selects toward each of the three networks the range defines; the
+    hops of a path trace to dc-01 and to ws-02; where a trace to a destination outside the range stops.
+    Pass: each route recorded as the table shows it; each traced hop attributed to the device it belongs
+    to; the shared device named with a one-sentence reason for why that design simplifies troubleshooting.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and write the start time in the lab notes.
+    - hosts: [jump-box]
+      action: Display the routing table on jump-box and record the route it selects for each of the three
+        networks the range defines.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, trace the path to dc-01 and record every hop in order with the device it
+        belongs to.
+    - hosts: [jump-box, ws-01]
+      action: From jump-box, trace the path to ws-01 and record how that path differs from the trace to
+        dc-01.
+    - hosts: [jump-box]
+      action: From jump-box, trace the path to a destination outside the range that the firewall does not
+        forward, and record where the path stops.
+    - hosts: [jump-box]
+      action: Name the device every cross-network path shares and state one reason that design simplifies
+        troubleshooting.
   refs:
-  - nist-sp-800-41r1
+  - nist-sp-800-183
+  source_gaps:
+  - An IP routing reference is not in the reference library.
   quiz:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'When multiple routes match a destination, a router selects the one with the:'
+    - question: A routing table holds one route for 10.0.2.0/24 via an interface and one for 10.0.0.0/8 via
+        another. Which route carries a packet addressed to 10.0.2.10?
       options:
-      - A) Lowest metric regardless of prefix
-      - B) Longest matching prefix
-      - C) Oldest entry
-      - D) Shortest interface name
+      - A) The /8 route
+      - B) The /24 route
+      - C) Both routes in turn
+      - D) Neither; it is dropped
       answer: B
-    - question: 'BGP is best described as:'
+    - question: An administrator types one route in by hand so a newly added subnet is reachable, and no
+        routing protocol advertises it. Which kind of route is this?
       options:
-      - A) An interior gateway protocol
-      - B) The exterior gateway protocol of the internet
-      - C) A link-layer protocol
-      - D) A tunnelling protocol
-      answer: B
-    - question: 'Port Address Translation allows many internal hosts to share one public address by:'
+      - A) Dynamic
+      - B) Default
+      - C) Static
+      - D) Broadcast
+      answer: C
+    - question: Several internal hosts open web connections at once, and the far server sees every
+        connection from one public address. Which feature makes this possible?
       options:
-      - A) Assigning each a unique VLAN
-      - B) Multiplexing on source port numbers
-      - C) Compressing headers
-      - D) Using IPv6 only
-      answer: B
-    - question: A traceroute works by manipulating which IP header field?
+      - A) Port address translation
+      - B) A dynamic routing protocol
+      - C) A VLAN tag
+      - D) A name lookup
+      answer: A
+    - question: A path trace prints one new device per line as it climbs toward the destination. Which
+        header field makes each router along the way reveal itself?
       options:
-      - A) TOS
+      - A) Header checksum
       - B) Time to live
-      - C) Identification
-      - D) Flags
+      - C) Source port
+      - D) Sequence number
       answer: B
-    - question: 'A default route is expressed as:'
+    - question: A router has no specific route for a destination but must still forward the packet. Which
+        table entry decides where the packet goes?
       options:
-      - A) 127.0.0.1/8
-      - B) 0.0.0.0/0
-      - C) 255.255.255.255/32
-      - D) 169.254.0.0/16
-      answer: B
+      - A) The longest matching prefix
+      - B) The newest table entry
+      - C) The broadcast address
+      - D) The default route
+      answer: D
 - ordinal: 4
   title: Transport Layer and Core Services
   content_type: reading
@@ -204,57 +304,88 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Compare TCP and UDP and select appropriately for a use case.
-  - Explain the TCP handshake, state machine and teardown.
-  - Describe how DNS and DHCP support normal network operation.
+  - Select TCP or UDP for a stated application need and justify the choice in one sentence
+  - Sequence the packets of a TCP connection from handshake through teardown
+  - Trace a name lookup through the resolver and identify each answer the server returns
   topics:
-  - TCP three-way handshake and sequence numbers.
-  - UDP characteristics and use cases.
-  - DNS resolution flow and record types.
-  - DHCP lease process.
-  lab: 'Lab: Capture a TCP session and a DNS lookup in Wireshark, annotate each handshake packet and each
-    DNS message, and identify the resolver used.'
+  - The TCP three-way handshake, sequence numbers and connection state.
+  - TCP teardown and the meaning of a reset segment.
+  - UDP headers, use cases and tolerance of loss.
+  - Domain name system (DNS) resolution and record types.
+  - Dynamic Host Configuration Protocol (DHCP) leases and address assignment.
+  lab: >-
+    Lab: On the small-enterprise range, capture one name-lookup conversation against dc-01 and the
+    handshake of a second management session, then judge which of the two used reliability features the
+    other lacked. Evidence: the query and response messages of one name lookup against dc-01; the three
+    handshake packets of the second SSH session in order with their flags; the response code returned for
+    a name that does not exist. Pass: each captured message recorded with its direction and flags; the
+    handshake packets listed in order; the reliability difference stated in one sentence with the
+    captured evidence cited.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and write the start time in the lab notes.
+    - hosts: [jump-box, dc-01]
+      action: On jump-box, start a packet capture, look up one name against dc-01, and record the query
+        and response messages.
+    - hosts: [jump-box]
+      action: Open a second SSH session to jump-box while the capture runs, then read the captured
+        opening of that session and record the three handshake packets in order with their flags.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, look up a name that does not exist against dc-01 and record the response code
+        the server returns.
+    - hosts: [jump-box]
+      action: Stop the capture, then state in one sentence which conversation used reliability features
+        the other lacked, citing the captured evidence.
   refs:
-  - nist-sp-800-41r1
+  - rfc-8446
+  source_gaps:
+  - A reference on TCP, DNS and DHCP is not in the reference library.
   quiz:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'The TCP three-way handshake consists of:'
+    - question: A voice call application tolerates one lost packet but not a delayed one, and wants the
+        smallest header it can get. Which transport fits best?
       options:
-      - A) SYN, ACK, FIN
-      - B) SYN, SYN-ACK, ACK
-      - C) ACK, SYN, RST
-      - D) SYN, PSH, ACK
+      - A) TCP
+      - B) UDP
+      - C) ICMP
+      - D) ARP
       answer: B
-    - question: 'UDP is preferred over TCP when the application needs:'
+    - question: A capture shows SYN, then SYN-ACK, then ACK, and only after that does data begin to move.
+        What has just finished?
       options:
-      - A) Guaranteed delivery
-      - B) Low overhead and tolerance of loss
-      - C) Ordered byte streams
-      - D) Congestion control
+      - A) A name lookup
+      - B) A lease renewal
+      - C) The TCP three-way handshake
+      - D) A certificate exchange
+      answer: C
+    - question: An application has finished sending and both sides agree to close the connection cleanly.
+        Which exchange ends a TCP connection that way?
+      options:
+      - A) A reset from both sides
+      - B) FIN and ACK in both directions
+      - C) A new SYN then a reset
+      - D) An unreachable message
       answer: B
-    - question: 'A DNS A record maps:'
+    - question: A new workstation joins the user network and receives an address, a mask and a default
+        gateway without anyone typing them in. Which service supplied them?
       options:
-      - A) A name to an IPv6 address
-      - B) A name to an IPv4 address
-      - C) A name to a mail server
-      - D) An address to a name
-      answer: B
-    - question: The DHCP lease process follows which sequence?
-      options:
-      - A) Discover, Offer, Request, Acknowledge
-      - B) Request, Offer, Discover, Acknowledge
-      - C) Offer, Discover, Acknowledge, Request
-      - D) Discover, Request, Offer, Acknowledge
+      - A) DHCP
+      - B) DNS
+      - C) NTP
+      - D) SMB
       answer: A
-    - question: 'A TCP RST packet indicates:'
+    - question: A Student looks up a company's mail service and the answer names the server that accepts
+        its mail. Which record type returned that answer?
       options:
-      - A) Graceful connection close
-      - B) Abrupt connection reset
-      - C) Window size update
-      - D) Successful handshake
-      answer: B
+      - A) A
+      - B) CNAME
+      - C) MX
+      - D) PTR
+      answer: C
 - ordinal: 5
   title: Network Security Controls
   content_type: reading
@@ -262,16 +393,42 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain stateless versus stateful packet filtering.
-  - Design a firewall ruleset following default-deny.
-  - Describe where intrusion detection fits in a network architecture.
+  - Distinguish stateful from stateless filtering using a described return-traffic case
+  - Order a default-deny rule set so each specific allow precedes the final block
+  - Select the control placement that blocks or detects one described cross-network flow
   topics:
-  - Packet filters, stateful inspection and proxies.
-  - Default-deny rule design and rule ordering.
-  - Network segmentation and DMZ placement.
-  - IDS and IPS deployment models.
-  lab: 'Lab: Write a default-deny firewall ruleset permitting only required services for a small network,
-    test it with a port scan, and document any rule that had to be widened and why.'
+  - Stateless packet filters, stateful inspection and proxies.
+  - Default-deny rule design and ordering by specificity.
+  - Network segmentation and where a screened subnet belongs.
+  - Intrusion detection systems and intrusion prevention systems, and where each sits.
+  lab: >-
+    Lab: On the small-enterprise range, read the fw-01 rule set in order, test one connection the rules
+    allow and one they do not, and mark each result against the rule that decided it. Evidence: each
+    fw-01 rule in order with its source, destination and ports; the result of one user-network connection
+    to dc-01 that the rule set names; the result of one connection it does not name. Pass: every rule
+    recorded as the interface shows it; each tested connection marked "allowed by a rule" or "blocked by
+    the default" with the rule named; one proposed rule for a newly added internal update server placed
+    correctly in the order.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and write the start time in the lab notes.
+    - hosts: [jump-box, fw-01]
+      action: Using the firewall configuration interface the instructor supplies, list the rules on fw-01
+        in order and record each rule's source, destination and ports.
+    - hosts: [ws-01, dc-01]
+      action: From ws-01, signed in as the standard user account the instructor assigned, test one
+        service the rule set names, such as a name lookup against dc-01, and record the result.
+    - hosts: [ws-01, dc-01]
+      action: From ws-01, test one service the rule set does not name on dc-01 and record what the
+        connection does.
+    - hosts: [jump-box]
+      action: Compare the two results with the rules recorded earlier and mark each tested connection
+        "allowed by a rule" or "blocked by the default", naming the rule that decided it.
+    - hosts: [jump-box]
+      action: Propose the one rule the range would need for a newly added internal update server and state
+        where in the order it belongs.
   refs:
   - nist-sp-800-41r1
   - nist-sp-800-94
@@ -279,41 +436,46 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'A stateful firewall differs from a stateless packet filter because it:'
+    - question: A firewall passes the first packet of a login session, and the reply comes back although
+        no rule names replies. Which behaviour explains this?
       options:
-      - A) Inspects application payloads
-      - B) Tracks connection state to permit return traffic
-      - C) Operates only at layer 2
-      - D) Requires no rules
+      - A) Stateless filtering
+      - B) Connection tracking
+      - C) Address translation
+      - D) Signature matching
       answer: B
-    - question: 'A default-deny policy means:'
+    - question: A rule set ends with an allow-any rule placed after four specific blocks. Which design
+        principle does that final rule abandon?
       options:
-      - A) All traffic is permitted unless explicitly blocked
-      - B) All traffic is blocked unless explicitly permitted
-      - C) Only ICMP is blocked
-      - D) Rules are evaluated in reverse
-      answer: B
-    - question: 'An IPS differs from an IDS because an IPS:'
+      - A) Default-deny
+      - B) Least bandwidth
+      - C) Stateful inspection
+      - D) Load balancing
+      answer: A
+    - question: A team wants a device that raises an alert on suspicious file transfers but never drops
+        them itself. Which deployment fits that need?
       options:
-      - A) Only logs events
-      - B) Sits inline and can block traffic
-      - C) Runs only on endpoints
-      - D) Requires no signatures
+      - A) An inline prevention device
+      - B) A detection sensor beside the path
+      - C) A screened subnet
+      - D) A proxy requiring sign-in
       answer: B
-    - question: 'A DMZ is used to host:'
+    - question: An organisation hosts a public web server that internal users also reach. Where should
+        that server sit so a compromise reaches the fewest other hosts?
       options:
-      - A) Internal domain controllers
-      - B) Services reachable from untrusted networks, isolated from the internal network
-      - C) Backup tapes
-      - D) Administrative workstations
-      answer: B
-    - question: 'Firewall rule order matters because most engines:'
+      - A) The user network
+      - B) The management network
+      - C) A screened subnet of its own
+      - D) The same segment as the file store
+      answer: C
+    - question: A packet matches two rules, a specific allow at line 2 and a broad allow at line 7. Which
+        rule does a first-match engine apply?
       options:
-      - A) Evaluate all rules and take the most specific
-      - B) Apply the first matching rule
-      - C) Apply the last matching rule
-      - D) Randomise evaluation
-      answer: B
+      - A) The broad rule, because it was written later
+      - B) Both rules, one after the other
+      - C) The specific allow at line 2
+      - D) Neither; the packet is dropped
+      answer: C
 - ordinal: 6
   title: Network Traffic Analysis
   content_type: reading
@@ -321,16 +483,38 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Capture traffic appropriately for a given investigative question.
-  - Apply display and capture filters to isolate relevant flows.
-  - Recognise indicators of suspicious network behaviour.
+  - Choose the capture point and filter that answer a stated investigative question
+  - Separate capture filters from display filters in a described analysis task
+  - Classify captured patterns as name lookups, management sessions or periodic polls with cited evidence
   topics:
-  - Capture points, SPAN ports and taps.
-  - Capture versus display filters.
-  - Flow records versus full packet capture.
-  - Beaconing, exfiltration and scanning patterns.
-  lab: 'Lab: Analyse a provided packet capture to identify a periodic beaconing pattern, determine the
-    interval and destination, and write a short finding with the supporting evidence.'
+  - Choosing where to capture, with a mirrored port on a switch, a tap and an inline sensor.
+  - Capture filters that keep traffic versus display filters that view it.
+  - Flow records and what they omit beside a full packet capture.
+  - Beaconing, scanning and bulk transfer patterns in a capture.
+  lab: >-
+    Lab: On the small-enterprise range, capture traffic on jump-box toward dc-01, repeat the capture
+    against a workstation at a fixed interval, and classify each captured pattern from the packets alone.
+    Evidence: the filter used for each capture; the packet counts and ports of the name-lookup
+    conversation with dc-01; the interval between the two pairs of packets sent to ws-01. Pass: each
+    filter recorded as typed; both packet counts recorded with their directions; each captured pattern
+    classified with the packet evidence cited for the label.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open two terminals and write the start time in the lab notes.
+    - hosts: [jump-box, dc-01]
+      action: In the first terminal, start a capture on jump-box that keeps only traffic to dc-01, and
+        record the filter exactly as typed.
+    - hosts: [jump-box, dc-01]
+      action: In the second terminal, look up two names against dc-01, stop the capture after both answers
+        arrive, and record the packet counts in each direction with the ports used.
+    - hosts: [jump-box, ws-01]
+      action: Start a second capture, send two pings to ws-01 about ten seconds apart, stop the capture
+        and record the interval between the two pairs of packets.
+    - hosts: [jump-box]
+      action: Classify each captured pattern as a name lookup, a management session or a periodic poll,
+        and cite the packet evidence for each label.
   refs:
   - nist-sp-800-94
   - sigma
@@ -338,41 +522,46 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'A network tap is generally preferred over a SPAN port for forensic capture because it:'
+    - question: An analyst needs every packet between two hosts and cannot afford dropped frames on a
+        busy switch. Which capture point fits best?
       options:
-      - A) Is cheaper
-      - B) Does not drop frames under load
-      - C) Decrypts TLS
-      - D) Requires no cabling
-      answer: B
-    - question: 'Regular, fixed-interval outbound connections to one host most likely indicate:'
+      - A) A dedicated tap
+      - B) A shared mirrored port
+      - C) The host's own event log
+      - D) A wireless survey
+      answer: A
+    - question: An investigation must keep a whole day of traffic on disk but view only one conversation
+        within it. Which combination does this?
       options:
-      - A) Normal DNS resolution
-      - B) Command-and-control beaconing
-      - C) ARP flooding
-      - D) A routing loop
+      - A) Two capture filters in a row
+      - B) A capture filter to store, then a display filter to view
+      - C) A display filter alone
+      - D) Flow records beside the logs
       answer: B
-    - question: 'Flow records such as NetFlow differ from full packet capture because they:'
+    - question: A security tool records who talked to whom, on which ports and how many bytes, but keeps
+        no packet contents. What does the tool produce?
       options:
-      - A) Include full payloads
-      - B) Record metadata about conversations, not contents
-      - C) Cannot be exported
-      - D) Only work on IPv6
+      - A) Full packet capture
+      - B) Flow records
+      - C) A beaconing report
+      - D) An address table
       answer: B
-    - question: 'A horizontal port scan is characterised by:'
+    - question: A capture shows one workstation contacting thirty addresses on the same single port within
+        a minute. Which pattern does the capture show?
       options:
-      - A) Many ports on one host
-      - B) One port across many hosts
-      - C) Repeated DNS queries
-      - D) Large file transfers
-      answer: B
-    - question: 'The main analytic limitation introduced by widespread TLS is that:'
+      - A) A horizontal scan
+      - B) Periodic beaconing
+      - C) A bulk transfer
+      - D) A burst of name lookups
+      answer: A
+    - question: With most traffic encrypted, a flow record still counts conversations and bytes. Which
+        analysis does widespread encryption leave mostly intact?
       options:
-      - A) Metadata is unavailable
-      - B) Payload inspection is no longer possible without interception
-      - C) Flows cannot be counted
-      - D) IP addresses are hidden
-      answer: B
+      - A) Payload inspection
+      - B) Matching signatures on file bodies
+      - C) Timing, size and destination analysis
+      - D) Recovering passwords from captures
+      answer: C
   po:
     qsp_code: ALJQ
     po_code: PO_006
