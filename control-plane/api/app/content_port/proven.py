@@ -375,12 +375,31 @@ def sizing_problems(et: ExerciseTemplate, templates: list[Template]) -> list[str
             for who, nt in wanted if nt not in known][:5]
 
 
+def effective_range_template(db: Session, et: ExerciseTemplate) -> Template | None:
+    """The range template an exercise from ``et`` runs on: the one it names, else the one its
+    scenario names."""
+    if et.range_template_id is not None:
+        return load(db, "range_template", et.range_template_id)
+    if et.scenario_id is not None:
+        sc = load(db, "scenario", et.scenario_id)
+        return scenario_template(db, sc) if sc is not None else None
+    return None
+
+
 def exercise_template_use(db: Session, et: ExerciseTemplate, scope: Scope) -> Condition:
-    """Exercises *made from the template* that completed with a passing score."""
+    """Exercises *made from the template as it is now* that completed with a passing score: made
+    from this revision, on a range built from the range template it runs on now. An edit (a new
+    revision, another range template) needs a new exercise to prove it again."""
+    want = effective_range_template(db, et)
+    if want is None:
+        return Condition(USED, False, ["It names no range template, so no exercise made from it ran on one"])
     ev = _exercises(db, db.query(Exercise).join(ExerciseTemplateUse, ExerciseTemplateUse.exercise_id == Exercise.id)
-                    .filter(ExerciseTemplateUse.template_id == et.id), scope)
-    return Condition(USED, bool(ev), [] if ev else ["No exercise made from it has completed with a passing score yet"],
-                     ev)
+                    .join(Range, Range.id == Exercise.range_id)
+                    .filter(ExerciseTemplateUse.template_id == et.id,
+                            ExerciseTemplateUse.template_revision == et.revision, Range.template_id == want.id), scope)
+    return Condition(USED, bool(ev), [] if ev else [
+        "No exercise made from its current revision, on a range built from its range template, has completed with a "
+        "passing score yet"], ev)
 
 
 def course_use(db: Session, course: Course, scope: Scope) -> Condition:
@@ -405,7 +424,29 @@ def freshness(db: Session, item_type: str, item_id: str) -> Condition:
 
 
 # ── per item ────────────────────────────────────────────────────────────────────
-def status(db: Session, item_type: str, row, scope: Scope) -> Status:
+def _redact(db: Session, st: Status, viewer: uuid.UUID) -> Status:
+    """What ``viewer`` (a tenant) may read of ``st``: a dependency that is another tenant's private
+    content is not named, in the dependency list or in any reason."""
+    hidden: list[str] = []
+    for d in st.dependencies:
+        dep = load(db, d.item_type, d.item_id) if d.title is not None else None
+        if dep is not None and not visible(dep, viewer):
+            hidden.append(d.title)
+            d.title = f"a {LABELS[d.item_type]} that is not shared with you"
+    if hidden:
+        for c in st.conditions:
+            for name in sorted(set(hidden), key=len, reverse=True):
+                c.reasons = [r.replace(name, "a private item") for r in c.reasons]
+    return st
+
+
+def status(db: Session, item_type: str, row, scope: Scope, viewer: uuid.UUID | None = None) -> Status:
+    """``viewer``: the reading tenant (None: the platform administrator, who reads every name)."""
+    st = _status(db, item_type, row, scope)
+    return st if viewer is None else _redact(db, st, viewer)
+
+
+def _status(db: Session, item_type: str, row, scope: Scope) -> Status:
     deps = dependencies(db, item_type, row)
     builds: list[dict] = []
     if item_type == "range_template":

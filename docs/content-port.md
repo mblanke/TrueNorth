@@ -176,10 +176,14 @@ docker compose run --rm --no-deps -w /app -e PYTHONPATH=/app \
 | `preview /port/bundle.json [--tenant <id>] [--shared]` | Shows what importing would do. |
 | `import /port/bundle.json [--tenant <id>] [--shared] [--overwrite <key> ...] --yes` | Imports. Without `--yes` it only previews. |
 
+Format **v1** is the bundle of courses, range templates and scenarios. A bundle that carries an
+exercise template is **v2** (otherwise identical); a v1 bundle carrying one is refused. A bundle
+without exercise templates stays v1, so older sites still read it.
+
 ## The bundle and its signature
 
 ```json
-{"format": "truenorth.content-port.v1", "bundle_id": "<uuid>", "exported_at": "<iso 8601>",
+{"format": "truenorth.content-port.v1|v2", "bundle_id": "<uuid>", "exported_at": "<iso 8601>",
  "origin": {"key_id": "<16 hex>"},
  "items": [{"key": "<item_type>:<uuid>", "item_type": "course|range_template|scenario|exercise_template",
             "origin_id": "<uuid>", "content_sha256": "<hex>", "content": {},

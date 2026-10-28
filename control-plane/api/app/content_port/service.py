@@ -81,15 +81,18 @@ def _label(st: proven.Status) -> str:
 
 
 def status_out(db: Session, item_type: str, row, scope: proven.Scope, *,
-               with_dependencies: bool = True) -> ProvenStatusOut:
-    st = proven.status(db, item_type, row, scope)
+               with_dependencies: bool = True, viewer: uuid.UUID | None = None) -> ProvenStatusOut:
+    """``viewer``: the reading tenant. A dependency that is another tenant's private content is not
+    named and its status is not shown (None for the platform administrator, who sees all)."""
+    st = proven.status(db, item_type, row, scope, viewer)
     deps = []
     if with_dependencies:
         for d in st.dependencies:
             dep_row = proven.load(db, d.item_type, d.item_id) if d.title is not None else None
+            shown = dep_row is not None and (viewer is None or proven.visible(dep_row, viewer))
             deps.append(ProvenDependencyOut(
                 item_type=d.item_type, item_id=d.item_id, title=d.title,
-                proven=proven.status(db, d.item_type, dep_row, scope).proven if dep_row is not None else None))
+                proven=proven.status(db, d.item_type, dep_row, scope).proven if shown else None))
     link = (db.query(ContentPortItem)
             .filter(ContentPortItem.item_type == item_type, ContentPortItem.local_id == str(row.id)).first())
     imported = None
@@ -116,7 +119,8 @@ def item_status(db: Session, user: CurrentUser, item_type: str, item_id) -> Prov
     row = proven.any_visible(db, user, item_type, item_id)
     if row is None:
         raise HTTPException(404, f"No {proven.LABELS.get(item_type, 'item')} {item_id} here")
-    return status_out(db, item_type, row, proven.scope_for(db, user))
+    scope = proven.scope_for(db, user)
+    return status_out(db, item_type, row, scope, viewer=None if scope is None else tenant_uuid(user))
 
 
 def portable(db: Session, user: CurrentUser) -> list[ProvenStatusOut]:
@@ -134,7 +138,8 @@ def portable(db: Session, user: CurrentUser) -> list[ProvenStatusOut]:
             q = q.filter(model.deleted_at.is_(None))
         for row in q.order_by(model.name, model.id).all():
             if proven.visible(row, tenant):
-                out.append(status_out(db, item_type, row, scope, with_dependencies=False))
+                out.append(status_out(db, item_type, row, scope, with_dependencies=False,
+                                      viewer=None if scope is None else tenant))
     return out
 
 
@@ -160,7 +165,7 @@ def export(db: Session, user: CurrentUser, refs: list[PortItemRef]) -> dict:
     for item_type, row in items:
         k = bnd.key(item_type, str(row.id))
         if not proven.visible(row, tenant):
-            problems.append({"item_type": item_type, "item_id": str(row.id), "title": row.name,
+            problems.append({"item_type": item_type, "item_id": str(row.id), "title": None,
                              "reasons": ["Another tenant's content: it cannot be exported from here"]})
             continue
         st = proven.status(db, item_type, row, scope)

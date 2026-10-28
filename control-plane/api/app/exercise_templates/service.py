@@ -20,6 +20,7 @@ Nothing here commits; the router does.
 
 from __future__ import annotations
 
+import copy
 import uuid
 
 from fastapi import HTTPException
@@ -77,6 +78,35 @@ def get_visible(db: Session, user: CurrentUser, template_id: uuid.UUID) -> Exerc
 
 def get_own(db: Session, user: CurrentUser, template_id: uuid.UUID) -> ExerciseTemplate:
     return get_owned(db, ExerciseTemplate, template_id, user, not_found="Exercise template not found")
+
+
+def lock_visible(db: Session, user: CurrentUser, template_id: uuid.UUID, *, own: bool = False) -> ExerciseTemplate:
+    """The template, row-locked (SELECT ... FOR UPDATE) until the transaction ends, so a delete and
+    a create-exercise (or an edit) of the same template cannot interleave."""
+    q = visible_query(db, user).filter(ExerciseTemplate.id == template_id)
+    if own:
+        q = q.filter(ExerciseTemplate.tenant_id == tenant_uuid(user))
+    row = q.with_for_update().first()
+    if row is None:
+        raise HTTPException(404, "Exercise template not found")
+    return row
+
+
+SIZING_FIELDS = ("scenario_id", "range_template_id", "roles", "scaling_rules")
+
+
+def flag_changed(db: Session, row: ExerciseTemplate, why: str) -> None:
+    """A template whose scenario, range template, roles or scaling rules changed is not reviewed
+    any more: its content-clock row is flagged stale until someone reviews it again (the flag
+    clears on review). A template the clock does not track yet has nothing to flag."""
+    from ..content_review import service as clock
+    from ..content_review.models import ContentReviewItem
+
+    review = (db.query(ContentReviewItem).filter(ContentReviewItem.item_type == "exercise_template",
+                                                 ContentReviewItem.item_id == str(row.id)).first())
+    if review is not None and not review.missing and not review.retired:
+        clock.flag_stale(db, review, f"Changed since it was last reviewed ({why})",
+                         f"exercise-template-edit:{row.id}:{row.revision}")
 
 
 def is_shared_with(row: ExerciseTemplate, user: CurrentUser) -> bool:
@@ -155,7 +185,8 @@ def create(db: Session, user: CurrentUser, body: ExerciseTemplateIn) -> Exercise
 
 
 def update(db: Session, user: CurrentUser, template_id: uuid.UUID, body: ExerciseTemplateUpdate) -> ExerciseTemplate:
-    row = get_own(db, user, template_id)
+    row = lock_visible(db, user, template_id, own=True)
+    before = {f: copy.deepcopy(getattr(row, f)) for f in SIZING_FIELDS}
     changes = body.model_dump(exclude_unset=True, mode="json")
     if "is_public" in changes:
         if changes["is_public"] is None:
@@ -174,6 +205,9 @@ def update(db: Session, user: CurrentUser, template_id: uuid.UUID, body: Exercis
         row.is_public = changes["is_public"]
     row.revision = (row.revision or 1) + 1
     db.flush()
+    moved = [f for f in SIZING_FIELDS if getattr(row, f) != before[f]]
+    if moved:
+        flag_changed(db, row, ", ".join(f.replace("_", " ") for f in moved))
     audit(db, user, "update", "exercise_template", str(row.id), f"revision {row.revision}")
     return row
 
@@ -181,7 +215,7 @@ def update(db: Session, user: CurrentUser, template_id: uuid.UUID, body: Exercis
 def delete(db: Session, user: CurrentUser, template_id: uuid.UUID) -> None:
     """Soft-delete. Refused (409, ADR 0010) while an exercise was made from it: those exercises
     and their evidence stay attributable to it. Retire it on the content clock instead."""
-    row = get_own(db, user, template_id)
+    row = lock_visible(db, user, template_id, own=True)
     made = (db.query(ExerciseTemplateUse.exercise_id).join(Exercise, Exercise.id == ExerciseTemplateUse.exercise_id)
             .filter(ExerciseTemplateUse.template_id == row.id, Exercise.deleted_at.is_(None)).count())
     if made:
@@ -192,20 +226,9 @@ def delete(db: Session, user: CurrentUser, template_id: uuid.UUID) -> None:
 
 
 # ── making an exercise from a template ────────────────────────────────────────────
-def effective_range_template(db: Session, row: ExerciseTemplate) -> Template | None:
-    """The range template an exercise from ``row`` runs on: the one it names, else the one its
-    scenario names."""
-    if row.range_template_id is not None:
-        return db.get(Template, row.range_template_id)  # tenant-safe: the template's own checked reference
-    if row.scenario_id is not None:
-        sc = db.get(Scenario, row.scenario_id)  # tenant-safe: the template's own checked reference
-        return proven.scenario_template(db, sc) if sc is not None else None
-    return None
-
-
 def create_exercise(db: Session, user: CurrentUser, template_id: uuid.UUID,
                     body: ExerciseFromTemplateIn) -> ExerciseFromTemplateOut:
-    tpl = get_visible(db, user, template_id)
+    tpl = lock_visible(db, user, template_id)
     try:
         rng = get_owned(db, Range, body.range_id, user, not_found="range not found")
     except HTTPException:
@@ -218,7 +241,7 @@ def create_exercise(db: Session, user: CurrentUser, template_id: uuid.UUID,
             raise HTTPException(422, "The template's scenario belongs to another tenant, so an exercise here cannot "
                                      "run it; copy the scenario into your tenant and name it in a template of "
                                      "your own") from None
-    want = effective_range_template(db, tpl)
+    want = proven.effective_range_template(db, tpl)
     if want is not None and rng.template_id != want.id:
         raise HTTPException(422, f"The range was not built from range template '{want.name}', which this "
                                  f"exercise template runs on")

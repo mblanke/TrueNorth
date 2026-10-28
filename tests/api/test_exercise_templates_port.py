@@ -367,6 +367,7 @@ class TestImport:
             upload(client, exported(client, db_session, ("exercise_template", et)), "import", target_tenant_id=new_site)
             et.description = "Origin edited it"
             et.revision = 2
+            made_from(db_session, et)  # proven again: an exercise from the new revision
             db_session.flush()
             res = upload(client, exported(client, db_session, ("exercise_template", et)), "import",
                          target_tenant_id=new_site)

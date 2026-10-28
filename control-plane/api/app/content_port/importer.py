@@ -35,6 +35,7 @@ listed: port those templates first.
 
 from __future__ import annotations
 
+import copy
 import difflib
 import json
 import re
@@ -48,6 +49,7 @@ from sqlalchemy.orm import Session
 from .. import engine_bridge, safe_yaml
 from ..exercise_templates.models import ExerciseTemplate
 from ..exercise_templates.schemas import CORE_FIELDS
+from ..exercise_templates.service import SIZING_FIELDS, flag_changed
 from ..golden_image_builds.models import GoldenImageBuild
 from ..models import (
     ContentKind,
@@ -400,7 +402,7 @@ def _write_scenario(db: Session, p: PlanItem, tenant: uuid.UUID | None, shared: 
 
 
 def _write_exercise_template(db: Session, p: PlanItem, tenant: uuid.UUID | None, shared: bool, keymap: dict,
-                             user_id: uuid.UUID | None) -> ExerciseTemplate:
+                             user_id: uuid.UUID | None) -> ExerciseTemplate | None:
     """The scenario and range template are the local copies (``keymap``); a template that
     lands is private to its tenant unless the import asked for shared. A template already
     here is updated in place and its revision rises, as for any edit; exercises made from it
@@ -409,17 +411,31 @@ def _write_exercise_template(db: Session, p: PlanItem, tenant: uuid.UUID | None,
     core = c.model_dump(mode="json", include=set(CORE_FIELDS))
     scenario_id = uuid.UUID(keymap[c.scenario]) if c.scenario else None
     template_id = uuid.UUID(keymap[c.range_template]) if c.range_template else None
+    # The scenario and range template are the local copies, which may be older or edited here (an
+    # unconfirmed conflict keeps what is here): they must still agree, as the API requires.
+    sc = db.get(Scenario, scenario_id) if scenario_id else None  # tenant-safe: the landing tenant's, from keymap
+    tmpl = db.get(Template, template_id) if template_id else None  # tenant-safe: the landing tenant's, from keymap
+    if sc is not None and tmpl is not None:
+        runs_on = proven.scenario_template(db, sc)
+        if runs_on is not None and runs_on.id != tmpl.id:
+            p.reasons = [f"Its scenario here runs on range template '{runs_on.name}', not '{tmpl.name}': resolve the "
+                         f"conflict on the scenario or the range template, then import again"]
+            return None
     row = p.local if isinstance(p.local, ExerciseTemplate) else None
     if row is None:
         row = ExerciseTemplate(id=uuid.uuid4(), tenant_id=tenant, is_public=shared, revision=1, created_by=user_id,
                                scenario_id=scenario_id, range_template_id=template_id, **core)
         db.add(row)
     else:
+        before = {f: copy.deepcopy(getattr(row, f)) for f in SIZING_FIELDS}
         for field, value in core.items():
             setattr(row, field, value)
         row.scenario_id, row.range_template_id = scenario_id, template_id
         row.is_public = shared  # a visibility change is a confirmed conflict (plan)
         row.revision = (row.revision or 1) + 1
+        db.flush()
+        if moved := [f for f in SIZING_FIELDS if getattr(row, f) != before[f]]:
+            flag_changed(db, row, ", ".join(f.replace("_", " ") for f in moved))  # not reviewed as it is now
     return row
 
 
@@ -598,6 +614,10 @@ def apply(db: Session, user_id: uuid.UUID | None, pl: Plan, overwrite: set[str],
             p.notes = [*p.notes, *more]
         elif p.item.item_type == "exercise_template":
             row = _write_exercise_template(db, p, tenant, pl.shared, keymap, user_id)
+            if row is None:
+                p.action, p.conflict = "skipped", None
+                done.append(p)
+                continue
         else:
             row, more = _write_course(db, p, tenant, keymap)
             p.notes = [*p.notes, *more]

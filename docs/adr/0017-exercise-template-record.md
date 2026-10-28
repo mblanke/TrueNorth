@@ -47,7 +47,9 @@ collective training; courses are individual training.**
 7. **Proven** (`content_port/proven.py`), computed, never stored. Certified: a range built
    from its range template (the one it names, else its scenario's) reached Certified as the
    template is now. Used: an exercise **made from the template** completed with a passing
-   score (70%); an exercise merely on the same range proves nothing. Fresh: not stale or
+   score (70%), **made from the template's current revision and on a range built from the
+   range template it runs on now**; an exercise merely on the same range proves nothing, and
+   any edit needs a new exercise to prove it again. Fresh: not stale or
    retired on the content clock. A dependency this site cannot read leaves it not proven.
 8. **Port:** exports and imports carry `exercise_template` items with their closure: the
    scenario and range template must be proven too (409 lists them). The content is the same
@@ -55,8 +57,9 @@ collective training; courses are individual training.**
    tenant, owner, sharing or revision. Import lands **private and not yet proven**, relinked
    to the local copies, under #324's signature, preview, conflict (`local_changed`,
    `local_name`, `older`, `visibility`), dependency-skip and replay rules, with matching per
-   landing tenant. The bundle format stays v1: an older site fails closed on an unknown item
-   type.
+   landing tenant. A bundle that carries an exercise template is format **v2**; a bundle without one stays
+   v1, so older sites still read it. A v1 bundle carrying an exercise template is refused, and
+   a format this site does not know is refused with a message to upgrade.
 
 9. **Roles and sizing rules** (owner requirement, 2026-10-28: an exercise request says how
    many people take part in which roles, and that decides how many VMs of what kind are
@@ -76,6 +79,18 @@ collective training; courses are individual training.**
    rest of the content. **Proven** also requires every node type a role or rule names to
    exist in the range template (a reason under "Range certified"): a profile that points at
    nothing sizes nothing.
+
+10. **Edits reset the review.** Changing a template's scenario, range template, roles or scaling
+    rules (in the API, or by an import update) flags its content-clock row stale until it is
+    reviewed again, so a changed template is "not yet reviewed".
+11. **No leaks across tenants.** A shared template (or scenario) never names another tenant's
+    private scenario or range template: not in the dependency list, nor in any reason, and the
+    dependency's status is not shown. The export refusal does not name another tenant's content.
+12. **Concurrency and caps.** Delete, edit and create-exercise lock the template row. A template
+    is validated against operator-settable caps (`TN_EXERCISE_TEMPLATE_MAX_PARTICIPANTS`, default
+    500; `..._MAX_VMS_PER_PARTICIPANT`, default 20; `..._MAX_VMS`, default 1000 across all
+    roles; an unlimited role counts at its default). An import re-checks that the scenario and
+    range template it relinks to still agree, and skips the template with a reason if not.
 
 ## Consequences
 

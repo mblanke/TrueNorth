@@ -9,6 +9,7 @@ API takes as ids and the bundle as item keys.
 
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime
 from typing import Literal
@@ -24,6 +25,14 @@ MAX_TEAMS = 20
 MAX_ROLES = 40
 MAX_RULES = 100
 MAX_TEXT = 100_000
+
+
+def limit(name: str, default: int) -> int:
+    """An operator-set cap (TN_EXERCISE_TEMPLATE_<name>), read when a template is validated."""
+    try:
+        return max(1, int(os.environ.get(f"TN_EXERCISE_TEMPLATE_{name}", "") or default))
+    except ValueError:
+        return default
 CORE_FIELDS = ("name", "description", "teams", "roles", "scaling_rules", "objectives", "mesl", "instructor_notes", "tags")
 
 
@@ -221,6 +230,25 @@ class ExerciseTemplateCore(_Strict):
             raise ValueError("a tag is listed twice")
         return v
 
+    def _caps(self) -> None:
+        """Sizing caps (ADR 0017): a template is a plan, and nothing in it may ask for more than the
+        site allows. An unlimited role (max 0) counts at its default."""
+        max_people, max_per, max_vms = limit("MAX_PARTICIPANTS", 500), limit("MAX_VMS_PER_PARTICIPANT", 20), \
+            limit("MAX_VMS", 1000)
+        people = vms = 0
+        for r in self.roles:
+            each = sum(v.count for v in r.vm_profile)
+            if each > max_per:
+                raise ValueError(f"role {r.name} gives each participant {each} VMs; the limit is {max_per} per "
+                                 f"participant")
+            n = r.max_participants or r.default_count
+            people += n
+            vms += n * each
+        if people > max_people:
+            raise ValueError(f"the roles add up to {people} participants; the limit is {max_people}")
+        if vms > max_vms:
+            raise ValueError(f"the roles add up to {vms} VMs; the limit is {max_vms}")
+
     @model_validator(mode="after")
     def _shape(self) -> ExerciseTemplateCore:
         teams = {t.name for t in self.teams}
@@ -236,6 +264,7 @@ class ExerciseTemplateCore(_Strict):
                              ("MESL serial", [m.serial for m in self.mesl])):
             if len(set(values)) != len(values):
                 raise ValueError(f"a {what} is listed twice")
+        self._caps()
         refs = {o.ref for o in self.objectives}
         for m in self.mesl:
             if m.objective_ref and m.objective_ref not in refs:

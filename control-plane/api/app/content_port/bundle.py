@@ -65,7 +65,7 @@ from ..models import (
 from ..range_certification.signing import canonical
 from ..range_credentials import accounts
 from . import proven, signing
-from .schemas import CONTENT_MODELS, FORMAT, BundleIn
+from .schemas import CONTENT_MODELS, FORMAT_V1, FORMAT_V2, FORMATS, BundleIn
 
 MAX_BUNDLE_BYTES = 50 * 1024 * 1024  # the edge's upload limit for this route (nginx 50M)
 MAX_FUTURE = timedelta(hours=24)  # clock skew allowed between the two sites
@@ -306,7 +306,9 @@ def build(db: Session, items: list[tuple[str, object]], statuses: dict[str, prov
                           "content_sha256": sha256(content), "content": content, "depends_on": deps,
                           "proof": proof_summary(st), "golden_builds": st.golden_builds,
                           "removed_passwords": removed_passwords(row.yaml) if item_type == "range_template" else 0})
-    doc = {"format": FORMAT, "bundle_id": str(uuid.uuid4()), "exported_at": now.isoformat(),
+    # v1 when no exercise template is carried: a site older than ADR 0017 still reads it.
+    fmt = FORMAT_V2 if any(t == "exercise_template" for t, _ in items) else FORMAT_V1
+    doc = {"format": fmt, "bundle_id": str(uuid.uuid4()), "exported_at": now.isoformat(),
            "origin": {"key_id": signing.public_info()["key_id"]}, "items": out_items,
            "golden_builds": [all_builds[k] for k in sorted(all_builds)]}
     return signing.sign(doc)
@@ -350,6 +352,11 @@ def parse(raw: bytes, *, now: datetime) -> tuple[dict, BundleIn, str]:
     if kid is None:
         raise BundleRejectedError(422, "The bundle's signature does not verify against a trusted content-port key "
                                        "(tn_content_port_trusted_keys); nothing was imported")
+    fmt = doc.get("format")
+    if isinstance(fmt, str) and fmt.startswith("truenorth.content-port.") and fmt not in FORMATS:
+        raise BundleRejectedError(422, f"This bundle is format {fmt.rsplit('.', 1)[-1]}; this site reads "
+                                       f"{' and '.join(f.rsplit('.', 1)[-1] for f in FORMATS)}. Upgrade this site "
+                                       f"to read it")
     try:
         bundle = BundleIn.model_validate({k: v for k, v in doc.items() if k != "signature"})
     except RecursionError:
@@ -372,6 +379,8 @@ def _first(exc: ValidationError) -> str:
 
 
 def _check_items(bundle: BundleIn) -> None:
+    if bundle.format == FORMAT_V1 and any(i.item_type == "exercise_template" for i in bundle.items):
+        raise BundleRejectedError(422, "A v1 bundle carries no exercise templates; they travel in v2 (ADR 0017)")
     keys = [i.key for i in bundle.items]
     if len(set(keys)) != len(keys):
         raise BundleRejectedError(422, "The bundle carries an item twice")

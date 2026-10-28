@@ -23,7 +23,10 @@ KEY_PATTERN = (r"^(course|range_template|scenario|exercise_template):"
 SCENARIO_KEY = r"^scenario:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 TEMPLATE_KEY = r"^range_template:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 HEX64 = r"^[0-9a-f]{64}$"
-FORMAT = "truenorth.content-port.v1"
+FORMAT_V1 = "truenorth.content-port.v1"
+FORMAT_V2 = "truenorth.content-port.v2"  # the same bundle, and it may carry exercise templates (ADR 0017)
+FORMAT = FORMAT_V1  # what a bundle without exercise templates is, so older sites still read it
+FORMATS = (FORMAT_V1, FORMAT_V2)
 MAX_ITEMS = 500
 MAX_YAML = 1024 * 1024  # safe_yaml.MAX_YAML_BYTES: what every reader of a template or scenario accepts
 MAX_TEXT = 200_000
@@ -192,7 +195,7 @@ class BundleOrigin(_Strict):
 class BundleIn(_Strict):
     """A content-port bundle without its signature."""
 
-    format: Literal["truenorth.content-port.v1"]
+    format: Literal["truenorth.content-port.v1", "truenorth.content-port.v2"]
     bundle_id: uuid.UUID
     exported_at: datetime
     origin: BundleOrigin
