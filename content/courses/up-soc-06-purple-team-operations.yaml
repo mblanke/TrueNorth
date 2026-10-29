@@ -1,0 +1,514 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+
+course_code: C524
+title: Purple Team Operations
+version: '1.0'
+difficulty: advanced
+duration_hours: 6
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C521
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Analyst (PR-CDA-001), Exploitation Analyst (Adversary Emulation - DCWF) (AN-EXP-001)'
+  - 'NIST CSF 2.0: ID.IM, DE.AE, RS.AN'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Purple team engagement planning
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Define the scope, rules of engagement and success measures for a purple team engagement on a shared range
+  - Select adversary techniques for emulation that match the telemetry the defender already collects
+  - Map every planned technique to the sensor expected to record it and mark the coverage gaps
+  topics:
+  - Scope, objectives and rules of engagement agreed before any technique runs on a shared range.
+  - Technique selection driven by the detections and telemetry the defender already operates.
+  - Mapping techniques to sensors, log sources and the coverage questions each can answer.
+  - Deconfliction, safety controls and authorisation boundaries when red and blue share one network.
+  - Baseline capture before emulation so later rounds measure change rather than background noise.
+  lab: >-
+    Lab: Plan the purple engagement on the red-vs-blue range before any technique runs. Evidence: the zones
+    the red enclave may reach under the firewall rules on rtr01; the log sources arriving at siem01 from each
+    zone; the signature set active on nids01; a worksheet mapping each planned technique to the sensor expected
+    to record it. Pass: every planned technique has one named sensor or is marked a coverage gap; the scope and
+    rules of engagement are recorded in the worksheet; the baseline is captured before any emulation step.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open the engagement worksheet and record the scope and rules of engagement agreed for the round.
+    - hosts: [rtr01]
+      action: Read the firewall rules on rtr01 and record which zones the red enclave may reach and which are denied.
+    - hosts: [siem01]
+      action: Open the dashboards on siem01 and list the log sources arriving from each zone of the range.
+    - hosts: [nids01]
+      action: List the signatures active on nids01 and record the protocols each one claims to cover.
+    - hosts: [jump01]
+      action: Complete the worksheet; for each planned technique name the sensor expected to record it, or mark the row as a coverage gap.
+  refs:
+  - nist-sp-800-115
+  - nist-sp-800-150
+  - mitre-attack
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: Two leads prepare a purple round on a range and must fix which systems may be touched, which are
+        off limits and what success means. Which artefact records these decisions?
+      options:
+      - A) The engagement scope and rules of engagement
+      - B) The closure report written after the round
+      - C) The scoreboard entry opened for the round
+      - D) The sensor inventory drawn from the range
+      answer: A
+    - question: The plan includes a credential-reuse technique, but no identity log source reaches the zone where it
+        would run. How should the plan treat that technique?
+      options:
+      - A) Run it and assume the detection worked
+      - B) Record it as a telemetry gap for closure
+      - C) Drop it and pick an easier technique
+      - D) Run it five times to force an alert
+      answer: B
+    - question: Mid-emulation, a scan from the red enclave touches a database server the scope listed as off limits.
+        What do the rules of engagement require the Student to do first?
+      options:
+      - A) Continue and note the touch in the report
+      - B) Delete the scan output from the worksheet
+      - C) Stop and notify the blue lead at once
+      - D) Repeat the scan to confirm the result
+      answer: C
+    - question: Before the first technique runs, the blue side exports one full day of normal alerts from siem01. Why
+        does the plan require this baseline?
+      options:
+      - A) To prove the SIEM licence is still valid
+      - B) To fill the scoreboard with early green marks
+      - C) To shorten the firewall rule review later
+      - D) To separate real outcomes from background noise later
+      answer: D
+    - question: A planned technique maps to the network sensor, but its signatures cover none of the protocol the
+        technique uses. What is that row in the mapping table?
+      options:
+      - A) A detection outcome that already passed review
+      - B) A coverage gap for a later sprint
+      - C) A false positive to tune away
+      - D) An emulation step that already completed
+      answer: B
+- ordinal: 2
+  title: Emulating techniques with an open C2 framework
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Configure an open command-and-control framework with a listener and a controlled implant on the range
+  - Execute approved techniques from the operator host and verify each command the framework records
+  - Confirm on the monitoring side that each emulated step produced the telemetry the plan expected
+  topics:
+  - Listener types, callback routing and staging choices in an open command-and-control framework.
+  - Running approved techniques from the operator host while keeping every action inside the agreed scope.
+  - Reading the framework's logs so each command is attributed to a technique in the plan.
+  - Comparing the activity the framework recorded with the alerts the monitoring side generated.
+  - Stopping rules for aborting a technique whose side effects leave the agreed scope.
+  lab: >-
+    Lab: Bring up the command-and-control framework and emulate one approved technique end to end. Evidence:
+    the listener configuration and callback seen on red-c2-01; the command history the framework recorded on
+    red-op01; the matching events the same minute range shows on siem01; one line per step marking the expected
+    telemetry as present or absent. Pass: the listener starts and receives the implant callback; the technique
+    runs entirely inside the agreed scope; every framework command has a matching monitoring event or a recorded
+    reason none appeared.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [red-c2-01]
+      action: Start the command-and-control listener on red-c2-01 and record the listening port and protocol it advertises.
+    - hosts: [red-op01, red-c2-01]
+      action: From red-op01, start the framework's implant and confirm the callback appears in the listener session list.
+    - hosts: [red-op01]
+      action: Run the approved technique commands in the worksheet order and let the framework log each one.
+    - hosts: [siem01]
+      action: Open the same minute range on siem01 and record which events the emulated commands produced.
+    - hosts: [nids01]
+      action: Check nids01 for signature events tied to the callback traffic and record any that fired.
+    - hosts: [red-op01]
+      action: Judge the run; mark each planned step as telemetry present, telemetry absent or out of scope and aborted.
+  refs:
+  - mitre-attack
+  - nist-sp-800-115
+  - nist-sp-800-94
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: An operator starts the framework before any implant exists. Which component must accept the callback
+        before a session can open?
+      options:
+      - A) The scoreboard service
+      - B) The network sensor
+      - C) The listener
+      - D) The engagement worksheet
+      answer: C
+    - question: During a technique the implant begins enumerating file shares that the scope listed as off limits.
+        Which stopping rule applies?
+      options:
+      - A) Abort the technique and record the side effect
+      - B) Continue because the framework logged it
+      - C) Slow the callbacks and keep going
+      - D) Restart the listener and continue
+      answer: A
+    - question: The framework log shows a command ran, but siem01 recorded nothing for that minute. How is that result
+        recorded in the plan?
+      options:
+      - A) A successful detection
+      - B) A scoreboard error
+      - C) A blocked technique
+      - D) A telemetry absence to investigate
+      answer: D
+    - question: A callback from the implant reaches the listener, and minutes later a signature on the network sensor
+        fires on the same traffic. What does that pairing demonstrate?
+      options:
+      - A) The scoreboard scored the round
+      - B) The emulation produced telemetry the plan expected
+      - C) The implant failed to execute
+      - D) The firewall rules blocked the zone
+      answer: B
+    - question: The blue side asks which framework component issued commands on the workstation during the round. What
+        answers the question?
+      options:
+      - A) The firewall rule set in force
+      - B) The scoreboard entry
+      - C) The framework command log
+      - D) The engagement scope
+      answer: C
+- ordinal: 3
+  title: Capturing and scoring detection outcomes
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Score each emulated technique against a shared scale from no telemetry to full detection
+  - Classify alert outcomes as true positive, false positive or missed technique using recorded events
+  - Defend each score to the blue side with the event evidence that produced it
+  topics:
+  - Detection outcome scales and what each level means for the emulated technique.
+  - True positive, false positive and missed-technique classifications and the evidence each requires.
+  - Alert triage fields, including times, sources and the exact query that reproduced the event.
+  - Scoring sessions on the scoreboard so both sides see the same recorded outcome.
+  - Disagreement handling when red and blue score the same technique differently.
+  lab: >-
+    Lab: Score the round's techniques from the events they left. Evidence: for each technique, the siem01 query
+    used and its result count; the classification chosen from true positive, false positive or missed; the score
+    recorded on score01 with a one-line justification. Pass: every executed technique has a recorded score on
+    score01; each classification cites the event that proves it; any disputed score carries both sides' reasons.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [siem01]
+      action: For the first technique, open siem01, run the planned query and record the events returned with their times.
+    - hosts: [blue01]
+      action: On blue01, review the same events in the investigation tool and note the fields that identify the technique.
+    - hosts: [score01]
+      action: Enter the classification and score for the technique on score01 with a full one-line justification.
+    - hosts: [siem01, score01]
+      action: Repeat the query, classification and score on siem01 and score01 for each remaining technique in the round.
+    - hosts: [score01]
+      action: Judge the round; count the scores by level and write one sentence on which technique scored worst and why.
+  refs:
+  - nist-sp-800-61r3
+  - mitre-attack
+  - sigma
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A signature fires on the emulation, but the query shows it also fires hourly on the range's benign
+        replay traffic. How is the alert classified?
+      options:
+      - A) True positive
+      - B) False positive
+      - C) Missed technique
+      - D) Scoreboard error
+      answer: B
+    - question: Red scores a technique fully detected; blue scores it partial because the alert lacked the account
+        field. What must happen before either score stands?
+      options:
+      - A) Red accepts the blue score at once
+      - B) The higher score is entered
+      - C) The technique is dropped from the round
+      - D) Both sides record their evidence and agree a score
+      answer: D
+    - question: An alert fired on the exact command the implant ran, with the account and host the plan named. How is
+        that outcome classified?
+      options:
+      - A) True positive
+      - B) False positive
+      - C) Missed technique
+      - D) Coverage gap
+      answer: A
+    - question: A recorded outcome must be reproducible weeks later. Which triage detail makes the siem01 result
+        reproducible?
+      options:
+      - A) The score level
+      - B) The technique name
+      - C) The exact query and time range
+      - D) The Student's initials
+      answer: C
+    - question: The technique ran as planned and the monitoring side shows no event of any kind for it. Which outcome
+        does the scoreboard record?
+      options:
+      - A) True positive with a note
+      - B) Missed technique
+      - C) False positive
+      - D) Benign true positive
+      answer: B
+- ordinal: 4
+  title: Gap closure sprints
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Prioritise the scored gaps by exposure and by the value of the asset each one leaves blind
+  - Write a Sigma rule that detects one closed gap and suppresses the benign traffic it matches
+  - Retest the closed gap with a fresh emulation run and confirm the new detection fires
+  topics:
+  - Reading a gap list by exposure, asset value and the order closures should take.
+  - Sigma rule structure covering selection fields, condition logic and the log source assumed.
+  - Tuning against benign range traffic so the new rule does not flood the alert queue.
+  - Retesting a closure with a fresh emulation run of the same technique.
+  - Recording before and after scores so each closure is provable on the scoreboard.
+  lab: >-
+    Lab: Close one scored gap with a new detection and prove it works. Evidence: the Sigma selection fields and
+    condition written for the gap; the benign tgen01 traffic the rule matched during tuning; the before and after
+    scores for the technique on score01. Pass: the rule fires on the retest emulation run; it stays quiet during
+    the benign replay window; the after score is recorded beside the before score.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [score01]
+      action: Choose the lowest scored technique with the highest exposure from score01 and record it as the sprint target.
+    - hosts: [siem01]
+      action: Write the Sigma selection against the fields siem01 actually receives and save the new rule.
+    - hosts: [tgen01]
+      action: Replay the benign traffic window from tgen01 and record every match the new rule raises.
+    - hosts: [siem01, tgen01]
+      action: Tune the selection until the rule stays quiet on the replay and still matches the emulation events.
+    - hosts: [blue01, score01]
+      action: Rerun the technique, confirm the alert on blue01 and record the after score beside the before score on score01.
+  refs:
+  - sigma
+  - mitre-attack
+  - nist-sp-800-94
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: Four gaps remain open; two are blind spots on internet-facing services and two are on isolated hosts.
+        Which pair does the sprint close first?
+      options:
+      - A) The isolated hosts, because they are quiet
+      - B) Whichever pair the red side prefers
+      - C) The pair with the oldest recorded scores
+      - D) The internet-facing pair, ordered by exposure
+      answer: D
+    - question: A new detection must describe one login pattern in the events the SIEM already receives. Which artefact
+        states the selection fields and condition?
+      options:
+      - A) The engagement scope
+      - B) The scoreboard entry
+      - C) The Sigma rule
+      - D) The closure report
+      answer: C
+    - question: After the rule ships, siem01 raises forty alerts an hour from replayed backup traffic. Which sprint task
+        fixes that?
+      options:
+      - A) Delete the rule and reopen the gap
+      - B) Tune the selection to exclude the benign pattern
+      - C) Raise the alert threshold for the zone
+      - D) Move the replays to another zone
+      answer: B
+    - question: The rule matched once during authoring and never again. What does the sprint require before the closure
+        can be recorded?
+      options:
+      - A) A retest with a fresh run of the technique
+      - B) A longer replay window
+      - C) A second rule for the same gap
+      - D) A note on the scoreboard
+      answer: A
+    - question: The closure works and the sprint ends. What makes the improvement provable at the end of the course?
+      options:
+      - A) The red side's written confirmation of the result
+      - B) A longer emulation script for the next round
+      - C) A quiz score from the module
+      - D) The before and after scores on the scoreboard
+      answer: D
+- ordinal: 5
+  title: Reporting improvement over time
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Aggregate the rounds' scores into a coverage trend the blue side can act on
+  - Present the improvement report with before and after evidence for every closed gap
+  - Recommend the next round's techniques from the gaps that stayed open
+  topics:
+  - Coverage trend lines across rounds and what each movement on the line means.
+  - Before and after evidence made of queries, scores and the events that prove each closure.
+  - Writing the improvement report so a reader can rerun every claim from its citations.
+  - Choosing the next round's techniques from the gaps that stayed open.
+  - Handover of what the blue side keeps running after the engagement ends.
+  lab: >-
+    Lab: Report the improvement the rounds produced. Evidence: the per-round score counts from score01; the
+    coverage trend across the rounds; two before and after citations drawn from siem01 queries; the recommended
+    technique list for the next round. Pass: every trend claim cites a recorded score; each closed gap has before
+    and after evidence; the report names the gaps that stayed open.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [score01]
+      action: Export the per-round score counts from score01 and lay them all out round by round.
+    - hosts: [blue01]
+      action: Review the closed gaps on blue01 and record the query behind each before and after pair.
+    - hosts: [siem01]
+      action: Rerun two of those queries on siem01 and capture the event counts that prove each improvement.
+    - hosts: [jump01]
+      action: Draft the improvement report on jump01 with the trend, the citations and the open gaps.
+    - hosts: [jump01]
+      action: Judge the programme; mark the trend as improving, flat or regressing and justify it from the recorded counts.
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  - mitre-attack
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: Round one scored two detections out of ten techniques; round three scored seven. What does the report
+        plot to show that movement?
+      options:
+      - A) A firewall rule listing
+      - B) A coverage trend across the rounds
+      - C) A quiz result table
+      - D) An inventory of range hosts
+      answer: B
+    - question: A reader doubts one closed gap in the report. What lets them verify the claim without asking anyone?
+      options:
+      - A) The stored query and its recorded event counts
+      - B) The instructor's assurance
+      - C) The scoreboard colour for the round
+      - D) The report's summary paragraph
+      answer: A
+    - question: Three gaps stayed open after two sprints. Where do they belong in the improvement report?
+      options:
+      - A) Deleted from every table
+      - B) Marked as closed with a note
+      - C) Listed under resolved risks
+      - D) Named as the next round's starting list
+      answer: D
+    - question: Which report section tells the blue side what to keep running after the engagement ends?
+      options:
+      - A) The trend chart
+      - B) The scope statement
+      - C) The handover notes
+      - D) The quiz answer key
+      answer: C
+    - question: The last round closed the credential-reuse gaps but left the lateral-movement gaps open. What does the
+        report recommend for the next round?
+      options:
+      - A) Techniques that probe the open lateral-movement gaps
+      - B) A complete repeat of every technique already run
+      - C) Techniques from an unrelated programme
+      - D) No further techniques until the range has been rebuilt
+      answer: A
+- ordinal: 6
+  title: Running the purple cycle end to end
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Run a complete purple cycle from scoping through emulation, scoring, closure and reporting
+  - Judge whether the programme's detection coverage improved across its rounds
+  - Explain to a reviewer which controls proved themselves and which remain untested
+  topics:
+  - The purple cycle as one loop of plan, emulate, score, close, retest and report.
+  - Timeboxing the cycle so each round fits inside the engagement window.
+  - Programme measures such as mean score per round and gaps closed per sprint.
+  - What an untested control is and why the report must say so plainly.
+  - Presenting the cycle results to an owner who funds the next round.
+  lab: >-
+    Lab: Run one compressed purple cycle on the range from plan to report. Evidence: the worksheet with scope,
+    two techniques, their scores, one closed gap with a Sigma rule and the round report; the score counts before
+    and after on score01. Pass: both techniques run inside scope; each score cites its event; the gap closes with
+    a retest; the report states the round's trend and the controls left untested.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [jump01]
+      action: Write the cycle scope on jump01 for two techniques and name the sensor expected to record each.
+    - hosts: [red-op01, siem01]
+      action: Run the first technique from red-op01 and score its outcome from the events siem01 returns.
+    - hosts: [red-op01, blue01]
+      action: Run the second technique, confirm the alert on blue01 and then score it on score01.
+    - hosts: [siem01]
+      action: Write and tune a Sigma rule in siem01 that closes the worse-scoring gap, then retest it.
+    - hosts: [score01]
+      action: Record all the after scores on score01 beside the before scores from the earlier rounds.
+    - hosts: [jump01]
+      action: Write the round report on jump01 with the trend, the closed gap and the controls the round left untested.
+  refs:
+  - nist-sp-800-115
+  - mitre-attack
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A purple programme runs plan, emulate, score, close and retest before it reports. What is that sequence
+        called?
+      options:
+      - A) The firewall review
+      - B) The baseline capture
+      - C) The purple cycle
+      - D) The scoreboard loop
+      answer: C
+    - question: One technique refuses to work and threatens to eat the round's whole window. What does timeboxing require
+        the Student to do?
+      options:
+      - A) Skip scoring and move on
+      - B) Stop at the box and record the outcome so far
+      - C) Extend the window until it works
+      - D) Remove the technique from the report
+      answer: B
+    - question: After three rounds the mean score rose from two to eight out of ten, but identity logging was never
+        exercised in any round. What must the report say?
+      options:
+      - A) That the identity controls remain untested
+      - B) That coverage is complete
+      - C) That identity logging is a closed gap
+      - D) That the mean is unreliable
+      answer: A
+    - question: The owner asks why one more round is worth funding. Which figure answers the question most directly?
+      options:
+      - A) The number of quizzes passed
+      - B) The length of the report
+      - C) The count of range hosts touched
+      - D) The gaps closed per sprint and the mean score trend
+      answer: D
+    - question: The report is delivered and the owner funds a further round. What does the programme do first?
+      options:
+      - A) Declare the whole programme finished and closed
+      - B) Archive the scoreboard
+      - C) Plan the next cycle from the open gaps
+      - D) Delete the working notes
+      answer: C

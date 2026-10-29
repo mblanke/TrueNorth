@@ -1,0 +1,154 @@
+course_code: C524
+audience: staff_only
+overview: 'Purple Team Operations is a six-module advanced course (six 60-minute modules, six hours) on the
+  red-vs-blue range. Each module has the same split: 15 minutes teach, 35 minutes individual lab on the range,
+  10 minutes quiz (five items, passed at 70 percent). One Student works alone, running the red side, the blue
+  side and the scoring, so every step names the hosts the Student touches and what to record. Say ''Student''
+  throughout and keep every description defensive and observable; the red side only ever runs techniques the
+  worksheet scoped and never loads offensive payloads.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (scope, rules of engagement, telemetry mapping), 35 lab (baseline capture on jump01, rtr01,
+    siem01 and nids01), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (listeners, callbacks, stopping rules), 35 lab (listener on red-c2-01, technique run from
+    red-op01, event review on siem01 and nids01), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (outcome scale, classifications, triage fields), 35 lab (query on siem01, review on blue01,
+    scoring on score01), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (gap prioritisation, Sigma structure, tuning), 35 lab (rule authoring in siem01, benign replay
+    from tgen01, retest and rescoring on blue01 and score01), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (trend lines, citations, handover), 35 lab (score export from score01, rerun queries on siem01,
+    report draft on jump01), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (the cycle as one loop, programme measures, untested controls), 35 lab (compressed cycle across
+    jump01, red-op01, siem01, blue01 and score01), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 A (Scope and rules of engagement), M01-O01: Only the scope records what may be touched, what is off
+    limits and what success means; the report and scoreboard come later and the sensor inventory is input, not
+    decision. Q2 B (Telemetry gap), M01-O03: A technique the sensors cannot see is still worth planning, but the
+    plan must mark the missing source so a sprint can close it; running it anyway or dropping it silently both
+    hide the gap. Q3 C (Stop and notify), M01-O01: The rules of engagement make out-of-scope touches a stop-and-
+    notify event; deleting the output or repeating the scan worsens the breach of scope. Q4 D (Baseline), M01-O05:
+    The baseline day separates real detection outcomes from the background noise the range generates; the other
+    options invent purposes the baseline does not serve. Q5 B (Coverage gap), M01-O03: A technique with no
+    signature coverage is exactly a gap for a later sprint, not a scored outcome or a false positive.'
+- module: 2
+  notes: 'Q1 C (Listener), M02-O01: The listener accepts the callback; nothing else in the framework or the range
+    opens the session. Q2 A (Abort and record), M02-O05: The stopping rules fire the moment an action leaves scope;
+    continuing because the framework logs it confuses record-keeping with authorisation. Q3 D (Telemetry absence),
+    M02-O03: A command the framework ran with no monitoring event is a telemetry absence to investigate, not a
+    detection, an error or a blocked technique. Q4 B (Expected telemetry), M02-O03: The pairing of framework log
+    and sensor alert is the module''s definition of telemetry the plan expected; the distractors describe things
+    the pairing neither proves nor needs. Q5 C (Framework command log), M02-O02: The framework''s own log
+    attributes each command to a session; the firewall, scoreboard and scope say nothing about who ran what.'
+- module: 3
+  notes: 'Q1 B (False positive), M03-O02: The alert fires on benign replay as well as on the emulation, which is
+    the textbook false positive; the technique itself was not missed because an alert did fire. Q2 D (Both sides
+    record evidence and agree), M03-O03: A disputed score stands only after both sides cite their evidence; the
+    other options resolve the dispute by authority or arithmetic instead of evidence. Q3 A (True positive),
+    M03-O02: The alert matched the exact command, account and host the plan named, which is the full true-positive
+    case. Q4 C (Exact query and time range), M03-O03: Reproducibility comes from the query and the time window;
+    a score level, a technique name or initials let nobody rerun the result. Q5 B (Missed technique), M03-O02:
+    The technique ran and produced no event of any kind, which is the missed case; benign true positive needs a
+    firing alert on authorised activity.'
+- module: 4
+  notes: 'Q1 D (Internet-facing by exposure), M04-O01: Exposure orders the closures; the blind spots on services an
+    outsider can reach close first, and preference or score age are not prioritisation criteria. Q2 C (Sigma
+    rule), M04-O02: The Sigma rule is the artefact that states selection fields and condition for a log pattern;
+    scope, scoreboard and report record other things. Q3 B (Tune out the benign pattern), M04-O03: Flooding from
+    replayed backups is the tuning case the module drills; deleting the rule reopens the gap and threshold or zone
+    changes hide the problem. Q4 A (Retest with a fresh run), M04-O04: A closure counts only after a fresh
+    emulation run makes the new rule fire; one authoring match is not a retest. Q5 D (Before and after scores),
+    M04-O05: The scoreboard''s before and after pair is what makes the closure provable at course end; confirmations,
+    longer scripts and quiz scores prove nothing about detection.'
+- module: 5
+  notes: 'Q1 B (Coverage trend), M05-O01: Two rounds of scores become one trend line across the rounds; the
+    distractors are listings the report may contain but none shows movement. Q2 A (Stored query and counts),
+    M05-O02: The module''s rule is that every claim is rerunnable from its citation; assurances, colours and
+    summaries are not verification. Q3 D (Next round''s starting list), M05-O03: Open gaps feed the next round;
+    deleting or relabelling them misstates the coverage, and resolved risks is the opposite of what happened. Q4
+    C (Handover notes), M05-O05: The handover section names what the blue side keeps running; the trend, scope and
+    answer key serve other readers. Q5 A (Open lateral-movement gaps), M05-O03: The report recommends techniques
+    aimed at the gaps that stayed open; repeating closed work or waiting rebuilds nothing.'
+- module: 6
+  notes: 'Q1 C (Purple cycle), M06-O01: The module names the plan-emulate-score-close-retest-report loop the purple
+    cycle; the distractors are single steps or invented loops. Q2 B (Stop at the box), M06-O02: Timeboxing ends the
+    attempt at the box and records the outcome so far; extending the window or skipping scoring breaks the cycle.
+    Q3 A (Identity controls untested), M06-O03: A rising mean with identity logging never exercised still leaves
+    those controls untested, and the report must say so; coverage is not complete and the gap is not closed. Q4
+    D (Gaps closed per sprint and trend), M06-O04: The owner funds improvement, so the programme measures answer
+    directly; quizzes, report length and hosts touched are not funding arguments. Q5 C (Plan the next cycle),
+    M06-O01: The cycle is a loop, so a funded round starts by planning the next cycle from the open gaps.'
+lab_setup:
+- module: 1
+  setup: 'Range red-vs-blue provisioned before the module: siem01 dashboards reachable from jump01, nids01
+    signature list readable, rtr01 rules visible read-only. Hand out the engagement worksheet template and a
+    technique list of five candidates; the Student picks three.'
+- module: 2
+  setup: 'Range red-vs-blue with the C2 framework image pre-installed on red-c2-01 and red-op01, the implant
+    package staged, and siem01 and nids01 collecting. Confirm the red enclave routes only to the dmz zone so the
+    scoped technique lands where the plan says. No payload files beyond the staged implant; the Student runs
+    framework commands only.'
+- module: 3
+  setup: 'Range red-vs-blue carrying module 2''s recorded events: siem01 holds the round''s indices, blue01 has the
+    investigation tool open, score01 has an empty scoreboard for the round. Seed tgen01 replaying so benign noise
+    exists to be classified around.'
+- module: 4
+  setup: 'Range red-vs-blue with module 3''s scoreboard populated by at least one low score. siem01 writable for
+    Sigma rules, tgen01 loaded with the benign replay window, blue01 ready to confirm the retest alert. Check the
+    rule import path works before the module starts.'
+- module: 5
+  setup: 'Range red-vs-blue with at least two recorded rounds on score01 and the closed-gap queries saved in siem01.
+    jump01 has the report template. No new emulation runs in this module, so red hosts stay powered off.'
+- module: 6
+  setup: 'Range red-vs-blue freshly reverted so the Student runs one compressed cycle from a clean scoreboard and
+    empty siem01 indices for the round. Confirm snapshot rollback completed before the module, since the lab
+    depends on before scores existing only from this cycle.'
+common_faults:
+- module: 1
+  fault: The Student copies the whole firewall rule set into the worksheet instead of the zones the red enclave may reach.
+  remedy: Point at the red-to-dmz allow and the corp and server denies on rtr01; the worksheet needs the reachable
+    zones, not the rules.
+- module: 1
+  fault: Techniques are planned before the sensor inventory is recorded, so the mapping table is guesswork.
+  remedy: Enforce the step order; the baseline on siem01 and nids01 comes before any technique is chosen.
+- module: 2
+  fault: The implant callback is checked only on the red side and the monitoring side is never opened in the same minute range.
+  remedy: Have the Student put the framework log time beside the siem01 event time; the pairing is the module's point.
+- module: 2
+  fault: The run drifts past the worksheet's technique list because an extra command looked useful.
+  remedy: Stop the lab at the first out-of-list command and make the Student record it as the stopping-rule case instead.
+- module: 3
+  fault: Scores are entered as numbers with no justification line, so the scoreboard cannot be reviewed.
+  remedy: Refuse a score01 entry without its one-line justification; the evidence line is part of the score.
+- module: 3
+  fault: Benign replay hits are scored as missed techniques.
+  remedy: Drill the classification table; a firing alert on benign traffic is a false positive, not a miss, and the replay source proves it.
+- module: 4
+  fault: The Sigma rule is written against fields the Student imagines rather than the fields siem01 actually receives.
+  remedy: Make the Student open one real event first and name the fields it carries before writing the selection.
+- module: 4
+  fault: Tuning stops as soon as the rule fires on the emulation, leaving the benign replay still alerting.
+  remedy: Require the quiet replay window before the retest; a rule that floods the queue is not a closure.
+- module: 5
+  fault: The report asserts improvement with no citation, relying on memory of the rounds.
+  remedy: Every trend sentence must carry a score01 count or a siem01 query; strike any sentence that cannot.
+- module: 5
+  fault: Open gaps are left out of the report to make the trend look better.
+  remedy: Compare the report's gap list against the scoreboard; the open gaps must appear as the next round's starting list.
+- module: 6
+  fault: The compressed cycle skips the retest and records the closure from the rule authoring alone.
+  remedy: Mark the closure incomplete until the fresh run fires the new rule; authoring is not evidence.
+- module: 6
+  fault: The report claims full coverage because the mean score rose.
+  remedy: Ask what no round exercised; the report must list the untested controls even when the trend is good.
