@@ -1,0 +1,586 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C517
+title: Protocol & Service Hardening Clinic
+version: '1.0'
+difficulty: advanced
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C514
+- C109
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Infrastructure Support Specialist.'
+  - 'NIST CSF 2.0: PR.PS, PR.DS.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: DNS Hardening — DNSSEC
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Trace the DNSSEC chain of trust from a signed zone to the root trust anchor
+  - Identify which records in a zone file carry signatures and which carry keys
+  - Select the resolver validation policy that fits a small office network
+  topics:
+  - 'DNSSEC purpose: origin authentication and integrity for domain name responses.'
+  - The chain of trust from the root anchor through the top-level domain to the zone.
+  - RRSIG, DNSKEY and DS records and what each one proves to a validator.
+  - Validating versus non-validating resolvers and the authenticated data flag.
+  - Signing a zone and publishing Delegation Signer records to the parent zone.
+  lab: >-
+    Lab: On the greyspace-internet range, the simulated internet serves signed and unsigned
+    zones behind one recursive resolver. Find out which zones the resolver validates and
+    whether the office workstations rely on it. Evidence: the resolver address each workstation
+    uses; whether a response for a name in a signed greyspace zone is marked authenticated and
+    whether a response for a name in an unsigned zone differs; which DNS server the domain
+    directs clients to. Pass: all three observations recorded exactly as the range returns
+    them; each queried zone marked "validated" or "not validated" with a one-sentence reason;
+    one change proposed if validation is not enforced on the resolver path.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01, open a command prompt and record the resolver address the workstation
+        is configured to use.
+    - hosts: [ws01]
+      action: From ws01, query the recursive resolver for a name in the signed greyspace zone and
+        record whether the response is marked authenticated.
+    - hosts: [ws01]
+      action: Repeat the query for a name in an unsigned zone and record whether the authenticated
+        marking differs from the first response.
+    - hosts: [dc01]
+      action: On dc01, record which DNS server the domain directs clients to and whether it
+        forwards to the range resolver.
+    - hosts: [ws01]
+      action: Mark each queried zone "validated" or "not validated" with a one-sentence reason,
+        and state one change that would enforce validation on the resolver path.
+  source_gaps:
+  - the IETF DNSSEC request for comments series on signatures and the chain of trust is not in
+    the reference library
+  refs:
+  - cis-benchmarks
+  - nist-sp-800-57pt1r5
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A bank's validating resolver receives an answer whose signature does not match the
+        key fingerprint the parent zone published. What should it do with the answer?
+      options:
+      - A) Return the answer and log a warning for the operator
+      - B) Refuse the answer and report a validation failure
+      - C) Return the answer because the address looked plausible
+      - D) Ask the authoritative server to sign the answer again
+      answer: B
+    - question: A zone operator signs a zone but forgets to publish the key fingerprint to the
+        parent zone. How do validating resolvers treat that zone?
+      options:
+      - A) They reject every name in the zone as unusable
+      - B) They validate the zone directly against the root trust anchor
+      - C) They treat the zone as unsigned and skip validation for it
+      - D) They cache the signatures until the parent record appears
+      answer: C
+    - question: Which record does a parent zone publish so that a child zone's signing key
+        fingerprint joins the chain of trust?
+      options:
+      - A) The DS record
+      - B) The RRSIG record
+      - C) The DNSKEY record
+      - D) The address record for the zone
+      answer: A
+    - question: A zone operator replaces the signing keys but publishes the zone file with the old
+        signatures, which expire that night. What do validating resolvers report the next morning?
+      options:
+      - A) The zone validates because the keys themselves are current
+      - B) The zone validates once the resolvers refresh their caches
+      - C) The zone is treated as unsigned and skipped
+      - D) The zone fails validation because the signatures are stale
+      answer: D
+    - question: A workstation sends its queries to a resolver that returns answers carrying no
+        authenticated marking, even for zones known to be signed. Which conclusion is correct?
+      options:
+      - A) The workstation is validating every response itself
+      - B) The resolver is not performing validation before answering
+      - C) The queried zone is mis-signed at its authority
+      - D) The workstation has no name server configured
+      answer: B
+- ordinal: 2
+  title: Encrypted DNS — DoH and DoT
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish DNS over HTTPS from DNS over TLS by transport and port
+  - Select the encrypted DNS deployment mode that fits a small office policy
+  - Trace where plaintext queries still leave a partly encrypted deployment
+  topics:
+  - Cleartext queries on UDP and TCP port 53 and what an observer learns from them.
+  - DNS over TLS, which wraps each name session in TLS on port 853.
+  - DNS over HTTPS, which carries queries inside ordinary web traffic to a web endpoint.
+  - Strict and opportunistic deployment modes and how a client checks resolver identity.
+  - Split deployments where servers, printers or appliances keep sending cleartext queries.
+  lab: >-
+    Lab: On the greyspace-internet range, the recursive resolver behind edge01 accepts both
+    cleartext and encrypted queries, and the edge decides which resolver paths may leave the
+    office. Compare the two paths and judge the deployment. Evidence: the result of a cleartext
+    lookup for the greyspace news site from ws01; the same lookup sent over the resolver's TLS
+    transport and whether the secure session is established; the edge rules that carry name
+    traffic off the corporate VLAN and which transports each permits. Pass: both lookup results
+    recorded with the transport each used; each resolver path marked "allowed" or "blocked" by
+    the edge policy with a one-sentence reason; the deployment labelled strict or opportunistic
+    with evidence from the observed behaviour.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01 and record the resolver address and name configuration the workstation
+        uses.
+    - hosts: [ws01]
+      action: Send one cleartext lookup for the greyspace news site from ws01 and record the answer
+        and the response code it returned.
+    - hosts: [ws01]
+      action: Send the same lookup over the resolver's TLS transport and record whether the secure
+        session is established and the answer returned.
+    - hosts: [edge01]
+      action: On edge01, list the rules that carry name traffic off the corporate VLAN and record
+        which transports each rule permits.
+    - hosts: [ws01, edge01]
+      action: Send one further lookup from ws01 while watching which path it takes, and record
+        whether any part of the exchange remains in cleartext at the edge.
+    - hosts: [edge01]
+      action: Mark each resolver path "allowed" or "blocked" under the edge policy with a
+        one-sentence reason, and label the deployment strict or opportunistic.
+  source_gaps:
+  - the IETF specifications for DNS over TLS and DNS over HTTPS are not in the reference library
+  refs:
+  - nist-sp-800-52r2
+  - rfc-8446
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: An office wants query contents hidden from observers on the wire while keeping name
+        traffic recognisable as its own sessions for monitoring. Which transport fits best?
+      options:
+      - A) DNS over HTTPS, because it hides DNS queries inside ordinary web traffic
+      - B) Cleartext queries, because they are easiest to monitor
+      - C) DNS over TLS, because it encrypts DNS on its own port
+      - D) Split-horizon naming, because internal names never leave
+      answer: C
+    - question: A laptop is configured for opportunistic encrypted DNS, and the resolver's TLS port
+        is unreachable. What does the laptop do when it must resolve a name?
+      options:
+      - A) Resolution fails until the port becomes reachable
+      - B) It treats the fallback answer as authenticated
+      - C) It retries the secure session until it succeeds
+      - D) It falls back to cleartext without telling anyone
+      answer: D
+    - question: What does a strict-mode encrypted DNS client check before it trusts a resolver with
+        queries?
+      options:
+      - A) The resolver's TLS certificate against the expected name
+      - B) The response codes the resolver sent in its last session
+      - C) The parent zone's key fingerprint for the resolver's name
+      - D) The list of record types the resolver supports
+      answer: A
+    - question: An office enables DNS over HTTPS on its laptops, but its servers and printers keep
+        querying the old resolver in cleartext. What is the main residual risk?
+      options:
+      - A) Laptop queries become unreadable to the monitoring team
+      - B) The printers may reject the signed responses they receive from resolvers
+      - C) Server and printer queries still expose names on the wire
+      - D) The resolver can no longer answer for internal names
+      answer: C
+    - question: Why does DNS over HTTPS complicate network monitoring more than DNS over TLS does?
+      options:
+      - A) It cannot carry the record types a monitor needs
+      - B) It blends DNS into web traffic, so sessions become indistinguishable
+      - C) It requires a browser to be running on every client
+      - D) It disables caching on the client that sends the query
+      answer: B
+- ordinal: 3
+  title: Email Path — SPF
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Read an SPF record and state which senders it authorises for a domain
+  - Trace the check a receiving mail server performs and record its result
+  - Classify SPF outcomes into pass, fail, soft-fail and none dispositions
+  topics:
+  - The envelope sender and return path, and how they differ from the visible sender.
+  - SPF record syntax, the mechanisms that list allowed senders, qualifiers and the lookup limit.
+  - The check a receiving server performs against the connecting address before it accepts mail.
+  - Pass, fail, soft-fail and none results, and how receiving servers treat each disposition.
+  - Forwarding and other cases where legitimate mail fails SPF through no sender fault.
+  lab: >-
+    Lab: On the greyspace-internet range, the webmail service holds messages sent by greyspace
+    domains whose SPF records differ. Read the authentication results and judge each sender.
+    Evidence: the received chain and the SPF result line copied from the headers of three
+    messages with different senders; the SPF record the range resolver returns for each sending
+    domain; for the failing message, whether webmail delivered it or held it. Pass: headers
+    copied exactly as received; each sending domain marked "authorised", "not authorised" or
+    "no record" with a one-sentence reason; one change proposed for every domain with no record.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01, open the webmail service and list the senders of the newest messages
+        in the inbox.
+    - hosts: [ws01]
+      action: Open the message source of the first message and record its received chain and the
+        SPF result line the receiving server added.
+    - hosts: [ws01]
+      action: Repeat for two more messages from different senders and record the SPF result line
+        each received chain carries.
+    - hosts: [ws01]
+      action: Query the range resolver for the SPF record of each sending domain and record the
+        mechanisms each record lists.
+    - hosts: [ws01]
+      action: For the message whose SPF result failed, record whether webmail delivered it to the
+        inbox or held it back.
+    - hosts: [ws01]
+      action: Mark each sending domain "authorised", "not authorised" or "no record" with a
+        one-sentence reason, and propose one change for every domain with no record.
+  source_gaps:
+  - the SPF specification, request for comments 7208, is not in the reference library
+  refs:
+  - cis-benchmarks
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A domain publishes an SPF record ending with the strictest qualifier, and a message
+        arrives from a server the record does not list. What result does the receiving server record?
+      options:
+      - A) Fail
+      - B) Soft-fail
+      - C) Pass
+      - D) None
+      answer: A
+    - question: A mailing list forwards a legitimate newsletter, and the final receiver runs an SPF
+        check. Which identity does the check evaluate?
+      options:
+      - A) The visible From address shown in the reader
+      - B) The address used in the SMTP envelope for that hop
+      - C) The DKIM signature attached to the newsletter
+      - D) The recipient's mailbox rules for the list
+      answer: B
+    - question: A domain owner wants receivers to mark unlisted senders as suspicious without
+        necessarily rejecting their mail. Which record change fits that intent?
+      options:
+      - A) Publish a second SPF record alongside the first
+      - B) List the forwarding server with the most permissive qualifier
+      - C) Remove the record so receivers default to pass
+      - D) Change the final mechanism from the strict qualifier to the soft one
+      answer: D
+    - question: A message arrives whose envelope domain publishes no SPF record at all. What result
+        does the receiving server record for SPF?
+      options:
+      - A) Fail, because the sender is not listed anywhere
+      - B) Soft-fail, because the record is empty
+      - C) Pass, because absence means anyone may send
+      - D) None, because there is no record to evaluate
+      answer: D
+    - question: A record chains through many include mechanisms, and a receiver stops evaluating it
+        partway through. What most likely caused the stop?
+      options:
+      - A) The record exceeded the SPF lookup limit
+      - B) The record used an unsupported qualifier
+      - C) The receiver lost contact with its name server
+      - D) The receiver cached an older version of the record
+      answer: A
+- ordinal: 4
+  title: DKIM and DMARC
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Interpret the DKIM signature header of a delivered message field by field
+  - Distinguish DKIM alignment from DMARC alignment for a received message
+  - Select a staged DMARC policy for a domain starting from no record
+  topics:
+  - DKIM signing, the selector that publishes the public key and the body hash.
+  - Reading a DKIM-Signature header, the signing domain, selector and body hash fields.
+  - Alignment, matching the DKIM or SPF identity to the visible From domain.
+  - DMARC policy records, the none, quarantine and reject policies and the reporting addresses.
+  - Staged rollout, monitor first with aggregate reports, then tighten the policy once senders are known.
+  lab: >-
+    Lab: On the greyspace-internet range, the webmail service holds messages whose DKIM and
+    DMARC results differ, including one signed by a service outside its visible sender's domain.
+    Evidence: the signing domain, selector and body hash fields of the DKIM-Signature header on
+    one signed message; the DKIM and DMARC result lines for three messages; the DMARC record,
+    policy and reporting address that the range resolver returns for one sending domain;
+    for the failing message, whether it reached the inbox and where it was placed. Pass: header
+    fields recorded exactly; each message marked "aligned" or "not aligned" with a one-sentence
+    reason; the domain's policy stated as none, quarantine or reject; one staged change proposed
+    for every domain still at the weakest policy.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01, open the webmail service and record the senders of the newest messages.
+    - hosts: [ws01]
+      action: Open the source of a message carrying a DKIM signature and record its signing domain,
+        selector and body hash fields exactly.
+    - hosts: [ws01]
+      action: Open the authentication results of three messages and record the DKIM and DMARC
+        result line each one carries.
+    - hosts: [ws01]
+      action: Query the range resolver for the DMARC record of one sending domain and record its
+        policy and its reporting address.
+    - hosts: [ws01]
+      action: For the message whose DMARC result failed, record whether it reached the inbox at
+        all and where it was placed.
+    - hosts: [ws01]
+      action: Mark each message "aligned" or "not aligned" with a one-sentence reason, and state
+        one staged change for every domain still at the weakest policy.
+  source_gaps:
+  - the DKIM and DMARC specifications, requests for comments 6376 and 7489, are not in the
+    reference library
+  refs:
+  - cis-benchmarks
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A bank newsletter carries a valid DKIM signature whose signing domain belongs to a
+        marketing service, while the visible From domain is the bank's own. What does DMARC conclude?
+      options:
+      - A) It passes, because the signature itself validates against the published public key
+      - B) It fails, because the signature is not self-signed
+      - C) It passes, because the bank published a DMARC record
+      - D) It fails alignment, because the signing domain differs from the From domain
+      answer: D
+    - question: Which field of a DKIM-Signature header names the selector that points to the public
+        key?
+      options:
+      - A) The d= field
+      - B) The s= field
+      - C) The bh= field
+      - D) The v= field
+      answer: B
+    - question: A domain publishes its first DMARC record and wants to learn which senders use the
+        domain before enforcing anything. Which policy fits?
+      options:
+      - A) A reject policy applied immediately
+      - B) A quarantine policy applied immediately
+      - C) A none policy with aggregate reporting enabled
+      - D) No record at all until the legitimate senders are known
+      answer: C
+    - question: A message passes SPF, but the SPF identity domain differs from the visible From
+        domain, and the message carries no DKIM signature. What does DMARC conclude?
+      options:
+      - A) Fail, because no authenticated identity aligns with the From domain
+      - B) Pass, because SPF passed
+      - C) Pass, because the From domain published a DMARC record at its authority
+      - D) None, because alignment applies to DKIM only
+      answer: A
+    - question: A receiving domain applies a quarantine policy, and a message fails DMARC. What
+        happens to that message?
+      options:
+      - A) It is delivered to the inbox unchanged
+      - B) It is rejected before the body is accepted
+      - C) It is bounced back to the visible From address with a rejection notice
+      - D) It is delivered to a spam or holding folder instead of the inbox
+      answer: D
+- ordinal: 5
+  title: NTP and Time Integrity
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Read the status output of a synchronised client and record its source and offset
+  - Explain why authenticated time matters for signed logs and Kerberos tickets
+  - Select a time source design for a small office with an internal time server
+  topics:
+  - Time synchronisation and the role of stratum in the NTP hierarchy.
+  - Reading client status, the configured source, the offset and the drift it reports.
+  - Clock skew and its effect on Kerberos tickets and certificate validation.
+  - Authenticating time sources and the risk of a spoofed time signal.
+  - Choosing sources, the simulated internet time service, the domain controller and external clocks.
+  lab: >-
+    Lab: On the greyspace-internet range, dc01 is the office internal time source and the
+    simulated internet also offers a time service. Trace where the office time actually comes
+    from and judge whether it is trustworthy. Evidence: the time source, stratum and offset from
+    the client status on ws01; the sources dc01 follows; the difference in seconds between the
+    displayed times of ws01 and dc01; which hosts the edge01 rules may send toward the simulated
+    internet time service. Pass: all four observations recorded; the source chain drawn from
+    ws01 upward; each source marked "authenticated" or "unauthenticated" with a one-sentence
+    reason; a statement of whether the measured offset fits the domain's ticket tolerance.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01, open a terminal and record the workstation's current time to the
+        second.
+    - hosts: [ws01]
+      action: Show the time service status on ws01 and record the configured source, its stratum
+        and the measured offset.
+    - hosts: [dc01]
+      action: Show the time service configuration on dc01 and record which sources the domain
+        controller follows.
+    - hosts: [edge01]
+      action: On edge01, list the rules that carry time traffic and record which hosts may reach
+        the simulated internet time service.
+    - hosts: [ws01, dc01]
+      action: Compare the displayed times of ws01 and dc01 and record the difference in seconds.
+    - hosts: [ws01]
+      action: Draw the source chain from ws01 upward, mark each source "authenticated" or
+        "unauthenticated" with a one-sentence reason, and state whether the measured offset fits
+        the domain's ticket tolerance.
+  source_gaps:
+  - the IETF guidance on authenticated network time is not in the reference library
+  refs:
+  - cis-benchmarks
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A client's time status shows stratum 3 and an offset of twelve milliseconds. What
+        does the offset value describe?
+      options:
+      - A) The number of hops by which the client sits below its reference clock
+      - B) The difference between the client clock and the source clock
+      - C) The drift of the source clock per day
+      - D) The round trip time of the network
+      answer: B
+    - question: An attacker feeds a domain controller a false time signal. What is the most direct
+        consequence for the domain's authentication?
+      options:
+      - A) Nothing, because Kerberos ignores the clock
+      - B) The attacker reads the tickets that were issued to other user accounts
+      - C) Recently issued tickets fall outside their validity window
+      - D) The passwords stored in the domain are changed
+      answer: C
+    - question: What distinguishes a stratum 1 time server from servers further down the hierarchy?
+      options:
+      - A) It is directly attached to a reference clock
+      - B) It synchronises to another stratum 1 server
+      - C) It serves time but never receives it
+      - D) It has the lowest quality clock on the network
+      answer: A
+    - question: Two servers on different unauthenticated clocks drift minutes apart. Which service
+        breaks visibly first?
+      options:
+      - A) External web browsing
+      - B) Name resolution through the resolver the office clients query by default
+      - C) Printing to a network printer
+      - D) Domain sign-in, because tickets fall outside the clock tolerance
+      answer: D
+    - question: An internal server follows an upstream NTP source and serves time to the whole
+        office. What role does it play for the office clients?
+      options:
+      - A) A reference clock, because clients follow it
+      - B) An intermediate source that inherits time from upstream and serves it downward
+      - C) A peer, because it exchanges time equally with every client on the office network
+      - D) A client only, because it never answers time requests
+      answer: B
+- ordinal: 6
+  title: Legacy Protocol Decommissioning
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Enumerate the legacy protocols still permitted across a network edge
+  - Rank each remaining legacy service by exposure and business need
+  - Design a staged decommissioning plan for a legacy protocol that measures dependence before
+    each enforcement change
+  topics:
+  - What makes a protocol legacy, no encryption, weak authentication and no updates.
+  - Inventorying use, who still speaks an old protocol and how often.
+  - Measurement before enforcement, logging who still depends on a service before blocking it.
+  - Staged removal, announce, measure, restrict, then remove.
+  - Exceptions and compensating controls for services that cannot leave yet.
+  lab: >-
+    Lab: On the greyspace-internet range, edge01 still permits legacy service paths to the
+    simulated internet alongside hardened replacements. Inventory what the edge allows and
+    plan the removal. Evidence: the service paths the edge01 rules permit toward the simulated
+    internet; which paths use encryption and which do not; whether a test connection
+    from ws01 succeeds on a legacy path and its hardened replacement; what the edge log
+    shows about legacy path use during the session. Pass: the permitted paths listed
+    as the rules show them; each test result recorded with its transport; each legacy path
+    ranked "remove first", "restrict then remove" or "keep with compensating controls" with a
+    one-sentence reason; the plan names the measurement step before each blocking change.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [edge01]
+      action: Log on to edge01, list the service paths its rules permit toward the simulated
+        internet and record the protocol and destination of each.
+    - hosts: [edge01]
+      action: Sort the permitted paths into encrypted and not encrypted, and record each path
+        under its heading.
+    - hosts: [ws01]
+      action: Make one connection from ws01 through the legacy plaintext mail retrieval path and
+        record whether it succeeds and what it exposes.
+    - hosts: [ws01]
+      action: Make one connection from ws01 through the hardened replacement path and record
+        whether it succeeds.
+    - hosts: [edge01]
+      action: On edge01, record what the edge log shows about use of the legacy path during the
+        lab session.
+    - hosts: [edge01]
+      action: Rank each legacy path "remove first", "restrict then remove" or "keep with
+        compensating controls" with a one-sentence reason, and name the measurement step that
+        precedes each blocking change.
+  refs:
+  - nist-sp-800-41r1
+  - cis-benchmarks
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: An edge rule still permits a cleartext mail retrieval service that has seen no use
+        for months. What is the first step of its staged removal?
+      options:
+      - A) Delete the rule immediately and inform anyone affected afterwards
+      - B) Move the service behind the hardened replacement without measuring anything first
+      - C) Log the path for a measurement window to confirm nothing depends on it
+      - D) Publish a new encryption key for the legacy service
+      answer: C
+    - question: An edge rule set permits HTTPS, DNS over TLS on port 853, a cleartext mail retrieval
+        service and its encrypted replacement. Which permitted service is the legacy protocol?
+      options:
+      - A) The HTTPS sessions, because they carry the most traffic volume
+      - B) The cleartext mail retrieval service, because it exposes credentials unencrypted
+      - C) The DNS over TLS sessions, because port 853 is uncommon
+      - D) The encrypted replacement, because its update history is still short
+      answer: B
+    - question: A legacy service is a candidate for removal in the first stage. Which observation
+        makes it the best candidate?
+      options:
+      - A) It serves the highest-volume internal application
+      - B) Its logs show no connections in the measurement window
+      - C) Its traffic is encrypted but its authentication is weak
+      - D) One team still depends on it weekly
+      answer: B
+    - question: A service cannot be removed yet because a critical dependency remains. Which choice
+        is a compensating control for it?
+      options:
+      - A) Restricting the path to named hosts and alerting on every use
+      - B) Raising the bandwidth the service may consume
+      - C) Documenting the risk without changing anything
+      - D) Removing the hardened replacement to force clients back onto legacy use
+      answer: A
+    - question: After a legacy path is blocked, a forgotten batch process fails the next morning.
+        Which step of the staged plan was skipped?
+      options:
+      - A) The announcement to the vendor
+      - B) The encryption that was applied to the replacement mail service
+      - C) The measurement of existing dependence before enforcement
+      - D) The password rotation on the legacy service
+      answer: C
