@@ -1,0 +1,207 @@
+# Instructor pack for RMC C206 - Capstone Planning (staff only). DRAFT courseware:
+# unsourced generated content, not validated by Standards, not for CAF learners.
+# Every answer letter below matches the course file's keys; each note says why the keyed
+# option is right and what each distractor tests. Lab setup assumes the large-enterprise
+# range template (content/ranges/large-enterprise) and the lab steps in the course file.
+course_code: RMC C206
+audience: staff_only
+overview: 'DRAFT (unvalidated). Capstone Planning is a reading course of six 60-minute modules (360 minutes,
+  6 hours) for Students preparing an advanced capstone. Each module has the same split: 15 minutes
+  teaching the module''s objectives, 35 minutes of lab work on the large-enterprise range, and a
+  10-minute assessment block for the five-item quiz passed at 70 percent. Every module''s lab is a
+  survey-and-plan exercise on the live range: Students record evidence from real hosts, then base a
+  planning artefact (problem statement, evaluation design, access plan, risk register, proposal audit,
+  review response) on what they recorded. Say ''Student'' throughout and keep every description
+  defensive and observable.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (5 per objective), 35 lab (10 survey, 15 problem definition, 10 feasibility verdict),
+    10 assessment (5 quiz, 5 debrief of the survey notes)'
+- module: 2
+  minutes: 60
+  plan: '15 teach (5 per objective), 35 lab (10 host comparison, 15 evaluation design, 10 reproduction
+    artefact list), 10 assessment (5 quiz, 5 debrief of the metric choices)'
+- module: 3
+  minutes: 60
+  plan: '15 teach (5 per objective), 35 lab (10 reachability testing, 15 rule mapping, 10 approval and
+    contingency plan), 10 assessment (5 quiz, 5 debrief of the approval map)'
+- module: 4
+  minutes: 60
+  plan: '15 teach (5 per objective), 35 lab (10 weakness confirmation, 15 register drafting, 10 trigger
+    and fallback sizing), 10 assessment (5 quiz, 5 debrief of the first-risk judgement)'
+- module: 5
+  minutes: 60
+  plan: '15 teach (5 per objective), 35 lab (10 claim check on dc01, 15 claim check on fw01 and siem01,
+    10 milestones and failure statement), 10 assessment (5 quiz, 5 debrief of unsupported claims)'
+- module: 6
+  minutes: 60
+  plan: '15 teach (5 per objective), 35 lab (10 evidence audit, 15 reviewer responses, 10 change log and
+    reassessment points), 10 assessment (5 quiz, 5 debrief of the commit judgement)'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (original technical contribution), M01-O01: An advanced problem demands work practitioners
+    have not already routine; repeating routine work (A), greater length (C) and host count (D) measure
+    effort, not level. Q2 C (operational relevance), M01-O02: A gap a practitioner faces makes the work matter;
+    novelty (A) and rigour (D) are other virtues, easy evidence (B) says nothing about need. Q3 A
+    (narrow the scope), M01-O03: Feasibility means working within reachable segments; attempting anyway
+    (B) wastes the window, bypass credentials (C) violate the approval process, abandoning (D) confuses
+    narrowing with quitting. Q4 D (feasibility and risk evidence), M01-O03: The replication pairing
+    informs planning; decoration (A), publishable results (B) and proof of realism (C) overstate what a
+    survey observation supports. Q5 B (recorded range evidence), M01-O01: Significance rests on evidence
+    the weakness is real and unprotected; interest (A), reference count (C) and early approval (D) are
+    not evidence of significance.'
+- module: 2
+  notes: 'Q1 C (no reference without a comparison), M02-O01: The identical host sql02 is the baseline that
+    makes an improvement claim measurable; assessor expectation (A), doubled data (B) and simpler
+    analysis (D) are not the reason. Q2 B (reproducibility), M02-O03: Environment, data and procedure
+    cannot be reconstructed after the run; venue (A), budget (C) and analysis methods (D) survive late
+    change. Q3 A (data management plan), M02-O03: Collection, storage, access and deletion are exactly
+    its content; a risk register (B), milestone list (C) and approval request (D) are other artefacts.
+    Q4 B (optimistic, may not generalise), M02-O01: Evaluating on the events used to tune the approach
+    overstates performance; too few points (A), conservatism (C) and a missing plan (D) misname the
+    defect. Q5 D (rigour of the design), M02-O01: A design that could expose its own failure is the
+    definition of rigour here; duration (A), volume (B) and statistics (C) do not distinguish the two
+    designs.'
+- module: 3
+  notes: 'Q1 D (plan early, lead times are long), M03-O01: A six-week approval discovered in week one
+    shows access belongs in planning; certain refusal (A) and supervisor submission (B) are false,
+    proposal timing (C) is too late. Q2 B (per its classification, documented), M03-O02: Handling
+    follows the classification with documented measures; blanket anonymisation (A), avoidance (C) and
+    local storage (D) each ignore the classification. Q3 C (the whole project), M03-O03: The fallback
+    exists because a late refusal invalidates a dependent project; refusal certainty (A), schedule-only
+    protection (B) and ethics breach (D) misstate it. Q4 D (restructure for a releasable component),
+    M03-O02: Sensitivity limits what can be assessed openly, so plan an assessable component; rigour
+    (A) and publishing everything (C) dodge the constraint, and no ethics exemption exists (B). Q5 A
+    (minimum access), M03-O01: A standard account grants only what the approved work needs; separation
+    of duties (B), defence in depth (C) and default deny (D) are different principles.'
+- module: 4
+  notes: 'Q1 A (a risk, the assumption could be wrong), M04-O01: A core assumption that fails sinks the
+    approach, so it belongs in the risk register; schedule (B), tooling (C) and access (D) are other
+    register categories. Q2 D (smaller result in the remaining weeks), M04-O02: A fallback must be
+    achievable in the time left after the risk fires; equal ambition (A), deferral (B) and retry (C)
+    each fail that test. Q3 B (sunk cost), M04-O03: Continuing past the written trigger because of
+    effort invested is the definition; adaptation (A), early pivot (C) and scope reduction (D) invert
+    it. Q4 B (continuously), M04-O01: The register is rewritten when understanding develops, as the OT
+    isolation example shows; start-only (A), submission-only (C) and after-the-fact (D) are too late.
+    Q5 A (measurable and judgable), M04-O03: A trigger naming a measurement and a threshold can be
+    judged without debate; supervisor authority (B), risk prevention (C) and fallback removal (D)
+    misunderstand what a trigger is.'
+- module: 5
+  notes: 'Q1 C (unsupported claim), M05-O01: The proposal asserts a path the survey notes show does not
+    exist; formatting (A), literature (B) and reference count (D) are different defects. Q2 D (why the events
+    answer the question), M05-O02: Methodology is justified by the evidence it produces; popularity (A),
+    supervisor preference (C) and familiarity (B) are not arguments. Q3 A (early schedule signal), M05-O03:
+    A week-four checkpoint shows early whether the plan is realistic; schedule filler (B), assessor
+    evidence (C) and scope reduction (D) miss the purpose. Q4 B (meaningful, evaluable result), M05-O03:
+    The reviewer assesses deliverability above polish; writing quality (A), novelty (C) and reference
+    count (D) are secondary. Q5 A (underestimating the technical core), M05-O03: Underestimated core
+    effort is the commonest failure; missing failure statements (B), formatting (C) and reviewer
+    disagreement (D) are rarer.'
+- module: 6
+  notes: 'Q1 B (the specialist), M06-O01: A reviewer with domain expertise challenges the assumptions a
+    peer cannot see; agreement (A) and readability (C) are weaker tests, and the supervisor is not the
+    only valid reviewer (D). Q2 A (change log entry), M06-O02: The log shows what moved and why so review
+    is efficient; plan replacement (B), silence (C) and restating everything (D) all waste the
+    reviewer''s time. Q3 C (decisive with reassessment points), M06-O03: Commitment means proceeding
+    while keeping defined reassessment points; free change (A), frozen scope (B) and ignored feedback
+    (D) are the two failure modes the module warns against. Q4 B (take it seriously), M06-O02:
+    Over-scoping is the commonest cause of failure, so reduction advice is examined on its merits;
+    preserving ambition (A), deferral (C) and escalation (D) avoid the substance. Q5 D (remove and log),
+    M06-O02: An unsupported claim is removed and the removal logged; restating it (A) keeps the defect,
+    deleting the OT segment from the inventory (B) falsifies the range, and mislabelling the claim as
+    evidence (C) confuses evidence with claims.'
+lab_setup:
+- module: 1
+  setup: Provision the large-enterprise range from a clean snapshot. Verify jump01 is reachable and the
+    assigned Student account can reach the corporate LAN and server VLAN. Confirm dc01, sql01, sql02,
+    fw01 and ot-fw01 are up, and that the OT segment is isolated as the template intends - nothing
+    routes to VLAN 104, so no path from jump01 reaches it. Students need only their lab notes.
+- module: 2
+  setup: Reset the range from the same snapshot so sql01 and sql02 show their template versions and
+    patch levels. Confirm siem01 is collecting the template's event classes from both database hosts,
+    and that no Student-level changes from module 1 persist. Record the expected versions yourself
+    before the module so you can check the Students' comparison notes.
+- module: 3
+  setup: Provision the range with the standard (non-administrative) account Students will use on jump01.
+    Verify the fw01 rule set matches the template (dmz-to-server and corp-to-server allowed, corp-to-dmz
+    denied, OT isolated). Note which paths the standard account can attempt from jump01 (toward dc01, ws01
+    and sql01) and which the template rules allow or deny - mgmt-to-all grants management hosts only
+    ports 22, 3389, 5985 and 5986, so the Active Directory ports on dc01 and the SQL port on sql01 are
+    denied. A
+    denied result is a valid recorded outcome, so long as the rule that decided it is recorded with it.
+    Have the approval-lead-time examples ready.
+- module: 4
+  setup: Reset from snapshot. Confirm dc01 holds the five operations master roles, sql02 replicates
+    from sql01, and fw01's ot-isolation rule is active with the OT segment isolated - these are the
+    observed weaknesses the register entries must cite. Bring the Students' module 1 and module 3
+    notes forward; the register is drafted against them.
+- module: 5
+  setup: Reset from snapshot and seed the range with the template's default state so the Students'
+    earlier evidence still matches. Distribute the draft proposal excerpt containing two deliberate
+    unsupported claims (one about a network path fw01 denies, one about evidence siem01 does not
+    collect). Verify both defects exist in the excerpt before the module.
+- module: 6
+  setup: Reset from snapshot. Prepare the reviewer point list (five substantive points, including one
+    recommending scope reduction and one objecting to the unsupported OT claim). Confirm the Students'
+    module 1, 3 and 5 notes are available, since the evidence audit re-checks dc01 and fw01 statements
+    against them.
+common_faults:
+- module: 1
+  fault: Students propose a problem statement that names a technology, not a host or segment observed on
+    the range ('improve detection', with no survey evidence behind it).
+  remedy: Require the problem statement to cite the host id or segment name and the recorded observation;
+    reject any statement that cannot point to a line in the lab notes.
+- module: 1
+  fault: The feasibility verdict ignores non-technical costs - approvals, lead times and the time the
+    survey work itself consumes.
+  remedy: Ask for the verdict as a list of hosts, approvals and time. Make the list mandatory before the
+    yes or no is accepted.
+- module: 2
+  fault: Students pick a metric the available collection cannot measure (an alert-coverage claim with no
+    siem01 source recorded).
+  remedy: Have them check siem01's event source list against the metric before the design is accepted;
+    the collection point line in the notes must name a real source.
+- module: 2
+  fault: The reproduction artefact list omits the environment record (versions, patch levels), so a
+    third party could not rebuild the comparison.
+  remedy: Drill the three categories - environment, data, procedure - and check each is present before
+    the judgement step is signed off.
+- module: 3
+  fault: Students record a connection result without the fw01 rule that decided it, so the access map
+    cannot be audited.
+  remedy: Insist on the pair (result, rule) for every attempted path; an unexplained allowed or denied
+    result is returned.
+- module: 3
+  fault: The contingency plan assumes approval arrives, with no fallback scope if it is refused.
+  remedy: Ask 'what do you deliver if the answer is no in week ten?' and require the fallback scope in
+    writing next to the lead time.
+- module: 4
+  fault: Register entries state generic risks ('tooling problems') instead of citing an observed
+    weakness or a stated assumption.
+  remedy: Each entry must quote the observation (dc01 operations master roles, sql01 and sql02
+    replication, the fw01 ot-isolation rule) or the assumption it rests on.
+- module: 4
+  fault: Fallback approaches are as ambitious as the primary plan, or the trigger is a feeling rather
+    than a measurement with a threshold.
+  remedy: Check both against the remaining-time estimate; a fallback that does not fit the calendar or
+    a trigger without a threshold is rewritten before the judgement step.
+- module: 5
+  fault: Students mark a claim supported because it sounds plausible, without re-checking it against the
+    range evidence.
+  remedy: The claim check must show the supporting evidence line for every supported claim; plausibility
+    is not a verdict.
+- module: 5
+  fault: Milestones carry dates but no early signal, so slippage is invisible until the deadline.
+  remedy: Require the signal line ('if no measurements exist by week four, the schedule is slipping')
+    on every milestone.
+- module: 6
+  fault: Reviewer responses accept or decline points without a reason, or the change log diverges from
+    the revised plan.
+  remedy: Every response carries accepted, adapted or declined with one sentence of reason; read the
+    change log against the plan line by line.
+- module: 6
+  fault: The final plan commits with no reassessment points, freezing the scope exactly as module 4
+    warned.
+  remedy: At least two reassessment points with measurable triggers must survive in the final plan; the
+    commit judgement is not accepted without them.
