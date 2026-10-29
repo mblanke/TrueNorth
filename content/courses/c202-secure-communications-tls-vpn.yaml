@@ -9,6 +9,7 @@ difficulty: intermediate
 duration_hours: 100
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
@@ -34,16 +35,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Describe the TLS 1.3 handshake and its improvements over 1.2.
-  - Interpret a cipher suite and its component algorithms.
-  - Configure a server according to recognised TLS guidance.
+  - Describe the TLS 1.3 handshake and name the legacy mechanisms it removed
+  - Interpret a negotiated cipher suite and state what each of its component algorithms provides
+  - Select server TLS settings against recognised guidance and justify each disabled legacy option
   topics:
-  - TLS 1.2 versus 1.3 handshake flow.
-  - Cipher suites and negotiation.
-  - Session resumption and 0-RTT trade-offs.
-  - Server configuration guidance.
-  lab: 'Lab: Configure a web server for TLS 1.3 only, verify the negotiated parameters from a client handshake
-    capture, and document why each disabled legacy option was removed.'
+  - TLS 1.2 versus 1.3 handshake flow and round trips.
+  - Cipher suites in TLS 1.3 and what each component algorithm provides.
+  - Session resumption, 0-RTT early data and its replay risk.
+  - Downgrade protection and negotiation fallback.
+  - Server configuration guidance and legacy option removal.
+  lab: >-
+    Lab: On the large-enterprise range, find out which protocol version and cipher suite the TLS service on
+    web01 negotiates with two clients, and judge every option the server still enables against current
+    guidance. Evidence: the negotiated protocol version, cipher suite and server certificate dates from each
+    client, and the list of protocol versions and cipher suites the server configuration still enables.
+    Pass: all recorded exactly as the range shows them; each enabled legacy option marked "meets guidance" or
+    "does not" with a one-sentence reason; one change proposed for each option marked "does not".
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and write the start time in the lab notes.
+    - hosts: [jump01, web01]
+      action: From jump01, connect to the TLS service on web01 and record the negotiated protocol version,
+        cipher suite and server certificate dates.
+    - hosts: [web02, web01]
+      action: From web02, connect to web01 again and record whether this second client negotiates the same
+        protocol version and cipher suite.
+    - hosts: [jump01, web01]
+      action: List the TLS configuration on web01 and record each protocol version and cipher suite still
+        enabled.
+    - hosts: [jump01]
+      action: Mark each enabled legacy option "meets guidance" or "does not" with one sentence of reason, and
+        propose one change for every option marked "does not".
   refs:
   - rfc-8446
   - nist-sp-800-52r2
@@ -51,40 +75,45 @@ modules:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'TLS 1.3 reduced handshake latency principally by:'
+    - question: A browser completes a TLS 1.3 handshake in a single round trip before sending encrypted
+        data. Which design change makes this possible compared with TLS 1.2?
       options:
-      - A) Removing certificates
-      - B) Completing key exchange in fewer round trips
-      - C) Using UDP
-      - D) Disabling encryption for headers
+      - A) Server certificates are verified only after encrypted data flows
+      - B) Key exchange messages are combined into fewer round trips
+      - C) The offered cipher suite list is hidden from the network path
+      - D) Session resumption replaces the full handshake every time
       answer: B
-    - question: 0-RTT resumption carries which specific risk?
+    - question: An application resumes a session and sends its first request as 0-RTT early data. What
+        specific risk does the server accept?
       options:
-      - A) Key compromise
-      - B) Replay of the early data
-      - C) Certificate expiry
-      - D) Downgrade to TLS 1.0
-      answer: B
-    - question: 'TLS 1.3 removed support for:'
+      - A) The certificate chain fails validation
+      - B) The session keys expire at once
+      - C) The client cannot resume the session
+      - D) An attacker replays the early data
+      answer: D
+    - question: A web server's TLS 1.3 configuration lists the cipher suite TLS_AES_128_GCM_SHA256. Which
+        statement describes its components correctly?
       options:
-      - A) AEAD ciphers
-      - B) Static RSA key transport and legacy weak algorithms
-      - C) Certificates
-      - D) Extensions
-      answer: B
-    - question: 'An AEAD cipher provides:'
+      - A) AES-GCM encrypts and authenticates, and SHA-256 derives keys
+      - B) AES-GCM signs the certificate, and SHA-256 encrypts each record
+      - C) AES-GCM negotiates the keys, and SHA-256 authenticates servers
+      - D) AES-GCM compresses the records, and SHA-256 checks revocation
+      answer: A
+    - question: A security review finds a server that still supports static RSA key exchange and CBC cipher
+        suites. How should the reviewer classify these settings?
       options:
-      - A) Confidentiality only
-      - B) Confidentiality and integrity in one construction
-      - C) Key exchange
-      - D) Compression
-      answer: B
-    - question: 'A downgrade attack attempts to force a client and server to:'
+      - A) Safe while the certificate key length stays comfortably long
+      - B) A design flaw in the TLS protocol itself, not a choice
+      - C) Legacy options the guidance removes, dropped by TLS 1.3
+      - D) Required for compatibility with the most modern clients only
+      answer: C
+    - question: A proxy repeatedly offers an old protocol version to a mail server that also supports
+        modern versions. Which protection stops the server from accepting it?
       options:
-      - A) Use a longer key
-      - B) Negotiate a weaker protocol version or cipher
-      - C) Skip the handshake
-      - D) Reuse a session ticket
+      - A) The validity period shown on the server certificate
+      - B) Downgrade protection built into the handshake
+      - C) Session resumption tickets held by the client
+      - D) The available bandwidth between server and proxy
       answer: B
 - ordinal: 2
   title: Certificate Management at Scale
@@ -93,16 +122,40 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Operate a certificate lifecycle including issuance and renewal.
-  - Design trust store management for an organisation.
-  - Detect and respond to certificate-related failures.
+  - Describe the stages of a certificate lifecycle from issuance through renewal
+  - Explain how a client builds a certificate chain and validates it against a trusted root
+  - Select monitoring and revocation controls that detect certificate failures before an outage
   topics:
-  - Certificate lifecycle and automation.
-  - Internal certificate authorities.
-  - Trust stores and pinning.
-  - Expiry monitoring and incident avoidance.
-  lab: 'Lab: Stand up an internal CA in a lab, issue a server certificate, distribute the root to a client
-    trust store, and demonstrate successful validation then revocation.'
+  - Certificate lifecycle stages and automated issuance and renewal.
+  - Internal certificate authorities and protecting the root private key.
+  - Trust store distribution and certificate pinning trade-offs.
+  - Chain building, revocation checking and transparency logs.
+  - Expiry monitoring and avoiding certificate-related outages.
+  lab: >-
+    Lab: On the large-enterprise range, record what the internal certificate authority on ca01 has issued,
+    what the web01 service presents, and which clients trust it, then judge the findings for expiry risk.
+    Evidence: each certificate ca01 has issued, with subject and expiry date; the issuer, validity dates and
+    chain of the certificate web01 presents; and whether a connection from web02 validates against the client
+    trust store. Pass: all three findings recorded exactly as the range shows them; each finding marked
+    "ready to operate" or "at risk of an expiry outage" with a one-sentence reason; one monitoring or renewal
+    control proposed for every finding marked "at risk".
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and write the start time in the lab notes.
+    - hosts: [jump01, ca01]
+      action: From jump01, open the certificate authority on ca01 and record each certificate it has issued,
+        with its subject and expiry date.
+    - hosts: [jump01, web01]
+      action: Read the certificate the TLS service on web01 presents and record its issuer, validity dates
+        and chain.
+    - hosts: [web02, web01]
+      action: From web02, connect to web01 and record whether the presented certificate validates against the
+        trusted roots in the client trust store.
+    - hosts: [jump01]
+      action: Mark each finding "ready to operate" or "at risk of an expiry outage" with one sentence of
+        reason, and propose one monitoring or renewal control for every finding marked "at risk".
   refs:
   - nist-sp-800-52r2
   - nist-sp-800-57pt1r5
@@ -110,41 +163,46 @@ modules:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Certificate expiry outages are best prevented by:'
+    - question: A web service fails two days after its certificate expired, although the issuing CA was
+        healthy throughout. Which control would most likely have prevented the outage?
       options:
-      - A) Longer validity periods only
-      - B) Automated renewal with proactive expiry monitoring
-      - C) Self-signed certificates
-      - D) Disabling validation
-      answer: B
-    - question: 'Certificate pinning increases security but introduces:'
+      - A) A validity period on the certificate twice as long
+      - B) Publishing the certificate to a transparency log
+      - C) Automated renewal paired with expiry monitoring
+      - D) Pinning the certificate inside every client
+      answer: C
+    - question: A team pins its mobile application to one leaf certificate. The CA rotates that certificate
+        on schedule and the application breaks for every user. What does this failure show?
       options:
-      - A) No trade-off
-      - B) Operational fragility when certificates legitimately change
-      - C) Slower handshakes
-      - D) Weaker ciphers
-      answer: B
-    - question: 'An internal CA''s root certificate must be:'
+      - A) Pinning trades operational resilience for strict control
+      - B) The CA issued the wrong certificate type
+      - C) The device trust store was out of date
+      - D) Rotation should be disabled for pinned services
+      answer: A
+    - question: An internal CA issues certificates for the payroll service. Which two conditions make
+        relying clients trust and verify those certificates?
       options:
-      - A) Published publicly
-      - B) Distributed to and trusted by relying clients, and its private key strongly protected
-      - C) Renewed daily
-      - D) Shared with the vendor
-      answer: B
-    - question: 'Certificate transparency logs help detect:'
+      - A) A public root listed by a vendor and a daily renewal
+      - B) A long root key and a wide cipher suite list
+      - C) A transparency log entry and a short validity period
+      - D) The root in each client trust store and a protected root private key
+      answer: D
+    - question: The owners of a domain discover a certificate for their mail service that nobody in the
+        organisation requested. Which record set exposes certificates like this?
       options:
-      - A) Expired certificates
-      - B) Certificates issued for a domain without the owner's knowledge
-      - C) Weak ciphers
-      - D) Revoked roots
+      - A) The CA's scheduled expiry reports
+      - B) Certificate transparency logs
+      - C) The relying party's session cache
+      - D) Revocation lists published by the CA
       answer: B
-    - question: 'Revoking a compromised certificate is only effective if clients:'
+    - question: A compromised server certificate is revoked, yet clients keep accepting it for days. What
+        must be true for revocation to work at all?
       options:
-      - A) Restart
-      - B) Actually perform revocation checking
-      - C) Update their clocks
-      - D) Reinstall the root
-      answer: B
+      - A) The certificate's validity period must be short
+      - B) The CA must operate a transparency log
+      - C) Clients must actually perform revocation checking
+      - D) The private key must be destroyed after each signing
+      answer: C
 - ordinal: 3
   title: Virtual Private Networks
   content_type: reading
@@ -152,56 +210,84 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Compare IPsec and TLS-based VPN architectures.
-  - Explain IPsec tunnel and transport modes.
-  - Select VPN topology appropriate to a requirement.
+  - Distinguish the roles of IKE, ESP and AH in a deployed IPsec configuration
+  - Compare tunnel and transport modes by what each protects in a captured packet
+  - Select a site-to-site or remote-access VPN topology for a stated requirement
   topics:
-  - 'IPsec: AH, ESP, IKE.'
-  - Tunnel versus transport mode.
-  - TLS VPNs and remote access.
-  - Site-to-site versus remote-access topologies.
-  lab: 'Lab: Establish a site-to-site IPsec tunnel between two lab networks, verify encryption with a
-    capture showing ESP, and confirm that plaintext is not observable.'
+  - IPsec building blocks such as IKE negotiation, ESP and AH.
+  - Tunnel mode versus transport mode and what each encrypts.
+  - TLS-based remote-access VPNs and their gateway.
+  - Site-to-site and remote-access topologies, full and split tunnel.
+  - Routing and name resolution effects of a split tunnel policy.
+  lab: >-
+    Lab: On the large-enterprise range, record which VPN services the gateway vpn01 offers, what a client
+    session installs on the connecting client, and which destinations the session carries, then judge the
+    tunnel policy. Evidence: the VPN services and tunnel mode each uses on vpn01; the addresses and routes
+    the session installs on jump01; and the destinations the tunnel carries from jump01 toward exch01. Pass: all
+    three findings recorded exactly as the range shows them; each recorded route marked "inside the tunnel"
+    or "outside the tunnel"; the installed policy judged a full or a split tunnel with a one-sentence reason.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and write the start time in the lab notes.
+    - hosts: [jump01, vpn01]
+      action: From jump01, open the VPN gateway vpn01 and record the VPN services it offers and the tunnel
+        mode each uses.
+    - hosts: [jump01, vpn01]
+      action: From jump01, connect to vpn01, bring up a VPN session and record the addresses assigned to the
+        client and the routes the session installs.
+    - hosts: [jump01, exch01]
+      action: From jump01, send ordinary traffic to exch01 while the session is up and record which
+        destinations the tunnel carries and which it does not.
+    - hosts: [jump01]
+      action: Mark each recorded route "inside the tunnel" or "outside the tunnel", and judge the installed
+        policy a full or a split tunnel with one sentence of reason.
   refs:
   - nist-sp-800-77r1
   quiz:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'IPsec ESP provides confidentiality whereas AH provides:'
+    - question: A firewall operator inspects encrypted packets whose original IP headers are hidden inside
+        a new outer header. Which IPsec mode and protocol produce this?
       options:
-      - A) Encryption only
-      - B) Integrity and authentication without confidentiality
-      - C) Key exchange
-      - D) Compression
+      - A) Transport mode with AH
+      - B) Tunnel mode with ESP
+      - C) Transport mode with ESP
+      - D) Tunnel mode with AH
       answer: B
-    - question: 'IPsec tunnel mode encrypts:'
+    - question: During IKE negotiation between two sites, what does the negotiation produce before any
+        data packet flows?
       options:
-      - A) The payload only
-      - B) The entire original IP packet, adding a new header
-      - C) Nothing
-      - D) Only the header
-      answer: B
-    - question: 'IKE is responsible for:'
+      - A) Routing tables on both gateways
+      - B) The payload encryption of user traffic
+      - C) The name server settings of both networks
+      - D) Paired security associations and shared keys
+      answer: D
+    - question: A gateway offers AH on a network path that rewrites addresses along the way. Which service
+        fails, and why?
       options:
-      - A) Encrypting data packets
-      - B) Negotiating security associations and keys
-      - C) Routing
-      - D) NAT traversal only
-      answer: B
-    - question: 'Split tunnelling means client traffic:'
+      - A) Integrity verification, because the addresses are part of what AH protects
+      - B) Confidentiality, because AH removes encryption from the packet
+      - C) Key exchange, because AH carries the negotiated keys itself
+      - D) Compression, because AH expands every packet it processes
+      answer: A
+    - question: A remote workstation reaches an internal file share and public websites at the same time,
+        and only the internal range crosses the VPN. What policy is in effect?
       options:
-      - A) All goes through the VPN
-      - B) Is divided, with only some routed through the VPN
-      - C) Is duplicated
-      - D) Is blocked
-      answer: B
-    - question: 'The main security concern with split tunnelling is that:'
+      - A) A full tunnel policy
+      - B) IPsec transport mode
+      - C) Split tunnelling
+      - D) IPsec tunnel mode
+      answer: C
+    - question: An auditor reviews a remote-access design in which client internet traffic bypasses the
+        VPN gateway entirely. Which risk belongs to that design decision?
       options:
-      - A) It is slower
-      - B) The client bridges a trusted and an untrusted network simultaneously
-      - C) It breaks DNS
-      - D) It requires more keys
+      - A) The VPN gateway exhausts its address pool
+      - B) The client links a trusted and an untrusted network at once
+      - C) The encryption of the tunnel becomes weaker
+      - D) The name resolution records of the domain change
       answer: B
 - ordinal: 4
   title: Secure Messaging and Data in Transit
@@ -210,16 +296,40 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Apply end-to-end encryption concepts to messaging.
-  - Distinguish transport encryption from end-to-end encryption.
-  - Evaluate metadata exposure in encrypted communications.
+  - Distinguish transport encryption from end-to-end encryption by who can read each message
+  - Explain how verifying a contact's key out of band defeats a machine-in-the-middle substitution
+  - Identify the metadata that stays observable when message content is encrypted
   topics:
-  - Transport versus end-to-end encryption.
-  - Key agreement and identity verification.
-  - Forward secrecy in messaging.
-  - Metadata and traffic analysis exposure.
-  lab: 'Lab: Compare two messaging designs - one with transport encryption only and one end-to-end - and
-    document precisely what the server operator can observe in each.'
+  - Transport encryption and end-to-end encryption compared.
+  - Key agreement and verifying a contact's key out of band.
+  - Forward secrecy and compromise of a long-term key.
+  - Metadata such as who communicated, when, and how much.
+  - Traffic analysis and inferring relationships from patterns.
+  lab: >-
+    Lab: On the large-enterprise range, compare what the mail relay, the mail server and the monitoring
+    platform each record about the same messages, then classify every recorded field as content or
+    metadata. Evidence: for each recent message, the fields the relay mail-relay01 logs; the fields the
+    server exch01 holds for the same messages; and the message fields the monitoring platform on siem01
+    sees. Pass: the fields at each of the three points recorded exactly as the range shows them; each
+    recorded field marked "content" or "metadata"; a list written of the fields an end-to-end design would
+    still expose to the operator.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and write the start time in the lab notes.
+    - hosts: [jump01, mail-relay01]
+      action: From jump01, open the mail logs on mail-relay01 and record for each recent message the sender,
+        recipient, size and time the relay logged.
+    - hosts: [jump01, exch01]
+      action: From jump01, open the message logs on exch01 and record which fields the server holds for the
+        same messages.
+    - hosts: [siem01]
+      action: Open the mail dashboards on siem01 and record which message fields the monitoring platform
+        sees.
+    - hosts: [jump01]
+      action: Mark each recorded field "content" or "metadata", and list the fields an end-to-end design
+        would still expose to the operator.
   refs:
   - nist-sp-800-57pt1r5
   - rfc-8446
@@ -227,40 +337,45 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'End-to-end encryption differs from transport encryption because the intermediary:'
+    - question: A messaging service applies encryption only between each client and its relay. Which party
+        can read every message in plaintext?
       options:
-      - A) Sees more data
-      - B) Cannot read the plaintext content
-      - C) Holds the private keys
-      - D) Performs the encryption
+      - A) The recipient of the message alone
+      - B) Nobody, the relay only ever sees ciphertext
+      - C) The sender of the message alone
+      - D) The operator of the relay
+      answer: D
+    - question: Two staff verify each other's key fingerprint on a video call before exchanging their
+        first message. Which attack does this step defeat?
+      options:
+      - A) Replay of an older captured message
+      - B) Substitution of keys by a machine in the middle
+      - C) Traffic analysis of message timing
+      - D) Loss or theft of a device
       answer: B
-    - question: 'Even with strong end-to-end encryption, an operator may still observe:'
+    - question: An operator of an end-to-end encrypted service logs connection times and message sizes.
+        Which exposure does this record show?
       options:
-      - A) Message content
-      - B) Metadata such as who communicated, when and how much
-      - C) The encryption keys
-      - D) Nothing at all
-      answer: B
-    - question: 'Verifying a contact''s key fingerprint out of band defends against:'
+      - A) Metadata, although the content stays hidden
+      - B) Message content in a summarised form
+      - C) The participants' private signing keys
+      - D) Nothing, because the content is encrypted
+      answer: A
+    - question: A long-term identity key is stolen after months of ordinary use. Which design property
+        keeps earlier captured messages unreadable?
       options:
-      - A) Replay
-      - B) A machine-in-the-middle substituting keys
-      - C) Traffic analysis
-      - D) Denial of service
-      answer: B
-    - question: 'Forward secrecy in messaging ensures that compromise of a long-term key does not expose:'
+      - A) Stronger password hashing on the server
+      - B) Certificate pinning in every client
+      - C) Forward secrecy in the session keys
+      - D) A public key transparency directory
+      answer: C
+    - question: Analysts who never see message content still predict which departments work together. What
+        makes that inference possible?
       options:
-      - A) Future messages
-      - B) Previously captured messages
-      - C) The contact list
-      - D) The device
-      answer: B
-    - question: 'Traffic analysis can reveal relationships because:'
-      options:
-      - A) Encryption is weak
-      - B) Timing, volume and endpoints remain visible
-      - C) Keys leak
-      - D) Certificates are public
+      - A) The choice of cipher suite on the link
+      - B) Patterns in timing, volume and endpoints
+      - C) The strength of stored password hashes
+      - D) The version of the encryption library
       answer: B
 - ordinal: 5
   title: Cryptographic Protocol Failures
@@ -269,16 +384,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Recognise historic protocol failures and their root causes.
-  - Identify misconfiguration that undermines strong cryptography.
-  - Assess a deployment against current guidance.
+  - Classify a recorded TLS failure as a design flaw or a configuration flaw
+  - Interpret scanner findings against current protocol and cipher guidance
+  - Propose a remediation order for a service that fails an assessment
   topics:
-  - Downgrade and negotiation attacks.
-  - Implementation flaws versus design flaws.
-  - Deprecated protocols and cipher suites.
-  - Assessment tooling and interpretation.
-  lab: 'Lab: Scan a deliberately misconfigured TLS service, enumerate every weakness found, classify each
-    as design or configuration, and produce a remediation order by risk.'
+  - Downgrade attacks and oracle behaviour that leaks decryption validity.
+  - Design flaws versus configuration flaws in deployed services.
+  - Deprecated protocol versions and cipher suites still in service.
+  - Scanner findings, certificate validation and reading them against guidance.
+  - Remediation planning and migration of dependent clients.
+  lab: >-
+    Lab: On the large-enterprise range, scan the TLS service on web02, record every weakness the scanner
+    reports, and judge each one before proposing a remediation order. Evidence: every weakness the scanner
+    on vuln01 reports for web02, with its severity; the protocol version and cipher suite the service
+    actually negotiates from a client connection; and a design-or-configuration marking for each reported
+    weakness. Pass: every reported weakness recorded with its severity; each marked "design flaw" or
+    "configuration flaw" with a one-sentence reason; a remediation order written with one sentence of
+    reason for the first fix.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and write the start time in the lab notes.
+    - hosts: [vuln01, web02]
+      action: From vuln01, scan the TLS service on web02 and record every weakness the scanner reports, with
+        its severity.
+    - hosts: [jump01, web02]
+      action: From jump01, connect to web02 and record the protocol version and cipher suite the service
+        actually negotiates.
+    - hosts: [jump01]
+      action: Mark each reported weakness "design flaw" or "configuration flaw" with one sentence of reason.
+    - hosts: [jump01]
+      action: Rank the recorded weaknesses for remediation and state which to fix first with one sentence of
+        reason.
   refs:
   - nist-sp-800-52r2
   - nist-sp-800-115
@@ -286,41 +424,46 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'Most real-world TLS failures result from:'
+    - question: An assessment finds TLS 1.0 enabled beside TLS 1.3 on a payment service. Which failure mode
+        does keeping the older version introduce?
       options:
-      - A) Broken cryptographic primitives
-      - B) Misconfiguration, weak validation and legacy support
-      - C) Key length
-      - D) Certificate format
-      answer: B
-    - question: 'Accepting an invalid certificate in a client application effectively:'
+      - A) It corrupts the stored certificates
+      - B) It removes the server certificate check
+      - C) It gives an attacker a path to force the weakest version
+      - D) It silently lengthens the negotiated keys
+      answer: C
+    - question: A review shows strong algorithms deployed behind a rule set that still permits their
+        weakest combinations. Where does the fault lie?
       options:
-      - A) Improves compatibility safely
-      - B) Removes protection against interception
-      - C) Speeds the handshake
-      - D) Enables pinning
+      - A) In the design of the cipher primitives themselves
+      - B) In the configuration, not in the primitives
+      - C) In the certificate authority that issued the keys
+      - D) In the bandwidth the service has available
       answer: B
-    - question: 'Supporting an obsolete protocol version alongside a modern one risks:'
+    - question: A client application lets its user dismiss any certificate warning and continue. Which
+        protection has the application removed?
       options:
-      - A) Nothing if clients prefer the modern one
-      - B) Downgrade attacks forcing use of the weaker version
-      - C) Certificate errors
-      - D) Higher latency only
-      answer: B
-    - question: 'A padding oracle attack exploits:'
+      - A) Cipher negotiation with the server
+      - B) Session resumption across restarts
+      - C) Forward secrecy of the session keys
+      - D) Protection against interception of the link
+      answer: D
+    - question: A server answers differently when padding is invalid than when it is not, and an adversary
+        measures the difference. Which attack class is this?
       options:
-      - A) Weak key generation
-      - B) Distinguishable error behaviour revealing padding validity
-      - C) Certificate expiry
-      - D) Compression
-      answer: B
-    - question: 'The correct response to a deprecated cipher suite still in use is to:'
+      - A) A padding oracle against the decryption
+      - B) A downgrade negotiation with the client
+      - C) A certificate expiry failure on the server
+      - D) A weak key generation in the library
+      answer: A
+    - question: A scanner flags a deprecated cipher suite that is still served to legacy partner systems.
+        Which response matches current guidance?
       options:
-      - A) Ignore it if no attack is known
-      - B) Plan removal and migrate dependent clients
-      - C) Increase its priority
-      - D) Document and retain indefinitely
-      answer: B
+      - A) Ignore the finding until an attack is published
+      - B) Raise the suite's priority so modern clients pick it
+      - C) Plan removal on a date and migrate those partners
+      - D) Document the suite and keep it indefinitely
+      answer: C
 - ordinal: 6
   title: Designing a Secure Communications Architecture
   content_type: reading
@@ -328,16 +471,38 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Select appropriate protections for data in transit across a system.
-  - Balance security, performance and operability.
-  - Document cryptographic decisions for review.
+  - Map the flows of a three-tier application and select a protection in transit for each
+  - Justify where TLS terminates and which links a design must re-encrypt to the backend
+  - Record a cryptographic decision with its requirement, options considered and rationale
   topics:
-  - Requirement-driven protocol selection.
-  - Performance and operational cost.
-  - Key management integration.
-  - Documentation and cryptographic review.
-  lab: 'Lab: Design the data-in-transit protections for a three-tier application including internal service-to-service
-    traffic, and produce a decision record justifying each choice.'
+  - Requirement-driven selection of protections for data in transit.
+  - Trust inside the perimeter and service-to-service encryption.
+  - TLS termination at gateways and re-encryption to backends.
+  - Mutual TLS and key management integration.
+  - Decision records and cryptographic review.
+  lab: >-
+    Lab: On the large-enterprise range, observe which service flows the core firewall allows, which services
+    present TLS, and which hold certificates from the internal CA, then judge each flow's protection.
+    Evidence: the service flows between zones that the rules on fw01 allow; for exch01 and web01, whether a
+    client connection negotiates TLS; and which services hold certificates issued by ca01. Pass: each
+    recorded flow and service listed exactly as the range shows it; each flow marked "encrypted", "encrypted
+    to the gateway only" or "plaintext"; one proposed protection written for every flow not marked
+    "encrypted".
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and write the start time in the lab notes.
+    - hosts: [jump01, fw01]
+      action: From jump01, list the rules on fw01 and record which service flows between zones they allow.
+    - hosts: [jump01, exch01]
+      action: From jump01, connect to exch01 and to web01 and record for each whether the session negotiates
+        TLS.
+    - hosts: [jump01, ca01]
+      action: Open the certificate authority on ca01 and record which services hold certificates it issued.
+    - hosts: [jump01]
+      action: Mark each observed flow "encrypted", "encrypted to the gateway only" or "plaintext", and
+        propose one protection for every flow not marked "encrypted".
   refs:
   - nist-sp-800-52r2
   - nist-sp-800-57pt1r5
@@ -346,38 +511,42 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Encrypting internal service-to-service traffic is justified because:'
+    - question: A designer argues that service-to-service traffic inside the perimeter needs no encryption
+        because the network is private. Which principle does that decision contradict?
       options:
-      - A) Regulations always require it
-      - B) Internal networks should not be treated as inherently trusted
-      - C) It improves throughput
-      - D) It simplifies routing
+      - A) Certificate pinning of every public endpoint across the estate
+      - B) Zero trust, which treats the internal network as untrusted
+      - C) Forward secrecy of the negotiated session keys
+      - D) Traffic shaping rules applied at the perimeter gateway
       answer: B
-    - question: 'Mutual TLS between services provides:'
+    - question: Two services already hold certificates from the internal CA. Which design adds
+        authentication of both endpoints to their link?
       options:
-      - A) Only server authentication
-      - B) Authentication of both parties
-      - C) Authorisation decisions
-      - D) Key rotation
-      answer: B
-    - question: 'A cryptographic decision record should capture:'
+      - A) A shared password table on both hosts
+      - B) Source address allow-listing on the gateway
+      - C) A VLAN rule between the two segments
+      - D) Mutual TLS between the two services
+      answer: D
+    - question: A load balancer terminates TLS and forwards plaintext to the application tier behind it.
+        What must the design add for that hop?
       options:
-      - A) The chosen algorithm only
-      - B) The requirement, options considered, choice and rationale
-      - C) The vendor quote
-      - D) The implementation date only
-      answer: B
-    - question: 'Terminating TLS at a load balancer means traffic beyond it is:'
+      - A) Re-encryption from the balancer to the backend
+      - B) A longer certificate chain presented by the balancer
+      - C) Compression on the link between balancer and backend
+      - D) A second public address assigned to the balancer
+      answer: A
+    - question: What should a decision record for a cipher choice contain beyond the algorithm name?
       options:
-      - A) Always encrypted
-      - B) Plaintext unless re-encrypted to the backend
-      - C) Compressed
-      - D) Authenticated
+      - A) The vendor's licence cost for the library
+      - B) The requirement, the options considered and the rationale
+      - C) The implementation date and the operator who happened to be on shift
+      - D) The personal preference list of the most senior administrator
       answer: B
-    - question: 'Selecting cryptography should begin from:'
+    - question: A platform team chooses between a fast unencrypted link and a slower encrypted one for
+        telemetry that carries personal data. What starts the selection?
       options:
-      - A) The fastest available algorithm
-      - B) The protection requirement and threat model
-      - C) Vendor defaults
-      - D) The largest key size
-      answer: B
+      - A) The protection requirement for the data and its threat model
+      - B) The measured speed of the unencrypted link
+      - C) The default settings of the vendor product
+      - D) The largest key size available on the platform
+      answer: A
