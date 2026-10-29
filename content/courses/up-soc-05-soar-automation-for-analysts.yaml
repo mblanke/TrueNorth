@@ -1,0 +1,553 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+
+course_code: C523
+title: 'SOAR & Automation for Analysts'
+version: '1.0'
+difficulty: advanced
+duration_hours: 6
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C520
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Analyst (PR-CDA-001); Cyber Defense Incident Responder (PR-CIR-001).'
+  - 'NIST CSF 2.0 categories: DE.AE, RS.MA, ID.IM.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Playbook Design and Guardrails
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Classify an alert response task as full automation, approval-gated automation or manual analyst work
+  - Define the trigger, scope and stop conditions of a response playbook before any automation is built
+  - Apply fail-safe defaults so a playbook stops when a condition it depends on is not met
+  topics:
+  - 'What a SOAR playbook is: trigger, conditions, actions and the case record.'
+  - 'The risk of a task: reversibility, blast radius and the cost of a wrong action.'
+  - 'Guardrails: scope limits, approval gates and stop conditions.'
+  - 'Fail-safe defaults: a playbook that fails closed and says so.'
+  lab: >-
+    Lab: On the soc-training range, classify each task of the prepared case in TheHive on thehive01 by
+    whether automation may take it, then judge the marks against reversibility and impact. Evidence: the
+    case title, severity and task list; the observables attached to the case with their types; and each
+    task marked automate, approval required or manual with a one-sentence reason and a line saying whether
+    the same steps would work unchanged on the next similar alert. Pass: every case task
+    appears in the table with a mark; each reason names reversibility or impact; no task that changes a
+    victim host is marked automate without approval.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH or Guacamole with the analyst account, open a browser and note the
+        start time in the lab notes.
+    - hosts: [jump01, thehive01]
+      action: From jump01, open the TheHive interface on thehive01, open the prepared case and record its
+        title, severity and the tasks it contains.
+    - hosts: [thehive01]
+      action: List the observables attached to the case and record each observable's type and value exactly
+        as the case shows them.
+    - hosts: [thehive01]
+      action: For each task in the case, record in one line whether the same steps would work unchanged on
+        the next similar alert.
+    - hosts: [jump01]
+      action: Mark each task automate, approval required or manual, give a one-sentence reason that names
+        reversibility or impact, and keep the table as the lab evidence.
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A playbook isolates any workstation that raises a particular alert, with no approval step.
+        It fires on a finance workstation during a routine software inventory. Which guardrail was missing?
+      options:
+      - A) The playbook ran faster than anyone could watch, so nobody intervened
+      - B) An approval gate before an irreversible action on a production host
+      - C) The inventory tool should have been updated more often
+      - D) The alert should have been given a lower severity
+      answer: B
+    - question: A playbook triggers on every high severity alert and matches four hundred alerts on its first
+        day. Which design step was skipped?
+      options:
+      - A) The platform needed faster processing for the queue
+      - B) High severity alerts should never start automation
+      - C) A scope limit that keeps the trigger on its intended alert types
+      - D) The severity scale should have been redefined before automating
+      answer: C
+    - question: 'A containment playbook depends on an asset record for the host it is about to act on, and the
+        record is missing. Built on fail-safe defaults, the playbook:'
+      options:
+      - A) Stops, records the missing confirmation and leaves the decision to an analyst
+      - B) Acts anyway, because the alert is high severity and speed matters more
+      - C) Retries until the asset record finally answers, then acts on it
+      - D) Acts and records the missing asset record as a case note
+      answer: A
+    - question: An analyst sorts the tasks of a malware case in TheHive before building a playbook. Which task
+        is the right kind for full automation with no approval step?
+      options:
+      - A) Disconnecting the domain controller from the network until the team meets
+      - B) Disabling a set of user accounts after a compromise
+      - C) Rebuilding a file server that is suspected of infection
+      - D) Enriching each new alert with asset ownership from a lookup list
+      answer: D
+    - question: 'Two playbooks handle the same phishing alert. One closes it and removes the message by itself.
+        The other attaches its findings to the case and waits. The second design shows:'
+      options:
+      - A) Tooling too slow to keep up with the alert volume
+      - B) A stop condition that keeps an analyst owner over every closure
+      - C) A missing trigger, since the alert was never processed to completion
+      - D) A scope limit that excludes phishing from automation
+      answer: B
+- ordinal: 2
+  title: TheHive/Cortex Automation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Map the alert, case, task and observable records of TheHive to the stages of analyst triage
+  - Run a Cortex analyser on a case observable and read its report before acting on the result
+  - Sort responder actions into those that need an approver and those that only write to the case
+  topics:
+  - Alerts, cases, tasks and observables in TheHive.
+  - 'Cortex analysers and responders: jobs, reports and results.'
+  - Linking an analyser to case observables so the result lands in the record.
+  - Choosing the automation boundary for responder actions.
+  lab: >-
+    Lab: On the soc-training range, run a Cortex analyser on an observable from the prepared case in
+    TheHive on thehive01 and read what comes back before anyone acts on it. Evidence: the names and input
+    types of the analysers configured on thehive01; the job status and main finding for the chosen
+    observable; whether the result is attached to the observable in the case or had to be copied by hand;
+    and the same two facts for a second observable of the same type. Pass: two analyser jobs recorded with
+    their statuses; each result located in the case record; each result marked safe without approval or
+    approval required with a one-sentence reason.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 with the analyst account and open the prepared case in TheHive on thehive01.
+    - hosts: [thehive01]
+      action: In Cortex on thehive01, list the analysers the administrator has configured and record each
+        analyser's name and input type.
+    - hosts: [thehive01]
+      action: Choose one domain or file hash observable from the case, run one analyser on it and record the
+        job status as Cortex shows it.
+    - hosts: [thehive01]
+      action: Open the job report, record its main finding, and record whether the result is attached to the
+        case observable without manual copying.
+    - hosts: [thehive01]
+      action: Run the same analyser on a second observable of the same type and record both results side by
+        side in the lab notes.
+    - hosts: [jump01]
+      action: Mark each analyser result safe without approval or approval required, with one sentence naming
+        what the action behind the result would change.
+  refs:
+  - nist-sp-800-150
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A phishing alert in TheHive is promoted to a case with one task per response step, and the
+        observable list holds the sender's domain. What does the task list represent?
+      options:
+      - A) The evidence the adversary left behind in the mail system
+      - B) The enrichment data copied over from Cortex
+      - C) The steps of the response the case owner works through
+      - D) The history of every change made to the case
+      answer: C
+    - question: A Cortex analyser job on a file hash finishes with status failure and an empty report. What is
+        the safe next move for the analyst?
+      options:
+      - A) Record the failure in the case and continue without that enrichment
+      - B) Treat the hash as malicious, since the analyser could not clear it
+      - C) Re-run the job until it succeeds, before any other work
+      - D) Remove the observable so the failed job misleads no one
+      answer: A
+    - question: The playbook's responder actions are being sorted into what may run without an approver. Which
+        one fits the automation boundary of writes only to the case record?
+      options:
+      - A) Isolating the workstation that the alert came from
+      - B) Adding a tag and a summary note to the case
+      - C) Disabling the user account named in the alert
+      - D) Blocking the sender's domain at the mail gateway
+      answer: B
+    - question: An analyst runs a reputation analyser on a domain and the report says the domain is clean. Why
+        is that report alone not a reason to close the case?
+      options:
+      - A) Reputation analysers run more slowly than manual lookups do
+      - B) A clean report means the enrichment pipeline must be broken
+      - C) The reports are written for administrators rather than for analysts
+      - D) A clean reputation is one data point among the unread evidence
+      answer: D
+    - question: A SOC wants every new file hash observable enriched without an analyst copying values between
+        tools. Which arrangement does that?
+      options:
+      - A) A saved search that lists unenriched observables once per day
+      - B) A responder that deletes hashes the reputation service does not recognise
+      - C) A Cortex analyser wired to enrich every file hash at case creation
+      - D) A rule that raises the severity of every case holding a hash
+      answer: C
+- ordinal: 3
+  title: Automated Enrichment Pipelines
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Order the stages of an enrichment pipeline from alert arrival to a verdict-ready case
+  - Enrich one file hash with threat intel from MISP on misp01 and record the provenance of each result
+  - Judge enrichment output by timeliness, relevance and source confidence before it informs a decision
+  topics:
+  - 'Enrichment sources: asset inventories, identity data and threat intel platforms.'
+  - 'The pipeline in order: fetch, match, record provenance, present to the analyst.'
+  - Stale feeds, rate limits and a pipeline that fails closed.
+  - 'Judging intel: timeliness, relevance and confidence before acting.'
+  lab: >-
+    Lab: On the soc-training range, enrich the file hash from the prepared case with the threat intel
+    platform on misp01 and judge what comes back before it informs any decision. Evidence: whether MISP
+    holds an event matching the hash, with the event date; the newest sighting date and the confidence
+    markings the match carries; what the enrichment adds to the case in TheHive on thehive01; and a mark of
+    act, corroborate first or discard for the result. Pass: the match recorded exactly as MISP shows it or
+    recorded as absent; the provenance, source and date, written beside the result; a judgement mark with a
+    one-sentence reason that names timeliness or confidence.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 with the analyst account and open the prepared case in TheHive on thehive01.
+    - hosts: [misp01]
+      action: Open the threat intel platform on misp01, search for the file hash from the case and record
+        whether an event matches, with its date.
+    - hosts: [misp01]
+      action: Open the matching event and record its newest sighting date, its tags and any confidence
+        markings it carries.
+    - hosts: [thehive01]
+      action: Run the enrichment on the observable in TheHive on thehive01 and record what the case record
+        gains that the manual search did not show.
+    - hosts: [jump01]
+      action: Mark the enrichment act, corroborate first or discard, with a one-sentence reason that names
+        timeliness, relevance or confidence.
+  refs:
+  - nist-sp-800-150
+  - oasis-cti
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: An enrichment pipeline matches a hash to an intel event dated eight months ago with no recent
+        sighting. How should the result be treated?
+      options:
+      - A) As stale, to be corroborated before it informs any decision
+      - B) As a confirmed detection, because the feed is normally reliable
+      - C) As proof the pipeline is broken and must be rebuilt
+      - D) As grounds to close the case as a false positive
+      answer: A
+    - question: A pipeline enriches an alert with the asset owner from the inventory and the reputation of the
+        calling domain. Why record provenance beside each result?
+      options:
+      - A) Provenance fields make the case record shorter to read at review time
+      - B) The pipeline cannot store its results without those fields
+      - C) Provenance replaces the analyst's own judgement about the alert
+      - D) A later decision must show which source said what, and when
+      answer: D
+    - question: MISP returns a match for every hash an analyst searches, including hashes of ordinary
+        documents. What does this say about the feed?
+      options:
+      - A) The feed is comprehensive and should be trusted
+      - B) The analyst is searching the platform incorrectly
+      - C) The feed's relevance is poor, so its matches need confidence checks
+      - D) MISP is designed to store every file it has ever seen
+      answer: C
+    - question: An analyst is documenting the enrichment pipeline for the team's run book. Which ordering puts
+        its stages in the right sequence?
+      options:
+      - A) Present, fetch, match, record provenance
+      - B) Fetch, match, record provenance, present
+      - C) Match, present, fetch, record provenance
+      - D) Record provenance, present, match, fetch
+      answer: B
+    - question: 'An enrichment pipeline calls an external reputation service for every alert, and one night the
+        service starts timing out. Built to fail closed, the pipeline:'
+      options:
+      - A) Marks the enrichment unavailable and leaves the case for manual triage
+      - B) Submits the alert without enrichment and closes it as clean
+      - C) Blocks the source host of the alert as a precautionary measure
+      - D) Re-sends the request continuously until the service answers
+      answer: A
+- ordinal: 4
+  title: Human-in-the-Loop Decisions
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Sort response decisions by impact and reversibility to find the ones an analyst must own
+  - Build an approval gate that holds a containment action until an analyst decides
+  - Trace one approval through the case record from request to decision to action taken
+  topics:
+  - Impact and reversibility as the test for what stays manual.
+  - 'Approval gates: what the approver sees and what they must decide.'
+  - 'The audit trail: requester, decider, time and evidence.'
+  - Automation bias and the duty to check a machine's recommendation.
+  lab: >-
+    Lab: On the soc-training range, exercise the approval gate of the prepared playbook in TheHive on
+    thehive01, once declining and once approving the containment action. Evidence: what the approval prompt
+    shows the approver; what the playbook does when the approval is declined; the action the case log
+    records against v-ws01 when the approval is given; and whether the audit trail names who decided, when
+    and on what evidence. Pass: the declined run stops with the workstation untouched and the decision
+    recorded; the approved run's action appears in the case log; the audit trail answers who, when and on
+    what evidence for both runs.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 with the analyst account and open the prepared playbook case in TheHive on
+        thehive01.
+    - hosts: [thehive01]
+      action: Start the playbook against the prepared alert and record exactly what the approval prompt shows
+        the approver.
+    - hosts: [thehive01]
+      action: 'Decline the approval and record what the playbook does instead: the state of the case and
+        whether v-ws01 was touched.'
+    - hosts: [jump01, thehive01]
+      action: Run the playbook again, approve the action, and record the containment action the case log shows
+        against v-ws01.
+    - hosts: [jump01]
+      action: Read the audit trail for both runs and record who decided, when, and on what evidence each
+        decision rests.
+    - hosts: [jump01]
+      action: Mark the approval gate fit for purpose or not, with one sentence naming what an approver would
+        still be missing.
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A containment playbook is being reviewed, and each decision it can take is sorted by impact and
+        reversibility. Which decision belongs behind an approval gate rather than in full automation?
+      options:
+      - A) Adding a summary note to a closed case
+      - B) Enriching a domain with its registrar details and attaching the result
+      - C) Attaching a screenshot to the case record as proof
+      - D) Isolating a payroll workstation in the middle of working hours
+      answer: D
+    - question: 'A playbook recommends containing a host and the analyst approves in one click without reading
+        the evidence. This failure is best described as:'
+      options:
+      - A) A missing trigger condition that fired the playbook on the wrong hosts
+      - B) Automation bias, accepting the recommendation without independent judgement
+      - C) A stale threat intel feed that shaped the recommendation
+      - D) An audit trail that recorded too little detail
+      answer: B
+    - question: A containment approval is challenged in an audit three weeks after the fact, and the record
+        must speak for itself. Which record makes an approval auditable?
+      options:
+      - A) The requester, the decider, the time and the evidence used
+      - B) The playbook's version number and licence expiry
+      - C) The total number of approvals given that day
+      - D) The analyst's personal opinion that the action was probably safe
+      answer: A
+    - question: A playbook pauses for approval before isolating a host, but the approver is shown only the
+        alert title. What is wrong with the gate?
+      options:
+      - A) Gates should pause after the action, so the record is complete
+      - B) The title is too short to be stored in the case
+      - C) The approver cannot judge impact and reversibility without the evidence
+      - D) Isolation decisions should never need an approver at all
+      answer: C
+    - question: An analyst is sorting the tasks of one incident into automated and analyst-owned using the
+        impact and reversibility test. Which pair of actions is sorted correctly by that test?
+      options:
+      - A) Enrich an alert, done by an analyst; isolate a host, done automatically
+      - B) Add a case note, done automatically; disconnect the domain controller, analyst-owned
+      - C) Close a false positive, analyst-owned; tag an alert, done by an analyst
+      - D) Remove a mailbox rule, done automatically; reset a password, done automatically
+      answer: B
+- ordinal: 5
+  title: Measuring Automation Value
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Compute mean time to triage for cases handled before and after a playbook was enabled
+  - Select automation metrics that measure analyst time saved without rewarding shallow case closure
+  - Report the value of an enrichment playbook with a baseline, an after figure and the coverage it handles
+  topics:
+  - 'Baseline and after: time to triage, time to containment, analyst minutes per case.'
+  - 'Coverage: which alert types the playbook handles and which it must never touch.'
+  - 'Metrics that get gamed: closure counts and speed without accuracy.'
+  - Reporting value to the incident response lead with honest numbers.
+  lab: >-
+    Lab: On the soc-training range, measure what the enrichment playbook changed using the case list in
+    TheHive on thehive01. Evidence: for ten closed cases, the creation time, the time of the first analyst
+    action and the closure time; the mean time to triage for cases handled before the playbook was enabled
+    and for those handled after; how many alerts of the playbook's types arrived in the same period; and
+    one metric a lazy analyst could game, with a guard against it. Pass: the ten cases tabulated with all
+    three timestamps; both means computed and shown with the cases they cover; the gameable metric named
+    with a one-sentence guard.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 with the analyst account and open the closed case list in TheHive on thehive01.
+    - hosts: [thehive01]
+      action: Take the ten closed cases the instructor marks and record each case's creation time, first
+        analyst action time and closure time.
+    - hosts: [thehive01]
+      action: Split the ten into cases handled before the enrichment playbook was enabled and after it, and
+        compute the mean time to triage for each set.
+    - hosts: [siem01]
+      action: Open the alert dashboards on siem01 and record how many alerts of the playbook's types arrived
+        in the same period.
+    - hosts: [jump01]
+      action: Name one metric a lazy analyst could game, write one guard against it, and state the coverage
+        the playbook handled and must never touch.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'A dashboard counts how long each case sat before an analyst first touched it, and the SOC calls
+        this its triage measure. Mean time to triage is measured between:'
+      options:
+      - A) Case creation and the case closure time
+      - B) Alert arrival and the containment of the activity
+      - C) Case creation and the first analyst decision on it
+      - D) The playbook enabling date and the report date
+      answer: C
+    - question: A SOC reports a falling mean closure time, but a later review finds the enrichment was never
+        read before closure. What does this show?
+      options:
+      - A) The playbook enriched the alerts too slowly for the waiting analysts
+      - B) Closure speed is a gameable metric and needs an accuracy check
+      - C) The review sample was too small to conclude anything at all
+      - D) Time to containment would have shown exactly the same flaw
+      answer: B
+    - question: A SOC lead wants one number that says how much of the alert flow a new enrichment playbook
+        absorbs. Which question does a coverage figure answer?
+      options:
+      - A) How much licence the playbook consumed, and whether that spend was justified
+      - B) How fast the platform indexed the alerts
+      - C) How many analysts were on shift that week
+      - D) Which share of arriving alert types the playbook handled unaided
+      answer: D
+    - question: Two analysts compute the before-and-after triage figures for the same playbook and get
+        different stories. What makes a before-and-after comparison of triage time honest?
+      options:
+      - A) Both periods measured the same way over comparable cases, baseline first
+      - B) The after period being longer, so more cases smooth the average
+      - C) Counting only the cases the playbook handled fastest
+      - D) Reporting the best week rather than the whole period
+      answer: A
+    - question: 'An incident response lead asks what the enrichment playbook is worth. The strongest answer
+        pairs:'
+      options:
+      - A) The number of playbooks in service with their uptime
+      - B) The alert volume paired with the platform's storage cost over the period
+      - C) Analyst minutes saved per case with the coverage of alert types automated
+      - D) The playbook's error log with its version history
+      answer: C
+- ordinal: 6
+  title: Guarded Automation in Practice
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Assemble one playbook that enriches an alert, records triage notes and stops for approval before containment
+  - Test a playbook against a benign lookalike alert and record which guard condition holds the action
+  - Justify each automated step of a playbook to an incident response lead from the evidence in the case
+  topics:
+  - Assembling enrichment, recording and an approval gate into one playbook.
+  - Testing with benign lookalikes before any action is enabled.
+  - Disabling a playbook safely and rolling back what it did.
+  - 'Handover: what the playbook does, never does, and how to switch it off.'
+  lab: >-
+    Lab: On the soc-training range, assemble the guarded playbook the course has built towards in TheHive
+    and Cortex on thehive01 and test it before any containment is enabled. Evidence: the playbook's
+    trigger, the analyser it runs on each new observable, the guard condition that raises the approval gate
+    and the note it writes to the case; the case log entries from the benign lookalike test, including
+    which guard held the action; and a handover note stating what the playbook automates, what it never
+    does without approval and how to disable it. Pass: the playbook runs end to end in the test; the
+    lookalike is held by the guard and the hold is recorded; the handover note answers all three questions.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 with the analyst account and open the playbook editor in TheHive on thehive01.
+    - hosts: [thehive01]
+      action: 'Configure the playbook: set the trigger to the prepared alert type, run the configured analyser
+        on each new observable and write the result to the case.'
+    - hosts: [thehive01]
+      action: Add the approval gate before the containment action and record the guard condition that raises
+        it.
+    - hosts: [thehive01]
+      action: Run the playbook on the benign lookalike alert the instructor supplies and record which guard
+        condition holds the action.
+    - hosts: [thehive01]
+      action: Read the case log from the test and record the enrichment result, the gate event and the final
+        state of the case.
+    - hosts: [jump01]
+      action: 'Write the handover note: what the playbook automates, what it never does without approval, and
+        how to disable it safely.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A playbook enriches, writes a triage note and holds before isolating the host. In a test, a
+        benign software inventory alert matches the trigger. A correct guard produces:'
+      options:
+      - A) The gate raised, the host untouched, the hold in the case
+      - B) The host isolated, since the trigger matched and the playbook worked
+      - C) The alert removed so it cannot fire again
+      - D) The playbook disabling itself permanently after the test
+      answer: A
+    - question: 'A containment playbook for a file server alert is ready, and the instructor asks how it will
+        be proven safe. Before enabling the new playbook, the safest test uses:'
+      options:
+      - A) The busiest alert type, to stress the playbook properly
+      - B) A production host, to prove the action works under real conditions
+      - C) A benign lookalike alert that a guard condition should hold
+      - D) No test, since the enrichment steps only read data
+      answer: C
+    - question: 'An analyst who maintained the team''s playbooks moves to another shift, leaving one handover
+        note behind. The note must let the next analyst answer:'
+      options:
+      - A) Who wrote the playbook, and when they wrote it
+      - B) Which vendor products the platform is built on
+      - C) How many cases the playbook closed over the whole last month
+      - D) What it automates, what needs approval, and how to disable it
+      answer: D
+    - question: 'After a playbook misfires, the incident response lead asks for a rollback. The safest response
+        is to:'
+      options:
+      - A) Leave the playbook running and repair it quietly overnight, telling no one
+      - B) Disable the playbook, record what it changed, and reverse those changes
+      - C) Delete the playbook together with all of its case history
+      - D) Re-enable it with the trigger broadened to catch the missed alerts
+      answer: B
+    - question: An auditor asks why a workstation was isolated last Tuesday. Where is the answer found?
+      options:
+      - A) In the case record, with the gate event, approver and evidence
+      - B) In the playbook's trigger definition, which records no decision at all
+      - C) In the vendor documentation of the analyser product
+      - D) In the network diagrams of the environment alone
+      answer: A

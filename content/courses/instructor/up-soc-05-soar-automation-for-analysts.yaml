@@ -1,0 +1,188 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+
+course_code: C523
+audience: staff_only
+overview: >-
+  SOAR & Automation for Analysts is an advanced self-paced course for one Student working alone on the
+  soc-training range: six 60-minute modules, each split 15 minutes of teaching, 35 minutes of lab and a
+  10-minute quiz passed at 70 percent. Across the six labs the Student builds and tests one guarded
+  playbook in TheHive and Cortex on thehive01, from classifying which tasks automation may take through
+  enrichment from misp01, an approval gate, and finally measuring what the playbook changed. The Student
+  hands in an evidence table at the end of every lab; the range must be reset to the module's prepared
+  state before each session.
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: >-
+    Q1 B (approval gate): an irreversible action on a production host needs an approver; A confuses speed
+    with control, C treats patching as the guardrail, D treats severity labelling as the fix.
+    Q2 C (scope limit): the trigger must be narrowed to the alert types the playbook was built for; A
+    blames capacity, B overstates it, D changes the scale instead of the trigger.
+    Q3 A (fail-safe defaults): a missing dependency means stop and hand to an analyst; B and D act despite
+    the missing condition, C retries instead of failing closed.
+    Q4 D (reversibility): enrichment is reversible and low impact; A, B and C each change a host or
+    identity state that is hard to undo.
+    Q5 B (stop condition): the design keeps an analyst owner over closure; A blames the tooling, C calls
+    an unprocessed alert a missing trigger, D invents a scope exclusion.
+- module: 2
+  notes: >-
+    Q1 C (case tasks): the task list is the response the case owner works through; A confuses observables
+    with evidence, B confuses tasks with enrichment, D describes the case history.
+    Q2 A (fail closed): a failed job is recorded and triage continues; B treats absence of evidence as
+    guilt, C wastes time on retries, D destroys the observable.
+    Q3 B (automation boundary): a tag and note only write to the record; A, C and D each reach outside the
+    case into hosts, identities or the gateway.
+    Q4 D (single source): a clean reputation is one data point among the case evidence; A argues speed, B
+    and C misread what a report is.
+    Q5 C (wired analyser): enrichment lands only when the analyser runs on every observable of that type
+    at case creation; A is a daily list, B is destructive, D changes severity, not enrichment.
+- module: 3
+  notes: >-
+    Q1 A (stale intel): an old event with no recent sighting is corroborated first; B overweights a
+    normally reliable feed, C confuses stale with broken, D closes on thin evidence.
+    Q2 D (provenance): a later decision must show which source said what and how fresh it was; A and B are
+    procedural fictions, C claims provenance replaces judgement.
+    Q3 C (relevance): a feed matching everything needs confidence checks; A confuses coverage with trust,
+    B blames the analyst, D misstates the platform's purpose.
+    Q4 B (pipeline order): fetch, match, record provenance, present; A presents before fetching, C and D
+    record provenance before there is anything to record.
+    Q5 A (fail closed): the pipeline marks enrichment unavailable and leaves the case for manual triage; B
+    closes on no evidence, C takes an unauthorised action, D loops forever.
+- module: 4
+  notes: >-
+    Q1 D (impact and reversibility): isolating a payroll workstation in working hours is high impact and
+    disruptive, so it needs an approver; A, B and C only write to the record.
+    Q2 B (automation bias): the recommendation was accepted without independent judgement; A invents a
+    trigger defect, C blames the data, D misreads the audit trail.
+    Q3 A (auditable approval): requester, decider, time and evidence; B is metadata, C is a count, D is an
+    opinion.
+    Q4 C (what the approver sees): without supporting evidence the approver cannot judge impact and
+    reversibility; A moves the gate to the wrong side, B and D dismiss the gate.
+    Q5 B (sorted pair): a case note is automated, the domain controller is analyst-owned; A inverts the
+    test, C keeps a low-impact action manual, D automates a password reset that deserves a look.
+- module: 5
+  notes: >-
+    Q1 C (time to triage): case creation to the first analyst decision on it; A measures to closure, B
+    measures containment, D measures the report window.
+    Q2 B (gameable metric): closure speed without an accuracy check rewards shallow closure; A blames the
+    playbook, C dismisses the review, D picks a metric with the same flaw.
+    Q3 D (coverage): the share of arriving alert types the playbook handled unaided; A,
+    B and C are operational trivia.
+    Q4 A (honest comparison): same measurement, comparable cases, baseline recorded first; B and C skew
+    the sample, D cherry-picks the window.
+    Q5 C (value pair): analyst minutes saved per case with the coverage of alert types automated; A and D
+    are internal facts, B pairs value with cost.
+- module: 6
+  notes: >-
+    Q1 A (guard holds): the gate raises, the host is untouched and the hold is recorded; B fires on the
+    match, C destroys the alert, D overreacts to one test.
+    Q2 C (benign lookalike): a lookalike a guard should hold proves the gate without touching production;
+    A stresses volume, not logic, B risks a real host, D skips the test.
+    Q3 D (handover): what the playbook automates, what needs approval, and how to disable it; A is
+    authorship, B is inventory, C is a count.
+    Q4 B (rollback): disable, record what changed, reverse it from the case log; A hides the fault, C
+    destroys the evidence, D widens the trigger.
+    Q5 A (audit trail): the case record holds the gate event, the approver and the evidence; B, C and D
+    lack the decision.
+lab_setup:
+- module: 1
+  setup: >-
+    Reset the soc-training range to its baseline. In TheHive on thehive01, create the prepared case: a
+    high severity phishing case with four tasks (triage the alert, enrich the sender domain, retrieve the
+    message, isolate the workstation) and two observables, one sender domain and one file hash. Confirm
+    the analyst account can open the case from jump01.
+- module: 2
+  setup: >-
+    Keep the module 1 case in place. On thehive01, confirm at least two Cortex analysers are configured,
+    one that takes a domain and one that takes a file hash, and that the analyst account can see Cortex
+    and run jobs. Do not connect any responder that acts outside the case.
+- module: 3
+  setup: >-
+    On misp01, load the course intel set: one event matching the prepared case's file hash, with sighting
+    dates and confidence markings, plus a few unrelated events so a search is not trivially clean. Confirm
+    the enrichment link between TheHive on thehive01 and misp01 works for the analyst account.
+- module: 4
+  setup: >-
+    On thehive01, prepare the playbook case with an approval gate in front of a containment action against
+    v-ws01, carried out through velociraptor01. Confirm velociraptor01 can reach v-ws01 and that the case
+    log records the gate event. Provide no shortcut that skips the gate.
+- module: 5
+  setup: >-
+    On thehive01, seed ten closed cases: five created before the enrichment playbook was enabled and five
+    after, each carrying a creation time, a first analyst action time and a closure time. Mark on the
+    board which ten cases the Student uses. Confirm the alert dashboards on siem01 show alert counts for
+    the same period.
+- module: 6
+  setup: >-
+    On thehive01, make the playbook editor available to the analyst account with the module 2 analyser and
+    the module 4 approval gate ready to wire, but keep the containment action disabled for the test. Write
+    the benign lookalike alert beforehand and hold it ready to release; do not connect the playbook to any
+    real host until after the quiz.
+common_faults:
+- module: 1
+  fault: The Student marks every task manual, or every task automate, instead of sorting by reversibility
+    and impact.
+  remedy: Take the isolate-the-workstation task and the enrich-the-domain task and ask which one can be
+    undone in a minute; the asymmetry makes the sorting start.
+- module: 1
+  fault: Scope is written as a noun ('phishing') rather than a narrowed trigger condition.
+  remedy: Ask what the playbook must never fire on, and have the Student write that as a condition next
+    to the trigger.
+- module: 2
+  fault: The Student treats a failed analyser job as a verdict about the observable.
+  remedy: 'Point back to the module 1 fail-safe rule: a missing result is a missing result, not a finding.'
+- module: 2
+  fault: Results are copied by hand and the Student does not notice the case record stayed empty.
+  remedy: Have the Student reopen the case after each job and confirm the result is attached before writing
+    anything else.
+- module: 3
+  fault: A match is recorded as a detection regardless of the event's age or markings.
+  remedy: Ask for the sighting date out loud before any verdict; stale with no recent sighting goes to
+    corroborate first by default.
+- module: 3
+  fault: Provenance is skipped because 'the pipeline knows where it came from'.
+  remedy: Ask the Student to answer an auditor's question from the case alone; without provenance in the
+    record the answer does not exist.
+- module: 4
+  fault: The approved run and the declined run are recorded identically, with no audit trail.
+  remedy: Walk the case log for both runs side by side; the declined run must show the hold, the approved
+    run the action and the decider.
+- module: 4
+  fault: The Student approves the gate in the second run without rereading the evidence, mirroring the
+    automation bias the module teaches.
+  remedy: Ask the Student to state the evidence aloud before approving; make the stated evidence part of
+    the pass criteria.
+- module: 5
+  fault: Triage time is computed to closure instead of to the first analyst action.
+  remedy: Re-derive the definition from the timestamps before computing; one misdefined mean poisons both
+    halves of the comparison.
+- module: 5
+  fault: The before and after sets are different sizes or case types, and the comparison is reported anyway.
+  remedy: Have the Student label each case's type and period first; incomparable sets are reported as
+    incomparable, not averaged away.
+- module: 6
+  fault: The playbook is wired to the containment action before the lookalike test is run.
+  remedy: Check the wiring order before releasing the lookalike; the test runs with containment disabled,
+    and only the recorded hold enables the action afterwards.
+- module: 6
+  fault: The handover note repeats the playbook's step list instead of answering the three questions.
+  remedy: 'Score the note against the three questions verbatim: automates, never does without approval,
+    how to disable.'
