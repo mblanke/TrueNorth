@@ -9,6 +9,7 @@ difficulty: intermediate
 duration_hours: 60
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 source:
@@ -30,57 +31,89 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Structure a technical report for an assessor.
-  - Write with precision and appropriate register.
-  - Present evidence clearly and honestly.
+  - Structure a capstone assessment report so an assessor can follow method, evidence and conclusion
+  - Distinguish verified observations from claims the recorded evidence does not support
+  - Record range evidence with host names, commands and timestamps that an assessor can trace
   topics:
-  - Report structure and flow.
-  - Precision, hedging and overclaiming.
-  - Presenting data and evidence.
-  - Referencing and attribution.
-  lab: 'Lab: Draft your capstone report, then review it specifically for overclaiming, replacing every
-    unsupported assertion with a statement proportionate to your evidence.'
+  - Report sections and the order an assessor reads them.
+  - Precise wording, hedging and overclaiming in written findings.
+  - Presenting command output as traceable evidence.
+  - Referencing sources, host names and tool versions.
+  - Editing a draft to remove unsupported assertions.
+  lab: >-
+    Lab: Collect the evidence set for the capstone report on the medium-enterprise range and judge each
+    recorded item as verifiable or unsupported. Evidence: the name, source and destination of each fw01
+    rule between the corporate and server networks; the command, queried host and exact output of one name
+    lookup from ws01 to dc01, with the outcome of the first attempt; the share names fs01 offers; the log
+    sources siem01 receives and the address
+    each ships from. Pass: each item recorded exactly as the range shows it; each item marked verifiable or
+    unsupported with a one-sentence reason; any unsupported claim rewritten as a statement the recorded
+    output supports.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 with the analyst account, open a terminal and record the login time.
+    - hosts: [fw01]
+      action: Read the rules fw01 enforces and record the name, source and destination of each rule between
+        the corporate and server networks.
+    - hosts: [ws01, dc01]
+      action: From ws01, run one name lookup against dc01 and record the command, the queried host, the
+        exact output of the first attempt and, if it failed, what the retry changed.
+    - hosts: [ws01, fs01]
+      action: Sign in to ws01 as the standard user the instructor assigned, connect to fs01 and record the
+        names of the shares it offers to domain users.
+    - hosts: [siem01]
+      action: List the log sources siem01 receives and record each source name and the address it ships from.
+    - hosts: [siem01]
+      action: Mark each recorded item verifiable or unsupported with a one-sentence reason, and rewrite any
+        unsupported claim as a statement the recorded output supports.
   refs:
-  - nist-sp-800-218
+  - nist-sp-800-115
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'Overclaiming in a technical report is problematic because it:'
+    - question: A draft capstone report calls the range firewall weakly configured, but its evidence section
+        records only one rule table read on the host. Which classification fits this claim?
       options:
-      - A) Lengthens the text
-      - B) Misleads the reader and undermines credibility when detected
-      - C) Is hard to write
-      - D) Reduces the word count
+      - A) A verified observation, because the rule table is primary evidence
+      - B) An unsupported assertion, because the evidence never shows a strong configuration
+      - C) A limitation that belongs in the discussion section instead
+      - D) Precise wording that needs no change before submission
       answer: B
-    - question: 'The results section should contain:'
+    - question: An assessor asks where a quoted command output in the findings section came from. Which
+        recording habit lets the Student answer immediately?
       options:
-      - A) Interpretation and conclusions
-      - B) What was observed, with interpretation separated
-      - C) Methodology
-      - D) Related work
-      answer: B
-    - question: 'Failing to attribute another''s work is:'
-      options:
-      - A) A formatting error
-      - B) Plagiarism, regardless of intent
-      - C) Acceptable if paraphrased
-      - D) A minor omission
-      answer: B
-    - question: 'Hedged language such as suggests rather than proves is appropriate when:'
-      options:
-      - A) Always
-      - B) The evidence supports an indication but not a definitive conclusion
-      - C) Never in technical writing
-      - D) The result is negative
-      answer: B
-    - question: 'A figure included in a report should:'
-      options:
-      - A) Stand alone with a caption explaining what it shows and why it matters
-      - B) Be self-explanatory without caption
-      - C) Replace the text
-      - D) Be decorative
+      - A) Logging the host name, command, timestamp and tool version alongside each result
+      - B) Copying only the final line of each command's output into the report
+      - C) Saving the evidence in a separate file the assessor must request later
+      - D) Paraphrasing the output so the findings section stays short
       answer: A
+    - question: One finding says the file server may expose confidential data; a second says it exposes four
+        corporate-reachable shares, with output attached. Which finding belongs in the report?
+      options:
+      - A) The first, because confidentiality is the impact an assessor cares about
+      - B) The first, because hedged wording cannot be shown wrong
+      - C) The second, because it states what was observed and is verifiable
+      - D) Both, because a report should present each impression in its own words
+      answer: C
+    - question: A results section mixes the command output that was recorded with the author's explanation of
+        what the output means about the range. What does the report structure require?
+      options:
+      - A) Removing the explanation, because interpretation never belongs anywhere in a technical report
+      - B) Separating them, so the reader can tell observed output from interpretation
+      - C) Moving the command output to an appendix and keeping only the explanation
+      - D) Merging them, because assessors prefer findings stated in a single voice
+      answer: B
+    - question: Before submitting, a Student re-reads the draft and finds the sentence the SIEM is clearly
+        insecure written with no recorded evidence behind it. What is the correct edit?
+      options:
+      - A) Keep the sentence, because conclusions are allowed to state impressions
+      - B) Delete the sentence and leave the results section shorter
+      - C) Move the sentence to the acknowledgements
+      - D) Replace it with a statement the recorded SIEM output actually supports
+      answer: D
 - ordinal: 2
   title: Analysis and Discussion
   content_type: reading
@@ -88,56 +121,85 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Interpret results in context.
-  - Discuss limitations candidly.
-  - Distinguish what was demonstrated from what is speculated.
+  - Interpret the recorded range findings in the context of the enterprise's operations
+  - State the limitations of a bounded assessment and what its results do not establish
+  - Rank the observed exposures by their impact on confidentiality, integrity or availability
   topics:
-  - Interpretation and context.
-  - Limitations and threats to validity.
-  - Speculation clearly labelled.
-  - Comparison with prior work.
-  lab: 'Lab: Write the discussion section of your capstone, explicitly listing the limitations of your
-    work and stating what a reader should not conclude from your results.'
+  - Interpreting findings against the organisation's operating context.
+  - Limitations of a short assessment with fixed credentials and a narrow window.
+  - Labelled speculation, clearly separated from demonstrated findings.
+  - Comparing findings with published defensive practice.
+  - Qualifying conclusions that rest on small samples.
+  lab: >-
+    Lab: Analyse what the medium-enterprise range exposes between its zones and write the analysis
+    paragraph the capstone report needs, with limitations stated. Evidence: each rule fw01 allows from the
+    dmz network to the servers network, with its ports; the services web01 and mail01 run and the rule that
+    lets users reach each; which of the examined hosts ship logs to siem01. Pass: each exposure recorded
+    with the rule or service that shows it; the analysis ranks the exposures by impact on confidentiality,
+    integrity or availability with a one-sentence reason each; one limitation of the assessment stated in
+    the paragraph; any speculation marked as speculation.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [fw01]
+      action: List the rules fw01 enforces and record each rule that allows traffic from the dmz network to
+        the servers network, with its ports.
+    - hosts: [fw01, web01]
+      action: Read on fw01 the rule that allows user networks to reach web01 and record the rule and the
+        services web01 runs.
+    - hosts: [fw01, mail01]
+      action: From the rule table on fw01, record the ports allowed from the corporate network to mail01,
+        then record the services mail01 runs.
+    - hosts: [siem01]
+      action: Record which of the hosts examined so far ship logs to siem01 and which do not.
+    - hosts: [siem01]
+      action: Write one analysis paragraph that ranks the observed exposures by impact, states one limitation
+        of the assessment and marks any speculation as speculation.
   refs:
   - nist-sp-800-30r1
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Stating what a reader should NOT conclude:'
+    - question: A scan of the range shows web01 reachable from every user workstation. Read against the
+        context of a forty-person office, how should this finding be interpreted?
       options:
-      - A) Weakens the work
-      - B) Strengthens credibility by bounding the claims precisely
-      - C) Is unnecessary
-      - D) Belongs in the abstract
-      answer: B
-    - question: 'Limitations should be:'
+      - A) A critical exposure, because any workstation compromise reaches the web server
+      - B) A non-issue, because web servers exist to be reached
+      - C) An expected reachability whose risk depends on what the service holds
+      - D) A finding that cannot be interpreted without interviewing the administrators first
+      answer: C
+    - question: An assessment ran for one afternoon with the two accounts the instructor supplied and found
+        nothing on mail01. Which limitation bounds the conclusions about mail01?
       options:
-      - A) Minimised or omitted
-      - B) Stated candidly, since assessors will identify them regardless
-      - C) Listed without explanation
-      - D) Placed in an appendix
-      answer: B
-    - question: 'Comparing your results with prior work is valuable because it:'
+      - A) Mail servers cannot be assessed without vendor approval
+      - B) The finding shows mail01 is secure
+      - C) A full week of testing was required before saying anything at all
+      - D) Only the services visible with those accounts in that window were tested
+      answer: D
+    - question: The report demonstrates four allowed ports from the dmz network inward, then adds that
+        attackers will probably chain them into the domain next. How should that sentence be treated?
       options:
-      - A) Adds references
-      - B) Establishes whether the finding is consistent, novel or contradictory
-      - C) Fills space
-      - D) Demonstrates reading
-      answer: B
-    - question: 'Speculation about future implications should be:'
+      - A) Kept, but labelled as speculation rather than demonstrated
+      - B) Deleted, because a report may not discuss what was not tested
+      - C) Stated as a second finding with the same confidence as the first
+      - D) Moved to the results section beside the rule list
+      answer: A
+    - question: The analysis compares the range's single firewall with the layered controls the published
+        defence-in-depth guidance recommends. What does this comparison establish?
       options:
-      - A) Presented as findings
-      - B) Clearly labelled as speculation, separate from evidence
-      - C) Omitted entirely
-      - D) Placed in results
-      answer: B
-    - question: 'A small sample size means conclusions should be:'
+      - A) That the range is compliant with the guidance
+      - B) That the guidance is too strict for a lab network
+      - C) Where the observed design agrees with and falls short of published practice
+      - D) Nothing, because a lab range cannot be compared with a real network
+      answer: C
+    - question: One afternoon of testing produced three findings on a network of eight hosts. How should the
+        conclusions describe the coverage?
       options:
-      - A) Stated confidently
-      - B) Appropriately qualified as indicative rather than general
-      - C) Withheld
-      - D) Extrapolated
+      - A) As a complete picture of the network's security posture
+      - B) As indicative of the tested paths, not a statement about every host
+      - C) As worthless, because the sample is too small to write about
+      - D) As generalisable to any enterprise network of the same size
       answer: B
 - ordinal: 3
   title: Oral Presentation
@@ -146,57 +208,89 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Structure a presentation for a mixed audience.
-  - Communicate technical depth within time constraints.
-  - Use visual material effectively.
+  - Structure a capstone briefing so a mixed audience follows the problem, the method and the findings
+  - Select the evidence and technical depth a fixed presentation slot can carry
+  - Rehearse a briefing and revise the sections the audience could not follow
   topics:
-  - Presentation structure and narrative.
-  - Depth versus time management.
-  - Effective visual design.
-  - Rehearsal and timing.
-  lab: 'Lab: Deliver a fifteen-minute presentation of your capstone to peers, then revise it based on
-    which points the audience could not follow.'
+  - Briefing structure with the problem, the method, the findings and the ask.
+  - Choosing depth for a mixed audience of managers and engineers.
+  - Slide design that carries one point and readable evidence.
+  - Rehearsal, timing and cutting content that will not fit.
+  - Reading the audience and revising the sections that lost them.
+  lab: >-
+    Lab: Turn the recorded range evidence into the slide plan for a fifteen-minute capstone briefing and
+    rehearse its opening. Evidence: the event counts per log source taken from siem01; a summary table of
+    the fw01 rules that allow user networks inward; the opening minute written out and timed aloud; each
+    planned slide marked as evidence or interpretation. Pass: the deck plan covers problem, method and
+    findings in order; each evidence slide names the host and command that produced its figures; the opening
+    minute times at or under sixty seconds; at least one slide is cut or merged after the timed read.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: From siem01, record the event counts for each log source over the last hour, in a form a slide
+        can carry.
+    - hosts: [fw01]
+      action: Summarise the fw01 rules that allow traffic from user networks inward and record them as one
+        table of rule name, source and ports.
+    - hosts: [siem01]
+      action: Write the opening minute of the briefing, read it aloud against a timer and record the measured
+        time.
+    - hosts: [siem01]
+      action: Read the planned evidence slides against the recorded siem01 output and record any figure that
+        cannot be reproduced from it.
+    - hosts: [siem01]
+      action: Cut or merge slides until the plan fits fifteen minutes at speaking pace, and record what was
+        removed.
   refs:
-  - nist-sp-800-218
+  - nist-sp-800-115
+  source_gaps:
+  - A dedicated guide to briefing delivery, rehearsal and slide design is not in the reference library;
+    SP 800-115 covers assessment reporting but not oral delivery.
   quiz:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'A presentation should open with:'
+    - question: A capstone briefing opens with five minutes of tooling history before the problem is stated,
+        and the mixed audience of managers and engineers stops following. Which opening fixes this?
       options:
-      - A) Methodology detail
-      - B) The problem and why it matters
-      - C) Acknowledgements
-      - D) Literature review
-      answer: B
-    - question: 'Slides dense with text typically:'
+      - A) Stating the problem and why it matters up front
+      - B) Adding more tooling history so the point lands later
+      - C) Opening with raw command output so the engineers stay engaged
+      - D) Removing the problem statement and starting with the findings
+      answer: A
+    - question: The only chart of log volumes on the range is dense, grey on grey and unreadable from the
+        back of the room. What is the correct fix?
       options:
-      - A) Convey more information
-      - B) Compete with the speaker and reduce comprehension
-      - C) Aid note taking
-      - D) Demonstrate rigour
-      answer: B
-    - question: 'Running over time in a presentation usually means:'
+      - A) Hand out the raw log data instead of the chart
+      - B) Keep the chart, because the detail shows the work behind the briefing
+      - C) Redraw it as one clear point the audience reads at a glance
+      - D) Drop all evidence from the slides and speak from notes
+      answer: C
+    - question: A fifteen-minute capstone slot holds eighteen minutes of prepared material at speaking pace.
+        What does the timing say about the plan?
       options:
-      - A) The content was rich
-      - B) The conclusions - the most important part - get cut
-      - C) Good engagement
-      - D) Assessors allow extra time
-      answer: B
-    - question: 'Rehearsing aloud is valuable because it:'
+      - A) The slot will stretch, because engaged audiences run long
+      - B) Speaking faster closes the gap without losing anything
+      - C) The moderator will extend the slot if the material is strong
+      - D) Three minutes of material must be cut or merged
+      answer: D
+    - question: After rehearsal, the audience cannot follow the transition from the firewall findings to the
+        log analysis. What is the usual cause?
       options:
-      - A) Memorises the script
-      - B) Reveals timing problems and passages that do not work when spoken
-      - C) Improves slides
-      - D) Reduces nerves only
+      - A) The audience was inattentive during the firewall findings
+      - B) Assumed knowledge that the briefing never established
+      - C) Too little technical detail for the engineers present
+      - D) A slide design that used the wrong colour palette
       answer: B
-    - question: 'When the audience cannot follow a section, the usual cause is:'
+    - question: One presenter rehearses the opening minute aloud and rewrites the lines that ramble; the other
+        reads the slides silently. What will the assessors hear?
       options:
-      - A) Audience inattention
-      - B) Assumed knowledge that was not established
-      - C) Insufficient detail
-      - D) Poor slide colour
-      answer: B
+      - A) The first presenter opens on time and reaches the problem
+      - B) The second presenter's silent reading keeps the opening fresher
+      - C) Both openings will run long, since rehearsal never changes timing
+      - D) The first presenter sounds over-rehearsed and loses the audience
+      answer: A
 - ordinal: 4
   title: Defending Technical Decisions
   content_type: reading
@@ -204,57 +298,93 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Justify design and methodological choices under questioning.
-  - Respond to criticism constructively.
-  - Acknowledge error gracefully.
+  - Justify each capstone decision by stating the alternatives considered and the reason for the choice
+  - Respond to assessor questioning with recorded evidence rather than defensiveness
+  - Acknowledge an error in the work and state its effect on the conclusions
   topics:
-  - Anticipating challenge.
-  - Justification versus defensiveness.
-  - Handling questions you cannot answer.
-  - Acknowledging mistakes.
-  lab: 'Lab: Undergo a mock viva with peers asking adversarial questions about your methodology, and record
-    every question you could not answer well for follow-up.'
+  - Justifying a decision with alternatives, trade-offs and the reason for the choice.
+  - Answering a question whose answer the work does not hold.
+  - Defensiveness and how it stalls a viva.
+  - Acknowledging a genuine flaw and its effect on the conclusions.
+  - Promising a follow-up answer and delivering it.
+  lab: >-
+    Lab: Run the mock viva over the capstone's central decision, which finding the report ranked highest.
+    Evidence: the fw01 rule the report ranks highest and the recorded output that supports the ranking; the
+    two alternatives considered and rejected; each viva question marked as answered from evidence or
+    defensively; the questions the range could not answer and the follow-up promised for each. Pass: the
+    justification names alternatives, not just the choice; every evidence-based answer cites recorded
+    output; the ranked finding is re-checked against the live rule table before the viva opens; each
+    defensive answer is rewritten and every promised follow-up is written down.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [fw01]
+      action: Record the fw01 rule the capstone ranks highest and the output recorded against it in the
+        report.
+    - hosts: [siem01]
+      action: Record the two alternatives the capstone considered for the ranking and the reason each was
+        rejected.
+    - hosts: [fw01]
+      action: Re-read the live rule table on fw01 and record whether the evidence behind the ranking still
+        holds.
+    - hosts: [dc01]
+      action: Confirm the domain setting that the ranked finding assumed and record the value dc01 actually
+        shows.
+    - hosts: [siem01]
+      action: Record which log sources siem01 holds that could have strengthened the ranked finding but were
+        not queried.
+    - hosts: [siem01]
+      action: Answer each viva question from the recorded output where the range can answer it, and record
+        which questions the range could not answer.
+    - hosts: [siem01]
+      action: Mark each answer evidence-based or defensive with a one-sentence reason, and write a follow-up
+        commitment for every question the range could not answer.
   refs:
   - nist-sp-800-30r1
   quiz:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'When asked a question you cannot answer, the best response is:'
+    - question: An assessor asks why the assessment tested exposed services before the servers network. The
+        work considered both orders and chose that order for time. Which reply should the Student give?
       options:
-      - A) Speculate confidently
-      - B) Acknowledge the limit of your knowledge and describe how you would find out
-      - C) Redirect the question
-      - D) Claim it is out of scope
-      answer: B
-    - question: 'Defending a decision means explaining:'
+      - A) That the chosen order was the only sensible one
+      - B) That the supervisor approved the ordering
+      - C) That the question is outside the assessment's scope
+      - D) The alternative ordering and the reason for the choice
+      answer: D
+    - question: During the viva an assessor identifies a genuine flaw in that the report never tested the
+        mail server. Which response serves the work?
       options:
-      - A) That it was the only option
-      - B) The alternatives considered and why this one was chosen
-      - C) That the supervisor approved it
-      - D) That it worked
+      - A) Arguing that the mail server was never in scope
+      - B) Acknowledging the gap and how it bounds the conclusions
+      - C) Blaming the compressed afternoon window
+      - D) Minimising it, since the other seven hosts were covered
       answer: B
-    - question: 'If an assessor identifies a genuine flaw, the best response is to:'
+    - question: A viva panellist asks for the exact event count behind a finding and the Student does not
+        hold it. Which response is honest and productive?
       options:
-      - A) Dispute it
-      - B) Acknowledge it and discuss its impact on the conclusions
-      - C) Minimise it
-      - D) Blame the timeline
-      answer: B
-    - question: 'Becoming defensive under questioning tends to:'
+      - A) Giving an approximate number from memory as if recorded
+      - B) Declaring the question unfair
+      - C) Stating the number is not at hand and committing to supply it
+      - D) Changing the subject to a finding that was measured
+      answer: C
+    - question: The report ranks the exposed web service highest, and the assessor asks what would change
+        that ranking. What does a defensible reply rest on?
       options:
-      - A) Demonstrate conviction
-      - B) Prevent the productive discussion that assessors are seeking
-      - C) Shorten the viva
-      - D) Improve marks
-      answer: B
-    - question: 'Adversarial questioning in a viva is intended to:'
+      - A) The recorded evidence and the criteria the ranking used
+      - B) Confidence that the ranking was read off a good template
+      - C) The assessor's own view of what matters most
+      - D) A reminder that the ranking was only one section of the report
+      answer: A
+    - question: Under sustained questioning a presenter keeps repeating that the methodology was standard.
+        What has defensiveness done to the viva?
       options:
-      - A) Undermine the candidate
-      - B) Test the depth of understanding behind the work
-      - C) Reduce marks
-      - D) Fill time
-      answer: B
+      - A) Shown the assessor the work rests on solid ground
+      - B) Shortened the questioning, since the point is settled
+      - C) Stalled the discussion the assessor is trying to have
+      - D) Protected the mark by closing the line of attack
+      answer: C
 - ordinal: 5
   title: Peer Review and Feedback
   content_type: reading
@@ -262,57 +392,85 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Give constructive technical critique.
-  - Receive critique without defensiveness.
-  - Distinguish substantive from stylistic feedback.
+  - Write a critique of a peer's capstone that names substantive issues with recorded evidence
+  - Distinguish substantive issues of method and evidence from matters of style
+  - Act on received critique by verifying each point against the recorded range output
   topics:
-  - Constructive critique technique.
-  - Receiving feedback productively.
-  - Substantive versus stylistic issues.
-  - Reciprocal review practice.
-  lab: 'Lab: Review two peer capstones, providing written critique that identifies substantive issues
-    with specific evidence, and act on the reviews you receive.'
+  - A critique that names the issue, the evidence and a suggested direction.
+  - Substantive issues of method, evidence and validity, apart from style.
+  - Receiving critique without defending against it.
+  - Verifying a peer's claimed finding on the range before accepting it.
+  - Reciprocal review and the critical eye it trains.
+  lab: >-
+    Lab: Exchange capstone drafts and review a peer's findings against the range itself, then act on the
+    critique received. Evidence: for one finding in the peer's draft, the command and host the draft claims
+    produced it, re-run and compared line by line; the re-run output recorded beside the draft's version;
+    each point of received critique marked substantive or stylistic. Pass: the re-run command and its output
+    recorded exactly; every mismatch between the re-run and the draft recorded with the line that differs;
+    each received point marked with a one-sentence reason; no point dismissed without re-checking it.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Choose one finding in the peer's draft and record the host, command and output the draft cites
+        for it.
+    - hosts: [ws01, dc01]
+      action: From ws01, re-run the cited lookup against dc01 and record the output beside the version in the
+        draft.
+    - hosts: [fw01]
+      action: Re-read the fw01 rules the draft's finding depends on and record whether they match the rule
+        table the draft quotes.
+    - hosts: [siem01]
+      action: Record each mismatch between the re-run output and the draft, with the line that differs.
+    - hosts: [siem01]
+      action: Mark each point of the received critique substantive or stylistic with a one-sentence reason,
+        and record the change made for each accepted substantive point.
   refs:
-  - nist-sp-800-218
+  - nist-sp-800-115
   quiz:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'Constructive critique identifies:'
+    - question: A peer's report claims four open shares on the file server, but cites no command or output.
+        Which critique point is substantive?
       options:
-      - A) Everything wrong
-      - B) The most significant issues, with specific evidence and suggested direction
-      - C) Only positives
-      - D) Stylistic preferences
+      - A) The share count is probably wrong and should be deleted
+      - B) The finding lacks the recorded evidence an assessor can verify
+      - C) The sentence should be split into two shorter sentences
+      - D) The section needs a stronger opening line
       answer: B
-    - question: 'Substantive feedback concerns:'
+    - question: A reviewer marks the presentation's slide colours as the report's biggest weakness. In review
+        terms, what is that?
       options:
-      - A) Formatting and grammar
-      - B) Methodology, evidence and the validity of conclusions
-      - C) Slide design
-      - D) Reference style
-      answer: B
-    - question: 'Receiving critique defensively typically:'
+      - A) Substantive feedback on the validity of the conclusions
+      - B) A blocking defect that must delay submission
+      - C) Reciprocal review of the methodology
+      - D) A stylistic point, not the biggest weakness
+      answer: D
+    - question: A reviewer's critique shows the ranked finding misread the firewall rule table. What should
+        the author do with it?
       options:
-      - A) Protects the work
-      - B) Wastes the reviewer's effort and forfeits the improvement
-      - C) Is expected
-      - D) Improves the relationship
-      answer: B
-    - question: 'Reviewing others'' work improves your own because it:'
+      - A) Verify it against the recorded output and correct the ranking
+      - B) Answer it in writing without re-checking the range
+      - C) Thank the reviewer and change nothing, since submission is close
+      - D) Ask a different reviewer who may be kinder
+      answer: A
+    - question: Feedback arrives as one sentence saying the report is great and needs no changes. What is it
+        worth to the author?
       options:
-      - A) Provides material to reuse
-      - B) Develops the critical eye you then apply to your own work
-      - C) Builds relationships
-      - D) Fills time
+      - A) A confirmation the work is ready for submission
+      - B) Little, because it names no issue or evidence
+      - C) A substantive review in compressed form
+      - D) Grounds for skipping the author's own final check
       answer: B
-    - question: 'Feedback consisting only of praise is:'
+    - question: A Student finishes reviewing a peer's methodology section, then reopens the matching section
+        of their own draft. Which benefit does the review practice transfer?
       options:
-      - A) Ideal
-      - B) Of little value to the author
-      - C) Constructive
-      - D) Professionally appropriate
-      answer: B
+      - A) The peer's wording, which can be adapted line by line
+      - B) A ready list of marks the draft will earn
+      - C) A critical eye now applied to the Student's own evidence
+      - D) A reason to postpone the revision until the reviewer replies
+      answer: C
 - ordinal: 6
   title: Reflection and Professional Development
   content_type: reading
@@ -320,54 +478,84 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Reflect critically on the project and your performance.
-  - Identify capability gaps and development needs.
-  - Articulate the professional value of the work.
+  - Evaluate the capstone against its plan and identify what the work demonstrated about practice
+  - Name the capability gaps the assessment exposed and connect each to a development action
+  - Write a twelve-month development plan whose commitments are specific and verifiable
   topics:
-  - Structured reflection.
-  - Identifying development needs.
-  - Articulating transferable capability.
-  - Continuing professional development.
-  lab: 'Lab: Write a structured reflection identifying three things you would do differently, the capability
-    gaps the project exposed, and a concrete development plan for the next twelve months.'
+  - Structured reflection on what the plan was, what happened and what it shows.
+  - Capability gaps the range work exposed, stated as observable shortfalls.
+  - Separating what the project demonstrated from what remains unproven.
+  - A development plan with specific, verifiable commitments.
+  - Continuing development after the programme ends.
+  lab: >-
+    Lab: Retrace the assessment path across the medium-enterprise range and write the structured reflection
+    from what actually happened. Evidence: for each earlier lab, the host and command that produced its
+    recorded evidence and one case where a first attempt failed; the capability each recorded failure points
+    to; three changes for the next assessment, each tied to a recorded event; the twelve-month plan entry
+    each change feeds. Pass: the retrace covers all five earlier labs; every stated gap names the recorded
+    failure that shows it; each planned change is specific and checkable; no gap is attributed only to
+    circumstances outside the work.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: List the recorded evidence from the earlier labs and record which host and command produced
+        each item.
+    - hosts: [fw01]
+      action: Re-read the fw01 rule table and record one point where the first attempt to read it failed or
+        misled.
+    - hosts: [ws01]
+      action: Re-run from ws01 the one lookup that failed on the first attempt and record what made it
+        succeed.
+    - hosts: [dc01]
+      action: Record the one domain setting that the assessment assumed but never confirmed on dc01, and
+        its value.
+    - hosts: [siem01]
+      action: Write three changes for the next assessment, each tied to a recorded event, and the development
+        plan entry each one feeds.
   refs:
   - nist-cswp-29
   quiz:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Useful reflection focuses on:'
+    - question: A reflection records only that the range was slow and the documentation thin. What has this
+        reflection missed?
       options:
-      - A) What went well only
-      - B) What you would do differently and what you learned about your own practice
-      - C) External obstacles
-      - D) The final grade
-      answer: B
-    - question: 'Identifying a capability gap is valuable because it:'
+      - A) The parts of the work that went smoothly
+      - B) The assessor's view of the final artefact
+      - C) What the Student's own decisions contributed to the outcome
+      - D) The grades and written feedback recorded for the earlier modules
+      answer: C
+    - question: The first attempt to read the firewall rule table failed, and the second succeeded after a
+        change of tool. What does the reflection record?
       options:
-      - A) Excuses weaknesses
-      - B) Directs deliberate development rather than leaving it to chance
-      - C) Lowers expectations
-      - D) Explains the result
-      answer: B
-    - question: 'Attributing all difficulty to external factors in reflection:'
+      - A) The failure, the change that fixed it and the capability it showed
+      - B) Only the success, since the failure was fully resolved in the end
+      - C) The failure as an external obstacle beyond the Student's control
+      - D) Nothing, because reflections cover findings rather than methods
+      answer: A
+    - question: A development plan says get better at analysis over the next year. What is wrong with it as
+        a plan?
       options:
-      - A) Is usually accurate
-      - B) Avoids the learning that reflection is intended to produce
-      - C) Is professional
-      - D) Is expected
-      answer: B
-    - question: 'A development plan should be:'
+      - A) Nothing, provided the intention is sincere
+      - B) It should be kept private until the next review
+      - C) Analysis is not a capability an assessment can develop
+      - D) It names no verifiable action, target or date
+      answer: D
+    - question: Attributing every difficulty in the capstone to the short assessment window has which effect
+        on the reflection?
       options:
-      - A) Aspirational and broad
-      - B) Specific, time-bound and verifiable
-      - C) Employer-directed
-      - D) Optional
+      - A) It keeps the reflection honest about the constraints
+      - B) It avoids the learning about the Student's own practice
+      - C) It shows the assessors the work was genuinely hard
+      - D) It strengthens the development plan's external actions
       answer: B
-    - question: 'The professional value of a capstone lies mainly in:'
+    - question: Months later the artefact is superseded by a newer build of the same range. What remains of
+        the capstone's professional value?
       options:
-      - A) The artefact produced
-      - B) The demonstrated ability to scope, execute and evaluate independent technical work
-      - C) The grade
-      - D) The presentation
-      answer: B
+      - A) Nothing, since the artefact no longer matches the live range
+      - B) The grade recorded for the module
+      - C) Demonstrated ability to scope, execute and evaluate independent technical work
+      - D) The slide deck, which can be delivered again unchanged
+      answer: C
