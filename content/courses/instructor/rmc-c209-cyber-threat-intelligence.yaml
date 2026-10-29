@@ -1,0 +1,199 @@
+# RMC C209 - Cyber Threat Intelligence - instructor pack (staff only).
+# Companion to content/courses/rmc-c209-cyber-threat-intelligence.yaml. Never served to
+# Students: scripts/load_content.py loads only content/courses/*.yaml, and course content
+# ingest refuses audience staff_only. Keep every answer letter in step with the quiz keys.
+
+course_code: RMC C209
+audience: staff_only
+overview: >-
+  RMC C209 Cyber Threat Intelligence is a reading course of six 60-minute modules on the
+  soc-training range. Each module follows the same shape: teach the three objectives, run the
+  lab on the range, and close with a five-item quiz passed at 70 percent. Call the person
+  taking the course the Student throughout, and keep every description defensive and
+  observable: the labs record what the range shows, and the judgements name their confidence
+  and evidence.
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (cycle, data versus information versus intelligence, requirements), 35 lab
+    (10 walkthrough of dfir-ws01 and the platforms, 25 individual recording), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (sources, grading, limits), 35 lab (10 walkthrough of the misp01 source
+    list, 25 planning and grading), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (competing hypotheses, bias, confidence language), 35 lab (10 walkthrough
+    of the siem01 query, 25 hypothesis work), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (clustering, diamond model, attribution evidence), 35 lab (10 walkthrough
+    of thehive01 events, 25 clustering and modelling), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (product types, timeliness, caveats), 35 lab (10 walkthrough of the misp01
+    event, 25 product drafting), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (capability design, integration, measures), 35 lab (10 walkthrough of the
+    platform links, 25 design work), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: >-
+    Q1 C: the address is enriched with context and passed on to inform a blocking decision,
+    which makes it intelligence; the same address without the decision would be mere
+    information. The distractors test whether the Student still calls anything reported
+    "information" (A, B) or reaches for a vulnerability label (D). Q2 D: after processing comes analysis; the distractors test
+    cycle order (A, B) and the processing/analysis boundary (C). Q3 B: it names a subject, a
+    window and an answerable question; A and C are directions without decisions, D is a task,
+    not a requirement. Q4 A: board questions set strategy and a blocking call is tactical;
+    the distractors test swapping the levels or collapsing both to operational. Q5 C: the
+    programme lacked requirements tied to the director's decision; the distractors blame
+    volume, tooling or headcount instead of direction.
+- module: 2
+  notes: >-
+    Q1 C: the correct move is grading before use, whatever the source's fame; the distractors
+    test the two reflexes (discard or accept) and forwarding without judgement. Q2 D: one
+    error in an otherwise reliable feed shows that reliability and credibility are judged
+    separately; A overreacts to a single data point, B drops a working source, C is a
+    non sequitur. Q3 A: corroboration by independent sources raises confidence; B overstates
+    what it proves, C keeps grading optional, D confuses confidence with volume. Q4 B: closed
+    forum collection needs authorisation under policy and legal review first; C ignores the
+    terms of service, A and D are deflections. Q5 A: a collection plan maps requirements to
+    sources; the distractors describe tools, staffing or by-products of collection.
+- module: 3
+  notes: >-
+    Q1 B: crediting matching lines and discounting contradicting ones is confirmation bias;
+    A tempts because anchoring was also taught, C and D name real but different effects.
+    Q2 C: listing competing hypotheses before judging is the technique that catches a first
+    judgement held too long; A adds data without structure, B and D change timing or
+    confidence, not method. Q3 A: uncalibrated estimative words let each consumer read in a
+    different probability; B, C and D treat the problem as classification, regrading or a
+    collection stop. Q4 D: absent evidence can reflect a collection gap; A is the classic
+    error, B and C reach for adversary skill or tampering without evidence. Q5 B:
+    corroborated, independent evidence with few surviving alternatives warrants high
+    confidence; A and D under-claim, C defers to seniority rather than evidence.
+- module: 4
+  notes: >-
+    Q1 C: any single evidence type can be spoofed or coincidental; A and B misstate the
+    technical facts, D argues sample size when the point is evidence type. Q2 A: shared
+    infrastructure, tooling and behaviour across victims defines a cluster; B ignores the
+    overlap, C and D explain the pattern away. Q3 B: planted tooling of a well-known group is
+    the textbook false flag; A closes the case prematurely, D accuses staff without evidence.
+    Q4 B: adversary, capability, infrastructure and victim are the diamond model features;
+    A mixes attribution vocabulary with impact, C and D are generic models from elsewhere.
+    Q5 C: the defensive value is anticipating likely behaviour and prioritising defences;
+    A, B and D name naming, prosecution or publicity, none of which helps the next block.
+- module: 5
+  notes: >-
+    Q1 B: a strategic summary carries trends, risk and implications for investment; A and D
+    are tactical detail, C is malware analysis. Q2 A: structured exchange plus automated
+    transport is what the indicator standards provide; B, C and D are log handling, case
+    workflow or ad hoc transfer. Q3 D: after the decision point the product is worth little
+    to that decision whatever its quality; A and B grade lateness as partial, C confuses
+    archival value with decision value. Q4 B: a handling caveat states who may receive the
+    information; A, C and D confuse it with urgency, confidence or source grading. Q5 C:
+    breaching a sharing restriction damages the trust future sharing depends
+    on; A excuses intent, B and D trivialise it.
+- module: 6
+  notes: >-
+    Q1 A: with no named consumers, output accumulates that nobody acts on; B assumes feeds
+    detect by themselves, C and D are optimistic fillers. Q2 C: decisions and defensive
+    changes informed is the outcome measure; A, B and D count activity. Q3 B: hunters need
+    prioritised hypotheses grounded in reporting; A is raw volume, C reverses the flow,
+    D stalls the relationship. Q4 C: an ingestion count measures activity, not outcome;
+    B borrows the language of coverage, A and D credit quality or skill to a counter.
+    Q5 B: organisational decisions and threats change, so requirements must be revisited;
+    A, C and D give cosmetic, bureaucratic or mechanical reasons.
+lab_setup:
+- module: 1
+  setup: >-
+    Revert the soc-training range to its baseline before class and confirm the analyst SSH
+    account on dfir-ws01 works from the classroom network and can reach the victim-network
+    hosts and the SOC platforms. Supply or confirm console credentials
+    for siem01, misp01 and thehive01: OpenSearch Dashboards logins are scenario content, so
+    the template alone does not guarantee them. No data seeding is needed; module 1 only
+    records what each victim-network host offers and what each SOC platform does.
+- module: 2
+  setup: >-
+    Revert the range to baseline, confirm the analyst account on dfir-ws01, and supply console
+    credentials for misp01. Confirm at least three configured sources are visible on misp01,
+    spanning feed, community and internal types, and note which you will ask Students to
+    grade. Decide which source you will use for the authorisation discussion and check its
+    terms in advance.
+- module: 3
+  setup: >-
+    Revert the range to baseline, confirm the analyst account on dfir-ws01, and supply console
+    credentials for siem01. Confirm the log platform retains failed sign-ins for the past
+    day; if the baseline is quiet, seed one small burst of failed sign-ins from one or two
+    source addresses before class and record the count, addresses and times you seeded so you
+    can check them against Student evidence.
+- module: 4
+  setup: >-
+    Revert the range to baseline, confirm the analyst account on dfir-ws01, and supply console
+    credentials for thehive01. Confirm thehive01 holds events spanning the past seven days;
+    if the baseline is thin, import a sample event set with deliberate shared characteristics
+    and keep your own sheet of the intended clusters, the expected diamond features and which
+    features are genuinely unobserved.
+- module: 5
+  setup: >-
+    Revert the range to baseline, confirm the analyst account on dfir-ws01, and confirm the
+    Student account on misp01 may create events and attributes. Decide the example analysis
+    you will give the class as the common body to productise, and note the event identifier
+    range and attribute minimums you expect so the recorded counts can be checked.
+- module: 6
+  setup: >-
+    Revert the range to baseline, confirm the analyst account on dfir-ws01, and supply console
+    credentials for misp01, siem01 and thehive01. Check in advance which integrations between
+    the three platforms actually exist in the baseline and note the direction and format of
+    each exchange, so you can compare Student integration maps against what the range shows.
+common_faults:
+- module: 1
+  fault: Requirements are written as topics ("learn about ransomware") rather than decisions.
+  remedy: Refuse to accept a requirement until the Student names the decision it informs and
+    who owns that decision.
+- module: 1
+  fault: Students list the SOC platforms as part of the victim organisation.
+  remedy: Draw the board map first and have each host marked as victim network or SOC
+    platform before the recording step.
+- module: 2
+  fault: Reliability and credibility are graded as one combined number.
+  remedy: Drill the two axes with a reliable-source-that-was-wrong example before the grading
+    step, then recheck one grade aloud.
+- module: 2
+  fault: Every source is treated as free to use without terms or authorisation.
+  remedy: Make each Student state the terms of one commercial feed aloud and what
+    authorisation joining a closed forum would require.
+- module: 3
+  fault: The favourite hypothesis is chosen first and only two are ever written.
+  remedy: Require three hypotheses on paper before any evidence is examined, and check the
+    third is genuinely different.
+- module: 3
+  fault: High confidence is attached to an assessment without naming the evidence driving it.
+  remedy: Insist the confidence level and the driving evidence appear in the same sentence,
+    then ask what evidence would lower it.
+- module: 4
+  fault: Clusters are defined by victim or by date instead of shared characteristics.
+  remedy: Forbid victim and date as defining features and ask what infrastructure, tooling or
+    behaviour links the events.
+- module: 4
+  fault: Unknown diamond model features are guessed to make the record look complete.
+  remedy: Mark observed and unknown explicitly, and praise a well-marked unknown in the
+    debrief.
+- module: 5
+  fault: One report is pasted to every audience unchanged.
+  remedy: Have the Student write the audience's decision first, then check the product
+    answers that decision and nothing else.
+- module: 5
+  fault: The indicator package is created but the event identifier and attribute count are
+    never recorded.
+  remedy: Check every evidence sheet for the event identifier and count before the debrief;
+    missing values mean the evidence does not pass.
+- module: 6
+  fault: Activity counts such as indicators ingested are offered as effectiveness measures.
+  remedy: Ask "which decision changed because of this number?" for each measure until the
+    Student produces a decision-tied one.
+- module: 6
+  fault: Integration maps draw arrows with no direction or format.
+  remedy: Require a direction and a format on every arrow and compare the map against what
+    the range platforms actually exchange.
