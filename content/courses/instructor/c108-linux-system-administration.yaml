@@ -1,0 +1,221 @@
+# Instructor pack for C108 Linux System Administration. Staff use only: this file carries
+# the quiz answer keys, range preparation and known Student faults, and must never be shown
+# to Students. Keys and setup match content/courses/c108-linux-system-administration.yaml;
+# the range is content/ranges/medium-enterprise (web01, mail01, siem01 are the Linux hosts).
+course_code: C108
+audience: staff_only
+overview: >-
+  C108 teaches beginner Linux system administration on the medium-enterprise range across six
+  60-minute modules. Each module runs the same split: 15 minutes teaching the module's objectives,
+  35 minutes lab on one or more of the range's Linux hosts (web01, mail01, siem01), and 10 minutes
+  for the five-item quiz passed at 70 percent. Students record evidence for every lab step and hand
+  in the recorded evidence, not a transcript; each lab's Pass items name the evidence that must be
+  present. Keep every description defensive and observable, and say 'Student' throughout.
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (filesystem tree, redirection, filters), 35 lab (pipeline over web01 and mail01
+    journal authentication records, 5 debrief), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (packages, units, signals), 35 lab (systemd unit and restart proof on mail01,
+    5 debrief), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (accounts, sudo, permission bits, ACLs), 35 lab (service account and single-command
+    sudo on web01, 5 debrief), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (interfaces, SSH settings, sockets), 35 lab (key-only SSH on mail01 proven from
+    siem01, 5 debrief), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (volumes, mount options, backups), 35 lab (volume, nodev mount and restore on
+    web01, 5 debrief), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (thresholds, drift, correlation), 35 lab (unexplained-connection investigation on
+    siem01, 5 debrief), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B, M01-O01: /etc holds the host''s configuration files; /var/log (A) holds logs,
+    /usr/bin (C) holds executables and /opt (D) holds add-on application software. Q2 C, M01-O01:
+    Redirecting standard error to the same place as standard output captures the error text in the
+    log; a text filter (A) acts only on what already arrived, more privileges (B) change nothing
+    about which stream is logged and a pipe (D) sends output to another command, not to the log.
+    Q3 A, M01-O02: awk extracts a chosen field from every line; find (B) selects files by
+    attributes, chmod (C) changes permission bits and tar (D) archives files, none of which reads a
+    column. Q4 D, M01-O02: find selects files by path, size and age; grep (A) matches text inside
+    one named file, awk (B) edits the fields of lines it reads and sed (C) substitutes text in a
+    passing stream. Q5 B, M01-O02: ranking a computed field across many lines calls for a pipeline;
+    counting by hand in an editor (A), copying to a spreadsheet (C) and recording the first five
+    matching lines (D) cannot rank by frequency.'
+- module: 2
+  notes: 'Q1 C, M02-O01: Packages are trusted because a signature verifies against an imported key;
+    a faster mirror page (A), a matching version number (B) and an error-free download (D) prove
+    nothing. Q2 D, M02-O02:
+    enable creates the start-on-boot link without starting the unit now; start alone (A) does not
+    persist, restart (B) assumes it runs, and start with a scheduled reboot (C) still runs the
+    service during maintenance. Q3 B, M02-O03: SIGKILL
+    ends the process immediately with no chance to clean up; SIGTERM (A) asks first, SIGHUP (C) reloads
+    and SIGINT (D) is the interactive interrupt. Q4 A, M02-O03: The process finished but its parent
+    has not reaped its exit status; freed memory (B), a missing signal (C) and a disabled unit (D) do
+    not describe the empty slot. Q5 C, M02-O03: Resource limits set for each group hold the backup
+    jobs to their share; staggering (A) reduces overlap but bounds nothing, a shared swap file (B)
+    partitions no memory and a larger disk (D) does not concern memory.'
+- module: 3
+  notes: 'Q1 B, M03-O01: A service account runs one workload, so it needs no shell and no password
+    sign-in; a named user account with a strong password (A) still signs in interactively, a second
+    personal account for the administrator on duty (C) muddies attribution and the root account with
+    a changed password (D) grants far more than one command. Q2 D, M03-O02: A sudo
+    policy that logs each permitted command ties one account to one command; the copied audit log
+    (A) records nothing about invocation, a password prompt (B) does not name the account in the log
+    and a firewall rule (C) concerns reach, not attribution. Q3 A, M03-O02: An access control list
+    entry grants one named analyst read access without touching the group''s rights; changing the
+    directory''s group (B) moves rights for everyone, a public path (C) grants far more than read and
+    a mandatory access control label (D) confines programs, not readers. Q4 C, M03-O03: Mandatory
+    access control enforced by labels bounds what any user may change, whatever the permission bits
+    allow; a longer minimum password length (A) governs sign-in, a stricter file creation mask (B)
+    only sets default rights for new files and more frequent group membership reviews (D) detect
+    accumulated rights instead of preventing the change.
+    Q5 B, M03-O03: Membership kept from an old role is privilege creep; a correctly completed account
+    lifecycle (A) would have removed it, a mandatory access control label left in place (C) is a
+    different control and a permission bit set too narrowly (D) over-restricts rather than
+    accumulates.'
+- module: 4
+  notes: 'Q1 D, M04-O01: The warning names the changed host key, which is expected after a rebuild and
+    must be verified, not ignored; an expired password (A), a copied client configuration (B) and an
+    open socket (C) do not change host identity. Q2 B, M04-O01: The private key never crosses the
+    network, so capture cannot replay it; key length (A) misses the point, the server does hold the
+    authorised public keys (C) and the client still needs configuration (D). Q3 C, M04-O03: Answering
+    locally but not remotely means the port listens but the path or firewall blocks; a process
+    identifier (A), log size (B) and account count (D) say nothing about the path. Q4 A, M04-O03:
+    A host firewall rule scoped to the management source enforces the scope on the host itself;
+    removing the default route (B) breaks all egress, an idle timeout (C) changes sessions and a
+    second address (D) changes nothing about reach. Q5 D, M04-O03: The socket listing with owning
+    process names shows what holds each port before the change; a name lookup (A), the route table
+    (B) and a reachability test (C) do not tie programs to ports.'
+- module: 5
+  notes: 'Q1 C, M05-O01: nodev stops the kernel treating files on that filesystem as devices; a
+    read-only flag (A) blocks every write, noexec (B) blocks execution and an identifier label (D)
+    only names the filesystem, none of which is the device question. Q2 A, M05-O02: Losing at most one hour of records is a recovery point
+    objective; a recovery time objective (B) bounds restoration, a retention period (C) bounds how
+    long copies are kept and a backup window (D) bounds when copies run. Q3 D, M05-O03: A backup is
+    proven only by restoring a sample and reading it; the archive count (A), job success (B) and
+    archive size (C) all pass while the copy is unusable. Q4 B, M05-O02: A copy the server cannot
+    write to survives ransomware that encrypts everything the server reaches; an archive on the same
+    host (A) falls with it, a weekly full backup stored in the server''s own backup directory (C) is
+    just as reachable and a second disk installed in the server (D) falls with the host. Q5 C,
+    M05-O01: The volume extends across the new disk and the filesystem
+    grows into it; reformatting (A) loses data, a symbolic link (B) does not add space and copying
+    to a file (D) is not volume management.'
+- module: 6
+  notes: 'Q1 A, M06-O01: A threshold below normal variation pages on every rise, which is alert
+    fatigue; pages nobody acts on train the on-call to ignore the channel. Faster response (B) and
+    lower load on the monitoring server (D) describe better tuning, and a self-clearing dashboard (C)
+    is not a consequence a threshold produces. Q2 C, M06-O02: A setting that reverts
+    with no change record is configuration drift from an unrecorded change; a hardware fault (A)
+    stops a service rather than re-enabling a setting, an intended patch (B) would have a change
+    record and a monitoring rule that fired early (D) observes rather than changes. Q3 B, M06-O02:
+    An emergency change is applied first, then recorded and reviewed; skipping the record (A) loses
+    the trail, applying without any testing (C) risks the service and needing no approval (D) removes
+    the review that follows. Q4 D, M06-O03: Naming the program behind a
+    connection needs the socket table joined to process and account; the firewall log (A) shows
+    addresses, the login history (B) shows sessions and the disk usage (C) shows none of it. Q5 A,
+    M06-O03: Isolate the host while memory and processes remain, so evidence survives; powering off
+    (B) destroys volatile state, deleting the service (C) destroys evidence and restarting (D) ends
+    the state to be examined.'
+lab_setup:
+- module: 1
+  setup: >-
+    Revert the medium-enterprise range to its baseline and confirm web01 and mail01 answer SSH from
+    the Student accounts. Values Students should find: web01 and mail01 run Ubuntu 24.04, so
+    authentication records live in the systemd journal (read with journalctl), not in
+    /var/log/auth.log; confirm each host's journal holds failed sign-in records from a small set of
+    source addresses, so a ranked top five is well defined.
+- module: 2
+  setup: >-
+    Revert the range to its baseline and confirm mail01 answers SSH. Values Students should find:
+    the service the Students create is theirs alone, so the restart proof is visible in the journal
+    under the unit name they chose; no range account changes are needed.
+- module: 3
+  setup: >-
+    Revert the range to its baseline and confirm web01 answers SSH. Have ready the service account
+    name, the single permitted command and the analyst account name Students will use, and confirm
+    the sudo log destination on web01 so the recorded log line can be checked.
+- module: 4
+  setup: >-
+    Revert the range to its baseline and confirm mail01 and siem01 answer. Issue each Student the key
+    pair and account they will use before the lab, and confirm mail01 still allows password sign-in
+    at the start so the refusal after the change is a real difference. The Student tests the
+    restrictions from siem01: the template's firewall allows management-zone hosts to reach every
+    zone, but the corporate workstations may reach the DMZ only on web and mail ports, so ws01
+    cannot open an SSH session to mail01.
+- module: 5
+  setup: >-
+    Revert the range to its baseline and confirm web01 answers SSH with space free for a new logical
+    volume. Values Students should find: the volume group has room for a small test volume, and web01
+    has a second filesystem for the archive so the different-filesystem Pass item can be met.
+- module: 6
+  setup: >-
+    Revert the range to its baseline and confirm siem01 answers SSH for the analyst account. Before
+    the lab, prepare on siem01 the unexplained recurring outbound-connection job the Students will
+    investigate: a harmless scheduled job owned by a non-privileged account that opens repeated
+    connections to an address inside the range, so the correlation is safe and every finding is
+    authorised-in-lab only. Record the job's name, schedule and destination so the debrief can compare.
+common_faults:
+- module: 1
+  fault: Students build the pipeline in one guess instead of stage by stage, and cannot say which
+    stage ranks the addresses.
+  remedy: Have them run the pipeline one command at a time and write down what each stage's output
+    looks like before adding the next.
+- module: 1
+  fault: Evidence screenshots show the final count only, with no intermediate output.
+  remedy: 'Point at the Pass item: the ranked list must be traceable to the logs, so each stage''s
+    output belongs in the notes.'
+- module: 2
+  fault: Students enable a unit but never prove the restart policy fired, and claim success from the
+    unit file alone.
+  remedy: 'Ask for the journal lines around the restart: the Pass item is the proof from the journal,
+    not the configuration.'
+- module: 2
+  fault: Students use SIGKILL where a graceful reload was asked and cannot explain the difference in
+    their evidence.
+  remedy: 'Re-run the stop with SIGTERM and compare what each signal leaves behind in the journal.'
+- module: 3
+  fault: The service account is created with a login shell and a password, contradicting the
+    restriction being taught.
+  remedy: Show the account entry as recorded evidence and ask which of the two properties fails and
+    why both matter.
+- module: 3
+  fault: The sudo rule is written permissively (all commands) to save time.
+  remedy: 'Re-read the lab brief aloud: the rule must allow exactly one command, and the refusal of a
+    second command is part of the evidence.'
+- module: 4
+  fault: Students edit the SSH configuration but reload the wrong service, or skip the reload, and
+    read the old behaviour as success.
+  remedy: Have them record the service's active state and the listener check immediately after the
+    reload, before testing from siem01.
+- module: 4
+  fault: The password attempt from siem01 is recorded as 'did not work' with no server message.
+  remedy: 'The Pass item asks for the refusal the server itself returns; have them repeat the attempt
+    and copy the exact line.'
+- module: 5
+  fault: The archive is written onto the same filesystem it backs up, and the different-filesystem
+    Pass item is skipped.
+  remedy: Have them record the mount table for both paths and confirm the filesystems differ before
+    deleting anything.
+- module: 5
+  fault: The restored file is not checksummed, so the restore is claimed without proof.
+  remedy: 'Point at the recorded pre-deletion checksum: the Pass item is the match, so both checksums
+    belong in the evidence.'
+- module: 6
+  fault: Students name the process from memory of the setup rather than from the socket and process
+    tables, so the evidence does not stand alone.
+  remedy: Require the socket line and the process owner line as separate recorded evidence before any
+    finding is accepted.
+- module: 6
+  fault: Containment recommendations power off or wipe the host, destroying the evidence the finding
+    rests on.
+  remedy: 'Ask what the host still holds that the finding needs, then have them re-order the
+    recommendation to preserve that state first.'
