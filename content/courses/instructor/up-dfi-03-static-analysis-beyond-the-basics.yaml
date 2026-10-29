@@ -1,0 +1,164 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# Instructor pack for Static Analysis Beyond the Basics (C527). Staff only.
+
+course_code: C527
+audience: staff_only
+overview: 'Static Analysis Beyond the Basics is an intermediate course of six 50-minute modules (300 minutes,
+  5 hours) on the soc-training range, centred on the analyst workstation dfir-ws01 reached through jump01.
+  Each module has the same split: 15 minutes teaching, 25 minutes range lab and 10 minutes quiz at a 70 percent
+  pass threshold. The modules build one continuous triage of the same instructor-staged sample: intake and
+  hashing, PE structure and imports, string and entropy triage, disassembly, config and indicator extraction,
+  and finally a YARA rule, indicator registration and an escalation decision. The instructor stages the samples
+  on dfir-ws01 before Module 1 and records the staging values (hashes, section tables, entropy values,
+  entry point address) so lab evidence can be marked. Say ''Student'' throughout; every lab step is defensive
+  and none executes the sample.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '15 teach (intake, hashing, file magic), 25 lab (intake record on dfir-ws01), 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '15 teach (PE headers, sections, import tables), 25 lab (section table and import groups on
+    dfir-ws01), 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '15 teach (strings, entropy, packer telltales), 25 lab (string and entropy comparison of two samples),
+    10 quiz'
+- module: 4
+  minutes: 50
+  plan: '15 teach (entry point, call graph, common assembly patterns), 25 lab (read and annotate one function
+    in radare2 on dfir-ws01), 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '15 teach (config blocks, durable versus fragile indicators), 25 lab (extract, label and type
+    indicators), 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '15 teach (YARA from static features, indicator registration, triage decisions), 25 lab (rule, test
+    against sample set, register indicators, decide), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: hashing the untouched original, confirming the true file type and forming a hypothesis is the
+    static triage sequence; A executes the sample, C trusts the extension and skips analysis, D destroys the
+    chain of custody. Q2 C: an import shows capability the sample could use, never proof of behaviour; A treats
+    an import as execution, B denies that imports mean anything, D outsources the judgement to a sandbox. Q3 D:
+    the MZ marker means the bytes are an executable whatever the extension says; A and B accept the extension,
+    C miscites the marker. Q4 A: the hash ties the analysed copy to the sample as received; B, C and D assign
+    the hash jobs it does not do. Q5 C: static analysis shows the network-capable imports and no more; A and B
+    claim behavioural certainty, D overstates what an import list contains.'
+- module: 2
+  notes: 'Q1 A: execute plus write on one section is the classic self-modifying layout and merits escalation; B
+    contradicts the flags, C confuses drivers with section flags, D invents corruption. Q2 C: the three import
+    groups together support network, persistence and process capability; A reasons from a stereotype, B
+    invents a configuration requirement, D under-reads the combination. Q3 B: resolving functions by name at
+    runtime is how packed code hides its imports; A, C and D invent mechanisms the file does not show. Q4 D: a
+    virtual size far above the raw size means the section expands in memory, a packed-code trait; A, B and C
+    misread the two sizes. Q5 A: the optional header''s subsystem value states whether the binary targets the
+    graphical interface, the console or runs native; B mistakes the DOS magic, which only marks a PE file; C
+    reasons from how services start rather than what any field records, since the subsystem does not separate
+    services from desktop programs; D reads the section count as an interface count.'
+- module: 3
+  notes: 'Q1 D: sample-specific strings such as URLs and a mutex name belong in the note; A mistakes library
+    names for capability, B discards evidence, C invents a length rule. Q2 B: compressed or encrypted bytes are
+    near-uniform, so entropy sits near the maximum; A reverses the reading, C invents an average, D is false.
+    Q3 A: few imports plus high entropy plus no compiler artefacts is the packed triage; B, C and D explain the
+    evidence away. Q4 C: encoded or runtime-built strings are invisible to a plain pass; A blames the tool, B
+    and D invent data loss. Q5 B: identifying the packer and unpacking statically respects the no-execution
+    constraint; A gives up, C guesses, D breaks the constraint.'
+- module: 4
+  notes: 'Q1 C: execution continues after the unpacking call returns, so the unpacked code begins at the next
+    instruction; A, B and D point at structures that hold no unpacked code. Q2 A: the x86-64 Windows convention
+    passes the first argument in a reserved register, RCX; B is the return address, C and D invent storage. Q3 D:
+    byte-wise arithmetic into a growing buffer is the string decoding pattern; A, B and C misname the loop.
+    Q4 B: comparing tool names and exiting is an anti-analysis check; A, C and D sanitise it. Q5 A: annotation
+    records what each block does so the next reader need not start over; the others assign annotation jobs it
+    does not do.'
+- module: 5
+  notes: 'Q1 B: campaign identifiers survive rebuilds better than addresses or ports; A and C are backwards,
+    D erases the distinction the module teaches. Q2 D: a hash breaks when the actor rebuilds, which is exactly
+    what fragility means; A blames the algorithm, B and C misstate how hashing works. Q3 C: stack-built
+    configuration lives on the stack, assembled by those moves; A, B and D point at places the bytes never
+    sit. Q4 A: type and context turn bare addresses into indicators a responder can act on; B, C and D add
+    order, redundancy or secrecy but no meaning. Q5 D: a reused mutex name is a durable indicator even though
+    only execution confirms its creation; A overstates the limits, B and C inflate the value.'
+- module: 6
+  notes: 'Q1 A: a hash-keyed rule matches one file exactly and misses every variant; B, C and D reverse or
+    exaggerate what a hash matches. Q2 B: adding structure, such as a second string under a condition, is the
+    direct fix for false matches; A gives up, C renames the noise, D makes matching looser. Q3 D: typed, dated
+    indicators tied to their sample are what partners can act on; A, B and C add evidence, freedom or
+    cryptography but no context. Q4 C: a known campaign identifier plus beacon capability is an evidence-based
+    escalation; A and B close or wait without cause, D denies that anything was learned. Q5 A: the good summary
+    names the finding, the indicator, the rule and the decision; B is vague, C says nothing, D orders action
+    without evidence.'
+lab_setup:
+- module: 1
+  setup: Revert the range to baseline. Confirm jump01 can reach dfir-ws01 with the analyst account. Stage one
+    suspicious sample in the instructor's intake folder on dfir-ws01 and record its true file type, hashes,
+    size and timestamps so the intake record can be marked.
+- module: 2
+  setup: Confirm the Module 1 sample remains in the working folder on dfir-ws01 and that a PE inspection tool
+    is installed. Record the expected machine type, subsystem, section count, section table and import groups
+    so the lab evidence can be marked.
+- module: 3
+  setup: Stage a second comparison sample beside the first in the working folder on dfir-ws01, one packed and
+    one routine. Confirm a strings tool and an entropy tool are installed. Record the expected string counts,
+    capability strings and per-section entropy values for both samples so the markings can be checked.
+- module: 4
+  setup: The soc-training baseline lists no disassembler on dfir-ws01, so a cleared author must install radare2
+    there before the lab (AUTHOR-REQUIRED). Confirm it opens the analysed sample. Record the expected entry point
+    address, function count, decoding loop address and the register that carries its decoded output, so the
+    annotation work can be marked.
+- module: 5
+  setup: Confirm the analysed sample and its decoding routine notes are available in the working folder on
+    dfir-ws01. Record the expected configuration values, the string or routine that produces each, and the
+    intended durable-or-fragile labels so the indicator list can be marked.
+- module: 6
+  setup: Stage the sample set on dfir-ws01, holding the analysed sample plus at least three clean comparison
+    files.
+    Confirm YARA is installed, the threat intelligence platform on misp01 accepts the analyst account, and the
+    clean files are known-good. Record the expected rule strings and the files that should match.
+common_faults:
+- module: 1
+  fault: Students hash the working copy instead of the untouched original and lose the chain of custody.
+  remedy: Have them copy the sample only after the original's hash is written down, and check the recorded
+    hash against the intake folder.
+- module: 1
+  fault: The intake record repeats the file extension as the file type.
+  remedy: Show the header bytes in class and ask what the bytes say the file is before the extension is
+    mentioned.
+- module: 2
+  fault: Students read one interesting import as proof the sample behaves that way.
+  remedy: Drill the wording 'could use' versus 'does use', and require every capability statement to cite the
+    import group it rests on.
+- module: 2
+  fault: The section table is copied without the characteristics flags, so escalation decisions have no
+    basis.
+  remedy: Insist the flags are recorded beside each section name, then walk one packed section's flags in
+    class.
+- module: 3
+  fault: Students quote the file's overall entropy and miss that packing lives in one section.
+  remedy: Require per-section values in the evidence and compare a routine section against the packed one
+    aloud.
+- module: 3
+  fault: Every string found is pasted into the note, burying the two that matter.
+  remedy: Have each Student mark at most five strings as capability-relevant and justify each mark.
+- module: 4
+  fault: Students read assembly instruction by instruction and never reach the function that matters.
+  remedy: Push the call-graph step first; the path from the entry point to the target function is the
+    deliverable, not full coverage.
+- module: 4
+  fault: The decoding loop is described without naming the register that carries its output.
+  remedy: Ask for the register and the loop-ending counter by name before the description is accepted.
+- module: 5
+  fault: Extracted values are listed bare, with no type or context, so nobody can act on them.
+  remedy: Require the one-line context per indicator and read one good and one bare example aloud.
+- module: 5
+  fault: Every value is labelled durable because it came from the sample.
+  remedy: Ask what a rebuild or a new campaign does to each value; the label must survive that question.
+- module: 6
+  fault: The YARA rule keys on the file hash or one short generic string, so it over- or under-matches.
+  remedy: Test the rule against the clean comparison files in the lab itself and require no clean match.
+- module: 6
+  fault: The escalation decision states a conclusion with no evidence line behind it.
+  remedy: Accept a decision only with one evidence-grounded reason, citing a finding from the earlier
+    modules.
