@@ -1,0 +1,164 @@
+course_code: C534
+audience: staff_only
+overview: 'Crisis Communication & Stakeholder Management is an intermediate individual course of six
+  50-minute modules (300 minutes, 5 hours). Each module has the same split: 15 minutes teach, 25 minutes
+  lab, 10 minutes quiz. Every lab runs on the small-enterprise range: Students test reachability from
+  jump-box, record what the range actually shows, and hand in matrix rows, executive updates, holding
+  statements, coordination notes and a communications log built on that evidence. Say ''Student''
+  throughout and keep every claim tied to a recorded result from the range.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '15 teach (matrix fields, severity, audiences), 25 lab (reachability sweep, matrix rows), 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '15 teach (BLUF, facts vs assumptions, time boxes), 25 lab (collect facts, draft the five-line update),
+    10 quiz'
+- module: 3
+  minutes: 50
+  plan: '15 teach (holding statements, claim classes, regulator triggers), 25 lab (mark both draft statements,
+    rewrite one line), 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '15 teach (legal hold, privilege, HR boundary), 25 lab (record and freeze evidence, coordination note),
+    10 quiz'
+- module: 5
+  minutes: 50
+  plan: '15 teach (restoration reporting, sequencing, cadence change), 25 lab (mark hosts against baseline,
+    recovery update), 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '15 teach (desk roles, log, end-to-end sequence), 25 lab (one full notification cycle, review), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: the matrix clock starts at confirmation, so 09:20 plus 72 hours; A confuses the first alarm with
+    confirmation, C treats closure as the trigger, D invents an approval step. Q2 C: notify internal owners on
+    time with facts marked unconfirmed; A over-reads the rule (it bans unverified claims, not early notices), B
+    and D invert the internal-then-external order. Q3 A: severity moves audiences and deadlines; B, C and D are
+    technical or staffing changes severity does not set. Q4 D: non-owners route to the owner for the approved
+    answer; A speculates, B is refusal without routing, C promises facts nobody has. Q5 B: the owner speaks for
+    the organisation; trigger names when, channel names how, deadline names by when.'
+- module: 2
+  notes: 'Q1 C: split the sentence into a confirmed fact and a labelled assumption; A discards real information,
+    B adds jargon, D breaks the time box. Q2 D: decisions needed and by when is the executive payload; A, B and
+    C are raw technical detail executives do not act on. Q3 A: promise the next update for a set time and keep
+    it even if it says no change; B avoids accountability, C delays past the box, D abandons one channel. Q4 B:
+    impact first, then facts and containment time, is BLUF; A buries the impact, C is filler, D has no order.
+    Q5 C: three updates with no impact, action or next update time is the hedging failure; the other options
+    name lesser or different faults.'
+- module: 3
+  notes: 'Q1 A: a holding statement acknowledges and promises the next update; B commits to unconfirmed causes,
+    C is absurd, D publishes a rumour. Q2 B: only the checked fact plus ''under investigation'' is publishable;
+    A, C and D each claim something the checks did not show. Q3 D: weekends count, so Friday 14:00 plus 72 hours
+    is Monday 14:00; B invents an extension, C pauses the clock wrongly, A ignores the deadline. Q4 C: say the
+    count is under way and commit to a time for confirmed numbers; A inflates, B asserts a negative, D abandons
+    the interview. Q5 A: a regulator notice is a formal duty with deadline and record; B, C and D misstate which
+    instrument binds.'
+- module: 4
+  notes: 'Q1 D: a hold stops changes to evidence and logs who holds copies; A destroys evidence, B alters volatile
+    state, C destroys need-to-know. Q2 A: personnel matters belong to human resources with the incident lead
+    feeding facts; B confronts a colleague, C and D assign the case to the wrong functions. Q3 C: a timed,
+    specific preservation fact is the model line; A over-shares raw material, B states a guilty guess, D shares
+    nothing. Q4 B: privileged notes go to counsel first on need-to-know; A confuses privilege with access rights,
+    C and D defeat it. Q5 D: mailbox review is decided by human resources with counsel under the documented
+    process; A, B and C all act outside it.'
+- module: 5
+  notes: 'Q1 B: report the three restored and the two limited with the next check time; A over-claims, C hides
+    progress, D withholds news. Q2 C: give a date for the next status check, not full completion; A fabricates
+    certainty, B refuses to communicate, D breaks the single voice. Q3 D: the cadence changes when containment
+    is stable and news becomes steady restoration progress; A and B are far too early, C is irrelevant. Q4 A:
+    the affected audience hears restoration news first; B, C and D name causes sequencing does not touch. Q5 B:
+    the final update confirms the close, follow-up actions and where questions go; A dumps raw material, C
+    promises the impossible, D assigns blame.'
+- module: 6
+  notes: 'Q1 C: the current log with pending deadlines and promised times is the handover; A and D leave no
+    record, B restarts from zero. Q2 A: meet the regulator deadline first and tell the executive the order
+    changed; B breaches a duty, C defaults on both, D mixes channels. Q3 B: audience, time and approver is a log
+    entry; A is private guesswork, C is configuration not communication, D is rota. Q4 D: fix the matrix trigger
+    and owner rows so the first update fires on time; A blames the audience, B deletes the record, C misses the
+    process fault. Q5 C: matrix, log, promised times and external duties met is the solo minimum; A and B
+    inflate the requirement, D confuses internal and external messages.'
+lab_setup:
+- module: 1
+  setup: 'Revert the small-enterprise range to its baseline: jump-box reachable over SSH as analyst, dc-01 and
+    ws-01 to ws-03 answering, fw-01 administration interface open from jump-box with the rules user-to-srv-ad
+    and mgmt-to-all present. Supply one printed incident summary naming affected services. Expected values:
+    all five hosts respond; each fw-01 rule''s source network is recorded; Students hand in one matrix row per
+    in-scope host and the judgement of each row against the recorded results.'
+- module: 2
+  setup: 'Revert the range to baseline and verify from jump-box that dc-01 and ws-01 answer. Supply the outage
+    description your update scenario uses and a blank five-line update template. Expected values: dc-01 and
+    ws-01 both answer at the recorded times; each fact on the handout is classifiable as confirmed or assumed
+    from the range alone; Students hand in the five-line update with a specific next update time and the
+    judgement of which lines rest on recorded results.'
+- module: 3
+  setup: 'Revert the range to baseline and verify the dc-01 directory service port answers from jump-box and that
+    ws-01, ws-02 and ws-03 respond as the draft statements claim. Supply two draft public statements, one
+    containing never-say claims. Expected values: the directory-service check and the three workstation checks
+    each yield a recorded result with a time; every claim in both drafts carries exactly one marking; Students
+    hand in one rewritten holding-statement line and the judgement of it against the recorded checks.'
+- module: 4
+  setup: 'Revert the range to baseline and record the fw-01 rule set yourself so you can compare it with Student
+    exports. Brief the legal hold: no host is restarted, no rule is changed, nothing is deleted during the lab.
+    Expected values: the fw-01 rule set matches the baseline (user-to-srv-ad and mgmt-to-all); dc-01 is
+    reachable and untouched; Students hand in the five-line coordination note, two deferred actions naming
+    the evidence each would alter, and the judgement of each note line against the recorded results.'
+- module: 5
+  setup: 'Revert the range to baseline, then set the restoration scenario your instructor brief describes (for
+    example dc-01 and ws-01 answering, ws-02 and ws-03 still dark, or the reverse) and prepare the baseline rule
+    set handout for the fw-01 comparison. Expected values: each of dc-01, ws-01, ws-02 and ws-03 yields a
+    recorded answering or not-answering result with a time; the fw-01 comparison finds any rule you changed;
+    Students hand in host markings quoting that evidence and a recovery update naming cadence and question
+    channel, plus the judgement of the update lines against the recorded checks.'
+- module: 6
+  setup: 'Revert the range to baseline and confirm all five hosts answer so the cycle starts from a known state.
+    Supply the incident summary and have the blank communications log ready. Expected values: the reachability
+    sweep records all five hosts with times; Students hand in matrix rows, a dated executive update and holding
+    statement each naming the next update time, a log entry for every drafted message, and the one-sentence
+    review naming the weakest step and one change.'
+common_faults:
+- module: 1
+  fault: Students copy the incident summary's claims as scope instead of testing reachability on the range.
+  remedy: Have them read out the reachability result for each host before any matrix row is drafted, and strike
+    any row for a host the sweep did not implicate.
+- module: 1
+  fault: Matrix rows are missing the deadline or owner field, or the deadline has no clock anchor.
+  remedy: Insist all five fields are filled per row and every deadline says when its clock starts.
+- module: 2
+  fault: An assumption is written as a confirmed fact in the executive update.
+  remedy: Check each update line against the recorded evidence; every line without a recorded result moves to
+    the assumptions list.
+- module: 2
+  fault: The update names no next update time or promises one hours away.
+  remedy: Require a specific clock time on the last line and hold Students to it for the rest of the course.
+- module: 3
+  fault: Students mark 'no customer data was touched' as verified although the range shows nothing about data.
+  remedy: Rerun the marking pass asking for the recorded evidence behind every 'verified by the range' mark;
+    none exists for data claims, so they become never say.
+- module: 3
+  fault: The rewritten holding statement still commits to a cause or a number.
+  remedy: Compare the line with the holding-statement rules; it may acknowledge, say what is under way and
+    promise the next update, nothing more.
+- module: 4
+  fault: Students change range state during the legal hold (reboot a host, edit a fw-01 rule) and then cannot
+    show what was preserved.
+  remedy: Compare each Student's rule export with the one you recorded at setup; any difference is the fault,
+    and the deferred-actions list should have named it.
+- module: 4
+  fault: The coordination note draws conclusions ('it was the intern') the range never supported.
+  remedy: Line the note up against the recorded results; every sentence must quote a recorded fact or name the
+    decision needed.
+- module: 5
+  fault: Students mark a host 'restored' because the summary says so, without quoting a check result.
+  remedy: Require every marking to quote the recorded answering or not-answering result and its time.
+- module: 5
+  fault: The recovery update promises full restoration by a named date.
+  remedy: Replace the date with the next status check time and list the services still limited.
+- module: 6
+  fault: The communications log is missing entries or times for messages the Student drafted in the cycle.
+  remedy: Count the drafted messages (matrix rows, update, holding statement, review) against the log entries;
+    every one needs an audience and a time.
+- module: 6
+  fault: The review sentence blames a person instead of naming the weakest step and a change.
+  remedy: Reject sentences naming people; the format is the step that failed plus one concrete change for the
+    next cycle.

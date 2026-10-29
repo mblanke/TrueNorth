@@ -1,0 +1,552 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C534
+title: Crisis Communication & Stakeholder Management
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C531
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Incident Responder (PR-CIR-001); Executive Cyber Leadership.'
+  - 'NIST CSF 2.0 categories: incident response communication, recovery communication, and
+    governance roles and responsibilities.'
+  - 'Self-paced upskilling, outside DP1/DP2.'
+  - 'Unpublished pending Standards review.'
+modules:
+- ordinal: 1
+  title: Notification Matrices and Duties
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Build a notification matrix that maps incident severity levels to audiences, owners and deadlines
+  - Identify the internal and external parties that an incident on the small-enterprise range obliges the organisation to notify
+  - Distinguish a notification duty fixed in policy from a judgement call made during response
+  topics:
+  - "The notification matrix fields: audience, trigger, owner, channel and deadline."
+  - Severity levels and how each level changes who is told and when.
+  - "Internal audiences: executives, service owners, affected teams and the help desk."
+  - "External audiences: customers, regulators, insurers and law enforcement."
+  - The single source of truth, and why unverified facts stay out of notifications.
+  lab: >-
+    Lab: On the small-enterprise range, establish which hosts the incident summary the instructor
+    supplies actually touches, then draft the notification matrix rows the summary requires.
+    Evidence: the reachability result for fw-01, dc-01, ws-01, ws-02 and ws-03, each with the time
+    it was tested; the fw-01 rules that allow traffic into the server network; one matrix row per
+    in-scope host with audience, trigger, channel, owner and deadline; a judgement of each drafted row
+    against the recorded results. Pass: every host is marked
+    "in scope" or "out of scope" with a one-sentence reason; each matrix row has all five fields
+    filled; no row claims a fact the range did not show.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and note the date and start time of the lab.
+    - hosts: [jump-box, fw-01, dc-01, ws-01, ws-02, ws-03]
+      action: From jump-box, test reachability of fw-01, dc-01, ws-01, ws-02 and ws-03 and record which respond,
+        each with the time.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, open the fw-01 administration interface and record each rule that allows traffic into
+        the server network, with its source network.
+    - hosts: [jump-box]
+      action: Mark each host "in scope" or "out of scope" for the incident summary the instructor supplies, with a
+        one-sentence reason.
+    - hosts: [jump-box]
+      action: Draft one notification matrix row for each in-scope host's service owner, recording audience, trigger,
+        channel, owner and deadline.
+    - hosts: [jump-box]
+      action: Judge each drafted row against the recorded reachability results and mark any row that claims a fact
+        the range did not show.
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: "A hospital's monitoring team confirms at 09:20 that patient records were copied. The notification
+        matrix gives regulators 72 hours from confirmation. The deadline is:"
+      options:
+      - A) 09:20 the same day, because the duty starts at the first alarm
+      - B) 09:20 three days later, because the clock starts at confirmation
+      - C) whenever the investigation closes, because facts must be final first
+      - D) 09:20 a week later, because executives must approve the notice first
+      answer: B
+    - question: "During a server outage, an engineer wants to notify only the help desk and wait for certainty.
+        According to the notification matrix, the first notification should go:"
+      options:
+      - A) nowhere at all, because unverified facts must stay out of every notification
+      - B) to customers, because they always come before internal teams
+      - C) to the internal matrix owners at that level's deadline, marking facts unconfirmed
+      - D) to the regulator, because external duties always come first
+      answer: C
+    - question: "A school's incident is rated high severity. Compared with a low rating, the matrix changes most
+        directly:"
+      options:
+      - A) which audiences are notified and how fast each deadline runs
+      - B) which firewall rule set the incident uses
+      - C) the encryption strength of the affected servers
+      - D) the number of analysts allowed into the incident response room
+      answer: A
+    - question: "A customer asks a support agent directly what happened during the outage. The agent is not a
+        matrix owner. The best action is:"
+      options:
+      - A) answer the customer from memory to be helpful
+      - B) say nothing at all and end the call without routing it
+      - C) speculate briefly but promise a full written report
+      - D) record the question and route it to the notification owner
+      answer: D
+    - question: Which entry in a notification matrix row names the person who speaks for the organisation?
+      options:
+      - A) trigger
+      - B) owner
+      - C) channel
+      - D) deadline
+      answer: B
+- ordinal: 2
+  title: Writing the First Exec Update
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a first executive update that leads with impact, facts and the next update time
+  - Separate confirmed facts from assumptions in a drafted update for executives
+  - Select the level of technical detail executives need to make a decision
+  topics:
+  - "BLUF structure: impact, facts, actions, decisions needed and next update time."
+  - Confirmed facts versus assumptions and how each is labelled in an update.
+  - "Time boxes: promising the next update and keeping it."
+  - "Deciding what executives need: cost, scope, risk and decisions, not packet captures."
+  - "Common failures: jargon, hedging and updates that bury the impact."
+  lab: >-
+    Lab: On the small-enterprise range, collect the facts for a first executive update about the
+    outage the instructor describes, and write the update itself. Evidence: the dc-01 and ws-01
+    reachability results with their times; each fact labelled "confirmed" or "assumed"; a five-line
+    update covering impact, confirmed facts, actions, decisions needed and the next update time; a
+    judgement of which update lines rest on recorded results.
+    Pass: every recorded fact appears in the update or is listed as an assumption; no assumption is
+    written as a confirmed fact; the update names a specific next update time.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the date and the lab start time.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, run one connectivity check against dc-01 and record the exact result, answering or
+        not, with the time.
+    - hosts: [jump-box, ws-01]
+      action: From jump-box, run one connectivity check against ws-01 and record the exact result, answering or
+        not, with the time.
+    - hosts: [jump-box]
+      action: Label each recorded fact "confirmed" or "assumed" and list any assumption that still needs verification.
+    - hosts: [jump-box]
+      action: "Write a five-line executive update: impact, confirmed facts, actions, decisions needed and the next
+        update time."
+    - hosts: [jump-box]
+      action: Judge whether every line of the drafted update rests on a recorded result and mark any line that
+        does not.
+  refs:
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: "A draft update says 'We believe a rogue device caused the outage and the evidence is being examined.'
+        The strongest fix is to:"
+      options:
+      - A) delete the sentence entirely from the update
+      - B) add more networking jargon so executives trust it
+      - C) split it into a confirmed fact and a labelled assumption
+      - D) wait until the investigation closes before sending anything at all
+      answer: C
+    - question: An executive update must let leadership act. Which line belongs in it?
+      options:
+      - A) the switch port numbers of every affected host in the building
+      - B) the packet capture sizes collected so far
+      - C) the detection rule syntax that fired
+      - D) the decisions the executive team must take and by when
+      answer: D
+    - question: "A first update is issued at 10:00. The discipline the module teaches about time boxes is:"
+      options:
+      - A) promise the next update for a set time and keep it
+      - B) promise nothing in advance, so the team can never be late
+      - C) send updates only once everything is fully confirmed
+      - D) leave each individual executive to request updates separately
+      answer: A
+    - question: Which opening sentence best fits the BLUF form for an executive update?
+      options:
+      - A) 'This update summarises background on the network segmentation history of the enterprise.'
+      - B) 'Payments cannot be processed; 40 workstations are offline; containment began 09:30.'
+      - C) 'Cyber incidents are widely known to be complex and evolving situations.'
+      - D) 'Several things happened, all of them explained below.'
+      answer: B
+    - question: "An update says 'we are working on it' for three consecutive updates. The failure this shows is:"
+      options:
+      - A) too much technical detail for the executives to read
+      - B) too many confirmed facts in one update
+      - C) no stated impact, actions or next update time
+      - D) updates sent at irregular times
+      answer: C
+- ordinal: 3
+  title: Media and Regulator Pressure Drills
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Apply holding-statement rules when a journalist or customer asks for comment during an incident
+  - Classify claims in a draft public statement as verified, unverified or never say
+  - Identify the regulator notification triggers and deadlines that apply to a described incident
+  topics:
+  - "Holding statements: what they say, what they promise and what they avoid."
+  - The gap between what the team knows and what it may say publicly.
+  - Verified, unverified and never-say claims in a draft statement.
+  - Regulator notification triggers, deadlines and the record kept of each notice.
+  - "Pressure drills: answering a live question without committing to facts."
+  lab: >-
+    Lab: On the small-enterprise range, verify which claims in two draft public statements the
+    range can actually confirm, then rewrite the worst line as a holding statement. Evidence: the
+    dc-01 directory-service check and the ws-01, ws-02 and ws-03 reachability results, each with a
+    time; every claim in both drafts marked "verified by the range", "unverified" or "never say";
+    one rewritten holding-statement line that promises the next public update; a judgement of the rewritten
+    line against the recorded checks. Pass: each claim
+    carries exactly one marking; every "verified by the range" marking quotes the recorded evidence;
+    the rewritten line commits to no unconfirmed fact.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and note the date and start time of the lab.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, test whether dc-01 answers on its directory service port and record the result and the
+        time as evidence.
+    - hosts: [jump-box, ws-01, ws-02, ws-03]
+      action: From jump-box, record which of ws-01, ws-02 and ws-03 answer, so a public claim about scope can be
+        checked.
+    - hosts: [jump-box]
+      action: Mark each claim in the two draft statements the instructor supplies as verified by the range,
+        unverified or never say.
+    - hosts: [jump-box]
+      action: Rewrite one never-say line from the drafts into a holding-statement line that acknowledges the
+        incident and promises the next public update.
+    - hosts: [jump-box]
+      action: Judge whether the rewritten line commits to any fact the recorded checks did not confirm, and
+        correct it.
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  source_gaps:
+  - A dedicated crisis-communication and media-handling handbook is not in the reference library.
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: "A journalist calls an hour after containment began and asks what caused the outage. The best
+        response is a:"
+      options:
+      - A) holding statement that acknowledges the incident and promises the next update
+      - B) a full technical explanation of the cause so the story is accurate
+      - C) refusal to confirm the organisation even exists
+      - D) guess marked clearly as a rumour
+      answer: A
+    - question: The checks show two workstations offline and nothing else confirmed. Which claim is safe to publish?
+      options:
+      - A) The attacker has already been identified and arrested this morning
+      - B) Two workstations are offline and the cause is under investigation
+      - C) No customer data was touched, as far as anyone can tell
+      - D) The incident is over and systems are fully restored
+      answer: B
+    - question: "A privacy regulator's rule gives 72 hours from confirming a personal-data breach. The team confirmed
+        it Friday 14:00. The notice deadline is:"
+      options:
+      - A) whenever the forensic report is finished
+      - B) 14:00 Monday plus an automatic extension for weekends
+      - C) the next business day, because weekends always pause the clock
+      - D) 14:00 on Monday, because weekends count toward the 72 hours
+      answer: D
+    - question: "During a live interview a director is asked how many records were copied. Records are still being
+        counted. The taught response is:"
+      options:
+      - A) give the largest number the team has heard mentioned so far
+      - B) say zero until the count is published
+      - C) say counting continues and commit to a time for confirmed numbers
+      - D) decline and leave the interview
+      answer: C
+    - question: What distinguishes a notification to a regulator from a statement to the media?
+      options:
+      - A) the regulator notice is a formal duty with a deadline and record
+      - B) the regulator notice is optional advice sent only once recovery is complete
+      - C) the media statement is legally binding, the notice is not
+      - D) the two follow the same informal phone call
+      answer: A
+- ordinal: 4
+  title: Coordination with Legal and HR
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Sequence evidence preservation, legal hold and notification duties when legal joins an incident
+  - Classify personnel questions that belong to human resources rather than incident response
+  - Write a coordination note that shares facts without waiving privilege or over-sharing
+  topics:
+  - "Legal hold and evidence preservation: what stops changing once legal is engaged."
+  - "Privilege and need-to-know: who reads the detailed notes and who reads the summary."
+  - "Human resources cases: insider concerns, employee privacy and fair process."
+  - "The coordination note: facts shared, facts withheld and the reason for each."
+  - Working with counsel on regulator and law-enforcement contact.
+  lab: >-
+    Lab: On the small-enterprise range, record what incident evidence exists and what a legal hold
+    would freeze, then write the coordination note to legal. Evidence: the fw-01 rule set as
+    recorded at the start, with the time; the confirmation that dc-01 was reached and that nothing
+    on it was changed; two range actions deferred because they would alter evidence; a five-line
+    coordination note covering what happened, what evidence exists, what was preserved and what
+    decision is needed; a judgement of each note line against the recorded results.
+    Pass: the recorded rule set matches what the range showed at the recorded
+    time; both deferred actions state the evidence they would alter; the note shares no conclusion
+    the range did not support.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and note the date and start time of the lab.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, open the fw-01 administration interface and record the current rule set and the time,
+        so later changes can be compared.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, confirm dc-01 is reachable and record the time of the check, taking no action on the
+        domain controller.
+    - hosts: [jump-box]
+      action: List two actions on the range that would alter evidence, and record why each is deferred while the
+        legal hold is in force.
+    - hosts: [jump-box]
+      action: "Write a five-line coordination note to legal: what happened, what evidence exists, what was preserved
+        and what decision is needed."
+    - hosts: [jump-box]
+      action: Judge whether the note shares any conclusion the recorded results do not support, and strike it.
+  refs:
+  - nist-sp-800-86
+  - nist-sp-800-61r3
+  source_gaps:
+  - Legal-hold and privilege guidance for incident response is not in the reference library.
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: "Legal declares a hold two hours into an incident. The first operational effect is:"
+      options:
+      - A) deleting the older log files right away to reduce the storage costs
+      - B) restarting every host so evidence is clean
+      - C) sending all raw notes to the whole company
+      - D) stopping changes to evidence and logging who still has copies
+      answer: D
+    - question: "The personnel side of a case, including fair process and employee privacy, belongs to:"
+      options:
+      - A) human resources, working with the incident lead on facts only
+      - B) the responder, who should confront the colleague directly and at once
+      - C) the regulator, who manages internal staff matters
+      - D) the media contact, who announces the suspicion
+      answer: A
+    - question: Which note line best shares a fact with legal without over-sharing?
+      options:
+      - A) 'Everyone in the company should read the raw capture files before tomorrow.'
+      - B) 'The intern probably did it, ask around.'
+      - C) 'At 11:05 the fw-01 rule set was exported read-only and hashed.'
+      - D) 'Nothing is happening, we will call next week.'
+      answer: C
+    - question: "Privilege in incident coordination means:"
+      options:
+      - A) administrators get faster logins and far more permissions than standard staff
+      - B) some analysis notes go to counsel first, shared on need-to-know
+      - C) every note is published to the whole response team
+      - D) executives read raw telemetry instead of summaries
+      answer: B
+    - question: An employee's mailbox is part of an insider case. Who decides whether and how it is reviewed?
+      options:
+      - A) the responder alone, later that night without telling anyone
+      - B) any manager who is curious
+      - C) the whole response chat channel
+      - D) human resources with counsel, under the documented process
+      answer: D
+- ordinal: 5
+  title: Recovery Communication and Restoration Updates
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a recovery update that reports restored services against the agreed restoration plan
+  - Sequence restoration news so each audience learns what changed for them
+  - Decide when an incident moves from incident updates to a recovery cadence
+  topics:
+  - "Recovery communication: reporting restored services and remaining gaps."
+  - "Sequencing restoration news: the order audiences learn what changed."
+  - "Cadence change: from incident updates to a slower recovery rhythm."
+  - Reporting progress without over-promising dates or completeness.
+  - "Closing the incident: the final update and where ongoing questions go."
+  lab: >-
+    Lab: On the small-enterprise range, judge which services are restored against the baseline the
+    instructor supplies, and write the recovery update. Evidence: the reachability result for
+    dc-01, ws-01, ws-02 and ws-03 with the time of each check; any fw-01 rule that differs from the
+    baseline; each host marked "restored", "partly restored" or "not restored"; a recovery update
+    naming restored services, services still limited, the cadence of further updates and where
+    questions go; a judgement of the update lines against the recorded checks.
+    Pass: every marking quotes the evidence behind it; no update line promises a
+    service the checks did not show; the cadence and the question channel are both named.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the time of the check.
+    - hosts: [jump-box, dc-01, ws-01, ws-02, ws-03]
+      action: From jump-box, test each of dc-01, ws-01, ws-02 and ws-03 and record which answer, with the time.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, compare the fw-01 rule set with the baseline the instructor supplies and record any
+        rule that changed.
+    - hosts: [jump-box]
+      action: Mark each host "restored", "partly restored" or "not restored", with the evidence recorded in the
+        earlier steps.
+    - hosts: [jump-box]
+      action: "Draft a recovery update: services restored, services still limited, the cadence of the next updates
+        and where questions go."
+    - hosts: [jump-box]
+      action: Judge whether any update line promises a service the recorded checks did not show, and correct it.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: "Three of five services are restored. The recovery update should report:"
+      options:
+      - A) that everything has been fully restored, to calm the stakeholders down
+      - B) the three restored, the two limited and the next check time
+      - C) only the failures, so nobody relaxes too early
+      - D) nothing until all five are confirmed
+      answer: B
+    - question: "During recovery, an executive asks for a completion date the team cannot confirm. The taught answer
+        is:"
+      options:
+      - A) give the date the team privately hopes for, clearly labelled as certain
+      - B) refuse ever to estimate anything
+      - C) give a date for the next status check, not for full completion
+      - D) let each team member quote a different date
+      answer: C
+    - question: "Incident updates move to a recovery cadence when:"
+      options:
+      - A) the first alert fires in the monitoring platform at night
+      - B) the media stops calling
+      - C) the responders take leave
+      - D) containment is stable and news becomes steady restoration progress
+      answer: D
+    - question: "A customer learns of a restored payment service from a rumour before the update. The failure was in:"
+      options:
+      - 'A) sequencing: the affected audience should hear restoration news first'
+      - B) weak encryption settings on the payment service and its supporting databases
+      - C) the firewall rule set on the range
+      - D) the number of people on the response team
+      answer: A
+    - question: "The final update of an incident should include:"
+      options:
+      - A) the raw packet captures attached in full
+      - B) the confirmed close, follow-up actions and where questions go
+      - C) a firm promise that nothing similar can ever happen again
+      - D) the personal opinion of the responder on blame
+      answer: B
+- ordinal: 6
+  title: Running the Communications Desk End to End
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Run a full notification cycle from first fact to recovery update using the earlier modules
+  - Maintain a communications log that records every audience, message and time
+  - Review a completed communications stream and identify its weakest step
+  topics:
+  - "The communications desk: roles, hours and handovers on a live incident."
+  - "The communications log: every notification, statement and update, with times."
+  - "End-to-end sequence: matrix, first update, pressure response, coordination, recovery."
+  - Handover between shifts without losing the record.
+  - "Reviewing the stream: which step failed and what to change."
+  lab: >-
+    Lab: On the small-enterprise range, run one full notification cycle from first reachability
+    check to a reviewed communications stream, using the work of the earlier modules. Evidence:
+    the reachability results for fw-01, dc-01, ws-01, ws-02 and ws-03 with times; matrix rows with
+    audiences and deadlines; a dated first executive update and one holding statement; a
+    communications log recording every drafted message with its audience and time; one sentence
+    naming the weakest step and one change for the next cycle. Pass: the log contains an entry for
+    every message drafted; both timed messages name their next update time; the weakest-step
+    sentence names the step and the change, not a person to blame.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the time the cycle starts.
+    - hosts: [jump-box, fw-01, dc-01, ws-01, ws-02, ws-03]
+      action: From jump-box, test reachability of fw-01, dc-01, ws-01, ws-02 and ws-03 and record the results with
+        the time.
+    - hosts: [jump-box]
+      action: Draft the notification matrix rows for the incident summary the instructor supplies, with audiences
+        and deadlines.
+    - hosts: [jump-box]
+      action: Write the first executive update and one holding statement, each dated and marked with the next update
+        time.
+    - hosts: [jump-box]
+      action: Open a communications log and record every message drafted in this cycle with its audience and time.
+    - hosts: [jump-box]
+      action: Mark the weakest step of the cycle in one sentence and record one change for the next cycle.
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: "A shift ends mid-incident. The handover that protects the communications stream is:"
+      options:
+      - A) a verbal chat with no record
+      - B) nothing written, because the next shift simply starts the work from scratch
+      - C) the communications log, current, with pending deadlines and promised update times
+      - D) a memory test between the two leads
+      answer: C
+    - question: "During the cycle, a regulator deadline moves closer than the promised executive update. The desk
+        should:"
+      options:
+      - A) meet the regulator deadline first and tell the executive why
+      - B) let the regulator deadline pass quietly and hope nobody notices
+      - C) send both messages late and apologise afterwards
+      - D) merge the regulator notice into a blog post
+      answer: A
+    - question: Which entry belongs in the communications log?
+      options:
+      - A) the responder's private guesses about who the attacker might really be
+      - B) the 11:30 customer notice, its audience and who approved it
+      - C) the raw firewall configuration backup
+      - D) the lunch rota for the response room
+      answer: B
+    - question: "After recovery, the review of the stream finds the first executive update went out 90 minutes late.
+        The best fix targets:"
+      options:
+      - A) the executives, who should stop requesting updates at such short notice
+      - B) the log, which should be deleted
+      - C) the range, which should be rebuilt
+      - D) the matrix trigger and owner rows, so updates fire on time
+      answer: D
+    - question: "One Student runs the desk alone for a small incident. The minimum the stream still needs is:"
+      options:
+      - A) a second Student always present
+      - B) a press conference with the media every two hours until recovery completes
+      - C) a matrix, a log, promised update times and external duties met
+      - D) a public statement for every internal message
+      answer: C
