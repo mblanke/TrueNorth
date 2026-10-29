@@ -9,6 +9,7 @@ difficulty: intermediate
 duration_hours: 100
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: TEMP67
 source:
@@ -30,16 +31,43 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Design defensive architecture for a large, distributed enterprise.
-  - Apply zero trust principles beyond the network perimeter.
-  - Assess architectural trade-offs under operational constraint.
+  - Map the policy enforcement points in an enterprise network and judge each placement against zero trust principles
+  - Design a staged adoption plan that delivers defensive value at each stage without a full perimeter replacement
+  - Assess the operational cost of distributed enforcement and recommend which controls the organisation can sustain
   topics:
-  - Enterprise-scale defensive design.
-  - Zero trust maturity and staged adoption.
-  - Policy enforcement distribution.
-  - Operational cost of architectural choices.
-  lab: 'Lab: Design a staged zero trust adoption plan for a large legacy estate, sequencing changes so
-    that each stage delivers value without requiring full replacement.'
+  - Enterprise-scale defensive architecture and the limits of perimeter-based design.
+  - Zero trust principles and staged adoption for legacy estates.
+  - Distributing policy enforcement points close to the protected resource.
+  - The operational cost of distributed enforcement and configuration consistency.
+  lab: >-
+    Lab: On the red-vs-blue range, inventory where policy is actually enforced - the edge router,
+    the directory, the jump host and the monitoring stack - and judge the current architecture against
+    zero trust principles. Evidence: the network position and rule scope of rtr01; which authentication
+    source dc01 provides to workstations; what jump01 requires before granting administrative access;
+    which events siem01 records from each zone. Pass: each enforcement point marked as perimeter-only
+    or resource-adjacent with a one-sentence reason; one legacy dependency identified that resists
+    zero trust adoption; a staged adoption order proposed with the value each stage delivers.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, confirm which network zones it can reach, and record the path the session
+        takes into the management zone.
+    - hosts: [rtr01]
+      action: List the rules rtr01 enforces between the adversary network, the DMZ and the corporate LAN,
+        and record which zones each rule allows or denies.
+    - hosts: [dc01]
+      action: Examine dc01 and record which directory service the workstation zone uses for authentication
+        and where that trust is anchored.
+    - hosts: [siem01]
+      action: Search siem01 for events from each zone and record which sources are visible and which zones
+        generate no telemetry at all.
+    - hosts: [jump01, rtr01, dc01, siem01]
+      action: Mark each of the four enforcement points as perimeter-only or resource-adjacent with a
+        one-sentence reason, and identify one legacy dependency that resists zero trust adoption.
+    - hosts: [jump01]
+      action: Propose a staged adoption order for the estate, state what value each stage delivers, and
+        justify why that order fits the dependencies recorded.
   refs:
   - nist-sp-800-207
   - nist-sp-800-41r1
@@ -47,41 +75,47 @@ modules:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'Zero trust adoption in a legacy estate is best approached:'
+    - question: A bank is designing a new branch network and must decide where traffic between teller
+        workstations and the core banking servers is filtered. Where should the enforcement point sit?
       options:
-      - A) As a single replacement programme
-      - B) In stages, each delivering value independently
-      - C) By perimeter hardening only
-      - D) Through procurement alone
-      answer: B
-    - question: 'A policy enforcement point should be placed:'
+      - A) As close to the core banking servers as practical
+      - B) Only at the branch internet gateway during opening hours
+      - C) Uniformly at the branch border for every flow
+      - D) On the payment switch and nowhere else in the branch
+      answer: A
+    - question: A manufacturer with a decade-old ERP estate cannot replace its systems but wants zero
+        trust adoption to begin this quarter. Which sequencing delivers defensive value soonest?
       options:
-      - A) Only at the perimeter
-      - B) As close to the protected resource as practical
-      - C) At the identity provider
-      - D) On the endpoint only
-      answer: B
-    - question: 'The greatest practical obstacle to zero trust is usually:'
+      - A) Wait until the ERP replacement completes
+      - B) Replace the whole estate in one programme
+      - C) Protect one high-value application first, then expand
+      - D) Ask vendors for a zero trust product and wait for delivery
+      answer: C
+    - question: An airline begins zero trust adoption and finds one crew-scheduling application cannot
+        use modern authentication and only accepts a single protocol from fixed addresses. What does
+        this dependency demand?
       options:
-      - A) Technology availability
-      - B) Legacy systems and applications that cannot participate
-      - C) Vendor support
-      - D) Bandwidth
-      answer: B
-    - question: 'Distributing enforcement increases:'
+      - A) An immediate application replacement before any other stage of the plan
+      - B) Exempting the entire estate from the new policy
+      - C) Documented exception with monitoring around that application
+      - D) Abandoning the adoption programme for this site
+      answer: C
+    - question: A retailer distributes filtering to every store, and after six months two sites hold
+        conflicting rule sets and one rule blocks payments. What does this demonstrate?
       options:
-      - A) Simplicity
-      - B) Resilience but also configuration and consistency burden
-      - C) Latency always
-      - D) Perimeter reliance
+      - A) That distributed enforcement should be abandoned
+      - B) That distribution raises a consistency burden that must be managed
+      - C) That payment traffic should bypass all policy
+      - D) That the stores need one central authority over their own rule sets
       answer: B
-    - question: 'Architecture decisions should account for operational cost because:'
+    - question: After a simulation, a water utility finds its monitoring design needs four analysts it
+        cannot hire. What should the architecture review conclude?
       options:
-      - A) Budgets are fixed
-      - B) A design the organisation cannot operate correctly will degrade into insecurity
-      - C) Vendors charge more
-      - D) Auditors require it
-      answer: B
+      - A) The design is unsustainable and must be simplified
+      - B) The utility should fund the four positions regardless of cost
+      - C) Monitoring should be disabled until hiring succeeds
+      - D) The architecture needs more detection sources
+      answer: A
   po:
     qsp_code: TEMP67
     po_code: PO_008
@@ -92,16 +126,44 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Implement micro-segmentation in a complex environment.
-  - Design isolation for high-value assets.
-  - Verify segmentation continuously rather than once.
+  - Read the inter-zone rules on an edge router and determine which flows a segmentation design actually permits
+  - Isolate a high-value asset across its user, management, backup and monitoring paths
+  - Verify that an isolation zone holds by testing a denied flow and proposing a controlled break-glass path
   topics:
-  - Micro-segmentation approaches.
-  - Identity-based segmentation.
-  - High-value asset isolation patterns.
-  - Continuous segmentation verification.
-  lab: 'Lab: Design and verify an isolation zone for a high-value asset, including the break-glass access
-    path, and build an automated check that detects if the isolation is weakened.'
+  - Segmentation zones, micro-segmentation and identity-based policy.
+  - Isolation patterns for high-value assets and their supporting paths.
+  - Break-glass access paths and the monitoring that covers them.
+  - Continuous verification of segmentation against rule drift.
+  lab: >-
+    Lab: On the red-vs-blue range, read the inter-zone policy that rtr01 enforces around the server
+    VLAN, attempt the PostgreSQL service on db01 at TCP 5432 from ws01 - a flow no allow rule
+    permits - and judge whether the isolation around db01 holds. Evidence: each server VLAN rule
+    with its source, destination and disposition; the exact result of the ws01-to-db01 attempt on
+    TCP 5432; which management, backup and monitoring paths still reach db01; a proposed break-glass
+    route through jump01 and how its use would be recorded. Pass: the attempt recorded exactly as
+    the range shows it; each remaining path marked as required or unnecessary with a reason; the
+    break-glass path described with its monitoring condition.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and record which server segments it can reach directly before any policy
+        change is examined.
+    - hosts: [rtr01]
+      action: List the rules rtr01 enforces into the server VLAN and record each rule's source, destination
+        and disposition.
+    - hosts: [ws01, db01]
+      action: From ws01, attempt to reach the PostgreSQL service on db01 at TCP 5432, which no
+        allow rule permits, and record the exact result the range shows.
+    - hosts: [db01]
+      action: Trace which management, backup and monitoring paths still reach db01, and record the origin
+        of each path.
+    - hosts: [rtr01, ws01, db01]
+      action: Mark each remaining path as required or unnecessary with a one-sentence reason, and judge
+        whether the isolation around db01 holds.
+    - hosts: [jump01]
+      action: Design a break-glass route to db01 through jump01, and state how each use of the route would
+        be recorded and alerted.
   refs:
   - nist-sp-800-207
   - nist-sp-800-41r1
@@ -110,40 +172,45 @@ modules:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Continuous verification of segmentation is necessary because:'
+    - question: Six months after a hospital segmented its network, a review finds a rule added during an
+        outage still lets staff workstations reach the patient record server. What does this show?
       options:
-      - A) Devices fail
-      - B) Rules drift through operational changes and exceptions
-      - C) Traffic grows
-      - D) Audits are annual
+      - A) That segmentation cannot protect clinical data
+      - B) That the outage change should have stayed forever
+      - C) That segmentation should be replaced by a flat network
+      - D) That rules drift and verification must be continuous
+      answer: D
+    - question: A logistics firm wants policy that follows a warehouse application from one server VLAN
+        to another without renumbering. Which segmentation approach fits?
+      options:
+      - A) Tied to the physical switch port of the host
+      - B) Bound to the workload identity, not its address
+      - C) Bound to the MAC address table
+      - D) Tied to a VLAN tag fixed to its rack
       answer: B
-    - question: 'Identity-based segmentation binds policy to:'
+    - question: A contractor needs emergency access to an isolated payments server during a live incident.
+        Which break-glass design keeps the isolation meaningful?
       options:
-      - A) IP address
-      - B) Workload or user identity rather than network location
-      - C) VLAN tag
-      - D) Physical port
-      answer: B
-    - question: 'A break-glass access path into an isolated zone must be:'
+      - A) A pre-approved route opened on request and alerted
+      - B) A permanent rule left open until the incident is closed
+      - C) Credentials shared with the whole response team
+      - D) An undocumented path known to the network team
+      answer: A
+    - question: An accounts database is fenced off from user networks, yet an attacker who compromises
+        the backup server can still reach it nightly. What was missed?
       options:
-      - A) Always open
-      - B) Tightly controlled, monitored and alerted on use
-      - C) Undocumented
-      - D) Shared
-      answer: B
-    - question: 'Micro-segmentation increases security but also:'
+      - A) User access from the main office network zones
+      - B) Outbound web browsing from the database host
+      - C) The backup path into the isolated zone
+      - D) The wireless network used by visitors
+      answer: C
+    - question: A port authority applies micro-segmentation to its crane control network and engineers
+        now spend most of each week approving rule exceptions. What does this indicate?
       options:
-      - A) Reduces logging
-      - B) Increases policy complexity that must be managed
-      - C) Removes the need for monitoring
-      - D) Simplifies troubleshooting
-      answer: B
-    - question: 'Isolation of a high-value asset should account for:'
-      options:
-      - A) Network traffic only
-      - B) Management, backup, monitoring and update paths as well as user access
-      - C) User access only
-      - D) Physical location
+      - A) That the control network is now completely protected from attack
+      - B) That the policy complexity must be reduced to stay sustainable
+      - C) That the exception process should be removed entirely
+      - D) That micro-segmentation was the wrong technology
       answer: B
 - ordinal: 3
   title: Deception and Active Defence
@@ -152,16 +219,42 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Deploy deception technology appropriately.
-  - Distinguish legitimate active defence from unlawful action.
-  - Measure the value of deception.
+  - Place a honeypot on a segmented network and justify the placement against how an intruder actually moves
+  - Confirm that a deception asset generates a high-fidelity alert and evaluate what the alert reveals
+  - Distinguish lawful defensive deception from offensive action that exceeds authorisation
   topics:
-  - Honeypots, honeytokens and decoys.
-  - Deception placement and realism.
-  - Legal boundaries of active defence.
-  - Measuring deception effectiveness.
-  lab: 'Lab: Deploy honeytokens across a lab environment, verify that access generates a high-fidelity
-    alert, and document why each placement would be attractive to an attacker.'
+  - Honeypots, honeytokens and decoy services in enterprise networks.
+  - Placement and realism of deception assets.
+  - High-fidelity alerting and the economics of false positives.
+  - Legal and ethical boundaries of active defence.
+  lab: >-
+    Lab: On the red-vs-blue range, confirm where the deception asset sits, verify that touching it
+    raises a high-fidelity alert, and judge whether the deception would survive a careful intruder.
+    Evidence: the network zone honey01 sits in and the services it presents; the alert honey01
+    generates in siem01 when touched; whether nids01 sees the same contact on its mirror; a realism
+    assessment of the deception against the services around it. Pass: the alert recorded exactly as
+    siem01 shows it; the placement marked as plausible or implausible for the zone with a reason;
+    one realism improvement proposed; a statement of why the deception stays within lawful defence.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [honey01]
+      action: Identify which zone honey01 occupies and record the services and banners it presents to
+        the network.
+    - hosts: [jump01, honey01]
+      action: From jump01, make contact with one service on honey01 and record exactly what the connection
+        returns.
+    - hosts: [siem01]
+      action: Search siem01 for the alert that the contact raised, and record its rule, fidelity and timing.
+    - hosts: [nids01]
+      action: Check whether nids01 recorded the same contact on the mirror port, and note any difference
+        in what each sensor saw.
+    - hosts: [honey01, siem01, blue01, nids01]
+      action: Judge whether the deception would survive a careful intruder, and propose one realism
+        improvement with its reason.
+    - hosts: [blue01]
+      action: State why the deception as deployed remains lawful defensive action, and record the boundary
+        that must not be crossed.
   refs:
   - mitre-attack
   - nist-sp-800-94
@@ -169,41 +262,46 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Honeytokens produce high-fidelity alerts because:'
+    - question: A security team plants a fake administrator account in the directory and receives an
+        alert the same night that someone queried it. Why is this alert worth immediate response?
       options:
-      - A) They are heavily monitored
-      - B) They have no legitimate use, so any access is suspicious
-      - C) They are encrypted
-      - D) They log more detail
-      answer: B
-    - question: 'Hacking back against an attacker is:'
+      - A) Nothing legitimate ever touches a deception asset
+      - B) The account held special privileges
+      - C) Deception assets log more detail than production
+      - D) The query came from outside the building
+      answer: A
+    - question: An intruder has a foothold on a workstation and begins listing file shares while avoiding
+        anything unusual. Where should a decoy file service sit to meet that behaviour?
       options:
-      - A) Standard active defence
-      - B) Generally unlawful and outside legitimate defensive action
-      - C) Permitted with authorisation
-      - D) Encouraged
-      answer: B
-    - question: 'Deception placement should be guided by:'
+      - A) On an isolated segment no workstation can reach
+      - B) Outside the firewall with the other exposed services
+      - C) Among the real file services being listed
+      - D) On the monitoring VLAN beside the sensors
+      answer: C
+    - question: A decoy database exposes only a default install page with placeholder data and no traffic
+        history. Why does an experienced intruder discount it?
       options:
-      - A) Convenience
-      - B) Where an attacker would plausibly look during their operation
-      - C) Network capacity
-      - D) Asset value only
+      - A) Databases never hold placeholder records
+      - B) It lacks the wear of a used service
+      - C) Intruders cannot connect to databases
+      - D) The install page reveals the vendor and the version
       answer: B
-    - question: 'An unrealistic decoy is ineffective because attackers:'
+    - question: During an incident, a responder proposes scanning the attacker's own systems and deleting
+        the stolen data from them. How should the team treat this proposal?
       options:
-      - A) Cannot reach it
-      - B) Recognise and avoid it, and may realise they are observed
-      - C) Trigger it accidentally
-      - D) Report it
-      answer: B
-    - question: 'The main operational value of deception is:'
+      - A) As routine containment under the incident plan
+      - B) As permitted once executive leadership approves it in writing
+      - C) As acceptable because the attacker forfeited all rights
+      - D) As action outside authorisation that must be refused
+      answer: D
+    - question: A deception programme produces two true alerts in a quarter and no false ones, while the
+        signature stack produces thousands of both. What does this comparison demonstrate?
       options:
-      - A) Blocking attacks
-      - B) Early, high-confidence detection with very low false positive cost
-      - C) Attribution
-      - D) Reducing log volume
-      answer: B
+      - A) Deception buys detection at very low false positive cost
+      - B) Deception has replaced the signature stack
+      - C) The signature stack should be tuned off
+      - D) Two alerts per quarter is too quiet to matter
+      answer: A
 - ordinal: 4
   title: Encrypted Traffic Defence
   content_type: reading
@@ -211,16 +309,44 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Defend effectively where traffic inspection is unavailable.
-  - Evaluate the trade-offs of TLS interception.
-  - Apply metadata and behavioural analysis at scale.
+  - Describe what a network sensor can and cannot learn from an encrypted session
+  - Evaluate where TLS interception is justified and where privacy or pinning rules it out
+  - Select metadata and endpoint evidence that compensates for unreadable payload
   topics:
-  - Limits of payload inspection.
-  - TLS interception trade-offs and risks.
-  - Metadata and flow-based defence.
-  - Endpoint visibility as compensation.
-  lab: 'Lab: Compare three approaches to defending encrypted traffic - interception, metadata analysis
-    and endpoint visibility - and produce a recommendation with the residual risk of each.'
+  - What encryption hides from network sensors and what remains visible.
+  - TLS interception designs, certificate pinning and their risks.
+  - Flow metadata, timing and behavioural analysis of encrypted sessions.
+  - Endpoint telemetry as visibility where the payload cannot be read.
+  - Privacy and legal limits on intercepting sensitive traffic.
+  lab: >-
+    Lab: On the red-vs-blue range, compare what the sensors report about an encrypted session with
+    what the endpoint reports, then judge which visibility the estate can rely on. Evidence: what
+    nids01 records for a TLS session to web01, such as handshake details, destinations and volume;
+    what the same session looks like in siem01; whether the tunnel through vpn01 changes the picture;
+    one example of endpoint evidence that reveals what the network cannot. Pass: the sensor view and
+    endpoint view recorded side by side; each visibility gap marked as acceptable or requiring
+    endpoint coverage with a reason; a recommendation stated on where interception would be justified
+    and where it must be excluded.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [nids01, web01]
+      action: From nids01, observe a TLS session to web01 and record what the handshake and flow reveal,
+        such as destinations, timing and volume.
+    - hosts: [siem01]
+      action: Find the same session in siem01 and record which fields the monitoring stack kept and which
+        it could not.
+    - hosts: [vpn01]
+      action: Open a session through vpn01 and record how the tunnel changes what the sensor sees.
+    - hosts: [web01]
+      action: On web01, read the endpoint record of the same session and record what the endpoint saw
+        that the network could not.
+    - hosts: [nids01, siem01, vpn01, web01]
+      action: Mark each visibility gap as acceptable or as requiring endpoint coverage, with a one-sentence
+        reason for each.
+    - hosts: [nids01]
+      action: State where interception would be justified in this estate and where privacy or pinning
+        excludes it.
   refs:
   - rfc-8446
   - nist-sp-800-52r2
@@ -229,40 +355,45 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'TLS interception introduces risk because it:'
+    - question: A company routes all staff web traffic through an inspection appliance that re-signs
+        every session. Which consequence should the design review weigh first?
       options:
-      - A) Slows traffic
-      - B) Creates a decryption point that is itself a high-value target and may weaken validation
-      - C) Breaks routing
-      - D) Requires new certificates only
+      - A) Staff will notice slower loads on every page
+      - B) The appliance becomes a target holding decrypted traffic
+      - C) Routing tables on the appliance need updating
+      - D) The appliance needs a new certificate each year
       answer: B
-    - question: 'Where interception is not feasible, the strongest compensating visibility is usually:'
+    - question: An engineering firm cannot read the payload of its design-sharing application because
+        it is pinned. Where can the team still see which files moved?
       options:
-      - A) More firewall rules
-      - B) Endpoint telemetry, which sees data before encryption
-      - C) Longer log retention
-      - D) Deeper packet capture
-      answer: B
-    - question: 'Certificate pinning by an application will:'
+      - A) In deeper packet captures of the very same sessions
+      - B) In the firewall address translations
+      - C) In longer retention of network logs
+      - D) In endpoint telemetry on the sharing hosts
+      answer: D
+    - question: A browser vendor enables certificate pinning for its update service. What happens to an
+        inspection appliance that tries to re-sign that service's sessions?
       options:
-      - A) Assist interception
-      - B) Break TLS interception for that application
-      - C) Have no effect
-      - D) Weaken the connection
-      answer: B
-    - question: 'Metadata analysis of encrypted traffic can still reveal:'
+      - A) The pinned client rejects the re-signed sessions
+      - B) The appliance silently decrypts without error
+      - C) The vendor service falls back to plain traffic
+      - D) Pinning applies only to mobile devices
+      answer: A
+    - question: Analysts cannot read an outbound session but note it runs nightly at a fixed size to one
+        destination. What does this pattern support?
       options:
-      - A) Payload contents
-      - B) Timing, volume, destinations and behavioural patterns
-      - C) Credentials
-      - D) File names
-      answer: B
-    - question: 'Intercepting traffic to certain categories such as health or banking is typically:'
+      - A) Decryption of the payload contents
+      - B) Recovery of the credentials used
+      - C) Behavioural detection from flow metadata
+      - D) A listing of the files that were sent
+      answer: C
+    - question: A health authority drafts an interception policy and includes its patient booking portal.
+        What should the privacy review conclude about that category?
       options:
-      - A) Required
-      - B) Excluded on privacy and legal grounds
-      - C) Technically impossible
-      - D) Automatic
+      - A) It should be intercepted first because it is highest risk
+      - B) It should be excluded on privacy and legal grounds
+      - C) It should be intercepted only during business hours
+      - D) Interception there is technically impossible
       answer: B
 - ordinal: 5
   title: Defensive Automation and Orchestration
@@ -271,16 +402,43 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Automate response actions safely.
-  - Design orchestration that keeps humans in the loop appropriately.
-  - Manage the risk of automated action.
+  - Select containment actions that are safe to automate and define the guardrails each one needs
+  - Mark the decision points in a response playbook where human judgement must approve the action
+  - Specify the rollback and audit record that every automated response action requires
   topics:
-  - Automation candidates and criteria.
-  - Playbook design and guardrails.
-  - Human-in-the-loop decision points.
-  - Failure modes of automation.
-  lab: 'Lab: Design an automated containment playbook with explicit guardrails, define which steps require
-    human approval and why, and specify the rollback for every automated action.'
+  - Choosing automation candidates by reversibility and risk.
+  - Playbook design, guardrails and rate limits.
+  - Human-in-the-loop decision points in orchestration.
+  - Failure modes when automation acts on a wrong detection.
+  lab: >-
+    Lab: On the red-vs-blue range, draft a containment playbook for a compromised workstation, decide
+    which steps run without a person and which wait for approval, and judge the risk of each automated
+    step. Evidence: the alert in siem01 that would trigger the playbook; the containment step that
+    would cut ws01 off the network; the guardrail that prevents the playbook from isolating more than
+    one host per approval; the rollback for each automated step. Pass: each step marked as automatic
+    or human-approved with a reason; the trigger judged as precise enough for automation or not;
+    guardrails and rollback stated for every automated action.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [siem01]
+      action: Find in siem01 the alert that would trigger containment of a compromised workstation, and
+        record its rule and typical volume.
+    - hosts: [jump01, ws01]
+      action: From jump01, open a session to ws01 and record which containment step would cut it from
+        the network and what the signed-in account would lose.
+    - hosts: [siem01, ws01]
+      action: Draft the playbook order from trigger to containment, and mark each step as automatic or
+        waiting for human approval.
+    - hosts: [siem01, honey01, ws01]
+      action: Define the guardrail that stops the playbook isolating more hosts than its trigger supports,
+        using honey01 as a false-positive test case.
+    - hosts: [ws01, blue01]
+      action: Write the rollback for each automated step, and record who can authorise returning ws01
+        to the network.
+    - hosts: [siem01, blue01, ws01]
+      action: Judge whether the trigger is precise enough for automation, and state the failure the
+        guardrail exists to prevent.
   refs:
   - nist-sp-800-61r3
   - nist-cswp-29
@@ -288,41 +446,46 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'An automated action that isolates a host should:'
+    - question: An orchestration platform isolates any host that matches a suspicious-process rule, and
+        one morning a bad signature matches four hundred machines. Which design flaw does this expose?
       options:
-      - A) Run without constraint
-      - B) Have guardrails preventing mass isolation from a faulty detection
-      - C) Require no logging
-      - D) Be irreversible
-      answer: B
-    - question: 'The best candidates for automation are actions that are:'
+      - A) The rule was written too narrowly
+      - B) The platform lacked a dashboard
+      - C) Isolation ran with no limit on mass action
+      - D) The platform skipped its audit record for the action
+      answer: C
+    - question: A response team reviews its queue and wants to automate one action first. Which of these
+        is the soundest starting candidate?
       options:
-      - A) High impact and rare
-      - B) Repetitive, well-understood and low-risk to reverse
-      - C) Complex and judgement-based
-      - D) Executive decisions
-      answer: B
-    - question: 'Every automated action should have:'
+      - A) Resetting a locked service account on a known pattern
+      - B) Approving the quarterly incident report
+      - C) Deciding whether a ransom demand should be paid
+      - D) Choosing which executive is notified first
+      answer: A
+    - question: An automated playbook quarantines a file server during a peak trading window, and the
+        team cannot restore it quickly. Which missing element caused the delay?
       options:
-      - A) A dashboard
-      - B) A defined rollback and an audit record
-      - C) A vendor contract
-      - D) A severity rating
-      answer: B
-    - question: 'Automation built on a noisy detection will:'
+      - A) A severity rating for the alert
+      - B) A vendor contract covering the whole platform
+      - C) A dashboard for the on-call analyst
+      - D) A tested rollback for the quarantine action
+      answer: D
+    - question: A detection that false-positives on every backup job is wired to an automated host
+        isolation. What happens when the nightly backup window arrives?
       options:
-      - A) Improve accuracy
-      - B) Amplify the false positives into operational disruption
-      - C) Reduce alert volume safely
-      - D) Self-tune
+      - A) The isolation quietly skips every backup host
+      - B) The false positives amplify into disruption
+      - C) The detection retunes itself before the window
+      - D) The backup jobs move to another queue
       answer: B
-    - question: 'Human-in-the-loop is most warranted when the action is:'
+    - question: During a live incident, a playbook proposes blocking a supplier's address range, which
+        would halt an assembly line. Who should own this decision and why?
       options:
-      - A) Reversible and routine
-      - B) High impact, irreversible or dependent on business context
-      - C) Frequent
-      - D) Well tested
-      answer: B
+      - A) The playbook, because the trigger already fired correctly
+      - B) The on-call analyst, following the runbook alone
+      - C) A person, because the business impact is severe
+      - D) The vendor, because the range is theirs
+      answer: C
 - ordinal: 6
   title: Measuring Defensive Effectiveness
   content_type: reading
@@ -330,16 +493,43 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Measure whether defences actually work.
-  - Use adversary emulation to validate controls.
-  - Report defensive posture credibly to leadership.
+  - Run control checks on a live range and record whether each control actually blocked or detected
+  - Use adversary emulation results to validate which defences hold against real behaviour
+  - Report defensive posture with tested evidence, known gaps and stated unknowns
   topics:
-  - Control effectiveness testing.
-  - Emulation-based validation.
-  - Posture reporting and honest metrics.
-  - Continuous improvement cycle.
-  lab: 'Lab: Design a quarterly control validation programme specifying what is tested, how, and how results
-    are reported, then produce a sample posture report from hypothetical results.'
+  - Control effectiveness testing on production networks.
+  - Adversary emulation as validation of defensive controls.
+  - Honest posture metrics and their limits.
+  - The continuous improvement cycle for defensive programmes.
+  lab: >-
+    Lab: On the red-vs-blue range, test whether the controls the estate claims actually work, and
+    turn the results into an honest posture statement. Evidence: whether the deny rule on rtr01
+    stops the flow it claims to stop; whether contact with honey01 raises its alert in siem01;
+    which checks blue01 could run without additional tooling; the controls that could not be tested
+    and why. Pass: each tested control recorded as held or did not hold exactly as the range showed
+    it; each untested control listed with the reason; a posture statement written from the results
+    that names what remains unknown.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [rtr01]
+      action: Read the deny rule on rtr01 that separates the adversary network from the corporate LAN,
+        and record what it claims to stop.
+    - hosts: [red-op01, ws01]
+      action: From red-op01, attempt the flow toward ws01 that the deny rule claims to stop, and record
+        the exact result the range shows.
+    - hosts: [jump01, honey01, siem01]
+      action: From jump01, touch one service on honey01 and check siem01 for its alert, recording
+        whether the detection fired and how quickly.
+    - hosts: [blue01, siem01]
+      action: List the controls blue01 could check with the tooling available, and record which claims
+        could not be tested at all.
+    - hosts: [rtr01, honey01, siem01, blue01]
+      action: Mark each tested control as held or did not hold exactly as the range showed, and list
+        each untested claim with its reason.
+    - hosts: [blue01]
+      action: Write a posture statement from the results that names what was tested, what held and
+        what remains unknown.
   refs:
   - mitre-attack
   - nist-cswp-29
@@ -348,38 +538,43 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'A control that has never been tested should be reported as:'
+    - question: An annual report lists a network isolation control as effective, but no test of it was
+        ever run. How should the next report describe it?
       options:
-      - A) Effective
-      - B) Implemented but unvalidated
-      - C) Ineffective
-      - D) Not applicable
+      - A) Effective, because it has never failed
+      - B) Implemented but unvalidated until a test runs
+      - C) Ineffective, until proven otherwise by audit
+      - D) Not applicable to the current version of the estate
       answer: B
-    - question: 'Adversary emulation validates controls better than a checklist because it:'
+    - question: 'Two teams assess the same firewall: one works through a configuration checklist, the
+        other emulates the lateral movement the firewall should stop. Whose result tells leadership more?'
       options:
-      - A) Is cheaper
-      - B) Tests whether controls actually stop or detect real behaviour
-      - C) Is faster
-      - D) Requires less skill
-      answer: B
-    - question: 'Reporting only favourable metrics to leadership:'
+      - A) The checklist, because it covers every rule
+      - B) The checklist, because it is faster to repeat
+      - C) The emulation, because it costs less to run
+      - D) The emulation, because it tests real behaviour
+      answer: D
+    - question: A security manager reports only the metrics that improved this year, and the board
+        approves a budget cut based on them. What is the consequence?
       options:
-      - A) Maintains confidence usefully
-      - B) Produces decisions based on a false picture of risk
-      - C) Is standard practice
-      - D) Simplifies reporting
-      answer: B
-    - question: 'Control effectiveness should be re-tested because:'
+      - A) Decisions rest on a false picture of risk
+      - B) The reporting meets every audit standard
+      - C) The programme avoids any alarming conversation with the board
+      - D) Next year's metrics will look better
+      answer: A
+    - question: A deny rule verified last quarter still exists, but a change request quietly widened its
+        source range last month. Why does the verification need repeating?
       options:
-      - A) Tests expire
-      - B) Configuration drift and environmental change degrade controls over time
-      - C) Vendors update
-      - D) Auditors require it
-      answer: B
-    - question: 'A credible posture report includes:'
+      - A) Verification results expire on a fixed calendar
+      - B) Vendors publish new guidance each quarter
+      - C) Configuration drift degrades controls over time
+      - D) Auditors expect a new test each month
+      answer: C
+    - question: A director asks what the defence programme actually proved this quarter. Which report
+        answers the question credibly?
       options:
-      - A) Coverage claims only
-      - B) What was tested, what was found, what remains unknown
-      - C) Tool inventory
-      - D) Budget usage
-      answer: B
+      - A) What was tested, what held and what remains unknown
+      - B) A coverage percentage with a trend line against last year
+      - C) The count of alerts closed this quarter
+      - D) The tool inventory with licence costs
+      answer: A
