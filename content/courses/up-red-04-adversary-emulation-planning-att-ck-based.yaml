@@ -1,0 +1,557 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C540
+title: 'Adversary Emulation Planning (ATT&CK-based)'
+version: '1.0'
+difficulty: advanced
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C539
+- C210
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Exploitation Analyst (Adversary Emulation - DCWF) (AN-EXP-001).'
+  - 'NIST CSF 2.0: ID.RA, ID.IM, DE.AE.'
+  - 'Self-paced upskilling, outside DP1/DP2.'
+  - 'Unpublished pending Standards review.'
+modules:
+- ordinal: 1
+  title: Choosing an Adversary Profile
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select an adversary profile from threat intelligence reporting and state which behaviours justify the choice
+  - Extract the target set, objectives and operating constraints from a profile into a one-page emulation brief
+  - Reject profile details the reporting does not support and record a confidence level for each retained claim
+  topics:
+  - 'Where adversary profiles come from: threat intelligence reporting, incident records and sector threat summaries.'
+  - Comparing candidate profiles against the organisation's sector, technology stack and range constraints.
+  - Extracting objectives, target systems and behavioural patterns from a profile without inventing detail.
+  - Confidence levels for intelligence claims and how they carry into an emulation plan.
+  - 'The emulation brief: a one-page summary the rest of the plan must stay consistent with.'
+  lab: >-
+    Lab: On the red-team range, establish which parts of the drafted adversary profile the range can
+    exercise. Test which target networks the edge firewall admits from the attacker infrastructure
+    network, record which permitted services answer, and compare each profile target entry against the
+    nodes that exist. Evidence: the firewall rules for the attacker infrastructure network, the service
+    answers recorded per host, and every profile target entry marked with its matching node or "no
+    equivalent host". Pass: reachability and service items recorded as the range shows them; each entry
+    mapped or marked unmapped with a one-sentence reason; a judgement on whether the objectives can be
+    exercised as drafted, naming one that needs amendment.
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [a-kali01]
+      action: Open a terminal on a-kali01, write the start time in the lab notes and open the drafted adversary
+        profile from the reading alongside it.
+    - hosts: [fw01, a-kali01]
+      action: Read the firewall rules on fw01 that apply to the attacker infrastructure network and record which
+        target networks and service ports they admit.
+    - hosts: [a-kali01, t-web01, t-mail01, t-dns01]
+      action: From a-kali01, test each admitted service on t-web01, t-mail01 and t-dns01, and record which
+        services answer within the permitted ports.
+    - hosts: [a-kali01]
+      action: For each entry in the profile's target set, write the node on this range that matches it, or
+        record "no equivalent host" where none does.
+    - hosts: [a-kali01]
+      action: Judge whether the profile's objectives can be exercised on this range as scoped, and name one
+        objective that needs a profile amendment or a scope change.
+  refs:
+  - mitre-attack
+  - nist-sp-800-150
+  - oasis-cti
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'A retail organisation compares two intelligence reports: a sector-matched crew targeting help
+        desks, and a generic scanner operator with no sector focus. Which profile should the plan build on?'
+      options:
+      - A) The scanner operator, because broad scanning exercises far more techniques
+      - B) The help desk crew, because its behaviours match the sector exposure
+      - C) The scanner operator, because generic tooling leaves fewer traces behind
+      - D) The help desk crew, because help desks grant access to anyone
+      answer: B
+    - question: An intelligence report describes scheduled task persistence by a crew, but the claim rests on
+        a single uncorroborated post. How should the planner record it in the emulation brief?
+      options:
+      - A) As confirmed behaviour, because the report names the technique
+      - B) As excluded, because uncorroborated intelligence must never be used
+      - C) As retained with low confidence and a corroboration note
+      - D) As rewritten in neutral wording to remove the uncertainty
+      answer: C
+    - question: A profile targets payment processing servers, but the range offers only a database tier and web
+        applications. What does the planner record in the emulation brief?
+      options:
+      - A) Drop the objective, since no host matches it exactly
+      - B) Keep the objective and silently substitute the database tier
+      - C) Keep the objective without noting the substitution anywhere
+      - D) Keep the objective and record the documented substitute
+      answer: D
+    - question: An emulation brief distils a profile onto one page. Which item belongs in that brief?
+      options:
+      - A) The adversary objectives with the confidence recorded for each
+      - B) A full packet capture of a past adversary campaign
+      - C) The names of the analysts who wrote the report
+      - D) A promise that no defensive telemetry will be generated
+      answer: A
+    - question: A planner extends a profile with a technique the reporting never mentions, to make the exercise
+        harder for the defenders. What is wrong with this?
+      options:
+      - A) Nothing, provided the technique is plausible for the sector
+      - B) The plan now tests behaviour the intelligence does not support
+      - C) Nothing, because harder exercises always produce better defensive value
+      - D) Only that the technique should have appeared in the brief appendix
+      answer: B
+- ordinal: 2
+  title: Scoping the Emulation on the Range
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Inventory the range networks, hosts and services that bound the emulation before any planning step
+  - Translate firewall policy into a statement of which emulation paths the range actually admits
+  - Define the scope boundary and time budget that every planned technique must fit
+  topics:
+  - 'Reading range topology: VLANs, firewall interfaces and the networks each rule connects.'
+  - Service discovery as scoping evidence, and its limits on a shared training range.
+  - 'Network constraints that shape scope: isolation rules, choke points and pivot paths.'
+  - 'Writing a scope boundary: in-scope hosts, out-of-scope hosts and the assumptions behind them.'
+  - Budgeting the emulation against the available exercise window.
+  lab: >-
+    Lab: On the red-team range, turn the topology and firewall policy into a written scope boundary.
+    Record every network the edge firewall connects, the rules that permit or isolate traffic between
+    them, and which permitted services answer. Mark each target node in scope or out of scope.
+    Evidence: each network's interface and address range, the isolation and permit rules quoted as the
+    range shows them, the services that answered, and an in-scope or out-of-scope mark with assumption
+    per node. Pass: the boundary statement names its hosts and assumptions; each mark carries a
+    reason; a judgement states whether the plan fits the time budget and names the path the range
+    does not admit.
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [fw01]
+      action: Read the interface list on fw01 and record each network it connects, with its address range.
+    - hosts: [fw01]
+      action: Record the rule that isolates the database network from attacker infrastructure and the rule
+        that permits the pivot network, quoting both as the range shows them.
+    - hosts: [a-kali01, t-web01, t-mail01, t-vpn01]
+      action: From a-kali01, confirm which of the permitted services on t-web01, t-mail01 and t-vpn01 actually
+        answer, and record each answer.
+    - hosts: [a-kali01]
+      action: Mark each target node in scope or out of scope under the drafted boundary, and note the
+        assumption behind every out-of-scope mark.
+    - hosts: [a-kali01]
+      action: Judge whether the scoped plan fits the module time budget, and name the path the range does
+        not admit.
+  refs:
+  - mitre-attack
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: The edge firewall admits only web, mail and DNS ports from the attacker infrastructure network
+        to the demilitarised zone. What does the scoping statement record?
+      options:
+      - A) Every host in the range is reachable by default
+      - B) The internal networks are reachable through the same rules
+      - C) Only the admitted services on the demilitarised zone answer
+      - D) Reachability cannot be determined before the exercise starts
+      answer: C
+    - question: During scoping, a port that the firewall permits shows no service answering on the mail host.
+        What does the planner record?
+      options:
+      - A) The path is scoped out until a service answers
+      - B) The rule must be wrong because the port is permitted
+      - C) The host is down and the exercise should be postponed
+      - D) The port counts as reachable because the rule allows it
+      answer: A
+    - question: A planned path needs traffic from the database network back to attacker infrastructure, but the
+        range isolates that network. What does the scope statement record?
+      options:
+      - A) The isolation rule is an obstacle to remove during the exercise
+      - B) The path proceeds quietly, since isolation affects logging only
+      - C) The path is attempted and failure is treated as a finding
+      - D) The path is out of scope and the plan avoids it
+      answer: D
+    - question: Which entry belongs in a scope boundary statement for an emulation on a shared training range?
+      options:
+      - A) A guarantee that production data will not be touched
+      - B) The named hosts in scope and the assumptions behind exclusions
+      - C) The credentials the adversary profile used in past incidents
+      - D) A request that the blue team stand down for the window
+      answer: B
+    - question: An emulation plan lists fourteen techniques for a single module on the range. What does the
+        time budget require?
+      options:
+      - A) All techniques are attempted quickly, and failures between them are skipped silently
+      - B) Extra instructors are added until the list fits the window
+      - C) The list is trimmed until each technique has time to be observed
+      - D) The window is extended without changing any planned technique
+      answer: C
+- ordinal: 3
+  title: Plan to ATT&CK Coverage
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Map each planned behaviour to an ATT&CK tactic and technique using the profile as the source
+  - Build a coverage table that links every technique to a range node and an expected observation
+  - Identify coverage gaps where the profile demands behaviour the range cannot present
+  topics:
+  - Tactics as adversary goals and techniques as the behaviours that serve them.
+  - Selecting techniques from the profile's behaviour rather than from tool capability.
+  - 'The coverage table: technique, range node, expected observation and evidence source.'
+  - Sub-techniques, and when the extra precision helps a defensive audience.
+  - Coverage gaps, and how they are recorded rather than silently dropped.
+  lab: >-
+    Lab: On the red-team range, draft the ATT&CK coverage table for the scoped emulation. Work from
+    the service inventory and the profile, not from the installed tools. Evidence: for the web, file
+    share and directory services, the tactic and technique pairs selected with the profile behaviour
+    each represents; the coverage table rows completed; the profile behaviours with no technique on
+    this range, each with a reason. Pass: every mapped row names its node, expected observation and
+    evidence source; every unmapped behaviour is recorded as a coverage gap, not dropped; a judgement
+    states whether the coverage is sufficient and which gap would change the plan first.
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [a-kali01]
+      action: Open the scoped service inventory on a-kali01 and write the first two tactics the profile's
+        objectives require.
+    - hosts: [a-kali01, t-web01]
+      action: For the web service on t-web01, select one technique per tactic that the profile supports and
+        record each technique name with the behaviour it represents.
+    - hosts: [t-fs01, a-kali01]
+      action: Repeat the mapping for the file share service on t-fs01 and record which profile behaviour each
+        mapped technique represents.
+    - hosts: [a-kali01]
+      action: Enter every mapped pair into the coverage table with its range node and the observation the
+        Student expects to record.
+    - hosts: [a-kali01]
+      action: List the profile behaviours with no technique on this range and record each as a coverage gap
+        with its reason.
+    - hosts: [a-kali01]
+      action: Judge whether the coverage is sufficient to exercise the profile's objectives, and state which
+        gap would change the plan first.
+  refs:
+  - mitre-attack
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A planner writes "credential access" next to a planned behaviour. In ATT&CK terms, what has
+        been recorded?
+      options:
+      - A) A tactic, naming the goal the behaviour serves
+      - B) A technique, naming exactly how access is obtained
+      - C) A sub-technique, narrowing a broader behaviour
+      - D) A procedure, naming one adversary's specific implementation
+      answer: A
+    - question: A planner starts from the attack tools already on the range and maps whatever those tools can
+        do. What is wrong with this order?
+      options:
+      - A) Nothing, because tools determine which techniques are possible
+      - B) Nothing, provided the tool list is attached to the plan
+      - C) The plan should start from the newest tools available
+      - D) The plan must start from profile behaviours, not tool capability
+      answer: D
+    - question: Which row belongs in the coverage table of a range emulation plan built from an adversary
+        profile?
+      options:
+      - A) Tool name, command line and the expected exit code
+      - B) Technique, range node, expected observation and evidence source
+      - C) Tactic, adversary alias and campaign date
+      - D) Technique, exploit identifier and payload hash
+      answer: B
+    - question: When does the extra precision of an ATT&CK sub-technique help a defensive audience?
+      options:
+      - A) Never, because tactics already describe the behaviour fully
+      - B) Always, because greater precision is always better for the detection audience
+      - C) When defenders need the distinction to build or tune detection
+      - D) Only when the technique has no tactic assigned
+      answer: C
+    - question: The profile requires behaviour that the range cannot present. What does the planner do?
+      options:
+      - A) Record the coverage gap and its reason in the plan
+      - B) Drop the behaviour from the plan without a written note
+      - C) Substitute any technique that the range supports
+      - D) Mark the behaviour as covered, since the intent exists
+      answer: A
+- ordinal: 4
+  title: Data Collection Plan for Validation
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the log source on the range that records each planned technique
+  - Verify on the range that a benign action appears in the expected log source
+  - Complete a collection plan that maps every technique to its evidence source and collection limits
+  topics:
+  - 'Collection planning: deciding what evidence proves each planned technique ran.'
+  - 'Log sources on the range: directory service events, file share auditing, web server logs.'
+  - Verifying a source with a benign probe before the exercise depends on it.
+  - Central log forwarding limits, and where a local log is the only source.
+  - The collection plan table and its handoff to the validation step.
+  lab: >-
+    Lab: On the red-team range, verify with benign probes that each coverage-table technique has a
+    log source that records it. Check share auditing on the file server, perform one documented
+    share access from the administrator workstation, and request the web service once from the
+    attacker host. Evidence: whether share auditing is enabled and where its events appear; the time,
+    account and share of the probe event; the web log line the request added; the authentication
+    events the directory service log would and would not capture. Pass: probe results recorded with
+    time and source; each technique marked with a verified source or flagged as unvalidatable; a
+    judgement naming any unverified technique.
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [t-fs01]
+      action: On t-fs01, open the share auditing settings and record whether access to the file shares is
+        audited and where its events would appear.
+    - hosts: [t-ws01, t-fs01]
+      action: From t-ws01, open the documented IT share once as the benign probe and record the time of the
+        access and the account used.
+    - hosts: [t-fs01]
+      action: On t-fs01, find the event the probe produced and record its time, the account and the share
+        accessed.
+    - hosts: [t-web01, a-kali01]
+      action: From a-kali01, request the web service on t-web01 once and record the line the web server log
+        adds for that request.
+    - hosts: [t-dc01]
+      action: On t-dc01, record which planned authentication events the directory service log would capture
+        and which it would not.
+    - hosts: [a-kali01]
+      action: Judge whether each technique in the coverage table now has a verified source, and name the one
+        that does not.
+  refs:
+  - nist-sp-800-92
+  - mitre-attack
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: Why does an emulation plan need a collection plan before the exercise starts?
+      options:
+      - A) To fill the range disk with as much telemetry as possible
+      - B) To satisfy a documentation requirement that auditors set
+      - C) To slow the exercise so defenders can rest between steps
+      - D) To ensure evidence exists that proves each planned technique ran
+      answer: D
+    - question: A planned technique reads a file from a domain file share. Which source proves that the read
+        happened?
+      options:
+      - A) The web server log on the demilitarised zone host
+      - B) The share access audit events on the file server
+      - C) The firewall session log on the edge device
+      - D) The memory image taken a week after the exercise
+      answer: B
+    - question: Before the exercise, the planner reads one benign file from the audited share. Why?
+      options:
+      - A) To confirm the audit source records the benign access
+      - B) To measure how long adversaries take to find shares
+      - C) To consume audit disk space before the exercise starts
+      - D) To teach the file server the account's access pattern
+      answer: A
+    - question: A host forwards logs centrally, but a planned technique writes only to a local application log.
+        What does the collection plan record?
+      options:
+      - A) The central store covers it, since forwarding captures all logs
+      - B) No evidence is needed, because the trail is local
+      - C) The local log is the source and must be verified
+      - D) The technique should be remapped to a directory service event
+      answer: C
+    - question: A technique in the coverage table has no log source on the range. What does the collection plan
+        do?
+      options:
+      - A) Assume the source exists and correct it during the exercise
+      - B) Drop the technique so the table stays complete
+      - C) Mark the technique validated, since the table entry exists
+      - D) Flag the technique as unvalidatable and tell the validation step
+      answer: D
+- ordinal: 5
+  title: Rules of Engagement and Safety Valves
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write rules of engagement that state the permitted targets, permitted actions and stop conditions
+  - Identify the range controls that bound harm, such as network isolation rules and account lockout policy
+  - Define safety valves that halt or slow the exercise before defenders or services break
+  topics:
+  - 'Rules of engagement: named targets, permitted actions and prohibited actions.'
+  - Stop conditions, and the authority that invokes them during an exercise.
+  - 'Range controls that bound harm: network isolation rules and the domain account lockout policy.'
+  - 'Safety valves: thresholds, de-escalation steps and ownership of the halt decision.'
+  - Recording deviations from the rules so the after-action review can judge them.
+  lab: >-
+    Lab: On the red-team range, draft the rules of engagement and safety valves from the controls the
+    range enforces. Read the domain lockout policy, record the isolation rule protecting the database
+    network, and identify the techniques closest to those controls. Evidence: the lockout threshold
+    and duration from t-dc01; the isolation rule quoted from fw01; the two techniques most likely to
+    trip the threshold, with the account touched; the drafted stop conditions and thresholds. Pass:
+    each stop condition names its trigger, de-escalation step and owning authority; each valve is
+    checked against a range control; a judgement states whether the valves protect the lockout policy
+    and isolated network, naming any missing valve.
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [t-dc01]
+      action: On t-dc01, read the domain account lockout policy and record the threshold and duration the
+        safety valve must respect.
+    - hosts: [fw01]
+      action: On fw01, record the rule that isolates the database network from attacker infrastructure, and
+        state which planned paths it already forbids.
+    - hosts: [a-kali01]
+      action: On a-kali01, list the two planned techniques most likely to trip the lockout threshold and record
+        the account each would touch.
+    - hosts: [a-kali01]
+      action: 'Write the stop conditions for the exercise: the event counts, the services and the time at
+        which activity halts.'
+    - hosts: [a-kali01]
+      action: Judge whether the drafted safety valves protect the lockout policy and the isolated network, and
+        name the valve still missing.
+  refs:
+  - nist-sp-800-115
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: Which item belongs in the rules of engagement for an emulation exercise on a shared training
+        range?
+      options:
+      - A) The adversary's real-world identity and attribution assessment
+      - B) The named targets, permitted actions and stop conditions
+      - C) The credentials harvested in a previous exercise
+      - D) A commitment to keep the exercise invisible to defenders
+      answer: B
+    - question: The domain lockout threshold is five attempts. A planned technique tests passwords against
+        accounts. What must the safety valve define?
+      options:
+      - A) A faster technique so the threshold is never noticed
+      - B) Disabling the lockout policy silently during the exercise
+      - C) A per-account attempt ceiling below the lockout threshold
+      - D) A promise to restore locked accounts after the window
+      answer: C
+    - question: The range isolates the database network from attacker infrastructure. How does the emulation
+        plan treat that rule?
+      options:
+      - A) As a constraint the permitted actions must respect
+      - B) As an obstacle to argue about during the exercise
+      - C) As irrelevant, because the rule affects defenders only
+      - D) As a detail the after-action review can settle later
+      answer: A
+    - question: Mid-exercise, a file server stops answering and a stop condition is met. Who halts the
+        activity?
+      options:
+      - A) Whoever is nearest the console at the time
+      - B) The adversary role, because it owns the actions
+      - C) Nobody, since stop conditions are advisory only
+      - D) The named authority in the rules of engagement
+      answer: D
+    - question: A Student strays outside the permitted actions but causes no harm. What does the plan require?
+      options:
+      - A) Silence, because nothing was damaged this time
+      - B) The deviation recorded so the review can judge it
+      - C) Restarting the whole exercise from the first step
+      - D) Deleting the affected logs to keep the report clean
+      answer: B
+- ordinal: 6
+  title: Integrating the Emulation Plan
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Assemble the profile, scope, coverage, collection and safety documents into one emulation plan
+  - Dry-run the first planned steps against the assembled plan and record every deviation
+  - Apply go or no-go criteria that decide whether the exercise may start
+  topics:
+  - 'The assembled plan: brief, scope statement, coverage table, collection plan and rules together.'
+  - Cross-checks that catch drift between the documents before the exercise.
+  - 'The dry run: walking the first steps with the plan and the safety valves armed.'
+  - Go and no-go criteria, and the decision they support.
+  - Handing the plan to validation and the after-action review.
+  lab: >-
+    Lab: On the red-team range, integrate the course documents into one emulation plan and dry-run
+    its first steps. Check the scope, coverage and collection documents against each other and the
+    firewall policy, walk the first planned step on the web service, and re-check the lockout valve.
+    Evidence: any disagreement between documents, with both conflicting lines; the scope statement
+    compared against the firewall rules on fw01; the coverage table's prediction for the first step
+    and the dry run's actual result; the lockout threshold and duration.
+    Pass: every disagreement recorded with the documents involved and resolved or escalated; the
+    dry-run deviation recorded against the expected observation; a go or no-go decision stated with
+    its reason.
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [a-kali01]
+      action: On a-kali01, open the assembled plan and record any place where the scope, coverage and
+        collection documents disagree.
+    - hosts: [a-kali01, fw01]
+      action: Confirm the permitted attacker-to-demilitarised-zone rules on fw01 still match the scope
+        statement, and record the comparison.
+    - hosts: [a-kali01, t-web01]
+      action: Walk the first planned step against the web service on t-web01, and record what the coverage
+        table predicted and what the dry run showed.
+    - hosts: [t-dc01]
+      action: Check the lockout policy on t-dc01 one last time and record that the safety valve thresholds
+        still hold.
+    - hosts: [a-kali01]
+      action: Apply the go or no-go criteria to what the dry run recorded, and state the decision with its
+        reason.
+  refs:
+  - mitre-attack
+  - nist-sp-800-115
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: Which set of documents makes a complete emulation plan for a range exercise?
+      options:
+      - A) Brief, scope, coverage table, collection plan, rules of engagement
+      - B) A tool inventory, exploit list and a network diagram
+      - C) The adversary profile pasted whole, with no extraction
+      - D) A slide deck describing a previous exercise
+      answer: A
+    - question: The coverage table names the file server, but the scope statement lists only demilitarised zone
+        hosts. What has this cross-check caught?
+      options:
+      - A) A logging failure that the collection plan must absorb
+      - B) A firewall rule that changed during the exercise
+      - C) Scope drift between two documents of the same plan
+      - D) A coverage gap that requires a new profile
+      answer: C
+    - question: Why does an emulation plan include a dry run of the first steps?
+      options:
+      - A) To spend spare time before the exercise window opens
+      - B) To let defenders rehearse their full response before any real step
+      - C) To test every technique so none fails on the day
+      - D) To confirm the plan works with the safety valves armed
+      answer: D
+    - question: The dry run shows that the collection probe produced no events. What is the decision?
+      options:
+      - A) Go, because the exercise can proceed without any evidence
+      - B) No-go, until the source is fixed and re-probed
+      - C) Go, but the missing evidence is noted afterwards
+      - D) No-go, and the whole plan is discarded permanently
+      answer: B
+    - question: An approved emulation plan is handed to validation. What does the plan carry with it?
+      options:
+      - A) The analyst's personal working notes from the profile reading sessions
+      - B) The raw intelligence reports, with no extraction
+      - C) The coverage table and the collection plan it depends on
+      - D) The exercise credentials and the adversary's tools
+      answer: C
