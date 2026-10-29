@@ -1,0 +1,209 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C515
+audience: staff_only
+overview: 'C515 Network Monitoring with Zeek & Suricata is a hands-on course of six 50-minute modules
+  (300 minutes, 5 hours) run on the soc-training range. Every module has the same split: 10 minutes
+  teach, 30 minutes range lab following the steps in the course file, and a 10-minute assessment
+  block for the five-item quiz, passed at 70 percent. Modules 1 and 2 work the Zeek side from the
+  sensor host; modules 3 to 5 work the Suricata side from the SOC console; module 6 joins the two
+  on the incident-response-drill scenario. Say ''Student'' throughout and keep every instruction
+  defensive and observable; the Student records evidence at each step and judges it at the last
+  step of every lab.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 teach (tap vs SPAN behaviour under load and failure), 30 range lab on jump01 and zeek01
+    (confirm the mirror, observe one exchange, judge the placement), 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '10 teach (connection record, protocol logs, the linking identifier), 30 range lab on
+    jump01 and zeek01 (one exchange traced from the connection log into the web log), 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '10 teach (rule header, the three actions, threshold vs suppression), 30 range lab on
+    seconion01 via jump01 (read one alert''s rule and its event records), 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '10 teach (local rulesets, identifiers and metadata, testing discipline), 30 range lab
+    writing and testing one signature against benign and matching traffic, 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '10 teach (true vs false positive, tuning that keeps the detection, baseline counts), 30
+    range lab classifying a sample and applying one tuning change, 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '10 teach (correlating alert and connection record, the escalation note), 30 range lab on
+    the incident-response-drill scenario pivoting from alert to connection record, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (congested fabric drops mirrored frames first), M01-O01: SPAN is best effort; when
+    the switch fabric is busy, copies to the monitor port are the first thing dropped, so the
+    capture shows gaps the link does not have. Q2 C (passive tap), M01-O01: A tap passes traffic
+    whether the sensor is powered or not; a SPAN port that stops mirroring fails the survival
+    requirement, and an inline appliance changes the path it monitors. Q3 A (internal traffic),
+    M01-O03: Traffic that stays between internal hosts never crosses the edge, so the edge sensor
+    cannot see it; this is the east-west blind spot. Q4 D (tap or mirror between the segments),
+    M01-O02: The policy names the traffic between the two segments, so the feed must be taken where
+    that traffic flows; the edge, the wireless management network and the management uplink all
+    miss it. Q5 B (gaps from interface discard), M01-O01: A monitor interface cannot accept more
+    than its own capacity and discards the rest; mirrored traffic is not queued, duplicates do not
+    appear, and the monitored link is never shut down to protect a sensor.'
+- module: 2
+  notes: 'Q1 C (DNS log), M02-O01: Each name resolution the sensor observes is written to the DNS
+    log; lookups are not files (A) and are not recorded because a browser issued them (B); a notice
+    entry means the sensor flagged something, not that a lookup happened (D). Q2 D (source and
+    destination address fields), M02-O02: The addressing fields state the endpoints directly;
+    duration and bytes describe the exchange, the identifier links entries across logs, and service
+    and protocol name the conversation, not its endpoints. Q3 A (shared connection identifier),
+    M02-O03: The identifier written into every entry of one connection is what ties logs together;
+    byte counts and timestamps are not unique to one connection, and both entries can sit in
+    different files. Q4 B (a notice log entry), M02-O01: A notice entry flag means the sensor raised
+    an entry in the notice log about that connection; the sensor did not block anything, encryption
+    is a separate matter, and the connection completed. Q5 D (web log), M02-O01: The web log records
+    the requested path and the reply for each HTTP exchange; the DNS log shows only the name, and
+    the connection log carries no request paths at all.'
+- module: 3
+  notes: 'Q1 A (pass lets traffic through without an alert), M03-O01: The pass action suppresses
+    alerting for matches; alert (B) also lets traffic through but raises a record, drop (C) stops
+    the traffic, and no Suricata action writes traffic to storage unjudged (D). Q2 B (signature
+    identifier), M03-O02: The identifier is the stable handle for a rule across tools; the message
+    text can be edited, and timestamps and sensor host names do not identify the rule. Q3 C
+    (threshold), M03-O03: A threshold limits how often one signature may alert per source per hour
+    while the rule stays active; removing the rule loses the detection, a pass rule silences it for
+    that address, and a suppression for every endpoint is the same as losing it. Q4 A (traffic
+    stopped and recorded), M03-O01: Drop terminates matching traffic and records the block; it does
+    not let traffic continue (B), nothing is queued for an analyst (C), and inline mode is exactly
+    where drop takes effect (D). Q5 D (suppression scoped to host and signature), M03-O03: A
+    suppression silences one signature for chosen endpoints only, which is what the team did; a
+    threshold still lets alerts through and applies to all endpoints, and no pass rule or global
+    rate change was involved.'
+- module: 4
+  notes: 'Q1 D (signature identifier), M04-O01: The identifier must be unique across every loaded
+    rule or rules clash; message text, file name and file position identify nothing across a reload.
+    Q2 A (metadata), M04-O03: Metadata carries author, date and intent with the signature itself;
+    alert counts, the number alone and a file modification date none of them say who wrote the rule
+    or against which behaviour. Q3 C (unready, correct before live), M04-O02: Firing twice on one
+    benign transfer is a false-positive signal found exactly as testing should find it; duplicates
+    are not normal overhead, and hiding them with a threshold buries the defect. Q4 B (no fire on
+    benign traffic of this kind), M04-O02: The negative test shows the signature does not match
+    benign traffic of that kind, ruling out one class of false positives; it says nothing about
+    usefulness (A), nothing about the positive case until that is also tested (C), and the sensor
+    clearly received the traffic (D). Q5 A (it survives), M04-O01: The local rules file sits outside
+    the shipped set, so a wholesale replacement leaves it in place; it is not deleted, not promoted
+    anywhere, and a surviving local rule keeps alerting.'
+- module: 5
+  notes: 'Q1 B (false positive), M05-O01: The activity is authorised and expected, so the alert is a
+    false positive even though the transfer really happened; a true positive for the rule''s intent
+    still misleads triage here, the signature is not broken, and the documented schedule is evidence
+    against (D), not for, an attack. Q2 D (suppression scoped to the backup server), M05-O02: The
+    benign pattern is one host on one signature, so the suppression removes exactly that noise and
+    keeps the other eleven endpoints covered; removing the rule, a global threshold and a network-
+    wide pass rule all cut coverage somewhere benign alerts were not the problem. Q3 C (detection
+    keeps matching), M05-O02: A threshold caps how often the signature may alert, not whether it
+    matches; the behaviour is still detected once per source per hour, the rule does not pause after
+    alerting (A), does not single out one source (B), and no rule moves files for tuning to apply
+    (D). Q4 A (counts for comparable windows), M05-O03: Baseline and post-change counts over
+    comparable windows are the measurement; rule counts, impressions and edit dates are not evidence
+    of effect. Q5 C (classify with context first), M05-O01: An unknown source outside the baseline
+    is classified from its session context before any tuning; suppressing or raising a threshold
+    first can silence a true positive, and deleting an alert destroys the record.'
+- module: 6
+  notes: 'Q1 A (endpoint pair and time, confirmed by identifier), M06-O01: The connection record is
+    found by matching endpoints and time and confirmed through its identifier; Zeek does not record
+    signature identifiers, message text or the Suricata sensor''s name, so B, C and D name fields
+    the connection log does not carry. Q2 C (one ordinary connection), M06-O02: One port on one
+    host once is a single ordinary connection and argues against a scan; the context contradicts
+    the alert''s reading, shows no theft, and points to the alert being overbroad rather than to a
+    sensor fault. Q3 D (the recorded facts), M06-O03: The escalation note carries endpoints, time,
+    service, volume and the alert that started the case; opinions (A), a bare identifier (B) and
+    assurances (C) leave the next team nothing to act on. Q4 B (dismiss with citations), M06-O02:
+    The schedule and the connection records agree with a documented, authorised pattern, so the
+    sound decision is dismiss as a false positive with the evidence cited; volume alone does not
+    make it a case, suppressing every signature on the server overexposes, and restarting the sensor
+    removes no alert. Q5 D (new signature plus a feed), M06-O03: An uncovered behaviour and an
+    unwatched link call for a detection and a placement change together; thresholds and suppressions
+    tune existing coverage without closing the gap, and the note format is not the problem.'
+lab_setup:
+- module: 1
+  setup: 'Revert the soc-training range to its baseline and confirm the monitoring-mirror rule is
+    loaded. Check from the console that zeek01 is up and its monitor interface is receiving the
+    mirror before the module. Have the stated monitoring policy text ready to hand out; the Student
+    should find the mirror live and one recorded exchange with byte counts in the tens of kilobytes.'
+- module: 2
+  setup: 'Revert the range to its baseline and confirm zeek01 is writing logs: conn.log present and
+    fresh timestamps in the current log directory. Point the Student at the log directory path on
+    the board. The expected finding is one conn.log record and one matching http.log entry for the
+    generated request, joined by the same connection identifier.'
+- module: 3
+  setup: 'Revert the range to its baseline, confirm seconion01 serves the SOC console and that the
+    analyst account works from jump01''s browser. Pre-load enough Suricata alerts in the window that
+    the console view is not empty, and identify one alert on the board for the class to open
+    together; its rule header should show action, protocol, direction and endpoints cleanly.'
+- module: 4
+  setup: 'Revert the range to its baseline. On seconion01, prepare the local rules file the Student
+    will edit, with write access for the sensor account the instructor assigns, and confirm a rules
+    reload is possible without service interruption. Pre-test the benign and matching actions from
+    v-ws01 against v-web01 so the expected counts (zero and one) are known.'
+- module: 5
+  setup: 'Revert the range to its baseline and seed one noisy signature with a heavy alert count in
+    the current window; note the baseline number yourself before the lab. Name the signature on the
+    board. The Student should end with a post-change count near zero for the benign pattern and an
+    unchanged count elsewhere.'
+- module: 6
+  setup: 'Revert the range to its baseline and load the incident-response-drill scenario before the
+    module; confirm beacon traffic is flowing so Zeek logs on zeek01 and Suricata alerts on the
+    console cover the same window. Point the Student at the drill window''s start time. Expected
+    finding: at least one alert whose endpoints match a conn.log record with a long duration and
+    steady volume.'
+common_faults:
+- module: 1
+  fault: Students read a quiet capture as proof of good placement, when the quietness is the blind
+    spot itself.
+  remedy: 'Ask what traffic the feed is taken from before asking what the sensor saw; have each
+    Student name one traffic type absent from their capture and where it would have to be taken.'
+- module: 1
+  fault: Students treat SPAN and tap as interchangeable and pick by convenience.
+  remedy: 'Re-run the failure question: unplug the sensor with each placement and ask what happens
+    to the monitored link, then to the capture.'
+- module: 2
+  fault: Students read log entries in isolation and never follow the identifier between logs.
+  remedy: 'Insist on the two-entry rule: no finding is recorded until it cites entries from two
+    logs joined by the identifier.'
+- module: 2
+  fault: Students misread notice entries as blocks or failures.
+  remedy: 'Put one notice entry and one blocked connection side by side on the board and read the
+    fields aloud; a notice is the sensor raising an entry, nothing more.'
+- module: 3
+  fault: Students conflate threshold with suppression and apply the wrong one to the scenario.
+  remedy: 'Draw the scope difference on the board: threshold limits how often a signature may alert,
+    suppression silences it for chosen endpoints; quiz each scenario against both.'
+- module: 3
+  fault: Students quote message text when they mean the signature identifier and lose the rule
+    across tools.
+  remedy: 'Have every Student exchange rule references for one exercise using the identifier only;
+    message text is edited too often to be a handle.'
+- module: 4
+  fault: Students write the signature, see it fire and skip the benign test entirely.
+  remedy: 'Mark the lab P/F on the benign count being zero; a signature that fires on the matching
+    action but was never tested against benign traffic does not pass this module.'
+- module: 4
+  fault: Students leave identifiers and metadata blank and cannot say later who wrote the rule.
+  remedy: 'Check the signature text before the reload; no identifier or no metadata means the
+    Student rewrites it before testing proceeds.'
+- module: 5
+  fault: Students classify by endpoint reputation or habit rather than the session context.
+  remedy: 'Require a one-line reason per sampled alert that cites something in the record: schedule,
+    volume, endpoint pair or service.'
+- module: 5
+  fault: Students silence the noise by disabling or passing the signature and call the tuning done.
+  remedy: 'Re-open the alert view after their change and ask what the signature would do to a real
+    occurrence of the behaviour tomorrow; if the answer is nothing, the tuning removed coverage.'
+- module: 6
+  fault: 'Students pivot poorly: they search the connection log by message text or signature number
+    and find nothing.'
+  remedy: 'Drill the pivot on the board once: endpoints and time window from the alert, identifier
+    confirmation in the connection log, then the fields worth recording.'
+- module: 6
+  fault: Escalation notes carry the decision but no facts, or facts with no decision.
+  remedy: 'Hold every note to the pass items: the decision, at least two recorded facts from the two
+    views, and one proposed monitoring change; notes missing any of the three are rewritten.'
