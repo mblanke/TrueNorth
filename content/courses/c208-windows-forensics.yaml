@@ -474,6 +474,9 @@ modules:
       - C) The acquisition perturbed the system state it captured
       - D) Memory acquisition is impossible on modern Windows
       answer: C
+  po:
+    qsp_code: ALRA
+    po_code: PO_004
 - ordinal: 6
   title: Reporting Forensic Findings
   content_type: reading
