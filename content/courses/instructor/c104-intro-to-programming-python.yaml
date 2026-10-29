@@ -1,0 +1,158 @@
+# C104 - Intro to Programming (Python) - STAFF-ONLY instructor pack.
+# Answer keys, expected range values and lab setup live here, never in the course file.
+course_code: C104
+audience: staff_only
+overview: 'Intro to Programming (Python) teaches first-year cyber-operator Students to write, read and
+  harden small Python programs. Six 60-minute modules build one artefact: module 1 writes a log-counting
+  script on the range jump-box, module 2 turns it toward records and files, module 3 reviews and fixes a
+  flawed script, module 4 reaches a local API, module 5 tests and debugs the module 1 script, and module
+  6 packages the work as a small command-line tool with safe defaults. Every module is 15 minutes of
+  teaching, a 35-minute lab on the small-enterprise range (all labs run on jump-box over SSH) and a
+  10-minute five-item quiz passed at 70 percent. Students hand in lab evidence per module: recorded
+  output, counts, line numbers and a written judgement.'
+timings:
+- {module: 1, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+- {module: 2, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+- {module: 3, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+- {module: 4, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+- {module: 5, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+- {module: 6, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: assignment passes a reference, so the function and the caller share one list; A is the
+    copy misconception, C invents global growth, D misnames the type. Q2 C: the mutable default is
+    created once at definition and shared, so earlier calls leave their items behind; A is the per-call
+    copy misconception, B mistakes sharing for an error, D confuses mutability with conversion. Q3 D:
+    the if/else covers the zero case and the loop reads every line; A and B drop a requirement, C cannot
+    express the branch. Q4 A: a tuple cannot be changed after creation; B, C and D are the mutable core
+    types, each described truly but wrongly chosen. Q5 B: a local name shadows the global one inside the
+    function; A states the shadowing backwards, C invents a conflict error, D invents scope merging.'
+- module: 2
+  notes: 'Q1 C: a set tests membership in constant average time; A is the scan-every-item misconception,
+    B keeps the scan, D adds unneeded values. Q2 D: a dict keyed by hostname answers the common lookup in
+    one step; A and B drop the pairing, C forces a scan. Q3 B: the with statement closes the file even on
+    an exception; A widens error handling without closing, C and D change behaviour instead. Q4 A: JSON
+    holds nested named fields and the json module parses it; B and C flatten structure, D is not a record
+    format. Q5 C: catch the specific parse error, record the bad row, continue; A hides real errors, B
+    loses thousands of good rows, D restarts work the record step already saved.'
+- module: 3
+  notes: 'Q1 B: a parameterised query keeps input data out of the query text, which removes the flaw at
+    its source; A and C are filtering tricks that bypassable input defeats, D guards the wrong layer. Q2
+    D: passing the filename as a separate argument never passes it through a shell, so no command text is
+    assembled; A and C reshape the input but still run a shell, B only logs. Q3 A: an allowlist states
+    what is accepted, so forgotten maintenance fails closed; B fails open when a new bad value appears, C
+    and D do not decide acceptance. Q4 C: version history keeps every committed line, so the credential
+    must be rotated as well; A invents instant invalidation, B denies history, D invents linter
+    behaviour. Q5 B: the OWASP Top 10 is the consensus awareness document of critical web application
+    risks; A is a point-in-time tool output, C is vendor-specific, D tests one application.'
+- module: 4
+  notes: 'Q1 B: 429 means too many requests, so the client slows down and retries with increasing waits;
+    A changes connections without changing pace, C keeps causing 429s, D abandons the automation. Q2 D:
+    following the pagination links to the last page is what fetches the rest; A, B and C are real
+    behaviours that do not fetch more pages. Q3 A: a verified connection is what detects an intercepted
+    session, so removing it removes the protection; B, C and D state false costs. Q4 C: an environment
+    variable set outside the code keeps the token out of the repository and the process list; A and B put
+    it in the file, D commits a file beside the script. Q5 D: 401 means authentication is missing or
+    failed, 403 means authenticated but not permitted; A, B and C describe other codes entirely.'
+- module: 5
+  notes: 'Q1 C: the test depends on its surroundings, so isolation is missing; A, B and D are properties
+    the failing test may already have. Q2 A: static analysis examines code without running it, so it
+    cannot prove runtime behaviour; B, C and D are exactly what it can find. Q3 D: the last traceback
+    line names the exception type and message; A and B name the file and source, C is invented. Q4 B:
+    coverage counts lines executed during tests, not behaviours proved; A and C state false limits, D
+    measures speed. Q5 C: a regression test written when the defect was fixed runs ever after; A and B do
+    not watch the defect, D only changes speed.'
+- module: 6
+  notes: 'Q1 D: report by default and require a flag before any change; A, B and C change nothing about
+    the unguarded repair. Q2 B: pinning each dependency to a known version freezes the interface the tool
+    was tested against; A does not constrain code, C and D are unrelated. Q3 A: an explicit flag plus a
+    statement of intent means no accidental trigger; B, C and D all make the action easier to hit. Q4 C:
+    documented assumptions and limits tell an operator where results are valid; A, B and D polish the
+    tool without stating its limits. Q5 A: least privilege - a read-only checker needs no delete rights;
+    B and C are other principles that do not fit account scope, D names a firewall default.'
+lab_setup:
+- module: 1
+  setup: 'Revert the range to its baseline; confirm jump-box is reachable over SSH as the analyst user.
+    Place a short log file of events (one event per line, a type word then details, including one type
+    appearing more than once) in the lab folder on jump-box. Expected evidence: python3 prints a
+    Python 3.x version; the summary lists each event type with its count in sorted order; the one
+    list-passing call shows the changed list after the call; the three default-argument calls return
+    counts that keep the earlier calls'' items in the shared default list; the note names that
+    shared-default (aliasing) effect.'
+- module: 2
+  setup: 'Revert the range to its baseline; confirm jump-box is reachable over SSH. Place a CSV of host
+    records on jump-box with a hostname,address header and about ten rows, two of them missing a field.
+    Expected evidence: eight accepted and two rejected rows; the errors file holds the two incomplete
+    rows; a missing CSV exits nonzero with a clear message.'
+- module: 3
+  setup: 'Revert the range to its baseline; confirm jump-box is reachable over SSH. Place the flawed
+    search script on jump-box: it reads a search value from its arguments, builds a query by joining that
+    value into the query text (note the line number), and holds a credential as a plain assignment (note
+    the line number). It must print correct output for a plain value. Expected evidence: flaw and
+    credential line numbers; identical output before and after the fix; no credential in the file after.'
+- module: 4
+  setup: 'Revert the range to its baseline; confirm jump-box is reachable over SSH. Run the local record
+    API on jump-box (base address to announce to Students), serving two pages of records plus a page
+    link, and a second address that always fails so the backoff can be observed. Set the API token in an
+    environment variable in the analyst shell. Expected evidence: two pages fetched, total record count
+    matching the API, retries printed by the failing address, no token in the script file.'
+- module: 5
+  setup: 'Revert the range to its baseline; confirm jump-box is reachable over SSH. Restore the module 1
+    log-counting script with its unfixed empty-file defect (it raises on an empty file) and confirm the
+    linter reports warnings on it. Expected evidence: the empty-file test fails before the fix and passes
+    after; the traceback last line names the raised exception; final linter count lower than the first.'
+- module: 6
+  setup: 'Revert the range to its baseline; confirm jump-box is reachable over SSH. Create the scan
+    directory and make exactly one file in it world-writable. Expected evidence: the default run reports
+    one finding at that path and changes nothing; the flagged run states its action before doing it; the
+    dependency list pins every entry to a version.'
+common_faults:
+- module: 1
+  fault: Students treat assignment as a copy and predict the caller's list is unchanged after the
+    function appends.
+  remedy: Run the two-name example live on jump-box and print the list through both names after the call
+    before they write the note.
+- module: 1
+  fault: The summary prints in file order rather than sorted order, and Students record it as done.
+  remedy: Ask them to check the first two types against sorted order; have them read the sorted call in
+    the topics notes.
+- module: 1
+  fault: In the repeated-call step Students pass a list argument every time, so the mutable default is
+    never used and the counts do not accumulate.
+  remedy: Point at the step's wording (call it without passing that parameter) and ask what the third
+    call should return if the default is shared; run the three calls live if the counts come back equal.
+- module: 2
+  fault: Students write accepted rows to JSON but drop the errors file, so rejected rows vanish silently.
+  remedy: Point at the two incomplete rows in the supplied CSV and ask where each one ended up.
+- module: 2
+  fault: The missing-file case raises an unhandled traceback instead of a clear message and a nonzero
+    status.
+  remedy: Have them rename the CSV away and run it in front of you, then read the exception topic again.
+- module: 3
+  fault: Students fix the injection by filtering characters and call the flaw removed.
+  remedy: Ask what their fix does with a value they did not foresee; steer to the parameterised
+    construction that keeps data out of the query text.
+- module: 3
+  fault: The credential is deleted from the file but never rotated, and Students record the task done.
+  remedy: Remind them version history still holds it; the fix is a new credential plus removal.
+- module: 4
+  fault: Scripts fetch page one only and Students report the total as one page's count.
+  remedy: Ask how many records the API says it holds and have them compare with their count.
+- module: 4
+  fault: The token is pasted into the script file, so the evidence command line defeats the objective.
+  remedy: Show the environment-variable read in the teach segment; have them re-run with the token out of
+    the file before marking.
+- module: 5
+  fault: The empty-file case is tested, fails, and is then deleted instead of the defect being fixed.
+  remedy: Ask for the before and after test results side by side; a deleted test shows no after result.
+- module: 5
+  fault: Tracebacks are read top down, so Students name the wrong line as the failure point.
+  remedy: Walk one traceback bottom up on the board, naming file, function, line, exception in order.
+- module: 6
+  fault: The default run performs the change, so the safe default was never built.
+  remedy: Run the default mode yourself afterwards and check the directory state; the report-only run
+    must leave the file unchanged.
+- module: 6
+  fault: Dependency lists list unpinned names, and Students call the tool shippable anyway.
+  remedy: Have them read their own list against the pinned criterion in the lab brief before the
+    judgement sentence.
