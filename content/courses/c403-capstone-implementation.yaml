@@ -9,6 +9,7 @@ difficulty: intermediate
 duration_hours: 40
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 source:
@@ -30,57 +31,87 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Maintain a disciplined build and version control practice.
-  - Record decisions as the implementation evolves.
-  - Manage dependencies and reproducibility.
+  - Capture a configuration baseline of the range and commit it to version control with a descriptive message
+  - Distinguish values the range template fixes from values that can change between deployments
+  - Select which recorded values must be pinned for the capstone results to be reproducible
   topics:
-  - Version control workflow.
-  - Decision records during build.
-  - Dependency management and pinning.
-  - Reproducible environments.
-  lab: 'Lab: Establish your capstone repository with a documented branching approach, dependency pinning
-    and a decision record template, then record your first three implementation decisions.'
+  - 'Version control workflow: commits, messages and a branching approach for one implementer.'
+  - Recording a configuration baseline as the project's first committed artefact.
+  - Template-fixed values and deployment-dependent values in a recorded baseline.
+  - Version pinning and why an unpinned version breaks reproducibility.
+  - 'Decision records: what was decided, why, and what would reopen the decision.'
+  lab: >-
+    Lab: On the medium-enterprise range, capture the configuration baseline the capstone builds on: host
+    addresses, service versions and the fw01 rule set. Evidence: the address recorded for each of dc01,
+    fs01, web01 and mail01; the operating system and service versions web01 and mail01 report; the name,
+    source, destination and action of each fw01 rule in order; the commit identifier of the committed
+    baseline file. Pass: every item recorded exactly as the range shows it; each recorded value marked
+    "fixed by the template" or "deployment-dependent" with a one-sentence reason; the baseline committed
+    with a message that states what it captures.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst user your instructor assigned and open a terminal for the
+        baseline commands.
+    - hosts: [siem01, dc01, fs01, web01, mail01]
+      action: From siem01, look up the addresses of dc01, fs01, web01 and mail01, and record each name with
+        the address that answered.
+    - hosts: [siem01, web01, mail01]
+      action: From siem01, connect to web01 and mail01 over SSH and record each host's operating system
+        version and the name and version of each running service.
+    - hosts: [siem01, fw01]
+      action: From siem01, open the fw01 administration page and record each rule's name, source, destination
+        and action, in order.
+    - hosts: [siem01]
+      action: Mark each recorded value "fixed by the template" or "deployment-dependent" with one sentence of
+        reason, commit the baseline file, and record the commit identifier.
   refs:
   - nist-sp-800-218
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'Recording decisions during implementation is valuable because:'
+    - question: A fault appears in a capstone build, and the change that introduced it was made two weeks
+        ago. Which version control practice makes finding that change possible?
       options:
-      - A) It satisfies assessors
-      - B) Reasoning is forgotten quickly and later reviewers need it
-      - C) It lengthens the report
-      - D) It replaces comments
-      answer: B
-    - question: 'Pinning dependencies makes a project:'
+      - A) Keeping a personal notebook of edits made each day
+      - B) Testing the whole system only at the end of the project
+      - C) Small commits whose messages describe what changed
+      - D) Naming files after the day they were last edited
+      answer: C
+    - question: A teammate re-runs the capstone deployment a month later and the services report different
+        versions. Which record makes the difference explainable?
       options:
-      - A) Slower
-      - B) Reproducible, so results can be replicated later
-      - C) More secure automatically
-      - D) Smaller
-      answer: B
-    - question: 'Committing only at the end of the project risks:'
+      - A) The committed baseline of versions and configuration values
+      - B) The hours the first deployment of the system took
+      - C) A screenshot of the finished system at the handover meeting
+      - D) The chat thread where the deployment work was discussed
+      answer: A
+    - question: One item in a recorded baseline will differ if the deployment is run again next month. Which
+        item is the deployment-dependent one?
       options:
-      - A) Cleaner history
-      - B) Losing work and having no record of how the solution evolved
-      - C) Faster development
-      - D) Fewer conflicts
-      answer: B
-    - question: 'A reproducible environment matters because:'
+      - A) The name of the firewall node in the template
+      - B) The role the template gives the domain controller
+      - C) The list of networks the template defines for the range
+      - D) The service version a host reports after an update
+      answer: D
+    - question: 'A decision record is most useful to reviewers reading the project a year later when it
+        states:'
       options:
-      - A) It runs faster
-      - B) Results that cannot be reproduced cannot be verified
-      - C) It uses less disk
-      - D) Assessors require containers
+      - A) The supervisor's opinion of the decision
+      - B) The options considered, the choice made and the reason
+      - C) The date the project is scheduled to end
+      - D) The names of everyone who attended the decision meeting
       answer: B
-    - question: 'Secrets discovered committed to version control must be:'
+    - question: 'Two hosts report different service versions after one deployment was re-run. In
+        reproducibility terms, the missing practice is:'
       options:
-      - A) Deleted in a later commit
-      - B) Rotated, since history retains them
-      - C) Ignored if private
-      - D) Encrypted in place
-      answer: B
+      - A) Running the deployment more often
+      - B) Recording only the final results of the build
+      - C) Pinning the version each component uses
+      - D) Removing the older deployment from the range
+      answer: C
 - ordinal: 2
   title: Iterative Development and Testing
   content_type: reading
@@ -88,56 +119,84 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Develop iteratively with continuous verification.
-  - Write tests that establish correctness.
-  - Manage technical debt deliberately.
+  - Verify one increment of the capstone against its stated success criteria before starting the next
+  - Classify each connection test on the range as allowed by a named rule or denied by the default
+  - Record deliberately accepted technical debt with its reason and the condition that triggers repayment
   topics:
-  - Iteration and increments.
-  - Test strategy for a research build.
-  - Continuous verification.
-  - Deliberate technical debt.
-  lab: 'Lab: Implement one capstone increment end to end with tests, verify it against your success criteria,
-    and record any technical debt you deliberately accepted and why.'
+  - Delivering the capstone in small increments, each verified as it lands.
+  - Success criteria as the test an increment is finished.
+  - Firewall rule order and the implicit default deny.
+  - 'Evidence a test produces: expected, observed and the difference.'
+  - 'Technical debt: recording it, dating it and naming who repays it.'
+  lab: >-
+    Lab: On the medium-enterprise range, run the connection tests for one capstone increment: the flows a
+    workstation may open to the servers and DMZ, and one flow no rule allows, judged against the fw01 rule
+    set. Evidence: for each test, the source host, the destination host and service, whether the connection
+    succeeded, and the fw01 rule that allows it or the words "default deny". Pass: every test recorded with
+    its outcome exactly as observed; each allowed flow matched to the rule that allows it; each denied flow
+    marked "default deny" with the missing rule named; the test outcomes recorded against the success
+    criteria for the increment.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01 as the standard user your instructor assigned and open a command prompt.
+    - hosts: [ws01, fs01]
+      action: From ws01, attempt to open the file share on fs01 and record whether the connection succeeds.
+    - hosts: [ws01, web01, mail01]
+      action: From ws01, attempt one HTTPS connection to web01 and one connection to the mail service on
+        mail01, and record each outcome.
+    - hosts: [ws01, siem01]
+      action: From ws01, attempt an HTTPS connection on port 443 to siem01, a port no rule in the fw01 rule
+        set allows from the workstation network, and record the exact failure shown.
+    - hosts: [ws01]
+      action: For each recorded outcome, name the fw01 rule that allows the flow or write "default deny",
+        and record any test whose result contradicts the rule set.
   refs:
   - nist-sp-800-218
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Delivering in increments is preferable because:'
+    - question: A capstone increment passes its own tests, yet the assembled system fails when it is walked
+        end to end. Which practice most likely went missing?
       options:
-      - A) It is faster overall
-      - B) Each increment can be verified, reducing the risk of late discovery of failure
-      - C) It needs fewer tests
-      - D) It simplifies scope
+      - A) Writing longer and more detailed names for every test run
+      - B) Verifying each increment against the success criteria
+      - C) Testing only the final assembled system at the end
+      - D) Running every test twice before recording the result
       answer: B
-    - question: 'Technical debt accepted deliberately should be:'
+    - question: 'A connection test from a workstation to a host on the management network fails. Before
+        calling the behaviour a fault, the implementer should first check:'
       options:
-      - A) Hidden
-      - B) Recorded with the reason and the conditions for repayment
-      - C) Avoided entirely
-      - D) Left to the assessor
-      answer: B
-    - question: 'Tests in a research build primarily serve to:'
+      - A) Whether the workstation has been restarted recently
+      - B) Whether the same test succeeds when it is run twice
+      - C) Which fw01 rule allows that source and destination
+      - D) Whether the destination host is still under warranty
+      answer: C
+    - question: 'A test shows traffic reaching a host that the written design says is unreachable. The best
+        next action is to:'
       options:
-      - A) Satisfy process
-      - B) Establish that results depend on the intended behaviour, not a bug
-      - C) Increase coverage metrics
-      - D) Slow development
-      answer: B
-    - question: 'Discovering the approach does not work halfway through should prompt:'
+      - A) Record the outcome and compare it with the rule set
+      - B) Delete the rule that appears to be responsible
+      - C) Assume the test tool misreported and move on
+      - D) Report the range to the instructor as already compromised
+      answer: A
+    - question: 'A shortcut in the code will be replaced after the evaluation deadline. For that shortcut to
+        count as accepted technical debt, the implementer must:'
       options:
-      - A) Concealment
-      - B) Documented pivot or scope revision, which is a legitimate outcome
-      - C) Abandonment
-      - D) Fabricating results
-      answer: B
-    - question: 'Continuous verification against success criteria prevents:'
+      - A) Keep it out of the repository until it is fixed
+      - B) Describe it verbally if the assessor asks about it directly
+      - C) Leave it undocumented to save reporting time
+      - D) Record the debt with its reason and its repayment trigger
+      answer: D
+    - question: 'A test of an increment shows the feature works but is slower than its success criterion
+        requires. The increment record should say:'
       options:
-      - A) Slow progress
-      - B) Building something that works but does not answer the question
-      - C) Test failures
-      - D) Scope creep only
+      - A) The feature is finished, since it works as designed
+      - B) The feature works but misses the criterion, so it is unfinished
+      - C) The speed was measured wrongly and needs no entry
+      - D) The success criterion should be lowered to match the measured result
       answer: B
 - ordinal: 3
   title: Data Collection and Evaluation
@@ -146,57 +205,84 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Collect evidence systematically.
-  - Analyse results honestly including negative findings.
-  - Assess whether results support the claims made.
+  - Collect evaluation evidence on the range with one planned, repeatable query instead of ad hoc searching
+  - Summarise the collected data as counts and gaps that a reviewer can check without re-running the collection
+  - Distinguish what the collected evidence supports from what it merely suggests when writing the findings
   topics:
-  - Systematic data collection.
-  - Analysis and interpretation.
-  - Negative and null results.
-  - Claim and evidence alignment.
-  lab: 'Lab: Execute your evaluation, collect the planned evidence, analyse the results, and write a statement
-    of what the evidence does and does not support.'
+  - 'Planning collection before the first query: window, sources and fields.'
+  - Counts, ranges and gaps as checkable summaries of log data.
+  - Negative and null results as findings, not failures.
+  - Claim and evidence alignment in the evaluation chapter.
+  lab: >-
+    Lab: On the medium-enterprise range, collect the log evidence for the evaluation chapter: one fixed
+    window of events from the siem01 log store, summarised per host. Evidence: the window and the saved
+    query used; the number of events recorded for each host in the window; every host with no events; one
+    statement of what the counts support and one statement of what they do not. Pass: the window and query
+    recorded so another Student could repeat the collection; each count and gap copied exactly as the store
+    shows it; each of the two statements marked "supported by the counts" or "not supported" with a
+    one-sentence reason.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst user your instructor assigned, open the log store interface and
+        record the time window the collection will cover.
+    - hosts: [siem01]
+      action: Run one saved query that counts events per host over that window and record each host with its
+        count exactly as returned.
+    - hosts: [siem01]
+      action: Compare the per-host counts with the template's host list and record every host with no events
+        in the window.
+    - hosts: [siem01]
+      action: Save the query and the counts as the collection record and note where the record is stored.
+    - hosts: [siem01]
+      action: Write one statement the counts support and one they do not, and mark each "supported by the
+        counts" or "not supported" with a one-sentence reason.
   refs:
   - nist-sp-800-30r1
   quiz:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'A negative result is:'
+    - question: 'A capstone evaluation must state how often each host reported during one week. The most
+        checkable way to collect that evidence is:'
       options:
-      - A) A project failure
-      - B) A legitimate and often valuable finding if honestly reported
-      - C) To be omitted
-      - D) A methodology error
-      answer: B
-    - question: 'Claims in a capstone must be:'
+      - A) Reading stored messages until an impression forms
+      - B) Asking each host's administrator for an estimate
+      - C) One saved query returning a count of events per host
+      - D) Copying the busiest day's log page into the report
+      answer: C
+    - question: 'The collection finds a host with no events in the whole window. Treated honestly, that gap
+        is:'
       options:
-      - A) Ambitious
-      - B) Proportionate to the evidence actually collected
-      - C) Comparable to industry
-      - D) Novel
-      answer: B
-    - question: 'Discarding results that contradict the hypothesis is:'
+      - A) A finding to report, since an absence may itself matter
+      - B) A reason to widen the window until something appears
+      - C) An empty row to delete before submission
+      - D) Proof that the logging system is broken
+      answer: A
+    - question: 'Halfway through collection, the numbers stop matching the written hypothesis. Acceptable
+        practice is to:'
       options:
-      - A) Acceptable cleanup
-      - B) Research misconduct
-      - C) Standard practice
-      - D) A judgement call
-      answer: B
-    - question: 'Systematic collection means evidence is gathered:'
+      - A) Stop collecting and submit what is already gathered
+      - B) Adjust the hypothesis to fit the first half of the data
+      - C) Keep only the runs that matched the hypothesis
+      - D) Finish the planned collection and report the mismatch
+      answer: D
+    - question: 'A draft claims the range''s hosts are configured consistently, but the collected counts show
+        three of eight match. The claim that aligns with the evidence is:'
       options:
-      - A) Opportunistically
-      - B) According to the planned method, consistently across conditions
-      - C) Only when favourable
-      - D) Automatically
+      - A) The hosts are configured consistently across the range
+      - B) Three of the eight collected counts matched the expectation
+      - C) Configuration on the range is inconsistent everywhere
+      - D) The evidence was collected with the wrong method
       answer: B
-    - question: 'If results are inconclusive, the correct action is to:'
+    - question: 'A reviewer asks what the collected evidence does not support. The strongest answer names:'
       options:
-      - A) Strengthen the claim
-      - B) Report them as inconclusive and analyse why
-      - C) Collect until favourable
-      - D) Change the question retroactively
-      answer: B
+      - A) A claim the counts cannot decide, and says why
+      - B) Nothing, because the collection followed the plan
+      - C) The parts of the project that took the longest
+      - D) A new hypothesis the reviewer could test instead
+      answer: A
 - ordinal: 4
   title: Supervision and Progress Management
   content_type: reading
@@ -204,57 +290,87 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Use supervision effectively.
-  - Report progress honestly including difficulties.
-  - Adapt the plan as understanding develops.
+  - Report the state of the capstone to a supervisor from recorded range evidence rather than impression
+  - Write supervision questions that name the decision needed and the options already rejected
+  - Identify a blocker early and state its effect on the schedule with the evidence behind the estimate
   topics:
-  - Effective use of supervision.
-  - Honest progress reporting.
-  - Plan adaptation and re-scoping.
-  - Escalating blockers early.
-  lab: 'Lab: Prepare a supervision session with a written progress summary, three specific questions and
-    an honest account of your current largest blocker.'
+  - 'Progress reporting: achievements, difficulties, decisions and revised expectations.'
+  - 'Evidence for status: what was run, what it showed and when.'
+  - Supervision questions that ask for a decision, not reassurance.
+  - 'Re-scoping: changing the plan with the supervisor, in writing.'
+  - Escalating a blocker while the options are still open.
+  lab: >-
+    Lab: On the medium-enterprise range, gather the evidence for a supervision session: which hosts respond,
+    which do not, and what that means for the capstone plan. Evidence: for each range host, whether it
+    answered and the time of the check; the exact error or timeout of any host that did not answer; a
+    progress summary of at most ten lines; three supervision questions; one blocker statement with its
+    schedule effect. Pass: each host's status recorded from the check, not from memory; the summary states
+    one achievement, one difficulty and one revised expectation; each question asks the supervisor to decide
+    something specific; the blocker names the evidence and the days it costs.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst user your instructor assigned, open a terminal and record the
+        start time of the checks.
+    - hosts: [siem01, dc01, fs01, web01, mail01]
+      action: From siem01, check dc01, fs01, web01 and mail01 for a response and record answered or not
+        answered, with the time of each check.
+    - hosts: [siem01, ws01, ws02]
+      action: From siem01, check ws01 and ws02 the same way and record the exact error or timeout of any host
+        that does not answer.
+    - hosts: [siem01]
+      action: Write a progress summary of at most ten lines stating one achievement, one difficulty and one
+        revised expectation.
+    - hosts: [siem01]
+      action: Write three supervision questions that each ask the supervisor to decide something, and one
+        blocker statement naming the evidence and its cost in days.
   refs:
   - nist-sp-800-37r2
   quiz:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Concealing difficulty from a supervisor typically:'
+    - question: 'A capstone implementer hides a failing component from the supervisor until the final month.
+        The most likely consequence is:'
       options:
-      - A) Preserves confidence
-      - B) Delays help until the problem is harder to recover from
-      - C) Improves independence
-      - D) Is expected
-      answer: B
-    - question: 'The most effective supervision sessions are those where the student:'
+      - A) The supervisor is impressed by the calm final month
+      - B) The failing component repairs itself before the final deadline
+      - C) The final report needs fewer revisions overall
+      - D) Help arrives when the schedule cannot absorb the repair
+      answer: D
+    - question: 'The strongest evidence a progress report can cite for the claim "integration has started"
+        is:'
       options:
-      - A) Reports only progress
-      - B) Arrives with specific questions and a clear statement of the current state
-      - C) Awaits direction
-      - D) Presents finished work
+      - A) The implementer's confidence that the work is going well
+      - B) A recorded test run showing two components communicating
+      - C) A plan slide listing integration as the next phase
+      - D) The number of hours spent on the project that week
       answer: B
-    - question: 'Adapting the plan mid-project is:'
+    - question: 'A capstone implementer may raise one question at each weekly supervision meeting. That
+        question is most useful when it:'
       options:
-      - A) A sign of failure
-      - B) Normal and expected as understanding develops, if documented
-      - C) Not permitted
-      - D) Only for methodology
-      answer: B
-    - question: 'A blocker should be escalated:'
+      - A) Has an obvious answer the implementer already knows
+      - B) Asks the supervisor to approve every open item at once
+      - C) Names the decision needed and the options rejected
+      - D) Defers the decision to the final report
+      answer: C
+    - question: 'A dependency the capstone needs will not install, and no workaround is known. The blocker
+        should be escalated:'
       options:
-      - A) When it becomes critical
-      - B) As soon as it is identified as likely to affect the schedule
-      - C) At the next scheduled meeting
-      - D) In the final report
-      answer: B
-    - question: 'Progress reporting should include:'
+      - A) As soon as its effect on the schedule is estimated
+      - B) After the next two project milestones have been passed
+      - C) Only if the supervisor asks about it directly
+      - D) In the final report, where the full story fits
+      answer: A
+    - question: 'Mid-project, the evaluation shows the original scope cannot finish in the time left. Sound
+        practice is to:'
       options:
-      - A) Achievements only
-      - B) Achievements, difficulties, decisions and revised expectations
-      - C) Hours worked
-      - D) Code volume
-      answer: B
+      - A) Quietly drop the part of the scope that fails
+      - B) Keep the scope and report success as planned
+      - C) Stop the project and restart on a completely different question
+      - D) Propose a documented re-scope with an evidenced estimate
+      answer: D
 - ordinal: 5
   title: Integration and System Verification
   content_type: reading
@@ -262,16 +378,40 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Integrate components into a working whole.
-  - Verify the integrated system against requirements.
-  - Handle integration failures methodically.
+  - Verify the assembled range services end to end against written requirements and record one result per requirement
+  - Trace each requirement to the evidence that shows it is satisfied or mark it unverified
+  - Narrow an integration failure to the interface responsible by testing one path at a time
   topics:
-  - Integration strategy.
-  - End-to-end verification.
-  - Failure isolation.
-  - Requirement traceability.
-  lab: 'Lab: Integrate your capstone components, verify the system end to end against each stated requirement,
-    and produce a traceability matrix from requirement to evidence.'
+  - 'End-to-end verification: the assembled system, exercised as a user would.'
+  - Testing one path at a time to isolate an integration failure.
+  - 'Requirement traceability: each requirement to its evidence.'
+  - Reporting an unverified requirement as a result, not a failure to hide.
+  lab: >-
+    Lab: On the medium-enterprise range, verify three written service requirements end to end and produce a
+    traceability matrix. The requirements: workstations reach the file share on fs01; workstations reach
+    web01 over HTTPS; fw01 and dc01 ship events to siem01. Evidence: for each requirement, the
+    test performed, the observed outcome and a verdict of verified or not verified; the traceability matrix
+    listing each requirement beside its evidence. Pass: every requirement tested exactly as written; each
+    verdict backed by the recorded observation, not an assumption; any requirement that fails verification
+    marked unverified with the failed test named; the matrix complete, with no blank rows.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst user your instructor assigned, open a terminal and note the
+        three requirements the verification will test.
+    - hosts: [ws01, fs01]
+      action: From ws01, test the file share on fs01 and record the observed outcome against the first
+        requirement.
+    - hosts: [ws01, web01]
+      action: From ws01, open web01 over HTTPS and record the observed outcome against the second
+        requirement.
+    - hosts: [siem01, fw01, dc01]
+      action: In the siem01 log store, search for events shipped from fw01 and dc01 and record whether each
+        host's events appear, against the third requirement.
+    - hosts: [siem01]
+      action: Mark each requirement verified or not verified against its recorded observation and complete
+        the matrix row for each, leaving no blank rows.
   refs:
   - nist-sp-800-218
   - nist-sp-800-115
@@ -279,40 +419,45 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'A traceability matrix links:'
+    - question: 'A written requirement says workstations must reach the file share on the server host. The
+        recorded result that best verifies that requirement is:'
       options:
-      - A) Code to authors
-      - B) Requirements to the evidence that each is satisfied
-      - C) Tasks to dates
-      - D) Tests to tools
-      answer: B
-    - question: 'Integrating everything at the end rather than incrementally:'
+      - A) The design diagram that shows the intended path between them
+      - B) A passing connection from the server back to a workstation
+      - C) The fw01 rule that appears to allow the workstation traffic
+      - D) A recorded connection test from a workstation to the share
+      answer: D
+    - question: 'Two requirements fail when tested together, yet every component passed alone. The fastest
+        way to isolate the fault is to:'
       options:
-      - A) Saves time
-      - B) Concentrates risk at the point where least time remains
-      - C) Simplifies testing
-      - D) Is recommended
-      answer: B
-    - question: 'Isolating an integration failure is best done by:'
+      - A) Rewrite both components from a clean starting point
+      - B) Add logging statements to every file in the project
+      - C) Run the two requirement tests in the reverse order
+      - D) Test one path between one pair of hosts at a time
+      answer: D
+    - question: 'In a traceability matrix for a capstone, a requirement row carries no evidence entry. That
+        row means:'
       options:
-      - A) Rewriting components
-      - B) Systematically narrowing which interface or component is responsible
-      - C) Restarting the build
-      - D) Adding logging everywhere
-      answer: B
-    - question: 'A requirement with no corresponding evidence indicates:'
+      - A) The requirement is unverified and the claim behind it is untested
+      - B) The requirement is unimportant and can be deleted
+      - C) The evidence existed but the requirement is surely met
+      - D) The matrix tool failed to export that one row
+      answer: A
+    - question: 'A capstone claims "all required services are reachable" after testing only one requirement.
+        The most defensible correction is to:'
       options:
-      - A) An unnecessary requirement
-      - B) Either unverified work or an untested claim
-      - C) Good scoping
-      - D) Successful integration
-      answer: B
-    - question: 'End-to-end verification differs from unit testing because it:'
+      - A) State the claim more confidently in the executive summary
+      - B) Remove the untested requirements from the report entirely
+      - C) Test each requirement and scope the claim to the results
+      - D) Reuse the one test's result for all the other requirements
+      answer: C
+    - question: 'Verification of the file-share requirement fails, though the share worked the day before.
+        What the verification record should state first is:'
       options:
-      - A) Is faster
-      - B) Exercises the assembled system as a user or assessor would
-      - C) Needs no data
-      - D) Replaces unit tests
+      - A) That the requirement is impossible to meet on this range
+      - B) What was tested, what was observed and when it last passed
+      - C) That the assessor is unlikely to retest that requirement
+      - D) A guess at which team changed the network overnight
       answer: B
 - ordinal: 6
   title: Preparing for Assessment
@@ -321,54 +466,84 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Prepare a demonstrable and reproducible deliverable.
-  - Anticipate assessor questions.
-  - Ensure the work can be evaluated independently.
+  - Write reproduction instructions that let a reader with no prior knowledge repeat a range verification unaided
+  - Capture each point where an independent reader stalls in the instructions and repair the wording
+  - Assemble the deliverable so every claim in it points to recorded evidence
   topics:
-  - Deliverable packaging.
-  - Reproducibility for assessors.
-  - Anticipating scrutiny.
-  - Documentation completeness.
-  lab: 'Lab: Package your capstone so an assessor can reproduce your results from documentation alone,
-    then have a peer attempt it and record every point where they became stuck.'
+  - 'Deliverable packaging: what an assessor receives and in what order.'
+  - Reproduction instructions written for a competent stranger.
+  - A peer walkthrough as the test of the documentation.
+  - 'Reproducibility: stating the environment a result depends on.'
+  - Pointing every claim to its recorded evidence.
+  lab: >-
+    Lab: On the medium-enterprise range, test the reproduction instructions the way an assessor will use
+    them: hand the file-share verification steps to a peer and watch them run it without help. Evidence:
+    each point where the peer stalls or asks a question, with the step number; the repaired wording for
+    each stall; the final instruction list with the recorded outcome of the peer's run. Pass: the peer
+    completes the verification using the instructions alone; every stall recorded against the step where it
+    happened; each repaired instruction rewritten so the stall cannot recur; no instruction names a value
+    the peer must guess.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst user your instructor assigned and open the instruction list
+        written for the file-share verification.
+    - hosts: [ws01, fs01]
+      action: Hand the instructions to a peer and let them test the file share on fs01 from ws01 without
+        help, watching without prompting them.
+    - hosts: [siem01]
+      action: Record each point where the peer stalls or asks a question, with the step number where it
+        happened.
+    - hosts: [siem01]
+      action: Rewrite each stalled step so the stall cannot recur and note beside it what the earlier wording
+        was.
+    - hosts: [siem01]
+      action: Have the peer run the repaired instructions once more and record whether the verification
+        completes without a question, and which claims the run's evidence supports.
   refs:
   - nist-sp-800-218
   quiz:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'The best test of reproducibility documentation is:'
+    - question: 'An assessor asks for proof that a capstone''s reproduction instructions work as written.
+        The best proof is:'
       options:
-      - A) Self-review
-      - B) Someone else following it without your help
-      - C) Length
-      - D) Tool validation
-      answer: B
-    - question: 'Anticipating assessor questions helps you:'
+      - A) The implementer rereading the instructions twice
+      - B) The instructions' length and level of detail
+      - C) A peer repeating the verification unaided
+      - D) The software tool's own help pages
+      answer: C
+    - question: 'During a peer walkthrough of the instructions, the peer asks what one step means. The record
+        should treat that as:'
       options:
-      - A) Avoid difficult topics
-      - B) Identify weaknesses in the work while there is still time to address them
-      - C) Shorten the defence
-      - D) Predict the grade
+      - A) A question to answer verbally and then immediately forget
+      - B) A documentation gap at that step, to repair in writing
+      - C) Proof the peer skipped the preparation reading
+      - D) A reason to shorten the instructions overall
       answer: B
-    - question: 'A deliverable that only runs on your machine:'
+    - question: 'An assessor''s first question is "why should this result be believed?". The deliverable
+        answers best when every result:'
       options:
-      - A) Is acceptable if documented
-      - B) Cannot be independently verified and undermines the work
-      - C) Is normal
-      - D) Is preferred for security
-      answer: B
-    - question: 'Documentation should be written for:'
+      - A) Is printed in a larger font than the rest
+      - B) Restates the motivation of the project in greater detail
+      - C) Appears in both the report and the slide deck
+      - D) Points to the recorded evidence that produced it
+      answer: D
+    - question: 'The deliverable runs only on the implementer''s own laptop, and the assessor''s first attempt
+        fails. The honest packaging fix is to:'
       options:
-      - A) Yourself
-      - B) A competent reader with no prior knowledge of your project
-      - C) The supervisor
-      - D) Future students
-      answer: B
-    - question: 'A peer getting stuck on your reproduction steps indicates:'
+      - A) Record the environment the work needs and supply it
+      - B) A note asking the assessor to imagine the laptop
+      - C) Submit earlier, before anyone tries to run it
+      - D) Describe the results so vividly that running them is unnecessary
+      answer: A
+    - question: 'A peer following the instructions reaches a step that needs a password nobody documented.
+        The failure is in:'
       options:
-      - A) Peer incompetence
-      - B) A genuine documentation gap to fix
-      - C) Environmental difference only
-      - D) Nothing important
-      answer: B
+      - A) The peer, who should have asked about it earlier
+      - B) The range, which generated the password at all
+      - C) The instructions, which named a value they did not supply
+      - D) The assessor, for choosing that particular verification step
+      answer: C
