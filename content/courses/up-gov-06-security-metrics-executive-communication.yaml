@@ -1,0 +1,536 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C506
+title: Security Metrics & Executive Communication
+version: '1.0'
+difficulty: advanced
+duration_hours: 6
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites: [C505, C502]
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - "NICE work roles: Executive Cyber Leadership; Cybersecurity Risk Manager."
+  - NIST CSF 2.0 categories covered are GV.OV (oversight), GV.RM (risk management strategy) and
+    GV.OC (communication with internal and external stakeholders).
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Choosing metrics that drive decisions
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish a decision-driving security metric from a vanity metric by asking what action each would trigger
+  - Select a small set of security metrics for a scenario and justify each against a stated management decision
+  - Classify a proposed metric as leading or lagging and explain which management question it answers
+  topics:
+  - "What makes a metric decision-driving: an owner, a threshold and an action it triggers."
+  - "Vanity metrics, activity counts and averages that hide the distribution a decision needs."
+  - "Leading and lagging indicators and how each answers a different management question."
+  - "Goal-question-metric: deriving measures from the decisions an owner must actually make."
+  - "Choosing a small balanced set across prevention, detection and response rather than one number."
+  lab: >-
+    Lab: On the small-enterprise range, build a candidate metric list from its firewall and sign-in
+    telemetry, then cut it to the three metrics an executive would act on. Evidence: for each candidate,
+    the data source on fw-01, dc-01 or ws-01 that would feed it, whether it is leading or lagging, the
+    threshold that would trigger action, and the role that owns that action; the final three with one
+    sentence each on the decision they drive. Pass: at least six candidates recorded before cutting; every
+    kept metric names a threshold and an owner; every cut candidate says why it would not change a decision.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and write the module start time in your lab notes.
+    - hosts: [fw-01]
+      action: List the traffic and block summaries the firewall on fw-01 can report and record two candidate
+        metrics each summary could feed.
+    - hosts: [dc-01, ws-01]
+      action: From the sign-in logs visible on dc-01 and ws-01, record two more candidates and mark each one
+        leading or lagging.
+    - hosts: [jump-box]
+      action: For each of the six candidates, write the threshold that would trigger action and the role that
+        owns it.
+    - hosts: [jump-box]
+      action: Cut the list to three metrics and write one sentence per kept metric on the decision it drives and
+        one sentence per cut metric on why it would not change a decision.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A weekly report counts how many alerts the monitoring stack raised and nobody ever acts on the
+        count. Which label fits this metric?
+      options:
+      - A) A leading indicator of compromise
+      - B) A vanity metric
+      - C) A lagging indicator
+      - D) A control threshold
+      answer: B
+    - question: "A team tracks intrusion connections blocked at the perimeter to warn of pressure on defences
+        before a breach. This measure is best classified as:"
+      options:
+      - A) A lagging indicator, because the connections already happened
+      - B) A vanity metric, because nobody can act on it
+      - C) A leading indicator, because it precedes the outcome it warns about
+      - D) A threshold, because it has a numeric value
+      answer: C
+    - question: Before cutting a draft metric list, which question best tests whether a metric is
+        decision-driving?
+      options:
+      - A) Can the number be collected every week without manual work?
+      - B) Does the number look better than last quarter?
+      - C) Can the number be compared across other organisations?
+      - D) Does the number change which action an owner would take?
+      answer: D
+    - question: Which set of three metrics is best balanced for a small security programme?
+      options:
+      - A) One prevention, one detection and one response measure with named owners
+      - B) Three variations of the same alert count
+      - C) Three comparisons against industry benchmarks
+      - D) Three counts of activity the team already performs
+      answer: A
+    - question: A director receives two proposals. Proposal one is patch latency from publication to deployment.
+        Proposal two is a staff opinion score of security health. Which choice follows the module's rule?
+      options:
+      - A) The opinion score, because executives prefer one number
+      - B) Patch latency, because it has an owner, a threshold and a trigger action
+      - C) Both, because more data always helps a decision
+      - D) Neither, because neither is expressed in money
+      answer: B
+- ordinal: 2
+  title: Metric quality, gaming and bias
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain how a security metric can be gamed and name a design change that resists the gaming
+  - Normalise a raw security count against exposure, such as per one thousand endpoints, and compare two periods fairly
+  - Judge a metric's data quality by checking completeness, timeliness and blind spots in its source
+  topics:
+  - "Goodhart's law: when a measure becomes a target, it stops measuring."
+  - "Gaming patterns: cherry-picked windows, moved thresholds, reclassified incidents and gamed closure codes."
+  - "Normalising counts against exposure: per endpoint, per user, per thousand, and why raw counts mislead."
+  - "Baseline periods, seasonality and trend lines versus single-point comparison."
+  - "Data quality checks for a metric source: completeness, timeliness, accuracy and coverage blind spots."
+  lab: >-
+    Lab: On the small-enterprise range, take one raw count from the firewall and one from the domain sign-in
+    logs, normalise each against exposure, then attack your own numbers for gaming and blind spots. Evidence:
+    both raw counts with the exact source and time window; each count restated per thousand hosts using the
+    range's host count; one way a team could game each number while still reporting it honestly; one blind
+    spot in each source that the range's telemetry cannot see. Pass: both normalised figures computed from
+    recorded values; one gaming defence applied to each metric; each blind spot paired with a cheap check
+    that would expose it.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box and record the range's total number of hosts for use as the exposure base.
+    - hosts: [fw-01]
+      action: Record one raw weekly count of blocked connections from the firewall logs on fw-01, with the
+        exact time window.
+    - hosts: [dc-01, ws-01]
+      action: Record one raw weekly count of failed domain sign-ins from the logs on dc-01 and ws-01, with the
+        same window.
+    - hosts: [jump-box]
+      action: Restate both counts per thousand hosts and note what each normalised figure shows that the raw
+        count hid.
+    - hosts: [jump-box]
+      action: For each metric, write one way a team could game the number, one design change that resists it,
+        and one blind spot in the source.
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: After a closure-rate target is announced, analysts close tickets as informational before triage.
+        Which statement names this effect and the standard response?
+      options:
+      - A) Sampling bias; widen the sample
+      - B) Regression to the mean; wait longer
+      - C) Goodhart's law; align the target with the goal
+      - D) Survivorship bias; count only the tickets that closed cleanly
+      answer: C
+    - question: Two months are compared. March had 40 blocked connections over 30 endpoints; June had 60 over
+        60 endpoints. What is the fair comparison?
+      options:
+      - A) Blocked connections per endpoint, which falls to 1.0
+      - B) The raw counts, which show deterioration
+      - C) The difference in calendar days between the months
+      - D) The larger month, because a bigger sample is always better evidence of risk
+      answer: A
+    - question: A metric source misses the sign-in logs of one whole subnet for two days each week. Which data
+        quality property fails first?
+      options:
+      - A) Accuracy
+      - B) Timeliness of delivery
+      - C) Consistency
+      - D) Completeness
+      answer: D
+    - question: Which change best resists gaming of a mean-time-to-close metric?
+      options:
+      - A) Publish the raw mean every month without comment
+      - B) Pair the closure speed with a reopening and quality check on a sample
+      - C) Set the target higher so the team aims further
+      - D) Report the metric less often so gaming is harder to see
+      answer: B
+    - question: A dashboard line shows a single dramatic spike on one day of a five-week trend. What is the
+        first responsible check?
+      options:
+      - A) Announce the spike to the executive immediately
+      - B) Delete the point from the chart as an outlier
+      - C) Extend the chart axis so the spike looks smaller
+      - D) Verify the source's completeness and timeliness for that day before interpreting
+      answer: D
+- ordinal: 3
+  title: From SIEM data to KPI dashboards
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Trace one metric from a raw log source through extraction, aggregation and threshold to a dashboard display
+  - Build a working dashboard element from firewall and sign-in telemetry, including its filters and refresh cadence
+  - Critique a dashboard layout so the first screen answers the executive question without drill-down
+  topics:
+  - "The pipeline from raw event log to KPI: collect, parse, aggregate, display."
+  - "Log sources on a small network: domain controller sign-in events, workstation events and firewall session logs."
+  - "Aggregation windows, counts versus rates, and thresholds that separate normal from notable."
+  - "Dashboard hierarchy: headline figures first, drill-down detail on demand, one owner per element."
+  - "Refresh cadence and retention: matching how often a dashboard updates to how fast the decision moves."
+  lab: >-
+    Lab: On the small-enterprise range, build two dashboard elements from live telemetry, a daily failed
+    sign-in rate for the domain and a daily blocked-connection rate from the firewall, then assemble a
+    one-screen executive view. Evidence: the event or log source each element uses on dc-01, ws-01 or fw-01;
+    the aggregation window and threshold chosen for each; a sketch of the one-screen layout with the headline
+    figures first; one executive question the screen answers without drill-down. Pass: both elements computed
+    from recorded figures; each threshold justified against the range's normal values; the sketch places no
+    more than five figures on the first screen.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box, open the log collection area and record which sources are reachable from it.
+    - hosts: [dc-01, ws-01]
+      action: Count the failed domain sign-ins of the past day across dc-01 and ws-01 and record the figure
+        with its window.
+    - hosts: [fw-01]
+      action: Count the blocked connections for the same window in the fw-01 logs and record the figure beside
+        the sign-in count.
+    - hosts: [jump-box]
+      action: Restate both counts as daily rates, choose a threshold for each against the recorded normal, and
+        note the refresh cadence the decision needs.
+    - hosts: [jump-box]
+      action: Sketch a one-screen layout with headline figures first and write the executive question it answers
+        without drill-down.
+  refs:
+  - nist-sp-800-92
+  - nist-cswp-29
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A KPI counts blocked connections per day. Traffic doubles after a marketing campaign and the
+        KPI rises. What is the fix?
+      options:
+      - A) Raise the alert threshold until it stops firing daily
+      - B) Change to a weekly window
+      - C) Remove the element from the screen
+      - D) Restate as a rate; traffic growth is not risk
+      answer: D
+    - question: Which log source answers the question of how many failed sign-ins the domain saw yesterday?
+      options:
+      - A) Firewall session logs
+      - B) The domain controller's security event log
+      - C) Workstation application logs from a single host
+      - D) The dashboard's cached figures
+      answer: B
+    - question: An executive must grasp security posture in one glance. Which dashboard design serves this?
+      options:
+      - A) Three headline figures with thresholds and a drill-down path for each
+      - B) Twenty charts arranged on a single screen
+      - C) A live stream of raw events
+      - D) A single table listing every log source
+      answer: A
+    - question: A threshold set exactly at the observed average causes an alert every day. Where should it sit?
+      options:
+      - A) Exactly at the observed weekly average
+      - B) At zero, so nothing is ever missed
+      - C) Above the normal band, at the action point
+      - D) At the highest value ever recorded
+      answer: C
+    - question: A firewall element refreshes hourly, but the firewall pushes its logs only once a day. What is
+        wrong and what is the remedy?
+      options:
+      - A) The cadence exceeds the feed; align refresh to delivery
+      - B) The threshold sits below the recorded normal band and must be raised
+      - C) The aggregation window is too long and must be shortened
+      - D) The element lacks a drill-down path to the raw events
+      answer: A
+- ordinal: 4
+  title: Briefing executives under time pressure
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Deliver a security briefing that opens with the decision requested, not the technical narrative
+  - Condense a technical incident summary into a five-sentence executive brief with an explicit ask
+  - State confidence and uncertainty in plain terms so an executive can weigh a decision honestly
+  topics:
+  - "The one-page brief: decision requested first, evidence second, options and recommendation last."
+  - "Time-boxed versions: the thirty-second headline, the five-minute brief and the written follow-up."
+  - "Translating technical findings into business impact: money, downtime, reputation and legal exposure."
+  - "Expressing confidence honestly: what is known, what is estimated and what is unknown."
+  - "Anticipating executive questions and preparing the appendix before the meeting starts."
+  lab: >-
+    Lab: On the small-enterprise range, gather the week's figures from the firewall and the domain logs, then
+    produce and deliver a five-minute executive brief for the scenario your instructor assigns. Evidence: the
+    thirty-second headline with the decision requested; the five-sentence brief with one figure from fw-01 and
+    one from dc-01 or ws-01, each translated into business impact; the confidence level attached to each
+    figure; two anticipated executive questions with prepared answers. Pass: the headline asks for one
+    decision in one sentence; every figure names its confidence; each prepared answer stays within the
+    recorded evidence.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box and read the briefing scenario note the instructor assigned.
+    - hosts: [fw-01]
+      action: Take the week's blocked-connection figure and its normal band from the fw-01 logs.
+    - hosts: [dc-01, ws-01]
+      action: Take the week's failed sign-in figure and its normal band from the logs on dc-01 and ws-01.
+    - hosts: [jump-box]
+      action: Write the thirty-second headline, the five-sentence brief and the confidence level for each
+        figure.
+    - hosts: [jump-box]
+      action: Prepare answers to the two executive questions the instructor names and deliver the brief aloud
+        against the clock.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: An executive stops you sixty seconds into a ten-minute brief. What should the opening have
+        already done?
+      options:
+      - A) Stated the decision requested and the single figure that drives it
+      - B) Recounted the full timeline of the incident
+      - C) Defined every technical term used so far
+      - D) Summarised last quarter's report
+      answer: A
+    - question: A scan found a critical vulnerability on one internal server. Which phrasing is honest about
+        confidence?
+      options:
+      - A) Breach through this server is certain within days
+      - B) Nothing about this server needs attention yet
+      - C) The loss exposure is exactly eight million dollars
+      - D) An attacker with network access could exploit the flaw; no attempts are recorded so far
+      answer: D
+    - question: The five-minute brief ends and the executive asks for something in writing. What is the right
+        follow-up artefact?
+      options:
+      - A) The full technical timeline of the incident
+      - B) The raw log extracts behind the figures
+      - C) The one-page brief with options and the recommendation
+      - D) A transcript of the whole meeting
+      answer: C
+    - question: "Translate for the brief: monitoring covers nine in ten endpoints, and a gap sits on the
+        warehouse subnet. Which sentence fits?"
+      options:
+      - A) Monitoring is excellent across the estate
+      - B) Nine in ten endpoints are covered; the warehouse subnet is not
+      - C) The warehouse team declines to cooperate
+      - D) Coverage is a technical detail for the appendix, not the opening headline
+      answer: B
+    - question: Which preparation most reduces the risk of a briefing failing under questioning?
+      options:
+      - A) Memorising the exact log lines from every day of the week
+      - B) Bringing the whole technical team into the room
+      - C) An appendix with the evidence behind each figure
+      - D) A longer slide deck with more charts
+      answer: C
+- ordinal: 5
+  title: Budget cases and risk appetite statements
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Draft a risk appetite statement with per-domain limits an executive can approve and later enforce
+  - Build a budget case that compares the annual cost of a control against the loss exposure it reduces
+  - Rank competing control proposals by risk reduction per dollar and defend the ranking to a budget owner
+  topics:
+  - "Risk appetite, tolerance and capacity: what each governs and who signs the statement."
+  - "Writing an appetite statement: domains, limits, exceptions and the review cadence."
+  - "Expressing loss exposure: likelihood, impact ranges and annualised figures with stated assumptions."
+  - "The budget case: cost of the control, residual risk after it, and the option of accepting the risk."
+  - "Ranking proposals by risk reduction per dollar and presenting the deferred items honestly."
+  lab: >-
+    Lab: On the small-enterprise range, size the exposure behind one control proposal and defend it in a
+    one-page budget case with a draft risk appetite line. Evidence: the exposure figure built from the
+    range's recorded figures, such as failed sign-ins on dc-01 and blocked connections on fw-01, with every
+    assumption listed; the annual cost of the proposed control; the residual risk after it; a draft appetite
+    line for one domain with a numeric limit; the proposal ranked against one alternative the instructor
+    supplies. Pass: every assumption is stated, not hidden; the appetite line names a domain, a limit and an
+    owner; the ranking shows the reduction per dollar for both proposals.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box and read the control proposal the instructor assigned.
+    - hosts: [dc-01, ws-01]
+      action: Take the recorded failed sign-in figures for the domain from the logs on dc-01 and ws-01.
+    - hosts: [fw-01]
+      action: Take the recorded blocked-connection figures and their normal band from the fw-01 logs.
+    - hosts: [jump-box]
+      action: Build the exposure figure from these records, list every assumption, and compute the residual
+        risk and the reduction per dollar against the proposal's cost.
+    - hosts: [jump-box]
+      action: Draft the one-page budget case with the appetite line and rank the proposal against the
+        instructor's alternative.
+  refs:
+  - nist-sp-800-30r1
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A draft statement declares security risk unacceptable in every domain. Why does this fail as a
+        risk appetite statement?
+      options:
+      - A) It is too short to be official
+      - B) It names no limits an owner could enforce or exceed
+      - C) It lacks a legal review
+      - D) Its tone is negative where an appetite should state what risk is wanted
+      answer: B
+    - question: Which pairing of the three terms is correct?
+      options:
+      - A) Appetite is set per project; tolerance is company-wide
+      - B) Tolerance is written by auditors; appetite by regulators
+      - C) Capacity is what the insurer allows; appetite is what the board fears
+      - D) Appetite is the risk the organisation seeks; tolerance is the deviation around it
+      answer: D
+    - question: A control costs sixty thousand a year against an annualised loss exposure of fifty thousand.
+        What is the honest budget conclusion?
+      options:
+      - A) Accept the risk or find a cheaper control; the case as it stands fails
+      - B) Approve the control anyway, because the exposure is plainly unacceptable
+      - C) Recompute the exposure until it exceeds the cost
+      - D) Split the cost across quarters and approve
+      answer: A
+    - question: Proposal one cuts exposure by forty thousand for ten thousand; proposal two cuts eighty
+        thousand for sixty thousand. Which ranks first by reduction per dollar?
+      options:
+      - A) The second proposal, because it removes the larger absolute risk
+      - B) The first proposal, because its total cost is the smaller outlay
+      - "C) The first proposal: four dollars of reduction per dollar against about one point three"
+      - D) Neither ranks; the comparison needs a risk workshop first
+      answer: C
+    - question: An executive asks what happens if the budget case is refused. Which element answers, and what
+        must it show?
+      options:
+      - A) The timeline slide, showing when the exposure becomes a likely breach event
+      - B) The accept option, showing the residual risk carried knowingly
+      - C) The appendix, showing the raw evidence behind every figure
+      - D) The benchmark, showing what comparable organisations spend on security
+      answer: B
+- ordinal: 6
+  title: Running the metrics programme
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Run a quarterly metric review that retires stale measures and adds ones new decisions need
+  - Fold lessons from an incident into the metric set and the risk appetite statement within one cycle
+  - Prove a metrics programme's value to an executive with a before-and-after account of decisions it changed
+  topics:
+  - "The operating cadence: weekly data checks, monthly reviews and the quarterly portfolio review."
+  - "Retiring metrics: when a measure stops informing decisions and how to retire it cleanly."
+  - "Incident follow-through: turning findings into new metrics, thresholds or appetite changes."
+  - "Keeping the appetite statement current as the organisation and its risk change."
+  - "Demonstrating programme value: decisions changed, risk retired and cost avoided, not charts produced."
+  lab: >-
+    Lab: On the small-enterprise range, run a capstone review of the metric set built across this course and
+    close the programme loop. Evidence: the quarterly review verdict for each metric built in earlier
+    modules, from the fw-01 blocked-connection rate to the sign-in measures from dc-01 and ws-01, marked
+    keep, rework or retire with a reason; one incident scenario the instructor supplies, folded into a
+    proposed new metric or threshold; the one change each verdict produced in the course's risk appetite
+    line; a before-and-after account of one decision the programme changed. Pass: every metric receives a
+    verdict with a reason; the new metric names a source, a threshold and an owner; the account names the
+    decision and the figure that changed it.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box, open the metric register built across the course and record today's date as
+        the review date.
+    - hosts: [fw-01]
+      action: Pull the current blocked-connection figures from the fw-01 logs and check them against the
+        threshold recorded earlier.
+    - hosts: [dc-01, ws-01]
+      action: Pull the current failed sign-in figures from dc-01 and ws-01 and check them the same way.
+    - hosts: [jump-box]
+      action: Give each metric a keep, rework or retire verdict with a reason, and fold the instructor's
+        incident into a proposed new metric or threshold change.
+    - hosts: [jump-box]
+      action: Write the one appetite-line change the review produced and the before-and-after account of one
+        decision the programme changed.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A metric has reported the same comfortable value for six quarters and no decision has ever
+        referenced it. What does the quarterly review conclude?
+      options:
+      - A) Keep it, because six quarters of consistency prove the control works
+      - B) Promote it to the headline of the dashboard
+      - C) Retire it, because a measure no decision uses is dead weight
+      - D) Widen its threshold so it moves more
+      answer: C
+    - question: An incident showed nobody noticed a brute-force pattern for nine days. What is the
+        follow-through into the metric set?
+      options:
+      - A) Discipline the monitoring team for the delay
+      - B) Add a detection-latency metric with a threshold
+      - C) Close the incident, note the lesson and return to normal work
+      - D) Raise the appetite for detection risk
+      answer: B
+    - question: The organisation adds fifty remote staff. Which review action follows for the appetite
+        statement?
+      options:
+      - A) None, because statements are reviewed only annually
+      - B) Reissue it with doubled limits
+      - C) Delete the remote-work domain from it
+      - D) Review the affected domains' limits against the new exposure and record the change
+      answer: D
+    - question: What proves a metrics programme's value to a sceptical executive?
+      options:
+      - A) A named decision the data changed and its outcome
+      - B) The number of dashboards the programme delivered this year
+      - C) The volume of telemetry the programme collects daily
+      - D) The chart count the reviews have produced
+      answer: A
+    - question: The cadence is data checks weekly, executive review monthly, portfolio review quarterly. Why
+        three cadences?
+      options:
+      - A) Three committees distribute the blame fairly
+      - B) Weekly checks are a legal requirement
+      - C) Monthly reviews replace the need for data quality work
+      - "D) Each decision's speed differs: data drifts fast, portfolios move slowly"
+      answer: D
