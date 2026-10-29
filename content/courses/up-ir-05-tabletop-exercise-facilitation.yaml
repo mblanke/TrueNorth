@@ -1,0 +1,559 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C535
+title: Tabletop Exercise Facilitation
+version: '1.0'
+difficulty: advanced
+duration_hours: 6
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C534
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Incident Responder (PR-CIR-001); Cyber Workforce Developer
+    and Manager.'
+  - 'NIST CSF 2.0: ID.IM, RS.MA, GV.OV.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+
+modules:
+- ordinal: 1
+  title: Scenario design and inject pacing
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design scenario injects that lead discussion toward stated exercise objectives
+  - Sequence inject delivery times so every objective receives adequate discussion time
+  - Ground each inject in facts the target environment can actually show
+  topics:
+  - Exercise objectives, scope and the scenario premise that frames them.
+  - 'The anatomy of an inject: trigger, delivery time, situation text and discussion prompts.'
+  - Inject pacing, decision points and the master scenario events list.
+  - Sourcing inject facts from the target environment so the scenario stays plausible.
+  - Sequencing injects across the discussion window without crowding the debrief.
+  lab: >-
+    Lab: On the small-enterprise range, design three injects for a tabletop that tests whether
+    analysts escalate a suspected ransomware case in time. Evidence: the networks and services
+    each allow rule on fw-01 permits; the domain password policy values read from dc-01; three
+    injects, each with a delivery time, situation text and one discussion prompt grounded in a
+    recorded fact; the decision point each inject creates. Pass: all three injects state a
+    delivery time and one prompt; every prompt cites a fact the range actually shows; the
+    injects are sequenced across the discussion window with no two firing together.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the start time that anchors
+        the inject timeline.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, list the rules on fw-01 in order and record the networks and services
+        each allow rule permits.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, query dc-01 for the domain password policy and record the minimum
+        length and lockout threshold.
+    - hosts: [jump-box]
+      action: Write three injects for the tabletop, each with a delivery time, situation text and
+        one discussion prompt grounded in a recorded fact.
+    - hosts: [jump-box]
+      action: Sequence the injects across the discussion window, mark the decision point each one
+        creates and record the time left for discussion after each.
+  refs:
+  - nist-sp-800-30r1
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A tabletop objective is to test whether analysts escalate a suspected ransomware case
+        within 15 minutes. Which inject best serves that objective?
+      options:
+      - A) A reminder that ransomware exists in many variants
+      - B) A ticket queue screenshot twelve minutes into the incident, escalation pending
+      - C) A lecture on the organisation's escalation policy
+      - D) A list of last year's incident statistics
+      answer: B
+    - question: Three injects all fire in the first five minutes of a 60 minute tabletop, and discussion
+        never gets past the first one. What pacing error is this?
+      options:
+      - A) Injects too few
+      - B) Decision points missing
+      - C) Inject volume front-loaded, leaving no time to discuss later objectives
+      - D) Timeboxes too long
+      answer: C
+    - question: An inject states that the domain controller accepted 400 failed sign-ins in one hour.
+        Before the exercise, where should the facilitator confirm such a fact is plausible?
+      options:
+      - A) In the target environment the scenario describes, such as its logs
+      - B) In a news article about similar attacks
+      - C) In the exercise budget
+      - D) In participant feedback from a prior year
+      answer: A
+    - question: A facilitator reorders injects mid-exercise because discussion overran its timebox.
+        Which record must be updated so the timeline stays true?
+      options:
+      - A) The exercise budget
+      - B) The participant roster, with attendance marks for the record
+      - C) The catering plan
+      - D) The master scenario events list, with new delivery times
+      answer: D
+    - question: An inject ends with the question 'What do you do now?' instead of a concrete situation.
+        What is wrong with it?
+      options:
+      - A) Questions are never allowed in injects
+      - B) It lacks the situation facts participants need to decide
+      - C) It is too short to read aloud
+      - D) It reveals the scenario ending too early and spoils the decision
+      answer: B
+- ordinal: 2
+  title: Facilitation techniques
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - State ground rules and timeboxes that set participant expectations before the first inject
+  - Select facilitation techniques that keep discussion on the current inject and its objective
+  - Rebalance a discussion that stalls, is dominated by one voice or drifts off timeline
+  topics:
+  - Facilitator neutrality and the duty to keep discussion on the objectives.
+  - Ground rules, timeboxes and announcing the exercise clock to participants.
+  - Open-ended prompts, probes and the deliberate pause.
+  - Restarting a stalled discussion and handling a single dominant voice.
+  - Parking off-topic items on a visible list with a promised follow-up.
+  lab: >-
+    Lab: On the small-enterprise range, prepare the facilitation aids for a tabletop built on the
+    ransomware-lite scenario. Evidence: five ground rules; a timebox plan for a 30 minute
+    discussion; three open-ended prompts for the assigned inject, each tied to a fact read from
+    dc-01; the technique chosen for a stalled discussion and for one dominant voice. Pass: each
+    prompt is open-ended and cites a recorded fact; the timebox plan covers the full discussion;
+    a named technique is recorded for both the stall and the dominant voice.
+  lab_range:
+    template: small-enterprise
+    scenario: ransomware-lite
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the start time that anchors
+        the timebox plan.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, query dc-01 for the domain password policy and record the values an
+        inject about repeated sign-in failures would depend on.
+    - hosts: [jump-box]
+      action: Write five ground rules and a timebox plan that fills a 30 minute discussion window.
+    - hosts: [jump-box]
+      action: Write three open-ended prompts for the ransomware-lite inject the instructor assigned,
+        each tied to one recorded fact.
+    - hosts: [jump-box]
+      action: Record the technique that restarts a stalled discussion and the technique for a single
+        dominant voice, and note when each would be used.
+  refs:
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: During a tabletop, one participant answers every prompt first and the others stop
+        contributing. Which facilitation technique fits best?
+      options:
+      - A) Close the discussion there and move the group to the next inject
+      - B) Repeat each prompt louder
+      - C) Redirect prompts to named participants who have not spoken yet
+      - D) Extend the timebox until others volunteer
+      answer: C
+    - question: Ten minutes before the first inject of a tabletop, what should participants hear from
+        the facilitator?
+      options:
+      - A) Ground rules, timeboxes and the objective of the exercise
+      - B) The full after-action report
+      - C) The corrective action list
+      - D) The names of last year's attendees
+      answer: A
+    - question: Discussion stops 30 seconds after an inject is read aloud. What is the best first
+        facilitation move?
+      options:
+      - A) Skip to the next inject
+      - B) Rephrase the prompt as an open question to one participant
+      - C) Cancel the exercise clock
+      - D) Read the scenario ending aloud
+      answer: B
+    - question: A heated debate about firewall vendors is off topic, but it may matter later in the
+        exercise. Where does the facilitator park it?
+      options:
+      - A) In the exercise clock, since time is the real constraint
+      - B) In the quiz
+      - C) In the scenario premise
+      - D) In a visible parking list with a promised follow-up
+      answer: D
+    - question: A participant asks the facilitator whether their containment idea is right. Which
+        response preserves facilitator neutrality?
+      options:
+      - A) 'What would that containment step require, and which objective does it serve?'
+      - B) 'Yes, that is the correct answer.'
+      - C) 'No, the scenario rules forbid it.'
+      - D) 'The design team will decide after the exercise.'
+      answer: A
+- ordinal: 3
+  title: Capturing observations that stick
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Record observations with a timestamp, a source and the exact fact observed
+  - Distinguish an observation of what happened from an opinion about why it happened
+  - Convert raw observations into gap statements an after-action report can carry
+  topics:
+  - 'The observation log format: timestamp, source, exact fact and recorder.'
+  - Fact versus interpretation in a captured observation.
+  - Anchoring each observation to the exercise objective it affects.
+  - Strengths and gaps in the same log, with evidence for each.
+  - Sharpening vague wording into a gap statement an analyst can act on.
+  lab: >-
+    Lab: On the small-enterprise range, capture a scribe log during a short walkthrough and turn
+    its raw lines into gap statements. Evidence: the count and names of the allow rules read from
+    fw-01, with a timestamp and source on each line; the exact outcome and time of one sign-in
+    attempt from ws-01; each line marked fact or interpretation; two gap statements naming the
+    objective each affects. Pass: every line carries a timestamp and a source; no interpretation
+    is left unmarked; each gap statement cites the evidence line that supports it.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open the observation log the instructor supplied and
+        record the walkthrough start time.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, list the allow rules on fw-01 and record the count and each rule name
+        as log lines with a timestamp and source.
+    - hosts: [ws-01, dc-01]
+      action: From ws-01, attempt one sign-in to dc-01 with the standard account the instructor
+        assigned and record the exact outcome and its time.
+    - hosts: [jump-box]
+      action: Mark each logged line as fact or interpretation and rewrite every interpretation as
+        the observed fact that supports it.
+    - hosts: [jump-box]
+      action: Convert two observations into gap statements, each naming the objective it affects
+        and the evidence line behind it.
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A scribe records lines during a tabletop walkthrough. Which line belongs in an
+        observation log?
+      options:
+      - A) 'Security was clearly poor.'
+      - B) 'Everyone panicked during the first hour and the escalation never really recovered.'
+      - C) 'The team failed.'
+      - D) 'At 10:14, the firewall rule count was read from fw-01.'
+      answer: D
+    - question: 'The responders seemed confused about who owned the decision. How should this line be
+        recorded in the observation log?'
+      options:
+      - A) As a fact about ownership
+      - B) As an interpretation, rewritten once the observed fact is named
+      - C) As a strength
+      - D) As a corrective action
+      answer: B
+    - question: A scribe writes 'communication was bad' in the observation log during a tabletop.
+        What is missing from this observation?
+      options:
+      - A) A longer sentence
+      - B) An apology
+      - C) A timestamp, a source and the exact fact
+      - D) The scribe's opinion of the cause
+      answer: C
+    - question: Participants restored the file share from backup within the recovery target. How is
+        this recorded?
+      options:
+      - A) As a strength, with the time and the target it met
+      - B) As a gap, because every backup restore is assumed to fail eventually
+      - C) As an interpretation
+      - D) As an off-topic item
+      answer: A
+    - question: An observation in the log names no source. Why does that weaken the after-action
+        report?
+      options:
+      - A) Sources cost money
+      - B) Reports need long footnotes
+      - C) Sources make reports longer
+      - D) The finding cannot be verified or traced later
+      answer: D
+- ordinal: 4
+  title: After-action report structure
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Structure an after-action report around exercise objectives and their outcomes
+  - Write an analysis section that links each observation to an outcome and an evidence line
+  - Classify each finding as a strength or an area for improvement with a reason
+  topics:
+  - After-action report sections and what each must contain.
+  - Objective-by-objective outcome statements marked met, partly met or not met.
+  - Linking observations, analysis paragraphs and evidence lines.
+  - Classifying findings as strengths or areas for improvement with reasons.
+  - What a reviewer checks first in a draft after-action report.
+  lab: >-
+    Lab: On the small-enterprise range, draft the outcome statements and analysis of an
+    after-action report from the observations captured in module 3. Evidence: one outcome
+    statement per objective, marked met, partly met or not met; one analysis paragraph per
+    observation linking it to its evidence line and objective; each finding classified as a
+    strength or an area for improvement with a one sentence reason. Pass: every objective has
+    an outcome statement; every analysis paragraph names its evidence line; every finding
+    carries its classification and reason.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and open the observation log captured in the earlier
+        module.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, confirm the fw-01 rule count recorded earlier and note any difference
+        as a new observation with its source.
+    - hosts: [jump-box]
+      action: Write one outcome statement per exercise objective, each marked met, partly met or
+        not met.
+    - hosts: [jump-box]
+      action: Write one analysis paragraph per observation, linking the observation, its evidence
+        line and the objective it affects.
+    - hosts: [jump-box]
+      action: Classify each finding as a strength or an area for improvement and record a one
+        sentence reason for each.
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: An exercise had three objectives; two were met and one was not. How should the
+        after-action report open its analysis?
+      options:
+      - A) One outcome statement per objective, marked met or not met with evidence
+      - B) A single paragraph praising the participants and thanking each one by name
+      - C) The next exercise's scenario
+      - D) The participant roster
+      answer: A
+    - question: An exercise found that escalation worked well but the on-call roster was stale. How
+        are these recorded in the report?
+      options:
+      - A) Both as gaps, because something always fails
+      - B) Both as strengths, because the exercise ran
+      - C) Escalation as a strength, the stale roster as an area for improvement
+      - D) Neither, unless a regulator asks
+      answer: C
+    - question: An analysis paragraph states 'the response was chaotic.' What must be added before it
+        enters the report?
+      options:
+      - A) More adjectives, so the chaos becomes vivid for readers of the draft
+      - B) The facilitator's apology
+      - C) A budget estimate
+      - D) The specific observation and evidence line behind the judgement
+      answer: D
+    - question: A draft report lists findings but names no objective for any of them. What does a
+        reviewer conclude?
+      options:
+      - A) The exercise exceeded its objectives
+      - B) The report cannot show whether the objectives were tested
+      - C) The objectives were all met
+      - D) The findings are all strengths
+      answer: B
+    - question: One observed behaviour met the stated recovery target; another succeeded by luck. What
+        marks a finding as a strength rather than luck?
+      options:
+      - A) Evidence that the observed behaviour met the stated target
+      - B) The facilitator's good mood
+      - C) The absence of any incident
+      - D) A participant's thanks
+      answer: A
+- ordinal: 5
+  title: Improvement plans and owned follow-through
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write improvement plan entries with issue, corrective action, owner role and due period
+  - Prioritise corrective actions by the risk they reduce and the effort they need
+  - Assign follow-through checkpoints that confirm each improvement action has closed
+  topics:
+  - From an area for improvement to a complete improvement plan entry.
+  - Corrective actions, owner roles, due periods and resource notes.
+  - Ranking corrective actions by risk reduced and effort required.
+  - Dependencies, retest windows and follow-through checkpoints.
+  - Evidence of closure and carrying validated actions into the next design.
+  lab: >-
+    Lab: On the small-enterprise range, convert the findings of the after-action draft into an
+    improvement plan with owned, trackable actions. Evidence: one improvement plan entry per
+    finding, each with issue, corrective action, owner role, due period and resource note; the
+    fw-01 rule each change would touch; the range check that would confirm the change took
+    effect; the entries ranked by risk and effort. Pass: every entry names an owner role and a
+    due period; the fw-01 entry states the check that shows closure; the ranking gives a reason
+    for the top entry.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and open the findings drafted in the after-action module.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, list the current rules on fw-01 and record which rule each proposed
+        change would touch.
+    - hosts: [jump-box]
+      action: Write one improvement plan entry per finding with issue, corrective action, owner
+        role, due period and resource note.
+    - hosts: [jump-box, fw-01]
+      action: For the entry that changes fw-01, record the range check that would confirm the change
+        took effect.
+    - hosts: [jump-box]
+      action: Rank the entries by risk and effort and record a follow-through checkpoint with the
+        evidence that shows closure for each.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: Four draft entries sit in an improvement plan. Which entry is complete enough to
+        track?
+      options:
+      - A) 'Improve security.'
+      - B) 'The firewall team knows what to do.'
+      - "C) 'Issue: stale roster. Action: review roster. Owner: on-call coordinator. Due: 30
+          days.'"
+      - D) 'Everyone agreed to try harder.'
+      answer: C
+    - question: 'Two corrective actions remain: one closes a recurring sign-in lockout gap, the other
+        repaints the security office. Which ordering principle applies?'
+      options:
+      - A) Alphabetical order, so the list stays stable between reviews
+      - B) The cheapest first
+      - C) The loudest requester first
+      - D) The action that reduces the greater risk first
+      answer: D
+    - question: 'An action says ''someone should review the roster'' and three months pass with no
+        change. What is missing from the entry?'
+      options:
+      - A) A longer description
+      - B) A named owner role and a due period
+      - C) A new exercise
+      - D) More participants
+      answer: B
+    - question: An owner marks their corrective action done. What shows that an improvement action is
+        truly closed?
+      options:
+      - A) Evidence at a checkpoint that the change took effect
+      - B) The owner saying it feels done and promising to watch it
+      - C) Removal from the calendar
+      - D) The exercise budget closing
+      answer: A
+    - question: A corrective action cannot start until a scheduled system upgrade finishes. What must
+        the improvement plan record?
+      options:
+      - A) That the action is cancelled
+      - B) That the owner works faster
+      - C) The dependency and a retest window after the upgrade
+      - D) 'Nothing, actions are independent'
+      answer: C
+- ordinal: 6
+  title: Running the full tabletop cycle
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Plan a complete tabletop session from objectives through the inject timeline to the debrief
+  - Run a timed walkthrough on the small-enterprise range and capture its observations
+  - Produce an after-action extract and improvement plan entries from one facilitated session
+  topics:
+  - 'The full cycle: design, facilitate, capture, report and improve.'
+  - The session run sheet and keeping the exercise clock honest.
+  - One workflow from observation log to after-action extract.
+  - Common failure points across the cycle and their countermeasures.
+  - 'Closing the cycle: validated improvement actions carried into the next design.'
+  lab: >-
+    Lab: On the small-enterprise range, run a complete mini tabletop on the ransomware-lite
+    scenario from opening to after-action extract. Evidence: the session start time and a timed
+    order of segments; the facts the first inject depends on, read from fw-01; the exact outcome
+    and time of the sign-in attempt from ws-01; the observations captured during the session with
+    timestamps and sources; one outcome statement per objective and two improvement plan entries
+    with owner roles. Pass: the run sheet times cover the full session; every observation names
+    its source; the final judgement for each objective cites an evidence line.
+  lab_range:
+    template: small-enterprise
+    scenario: ransomware-lite
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the session start time.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, list the allow rules on fw-01 and record the facts the first inject
+        depends on.
+    - hosts: [ws-01, dc-01]
+      action: From ws-01, attempt the sign-in the inject describes with the standard account the
+        instructor assigned, and record the exact outcome and time.
+    - hosts: [jump-box]
+      action: Keep a 20 minute exercise clock, capture each observation with a timestamp and source
+        and mark the decision point reached.
+    - hosts: [jump-box]
+      action: Write one outcome statement per objective and two improvement plan entries with owner
+        roles and due periods.
+    - hosts: [jump-box]
+      action: State whether each objective was met, with the evidence line that supports each
+        judgement, recorded against its outcome statement.
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A facilitator turns a tabletop plan into a timed schedule for the session. What does a
+        run sheet add?
+      options:
+      - A) Longer injects, so the discussion has more material to work through
+      - B) A timed order of segments from opening to debrief
+      - C) A list of banned questions
+      - D) A second scenario
+      answer: B
+    - question: During a facilitated tabletop session on the small-enterprise range, when should
+        observations be captured?
+      options:
+      - A) As each happens, with a timestamp and source
+      - B) One week later from memory
+      - C) Only at the debrief
+      - D) Only if an objective failed
+      answer: A
+    - question: A session ran on time but the produced report had no evidence lines. Which cycle stage
+        failed?
+      options:
+      - A) Scenario design
+      - B) Inject pacing, which governs how much evidence gets produced
+      - C) Ground rules
+      - D) Observation capture
+      answer: D
+    - question: A debrief ends and the team must judge each exercise objective. What justifies
+        declaring an objective met?
+      options:
+      - A) The facilitator's impression
+      - B) The number of injects read
+      - C) An outcome statement backed by recorded evidence
+      - D) The participants' applause
+      answer: C
+    - question: An organisation repeats the same tabletop every year and finds the same gaps each
+        time. Which cycle stage is being skipped?
+      options:
+      - A) The debrief
+      - B) The follow-through of improvement plan actions into the next design
+      - C) The ground rules
+      - D) The exercise clock
+      answer: B
