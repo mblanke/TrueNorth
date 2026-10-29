@@ -1,0 +1,538 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C512
+title: Federated Identity & B2B Access Design
+version: '1.0'
+difficulty: advanced
+duration_hours: 6
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C509
+- C510
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Systems Security Analyst.'
+  - 'NIST CSF 2.0: PR.AA, PR.DS, GV.SC.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: SAML vs OIDC Federation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish a SAML assertion from an OIDC ID token by format, transport and consumer
+  - Select SAML or OIDC federation for a stated partner scenario and justify the choice
+  - Identify the identity provider, service provider and relying party roles in a described federation
+  topics:
+  - Federation roles, identity provider, service provider and relying party.
+  - SAML 2.0 assertions, XML signatures and browser POST bindings.
+  - OIDC ID tokens as signed JSON web tokens over an authorisation code flow.
+  - Choosing SAML or OIDC by scenario, enterprise single sign-on against web and mobile.
+  - Where federation trust ends and local directory accounts begin.
+  lab: >-
+    Lab: On the greyspace-internet range, gather the evidence a federated sign-in leaves in the browser
+    and the resolver, and judge whether the webmail sign-in is federated or served from local accounts.
+    Evidence: the sign-in host the browser redirects to; one parameter of the redirect that identifies
+    the protocol; the certificate issuer the browser reports for the webmail site and for the sign-in
+    host; the address the resolver returns for the sign-in host. Pass: all four items recorded as the
+    range shows them; the observed sign-in marked federated or local with a one-sentence reason; one
+    further check named that would confirm the mark.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01, open the browser and record the start time in the lab notes.
+    - hosts: [ws01]
+      action: Browse to the greyspace webmail site and record the sign-in host the browser redirects to.
+    - hosts: [ws01]
+      action: Record one parameter of the redirect that identifies the protocol, such as a request message
+        or the response type being requested.
+    - hosts: [ws01]
+      action: Record the certificate issuer the browser reports for the webmail site and for the sign-in host.
+    - hosts: [ws01, edge01]
+      action: Query the greyspace resolver through edge01 for the sign-in host name and record the address
+        returned.
+    - hosts: [ws01]
+      action: Mark the observed sign-in federated or local with a one-sentence reason, and name one further
+        check that would confirm the mark.
+  source_gaps:
+  - The OASIS SAML 2.0 specification and the OpenID Connect Core specification are not in the reference
+    library.
+  refs:
+  - nist-sp-800-63-4
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A partner web portal accepts a signed XML document from your identity provider to sign a user
+        in. Which federation technology is the portal using?
+      options:
+      - A) OIDC with a JSON web token
+      - B) SAML with an assertion
+      - C) An IPsec tunnel to the partner
+      - D) Local directory accounts
+      answer: B
+    - question: A mobile application needs to sign users in against an API that expects short-lived signed
+        JSON tokens. Which federation choice fits best?
+      options:
+      - A) SAML with a browser POST binding
+      - B) Kerberos tickets from the domain
+      - C) OIDC ID tokens over an authorisation code flow
+      - D) A shared service account
+      answer: C
+    - question: In a federation, the party that issues the signed statement about a user is best called the
+        relying party or which other role?
+      options:
+      - A) The service provider
+      - B) The resource owner
+      - C) The policy enforcement point
+      - D) The identity provider
+      answer: D
+    - question: A university federates sign-in with a cloud e-learning platform, so students sign in on the
+        university page and reach the platform already signed in. Which role does the university sign-in
+        service play?
+      options:
+      - A) Identity provider
+      - B) Service provider
+      - C) Resource server
+      - D) Policy enforcement point
+      answer: A
+    - question: A company intranet still checks passwords against its own directory on every sign-in. In
+        federation vocabulary, what has the company not yet adopted?
+      options:
+      - A) Multi-factor authentication
+      - B) Federation with an external identity provider
+      - C) Password hashing at rest
+      - D) Network segmentation
+      answer: B
+- ordinal: 2
+  title: Federation Flows, Tokens and Assertions
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Trace the redirect steps of a federated sign-in and record what each party sends and receives
+  - Classify the entries in a federation token as identity, session or authorisation evidence
+  - Detect a replay-prone federation flow from the parameters exchanged during sign-in
+  topics:
+  - The OIDC authorisation code flow step by step, from redirect to token exchange.
+  - SAML POST and redirect bindings and what the browser carries in each.
+  - Claims, scopes and what each party is entitled to read.
+  - State, nonce and single-use protections against replay.
+  - Reading a redirect chain as evidence of the protocol in use.
+  lab: >-
+    Lab: On the greyspace-internet range, trace a full sign-in flow hop by hop in the browser and judge
+    the replay protections the flow carried. Evidence: each redirect hop in order; the parameter that
+    carries the sign-in result back to the relying party and its format; whether a state or nonce value
+    was present; the protocol the flow used, named with the hop that proves it. Pass: the hops recorded
+    in order; the protocol named correctly; each missing single-use protection marked with its risk in
+    one sentence.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01, open the browser developer tools and clear the network record.
+    - hosts: [ws01]
+      action: Sign in to the greyspace webmail site and record each redirect hop in order, as the developer
+        tools show it.
+    - hosts: [ws01]
+      action: Record the parameter that carries the sign-in result back to the relying party, and its format.
+    - hosts: [ws01]
+      action: Record whether the flow carried a state or nonce value, and any single-use marker visible.
+    - hosts: [ws01]
+      action: Name the protocol the flow used with the hop that proves it, and mark each missing replay
+        protection with its risk in one sentence.
+  source_gaps:
+  - The OpenID Connect Core specification and the OASIS SAML 2.0 bindings specification are not in the
+    reference library.
+  refs:
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A browser is redirected to the identity provider, the user signs in, and the application
+        receives a code it exchanges for tokens. Which flow is this?
+      options:
+      - A) A SAML POST binding
+      - B) The implicit flow
+      - C) The authorisation code flow
+      - D) A resource owner password flow
+      answer: C
+    - question: During a federated sign-in, the application receives a signed token listing the user name,
+        e-mail address and group memberships. These entries are best called what?
+      options:
+      - A) Claims
+      - B) Cookies
+      - C) Routes
+      - D) Bindings
+      answer: A
+    - question: An application starts a federated sign-in by sending a random value to the identity provider
+        and checks the same value on the way back. Which protection is this?
+      options:
+      - A) Certificate pinning
+      - B) A nonce against replay
+      - C) A TLS handshake
+      - D) A password hash
+      answer: B
+    - question: Which SAML binding carries the assertion to the service provider inside the user browser as
+        an automatic form post?
+      options:
+      - A) The SOAP binding
+      - B) The artifact binding
+      - C) A reverse proxy hand-off
+      - D) The POST binding
+      answer: D
+    - question: A sign-in redirect back to the application carries no value that ties the response to the
+        request that started it. Which replay protection is missing?
+      options:
+      - A) Transport encryption
+      - B) Certificate validation
+      - C) A state parameter
+      - D) A longer session
+      answer: C
+- ordinal: 3
+  title: B2B Guest and Partner Access Models
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish guest, partner and business-to-business federation access models by trust and account ownership
+  - Design least-privilege access for an external partner role against a stated resource policy
+  - Identify over-broad grants held by external accounts in a directory listing
+  topics:
+  - Guest, partner and business-to-business federation models compared.
+  - Invited guest accounts against federated partner identities.
+  - Least privilege for external roles and scoped resource policies.
+  - Directory evidence of over-broad external grants.
+  lab: >-
+    Lab: On the greyspace-internet range, find which accounts from outside the office hold access inside
+    it and judge each grant against the partner access policy the instructor supplies. Evidence: every
+    external or guest account in the directory with its last sign-in date; the groups that grant access
+    to the partner share on dc01 and their members; what the assigned guest account can open from ws02.
+    Pass: each recorded grant marked in policy or over-broad with a one-sentence reason; one change
+    proposed for every grant marked over-broad.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01, dc01]
+      action: From ws01, open an administrative session on dc01 and list the domain accounts, recording each
+        external or guest account with its description and last sign-in date.
+    - hosts: [dc01]
+      action: Record the groups that grant access to the partner share on dc01 and the members of each group.
+    - hosts: [ws02]
+      action: From ws02, sign in as the guest account the instructor assigned and record which shares and
+        sites it can open.
+    - hosts: [dc01]
+      action: Record whether the directory applies a separate password or sign-in policy to external accounts,
+        and what it requires.
+    - hosts: [ws01]
+      action: Mark each recorded grant in policy or over-broad against the partner access policy, with one
+        sentence of reason.
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A supplier staff sign in to your application using their own company identity provider across
+        a federation trust you established. Which access model is this?
+      options:
+      - A) Local guest accounts
+      - B) Shared service accounts
+      - C) Anonymous access
+      - D) Federated partner access
+      answer: D
+    - question: A contractor is given an account inside your own directory that expires when the engagement
+        ends. Which access model is this?
+      options:
+      - A) An invited guest account
+      - B) A federated partner identity
+      - C) A service principal
+      - D) Anonymous access
+      answer: A
+    - question: An external account holds access to every folder in a document library when the contract
+        covers one project folder. Which principle does this violate?
+      options:
+      - A) Defence in depth
+      - B) Least privilege
+      - C) Availability
+      - D) Accountability
+      answer: B
+    - question: What must a relying party hold before it can accept an assertion about a partner user?
+      options:
+      - A) The partner user password
+      - B) A copy of the partner directory
+      - C) The partner identity provider signing certificate
+      - D) The partner user home address
+      answer: C
+    - question: Two partners need different folders in the same application. Which design keeps their access
+        separated with least privilege?
+      options:
+      - A) One federated role per partner, scoped to its folder
+      - B) A single shared guest account per folder
+      - C) One global administrator group
+      - D) The same role for every partner
+      answer: A
+- ordinal: 4
+  title: Partner Identity Lifecycle and Offboarding
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Enumerate the lifecycle stages of an external account from invitation to revocation
+  - Detect stale external accounts from sign-in history and group membership evidence
+  - Select the control that removes partner access fastest when a federation trust ends
+  topics:
+  - Invitation, onboarding, change and revocation for external accounts.
+  - Last sign-in date and group membership as staleness evidence.
+  - Entitlement reviews for partner access.
+  - Ending a federation trust, disable before deleting accounts.
+  - Orphaned external accounts and the access they keep.
+  lab: >-
+    Lab: On the greyspace-internet range, review the external accounts for staleness and write a
+    revocation plan for the account the instructor names. Evidence: every external account with its
+    created date and last sign-in date; every group membership of the named account and the access it
+    still holds; the proposed revocation order. Pass: each stale account marked with the evidence
+    that shows it; the revocation steps in order with one reason each; the single action that removes
+    the partner access fastest identified.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01, dc01]
+      action: From ws01, open an administrative session on dc01 and list every external account with its
+        created date and last sign-in date.
+    - hosts: [dc01]
+      action: Record every group membership of the stale external account the instructor names.
+    - hosts: [dc01]
+      action: Record whether that account is disabled, active or expired, and what access it still holds.
+    - hosts: [ws01]
+      action: Propose the revocation order for that account, recording which group removals, disable action
+        and deletion come first and a reason for each.
+    - hosts: [ws01]
+      action: Mark the single action that removes the partner access fastest, with one sentence of reason.
+  refs:
+  - nist-sp-800-207
+  - nist-cswp-29
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A new partner user is added to your guest directory today. Which lifecycle stage comes first?
+      options:
+      - A) Revocation
+      - B) Invitation
+      - C) Entitlement review
+      - D) Deletion
+      answer: B
+    - question: An external account has no sign-in for eight months but still belongs to the partner folder
+        group. What is this?
+      options:
+      - A) A break-glass account
+      - B) A disabled account
+      - C) A normal partner user
+      - D) An orphaned account that still holds access
+      answer: D
+    - question: A partnership ends tomorrow. Which action removes the partner federated access fastest?
+      options:
+      - A) Waiting for the accounts to expire
+      - B) E-mailing each partner user
+      - C) Disabling the federation trust
+      - D) Resetting your own staff passwords
+      answer: C
+    - question: Which evidence best shows that an external account is stale?
+      options:
+      - A) The date of its last successful sign-in
+      - B) Its display name
+      - C) Its e-mail domain
+      - D) The time zone of its creation
+      answer: A
+    - question: Each quarter, managers confirm that every partner user still needs access, and unconfirmed
+        access is removed. Which control is this?
+      options:
+      - A) Password rotation
+      - B) An entitlement review
+      - C) Network segmentation
+      - D) Data encryption
+      answer: B
+- ordinal: 5
+  title: Trust Chains and Certificate Rollover
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Trace a federation signing certificate to its trust anchor and record each issuer in the chain
+  - Classify a rollover failure as an expired certificate, an untrusted issuer or a mismatched name
+  - Sequence the rollover steps that keep a federation working while signing keys change
+  topics:
+  - Certificate chains from leaf to trust anchor in a federation.
+  - Validity dates, and why every certificate in the chain is checked.
+  - Rollover, publishing the new signing key before the old one expires.
+  - Metadata and how relying parties learn a new signing certificate.
+  - Name mismatch and untrusted issuer failures.
+  lab: >-
+    Lab: On the greyspace-internet range, record the full certificate chain the webmail site presents
+    and write the rollover order that keeps the federation trusted. Evidence: subject, issuer and
+    validity dates of every certificate in the chain, from leaf to root; the signature algorithm of
+    each; whether the resolved name matches the certificate name. Pass: the chain recorded in full;
+    the certificate that expires first identified; a rollover order written with one sentence of
+    reason per step.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01, open the browser and record the start time in the lab notes.
+    - hosts: [ws01]
+      action: Open the certificate details for the greyspace webmail site and record the subject, issuer and
+        validity dates of every certificate in the chain, from leaf to root.
+    - hosts: [ws01]
+      action: Record the signature algorithm shown for each certificate in the chain.
+    - hosts: [ws01, edge01]
+      action: Query the greyspace resolver through edge01 for the webmail host name and record whether the
+        name resolves and matches the certificate name.
+    - hosts: [ws01]
+      action: Identify which certificate in the chain expires first, and write the rollover order that keeps
+        the federation trusted with one sentence of reason per step.
+  refs:
+  - nist-sp-800-57pt1r5
+  - nist-sp-800-52r2
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A browser shows a federation endpoint certificate chain of a leaf, an intermediate and a
+        root. Which certificate must already be trusted for the chain to validate?
+      options:
+      - A) The leaf
+      - B) The intermediate
+      - C) The root trust anchor
+      - D) Any one of the three certificates
+      answer: C
+    - question: A federation stops working the day after a signing certificate validity end date passes, and
+        relying parties report the certificate is rejected. What happened?
+      options:
+      - A) The name mismatched
+      - B) The key length shrank
+      - C) The algorithm weakened
+      - D) The certificate expired
+      answer: D
+    - question: During rollover, what should a provider publish before its old signing certificate expires?
+      options:
+      - A) The new certificate alongside the old one
+      - B) Nothing until the old one is deleted
+      - C) A new password policy
+      - D) A new domain name for the federation endpoints
+      answer: A
+    - question: A relying party fetches federation metadata listing two signing certificates, old and new.
+        Why does the provider keep the old one listed for a while?
+      options:
+      - A) To sign every assertion twice
+      - B) So assertions signed before the change still validate
+      - C) To increase the key strength
+      - D) To hide the rollover from users
+      answer: B
+    - question: Users report a certificate error that names a different host than the one they visited.
+        Which failure is this?
+      options:
+      - A) An expired certificate
+      - B) An untrusted root
+      - C) A revoked key
+      - D) A name mismatch
+      answer: D
+- ordinal: 6
+  title: Federated Outage Post-Mortems
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Localise a federated sign-in failure to DNS, network, TLS or identity from observed evidence
+  - Distinguish an identity provider outage from an application outage by the failure signature
+  - Write a post-mortem finding that states the evidence, the failing layer and the containment taken
+  topics:
+  - Failure signatures, how DNS, network, TLS and identity failures look different.
+  - What still works during an identity provider outage, and what does not.
+  - Evidence to capture before failover or recovery changes the state.
+  - Containment and communication options during a federated outage.
+  - The post-mortem, findings, evidence, layers and actions.
+  lab: >-
+    Lab: On the greyspace-internet range, diagnose the failing federated sign-in the instructor has
+    induced and write the post-mortem finding. Evidence: the exact error text and time from the failed
+    sign-in; whether the sign-in host name resolves through edge01; the result of the reachability test;
+    the certificate presented or its absence. Pass: the failing layer named with one sentence of
+    evidence; the first containment action stated; the finding written so another analyst could act on
+    it without asking questions.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01 and attempt to sign in to the greyspace webmail site; record the exact error
+        text and the time.
+    - hosts: [ws01, edge01]
+      action: From ws01, query the resolver through edge01 for the sign-in host name and record whether it
+        resolves.
+    - hosts: [ws01]
+      action: Test reachability of the sign-in host and record the result.
+    - hosts: [ws01]
+      action: Record the certificate the sign-in host presents, or the absence of one.
+    - hosts: [ws01]
+      action: Write a post-mortem finding naming the failing layer with one sentence of evidence, and state
+        the first containment action.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: Users cannot sign in. The sign-in host name resolves, the host answers on the network, the
+        certificate is valid, and the identity provider reports an error. Which layer is failing?
+      options:
+      - A) The identity layer
+      - B) The DNS resolution path
+      - C) The network path
+      - D) TLS
+      answer: A
+    - question: During an outage, users reach the application pages but every sign-in redirect fails. Where
+        does the evidence point?
+      options:
+      - A) A failed name lookup
+      - B) A broken network cable
+      - C) The identity provider
+      - D) A full disk
+      answer: C
+    - question: Before an operator restores a federated sign-in service, what should the team capture as
+        evidence?
+      options:
+      - A) A public statement
+      - B) Error text, times and resolver answers from the failing window
+      - C) A new password policy
+      - D) Next quarter's budget and staffing plan for the incident response team
+      answer: B
+    - question: A federated sign-in fails for one partner only while every other partner signs in normally.
+        What does this localise the fault to?
+      options:
+      - A) Your own identity provider
+      - B) The application server
+      - C) Your DNS resolver
+      - D) The failing partner trust or identity provider
+      answer: D
+    - question: Which post-mortem finding states evidence together with where it was observed?
+      options:
+      - A) At 03:14 the resolver returned no address for the sign-in host, per the workstation resolver log
+      - B) The identity layer was broken
+      - C) Somebody should check the provider soon
+      - D) It failed several times that night
+      answer: A

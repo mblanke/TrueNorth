@@ -1,0 +1,187 @@
+course_code: C512
+audience: staff_only
+overview: 'Federated Identity & B2B Access Design is an advanced self-paced course of six 60-minute
+  modules for Students who already hold directory and web single sign-on fundamentals from C509 and
+  C510. Modules 1 and 2 define and trace the two federation protocols; modules 3 and 4 design and
+  govern guest and partner access; modules 5 and 6 operate the trust, first through certificate
+  rollover and then through a federated outage. Every module pairs a short teaching block with a
+  hands-on lab on the greyspace-internet range and ends with a five-item quiz passed at 70 percent.
+  Students hand in a lab evidence sheet per module; the evidence items are listed in each module
+  brief and the expected range values are in lab_setup below.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (SAML with an assertion), M01-O01: A signed XML document issued by an identity provider
+    is a SAML assertion; OIDC would deliver a signed JSON token. A tests whether Students read the
+    format rather than the word federated; C confuses network tunneling with identity federation; D
+    is the local-account model the scenario has moved past. Q2 C (OIDC ID tokens), M01-O01: The
+    consumer is an API expecting short-lived signed JSON, which is the OIDC design point; A keeps the
+    XML browser binding that does not fit a mobile client; B is an intranet protocol, not internet
+    federation; D abandons per-user identity. Q3 D (identity provider), M01-O03: The issuer of the
+    statement about the user is the identity provider; A is the accepting side, B is a synonym for the
+    accepting side, C is a zero-trust component outside the federation roles. Q4 A (identity provider),
+    M01-O03: The university asserts who the student is and the platform relies on it; B reverses the
+    roles; C denies the federation exists; D imports zero-trust vocabulary the scenario does not use.
+    Q5 B (federation with an external identity provider), M01-O01: Checking every password locally is
+    the pre-federation model; A is an addition that does not remove local checking; C and D are real
+    controls unrelated to where authentication happens.'
+- module: 2
+  notes: 'Q1 C (authorisation code flow), M02-O01: Redirect, sign-in, code, token exchange is the
+    authorisation code flow; A is the SAML equivalent, not an OIDC flow; B skips the exchange and is
+    discouraged; D sends passwords through the application. Q2 A (claims), M02-O02: Name, e-mail and
+    groups inside a token are claims; B is browser state, C and D are flow or network vocabulary.
+    Q3 B (nonce against replay), M02-O03: A value bound to the request and checked on the response is
+    a nonce; A pins a certificate, C is transport setup, D is credential storage. Q4 D (POST binding),
+    M02-O01: The automatic browser form post that carries the assertion is the SAML POST binding; A
+    is a machine-to-machine binding, B requires a round trip to fetch the assertion, C is not a SAML
+    binding. Q5 C (a state parameter), M02-O03: State ties the response to the request that started
+    it; A and B are TLS-layer protections that cannot bind two application messages; D lengthens the
+    session and does the opposite of protecting the flow.'
+- module: 3
+  notes: 'Q1 D (federated partner access), M03-O01: Accounts stay owned and authenticated by the
+    supplier directory, with trust expressed as federation; A and B both move credentials into your
+    directory, the model the scenario avoided; C grants access with no identity at all. Q2 A (invited
+    guest account), M03-O01: The account lives in your directory and expires with the engagement,
+    which is the guest/invitation model; B would keep the identity in the contractor directory; C is
+    for applications, not people; D has no accountability. Q3 B (least privilege), M03-O02: Access
+    exceeds the stated need; A is about layered controls, C and D are properties the scenario does not
+    touch. Q4 C (the partner identity provider signing certificate), M03-O01: The relying party trusts
+    the assertion by verifying the issuer signature, so it needs the partner signing key material; A
+    and B are exactly what federation exists to avoid; D is irrelevant. Q5 A (one federated role per
+    partner scoped to its folder), M03-O02: Per-partner scoped roles keep separation and least
+    privilege; B shares one identity across a partner, destroying accountability; C over-grants; D
+    cannot separate the partners.'
+- module: 4
+  notes: 'Q1 B (invitation), M04-O01: The lifecycle starts with the invitation that creates the
+    external account; A, C and D are later stages. Q2 D (an orphaned account that still holds access),
+    M04-O02: Long dormancy with live membership is the definition of an orphaned external account; A
+    is a deliberately kept emergency account, B contradicts the live membership, C is the assumption
+    the evidence defeats. Q3 C (disabling the federation trust), M04-O03: One action cuts every
+    partner user off at once; A concedes days of unneeded access, B cannot reach all users and trusts
+    them to comply, D changes the wrong population. Q4 A (the date of its last successful sign-in),
+    M04-O02: Staleness is shown by inactivity over time; B and C are cosmetic, D has no bearing on
+    use. Q5 B (an entitlement review), M04-O01: Periodic confirmation with removal on no answer is the
+    review control; A is credential hygiene, C is network, D is data at rest.'
+- module: 5
+  notes: 'Q1 C (the root trust anchor), M05-O01: Validation walks to an already-trusted anchor; the
+    leaf and intermediate are validated, not pre-trusted, so A and B reverse the relationship; D
+    suggests any certificate can serve as the anchor. Q2 D (the certificate expired), M05-O02: Every
+    certificate in the chain is date-checked, and the failure begins the day after validity ends; A, B
+    and C are other certificate failures the scenario gives no evidence for. Q3 A (the new certificate
+    alongside the old one), M05-O03: Publishing early lets relying parties learn the new key before it
+    is needed; B creates a hard cut-over that fails every party that has not seen the new key, C and D
+    change unrelated things. Q4 B (so assertions signed before the change still validate), M05-O03:
+    Assertions issued under the old key must verify during the transition; A is not how dual
+    publication works, C is unchanged by listing, D is the opposite of a public metadata change.
+    Q5 D (a name mismatch), M05-O02: The error names a different host than the one visited, which is
+    the name check failing; A is a date failure, B is an anchor failure, C is a key status failure.'
+- module: 6
+  notes: 'Q1 A (the identity layer), M06-O01: Name resolution, reachability and certificate checks all
+    pass and the provider itself reports the error, so the failure is past the transport and in
+    identity; B, C and D are each contradicted by a passing check in the stem. Q2 C (the identity
+    provider), M06-O02: The application serves pages but sign-in redirects fail, the classic provider
+    outage signature; A and B would stop the pages too, D is unrelated. Q3 B (error text, times and
+    resolver answers), M06-O03: Evidence must be captured before recovery overwrites the state; A is
+    communication, not evidence, C and D change nothing about the failure. Q4 D (the failing partner
+    trust or identity provider), M06-O01: One failing party among many localises the fault to that
+    party side of the trust; A, B and C are shared components that would fail for every partner.
+    Q5 A (the timed resolver observation with its source), M06-O03: It gives the time, the observation
+    and where it was seen; B asserts a conclusion with no evidence, C assigns work without evidence,
+    D is vague and unsourced.'
+lab_setup:
+- module: 1
+  setup: 'Revert the range to its baseline. Confirm ws01 reaches the greyspace webmail site through
+    edge01 and that the resolver answers for the webmail host name. Note the sign-in host the browser
+    redirects to and the certificate issuer the browser reports for both the webmail site and the
+    sign-in host, so Student evidence sheets can be marked against the range. Supply no account
+    material; the sign-in page is the baseline one.'
+- module: 2
+  setup: 'Revert the range to its baseline and confirm the browser developer tools open on ws01 and
+    show the network record. Walk one sign-in yourself and note the redirect hop order, the parameter
+    that carries the result back and whether a state or nonce value appears, so the expected values
+    are on hand for marking. Students record what the range shows, not a canonical flow.'
+- module: 3
+  setup: 'Revert the range to its baseline. On dc01, confirm the external and guest accounts exist with
+    last sign-in dates visible, the partner share and its granting groups are present, and a guest
+    account is assigned per Student for the ws02 sign-in. Write the partner access policy on the board:
+    which groups may reach the partner share and which folders are out of scope, so grants can be
+    marked in policy or over-broad.'
+- module: 4
+  setup: 'Revert the range to its baseline. On dc01, confirm every external account shows a created
+    date and a last sign-in date, and name one stale external account with live group memberships for
+    the revocation exercise; note its memberships and the access it holds so Student plans can be
+    marked. Decide and announce which action counts as fastest revocation for the marking discussion.'
+- module: 5
+  setup: 'Revert the range to its baseline. Confirm the webmail site serves HTTPS from the Greyspace CA
+    and that the browser on ws01 shows the full chain: leaf, intermediate and root with subject, issuer
+    and validity dates. Note which certificate expires first and the resolved name of the webmail host,
+    so the rollover order and the name check can be marked.'
+- module: 6
+  setup: 'Revert the range to its baseline, then induce the outage before the lab: break one layer only,
+    for example stop the identity service behind the webmail sign-in or block the sign-in host, and
+    record which layer you broke. Confirm a failed sign-in from ws01 shows a repeatable error, and note
+    whether the name still resolves through edge01 so Student findings can be marked against the real
+    fault.'
+common_faults:
+- module: 1
+  fault: Students call any sign-in that leaves the application page federated, including a redirect to
+    a local account page.
+  remedy: Have them point at the protocol-identifying parameter they recorded and say which protocol
+    it names; if none does, the mark is local.
+- module: 1
+  fault: Students reverse the identity provider and service provider roles when the relying party is
+    named first in the scenario.
+  remedy: Redraw the three roles as arrows on the board, who asserts and who relies, and re-run the
+    university example before the quiz.
+- module: 2
+  fault: The developer tools record is cleared by a page reload and Students record hops from memory.
+  remedy: Tell them to sign in once, then read the preserved network record; re-run the sign-in rather
+    than reconstruct it.
+- module: 2
+  fault: Students mark state or nonce present because a session cookie exists.
+  remedy: A cookie is carried by the browser automatically; state or nonce travels as a parameter in
+    the redirect. Compare the two in the recorded hops.
+- module: 3
+  fault: Students list accounts but never open the partner share groups, so grants go unjudged.
+  remedy: Point at the second evidence item and have each group membership named before any marking.
+- module: 3
+  fault: Every grant is marked over-broad, including the ones the policy allows.
+  remedy: Read the policy back and mark one in-policy grant together, then ask what evidence would
+    make an over-broad marking stand.
+- module: 4
+  fault: The revocation plan deletes the account first, losing the record of what it held.
+  remedy: Ask what an auditor needs after the partner leaves, and have them put disable before delete.
+- module: 4
+  fault: Staleness is judged from the created date instead of the last sign-in date.
+  remedy: An old account in daily use is not stale; re-sort the listing by last sign-in and re-mark.
+- module: 5
+  fault: Students check only the leaf certificate dates and call the chain valid.
+  remedy: Walk the chain in the browser pane together; every certificate in the chain is date-checked.
+- module: 5
+  fault: The rollover order deletes the old certificate before publishing the new one.
+  remedy: Ask what a relying party verifies an assertion against during the gap, then re-order so the
+    new key is published first and the old one retires last.
+- module: 6
+  fault: Students write the failing layer as a guess with no evidence line.
+  remedy: Insist each layer claim cites one recorded item; a claim with no item is rewritten.
+- module: 6
+  fault: The containment named is a full rebuild, losing the evidence the module just captured.
+  remedy: Ask what the first action should protect, and rank containment by evidence preserved first.
