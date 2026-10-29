@@ -1,0 +1,484 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C560
+title: Strategic Intelligence for Leadership
+version: '1.0'
+difficulty: advanced
+duration_hours: 6
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C557
+- C506
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Threat Analyst, Executive Cyber Leadership.'
+  - 'NIST CSF 2.0: GV.OC, GV.RM, ID.RA.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: From Incidents to Strategic Outlooks
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish tactical, operational and strategic intelligence products in a set of written incident reports
+  - Analyse a sequence of incident records for recurring patterns that bear on future risk
+  - Write a strategic outlook statement with a confidence level and its stated caveats
+  topics:
+  - Tactical, operational and strategic intelligence products and the audiences each serves.
+  - Turning incident history into patterns, such as repeat victims, repeat techniques and rising frequencies.
+  - Confidence levels and estimative language, and how caveats travel with a judgement.
+  - From pattern to outlook, saying what changes, what stays and what would prove it wrong.
+  - The intelligence cycle of direction, collection, processing, analysis and dissemination feeding back.
+  lab: >-
+    Lab: On the small-enterprise range, gather the facts a strategic analyst starts from, such as how many
+    hosts the range holds and what each does, which connections the firewall allows from user to server
+    networks, and how many administrative accounts the domain keeps. Evidence: the host count with each
+    host role; the ports the user-to-server rule allows; the number of administrative accounts on dc-01.
+    Pass: each finding marked tactical or strategic with a one-sentence reason; a one-sentence outlook for
+    the range written with a confidence level and one caveat.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH as the analyst account, open a terminal and record the hosts of the range and the role of each one in the lab notes.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, query dc-01 for the accounts that hold administrative rights in the domain and record how many such accounts exist.
+    - hosts: [fw-01]
+      action: List the firewall rules on fw-01 that govern traffic from the user network to the server network and record every port each rule allows.
+    - hosts: [fw-01]
+      action: Record the default action fw-01 takes for connection attempts that no rule allows, and note what that means for traffic leaving the range.
+    - hosts: [jump-box]
+      action: Judge each recorded finding as tactical or strategic intelligence with a one-sentence reason, then write a one-sentence outlook for the range with a confidence level and one caveat.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A chief executive asks for a judgement about where the risk of the organisation is heading over the next year, not about last night's alerts. Which intelligence product fits?
+      options:
+      - A) A tactical incident alert
+      - B) A strategic outlook
+      - C) A raw incident record
+      - D) A log collection task
+      answer: B
+    - question: An outlook draft states the adversary will target the finance team next quarter. How should the line be written for a leadership audience?
+      options:
+      - A) As a certain prediction
+      - B) As a confirmed fact
+      - C) As an estimative judgement with confidence
+      - D) As an unqualified warning
+      answer: C
+    - question: Twelve incident records show phishing reaching three departments, always on month ends, with the same lure. What does the pattern support?
+      options:
+      - A) A recurring pattern worth an outlook
+      - B) A closed case with no further risk
+      - C) A tactical alert for one mailbox
+      - D) A collection task on one user
+      answer: A
+    - question: A leadership decision creates new questions the current reporting cannot answer. According to the intelligence cycle, what happens next?
+      options:
+      - A) The reporting is published as it stands
+      - B) The decision is deferred indefinitely
+      - C) The outlook is rewritten without collection
+      - D) Direction returns to set new collection
+      answer: D
+    - question: A briefing keeps one caveat on an outlook line and a reader asks to drop it for brevity. Why does the caveat stay?
+      options:
+      - A) Because caveats hide weak analysis from leaders
+      - B) Because a judgement without its caveats overstates what is known
+      - C) Because caveats replace the confidence level
+      - D) Because brevity always misleads a board
+      answer: B
+- ordinal: 2
+  title: Threat Landscape Briefings
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select landscape trends that matter to the decisions of the organisation and leave out the rest
+  - Distinguish an assertion from its supporting evidence in a published threat landscape briefing
+  - Write opening briefing lines that carry a trend, a confidence level and one caveat
+  topics:
+  - Threat landscape briefings and what a leadership audience needs from them.
+  - Assertions, evidence and sourcing, separating what is shown from what is claimed.
+  - Trends that bear on decisions, such as actor capability, targeting and technique shifts.
+  - Executive summary lines of one trend, one confidence level and one caveat each.
+  - Briefing cadence and depth for a board compared with an operations team.
+  lab: >-
+    Lab: On the small-enterprise range, prepare a quarterly threat landscape briefing for its leadership.
+    Evidence: the operating systems in use with a host count each; the rules that allow traffic out of the
+    range and the default action for everything else; three opening briefing lines. Pass: each trend given
+    in class marked relevant or not relevant with a one-sentence reason; each briefing line carries a trend,
+    a confidence level and one caveat; no line asserts anything the recorded facts do not support.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the briefing occasion in the lab notes, a quarterly landscape briefing for the leadership of the range.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, query dc-01 for the operating systems in use across the domain and record each system with a count of hosts running it.
+    - hosts: [fw-01]
+      action: List the rules on fw-01 that allow traffic to leave the range and record the default action for attempts that no rule allows.
+    - hosts: [jump-box]
+      action: Write three opening briefing lines for the occasion, one per relevant trend, each carrying the trend, a confidence level and one caveat.
+    - hosts: [jump-box]
+      action: Judge the three lines as written, marking each line as supported by the recorded facts or as needing more collection, with a one-sentence reason.
+  refs:
+  - mitre-attack
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A published briefing says a threat actor is growing, citing one vendor blog with no figures. What is the claim missing?
+      options:
+      - A) A board audience
+      - B) An executive summary
+      - C) Supporting evidence for the assertion
+      - D) A longer briefing cadence
+      answer: C
+    - question: A hardware maker faces leaks of build recipes and asks which landscape trends belong in its briefing. Which trend belongs?
+      options:
+      - A) A shift in targeting toward design partners
+      - B) A rise in retail point-of-sale theft
+      - C) A trend in hospital ransomware payments
+      - D) A shift in maritime smuggling routes
+      answer: A
+    - question: Four draft lines open a board briefing. Which line follows the house form of one trend, one confidence level and one caveat?
+      options:
+      - A) Ransomware is the top risk this year
+      - B) Attackers are improving, probably
+      - C) Threats are rising and falling at once
+      - D) Actor tooling is shifting, with low confidence, on thin sourcing
+      answer: D
+    - question: An analyst sends the board the operationally detailed hourly feed the security team uses. What does the mistake show?
+      options:
+      - A) The feed lacks the technical depth an operator needs
+      - B) The depth and cadence fit operations, not a board
+      - C) Boards need hourly updates to govern
+      - D) The security team should read less
+      answer: B
+    - question: A briefing line states that a campaign targets energy firms, and its footnote cites two incident reports about energy firms. Does the line stand?
+      options:
+      - A) Yes, because a footnote makes any line true
+      - B) Yes, because two sources confirm scale
+      - C) Partly, because sourcing shows targeting but not campaign scale
+      - D) No, because a footnote does not carry evidence of campaign scale
+      answer: C
+- ordinal: 3
+  title: Intelligence Requirements for the Board
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Derive priority intelligence requirements from the decisions leadership must take and the risks they carry
+  - Distinguish a board-level intelligence requirement from an operational reporting need
+  - State the indicators and reporting that would answer each requirement
+  topics:
+  - Priority intelligence requirements and their place in directing collection.
+  - Decisions as the anchor, with requirements written from the choices leadership must make.
+  - Distinguishing board-level requirements from the operational reporting needs of a security team.
+  - Indicators and reporting, naming what evidence would answer a requirement and when it arrives.
+  - Testable wording, so a requirement is one a colleague could act on without asking again.
+  lab: >-
+    Lab: On the small-enterprise range, write the priority intelligence requirements for its leadership
+    decision on service loss. Evidence: the services dc-01 runs and what stops if each goes offline; the
+    firewall rules that let user hosts reach server hosts; three written requirements. Pass: each
+    requirement tied to the recorded decision and worded testably; indicators and reporting named for each
+    requirement; any requirement the sources of the range cannot answer marked as a gap.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the leadership decision the requirements must serve, namely how long the range can operate without each core service.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, query dc-01 for the services it runs and record what stops elsewhere in the range if each service goes offline.
+    - hosts: [fw-01]
+      action: List the rules on fw-01 that allow user network hosts to reach the server network and record how each rule compares with the default deny.
+    - hosts: [jump-box]
+      action: Write three priority intelligence requirements tied to the recorded decision, each worded so a colleague could test whether the range has met it.
+    - hosts: [jump-box]
+      action: Judge the requirements as written, naming the indicators and reporting that would answer each one and marking any requirement no current source can answer.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A draft requirement reads 'track all attacker tooling worldwide'. What is wrong with it as a board-level requirement?
+      options:
+      - A) Nothing, because broad requirements gather more evidence
+      - B) It lacks a deadline
+      - C) It is too narrow for collection
+      - D) It is not tied to a decision leadership must take
+      answer: D
+    - question: Which pair correctly separates a board-level requirement from an operational reporting need for the same risk?
+      options:
+      - A) Board gets a monthly headline, operational gets nothing further
+      - B) Board gets a quarterly exposure trend, operational gets daily alert volumes
+      - C) Board gets hourly logs, operational gets a yearly summary
+      - D) Board gets packet captures, operational gets budget approvals
+      answer: B
+    - question: Two analysts read one requirement and record different things as answers. Which flaw in the wording explains this?
+      options:
+      - A) The requirement is not testable
+      - B) The requirement lacks a source system
+      - C) The analysts skipped the indicators
+      - D) The reporting arrived late
+      answer: A
+    - question: A requirement asks whether outsiders are probing remote access to the range. Which indicator would answer it?
+      options:
+      - A) The minutes of board meetings
+      - B) Staff satisfaction scores
+      - C) Failed login spikes against the access point
+      - D) The weekly catering menu
+      answer: C
+    - question: A requirement is met only if evidence arrives before the decision meeting. Which part of writing the requirement fixes this?
+      options:
+      - A) Naming the reporting that answers it and when
+      - B) Making the requirement broader
+      - C) Adding a second requirement beside it
+      - D) Moving the decision meeting earlier
+      answer: A
+- ordinal: 4
+  title: Decision Support Products
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish a decision-support product from a status report on the same subject
+  - Structure a decision memo with options, their implications and a recommendation
+  - Rate each option against the risk appetite, cost and ease of reversal of the organisation
+  topics:
+  - Decision support products and how they differ from status reporting.
+  - The decision memo of question, options, implications, recommendation and dissent.
+  - Rating options against risk appetite, cost and ease of reversal.
+  - Confidence and pre-mortem caveats in recommendations.
+  - Keeping the memo to one page and the language plain.
+  lab: >-
+    Lab: On the small-enterprise range, write a decision memo on which additional connections its firewall
+    should allow. Evidence: the current firewall rules and default action; the outcome of one allowed and
+    one blocked connection test from a workstation; a one-page memo with two options and a recommendation.
+    Pass: each option rated against risk appetite, cost and ease of reversal; the recommendation carries a
+    confidence level and one pre-mortem caveat; the memo stays on one page.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the decision the memo serves, namely which additional connections if any the firewall should allow.
+    - hosts: [fw-01]
+      action: List the rules on fw-01 that allow traffic from the user network to the server network and record the default action for attempts no rule allows.
+    - hosts: [ws-01, dc-01]
+      action: From ws-01, test one connection to dc-01 that a rule allows and one that only the default deny answers, and record both outcomes.
+    - hosts: [jump-box]
+      action: Write a one-page decision memo with two options, the implications of each and a recommendation carried with a confidence level.
+    - hosts: [jump-box]
+      action: Judge the recommendation as written by rating both options against risk appetite, cost and ease of reversal, and add one pre-mortem caveat naming what would make the recommendation wrong.
+  refs:
+  - nist-sp-800-30r1
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A memo lists what happened last month in order with no choices attached. What is it missing to serve a decision?
+      options:
+      - A) A longer timeline
+      - B) Options and a recommendation
+      - C) More detailed logging
+      - D) A change of author
+      answer: B
+    - question: A memo offers two firewall options but states only their prices. What has the analyst left out?
+      options:
+      - A) The date of the memo
+      - B) A third option
+      - C) The signature of the author
+      - D) The implications of each choice
+      answer: D
+    - question: Leaders accept known residual harm to keep a service running. How should the memo rate an option that adds some such harm?
+      options:
+      - A) Reject it, because harm is never acceptable
+      - B) Rate it only on price
+      - C) Rate it against the stated risk appetite
+      - D) Hide the harm behind averages
+      answer: C
+    - question: Before a recommendation goes out, the analyst asks what would make it wrong in a year. What is this practice called?
+      options:
+      - A) A pre-mortem on the recommendation
+      - B) An audit of the accounts
+      - C) A rehearsal of the rollback
+      - D) A review of the cost
+      answer: A
+    - question: Two options cost the same and carry equal risk, but one can be undone within a day. Which rating tips the recommendation?
+      options:
+      - A) The flashier presentation
+      - B) The longer feature list
+      - C) The strength of the vendor brand
+      - D) The ease of reversal
+      answer: D
+- ordinal: 5
+  title: Collection Planning and Intelligence Feedback
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Map each intelligence requirement to the sources that can answer it
+  - Select collection that is sustainable, proportionate and within the authority of the organisation
+  - Feed decisions back into requirements so the intelligence cycle restarts
+  topics:
+  - Mapping requirements to sources, with what each source can and cannot answer.
+  - Sustainable collection, weighing effort, access and the cost of keeping a source alive.
+  - Proportionality and authority, collecting only what the requirement justifies.
+  - Feedback, where decisions taken change requirements and restart the cycle.
+  - Gaps, naming what no current source answers and saying so.
+  lab: >-
+    Lab: On the small-enterprise range, map its intelligence requirements to sources and plan the
+    collection of the quarter. Evidence: the re-checked administrative account count on dc-01 and the
+    re-read firewall rules; a mapping of each requirement to the source that answers it; the named gap no
+    source covers. Pass: each requirement mapped to a sustainable source with the quarterly effort
+    recorded; the gap named in one sentence; one feedback line showing how a decision taken changes a
+    requirement.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and copy the three priority intelligence requirements from the module three lab into the lab notes.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, re-check the administrative account count on dc-01 as a source check, and record whether the count has changed since module three.
+    - hosts: [fw-01]
+      action: Re-read the rules on fw-01 as a second source check and record whether anything has changed since module three.
+    - hosts: [jump-box]
+      action: Map each requirement to the range source that can answer it and record the effort of keeping each source checked across a quarter.
+    - hosts: [jump-box]
+      action: Judge the collection plan as mapped, naming the requirement no current source answers and writing the one feedback line that shows how a decision taken changes a requirement.
+  refs:
+  - nist-sp-800-150
+  - oasis-cti
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A requirement asks how many administrative accounts the domain holds. Which source answers it directly?
+      options:
+      - A) A periodic account review on the domain controller
+      - B) A news feed on breaches elsewhere
+      - C) A marketing deck from a vendor
+      - D) A poll on social media
+      answer: A
+    - question: A proposed collection effort would watch every workstation keystroke to answer one narrow requirement. Which principle does that offend?
+      options:
+      - A) Sustainability, because no team could maintain the tooling
+      - B) Traceability, because the answers would lack sources
+      - C) Proportionality, because collection exceeds what the requirement justifies
+      - D) Dissemination, because too few would read the results
+      answer: C
+    - question: An analyst proposes a source that answers a requirement perfectly but takes two analyst-days per week to maintain. What question decides it?
+      options:
+      - A) Whether the source is fashionable
+      - B) Whether the collection is sustainable at that effort
+      - C) Whether competitors run the same source
+      - D) Whether the source is free of charge
+      answer: B
+    - question: Leaders decide to accept a risk, closing a year-long investigation. What should the intelligence function do with the requirement behind it?
+      options:
+      - A) Keep collecting unchanged, just in case it returns
+      - B) Archive the requirement without a word
+      - C) Escalate the requirement to the regulator
+      - D) Retire the requirement and feed the decision back
+      answer: D
+    - question: After mapping every requirement to a source, one requirement remains unanswered by anything the organisation may collect. What must the analyst do?
+      options:
+      - A) Drop the requirement quietly and say nothing further
+      - B) Collect anyway without authority
+      - C) Name the gap, and the requirement stays unanswered
+      - D) Rephrase the requirement until a source fits
+      answer: C
+- ordinal: 6
+  title: Leading the Intelligence Function
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Assemble outlooks, briefings and decision memos into one coherent board pack
+  - Trace each intelligence product to the requirement and the decision it serves
+  - Set a cadence, owners and quality checks for the intelligence function
+  topics:
+  - The board pack of outlook, briefing, requirements and decision memos as one product.
+  - Traceability, with every product tied to a requirement and a decision.
+  - Cadence, owners and hand-offs for a small intelligence function.
+  - Quality checks of sourcing, confidence levels and review before anything reaches the board.
+  lab: >-
+    Lab: On the small-enterprise range, assemble its intelligence products into one board pack. Evidence:
+    the refreshed administrative account count and firewall rules; the four products in order with the
+    decision each serves at its head; the traceability table. Pass: every product traced to a requirement
+    and a decision; unmet requirements marked rather than dropped; a cadence and a named owner set for the
+    next cycle.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and open the lab notes holding the outlook, briefing lines, requirements and memo produced in the earlier modules.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, re-check the administrative account count on dc-01 so the pack carries facts current on the day, and record the count.
+    - hosts: [fw-01]
+      action: Re-read the rules on fw-01 so the connection facts of the pack match the range as it stands, and record any change.
+    - hosts: [jump-box]
+      action: Assemble the four products into one board pack ordered outlook, briefing, requirements and memo, with the decision each part serves written at its head.
+    - hosts: [jump-box]
+      action: Judge the pack as assembled by tracing each part to its requirement and decision in a table, marking unmet requirements, and setting the cadence and owner for the next cycle.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A board receives the outlook, the briefing and the memos as separate messages in one week. What does a single pack fix?
+      options:
+      - A) Nothing, because leaders prefer separate messages each week
+      - B) The writing style of each product
+      - C) The number of intelligence products
+      - D) The parts arrive as one product the decisions can use
+      answer: D
+    - question: A reviewer asks why a briefing line about third-party vendors is in the pack at all. Which practice answers the reviewer?
+      options:
+      - A) Traceability from the line to its requirement and decision
+      - B) A longer briefing next quarter
+      - C) Removing the line to be safe
+      - D) A second reviewer signing the pack
+      answer: A
+    - question: A small intelligence function keeps missing its board deadlines. Which fix best matches the quality checks of the module?
+      options:
+      - A) Write longer products with more detail
+      - B) Set a cadence and a named owner for each product
+      - C) Send products to the board unreviewed
+      - D) Add three more intelligence products
+      answer: B
+    - question: Before a pack reaches the board, which check catches an outlook line stated as fact without confidence or caveat?
+      options:
+      - A) A spelling pass
+      - B) A print check
+      - C) A sourcing and confidence review
+      - D) A longer executive summary
+      answer: C
+    - question: A decision memo in the pack recommends a firewall change but names no requirement it serves. What is the consequence at board level?
+      options:
+      - A) The board cannot trace the recommendation to a requirement it set
+      - B) The memo becomes unreadable to the staff who operate the firewall
+      - C) The recommendation gains weight automatically
+      - D) The firewall change must wait until the next quarterly review
+      answer: A
