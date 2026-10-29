@@ -10,6 +10,7 @@ duration_hours: 60
 provenance: unsourced
 status: draft
 is_published: false
+readiness: draft
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
 prerequisites:
@@ -33,57 +34,84 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Define risk in terms of likelihood and impact.
-  - Distinguish inherent, residual and accepted risk.
-  - Explain the relationship between threat, vulnerability and asset value.
+  - Classify the confidentiality, integrity or availability impact of each event in a written outage scenario
+  - Identify the assets, threats and vulnerabilities in a described system and rate each asset's value
+  - Distinguish inherent, residual and accepted risk by labelling each state in a treatment decision
   topics:
-  - Risk equation and its components.
-  - Inherent versus residual risk.
-  - Asset identification and valuation.
-  - Risk appetite and tolerance.
-  lab: 'Lab: For a described system, identify five assets, assign each a criticality rating with justification,
-    and calculate an inherent risk rating for two threat scenarios.'
+  - Risk as the combination of likelihood and impact.
+  - Asset identification, valuation and criticality in a running environment.
+  - Threats, vulnerabilities and asset value in the risk relationship.
+  - Inherent risk, residual risk after controls, and accepted risk.
+  - Risk appetite and tolerance as organisation-level statements.
+  lab: >-
+    Lab: On the medium-enterprise range, inventory the hosts that keep the business services running,
+    rate each one's criticality, and classify the threat and the vulnerability behind two written
+    scenarios. Evidence: each host with the service it provides and the zone it sits in; a criticality
+    rating of high, medium or low for each host with a one-sentence reason; for each written scenario,
+    the range host that carries the vulnerability and the asset value at stake. Pass: every host that
+    provides a service is listed; each criticality rating has a reason tied to what stops working; each
+    scenario names one threat, one vulnerability and one asset.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account your instructor assigned, open a terminal and record the start time.
+    - hosts: [siem01, dc01, fs01]
+      action: From siem01, identify the servers that hold sign-in and file services, and record each host with the service it provides.
+    - hosts: [siem01, web01, mail01]
+      action: From siem01, check the DMZ hosts web01 and mail01 and record the service each one exposes and its zone.
+    - hosts: [siem01, dc01]
+      action: From siem01, confirm the domain controller dc01 answers a directory query and record the result as evidence of dependence.
+    - hosts: [siem01]
+      action: Rate each recorded host high, medium or low criticality, with one sentence on what stops working if it fails.
+    - hosts: [siem01]
+      action: For the two written scenarios your instructor supplies, name the range host that carries the vulnerability and the asset value at stake.
   refs:
   - nist-sp-800-30r1
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'Residual risk is the risk that remains after:'
+    - question: A warehouse server holds the only copy of its delivery records, and a ransomware campaign
+        is active in the sector. Which statement describes the risk?
       options:
-      - A) The threat is removed
-      - B) Controls have been applied
-      - C) The asset is retired
-      - D) Insurance is purchased
-      answer: B
-    - question: 'Risk appetite describes:'
+      - A) Low impact, because ransomware is common
+      - B) Low likelihood, because the server is new
+      - C) High impact, because losing the only records stops deliveries
+      - D) No risk, because no attack has happened yet
+      answer: C
+    - question: 'A council rates losing its e-mail service as high impact, then installs a second mail
+        relay. The risk remaining after this control is best called:'
       options:
-      - A) The number of risks recorded
-      - B) The amount and type of risk an organisation is willing to pursue
-      - C) The cost of controls
-      - D) The audit schedule
-      answer: B
-    - question: 'A risk with high impact but very low likelihood should be:'
+      - A) Residual risk
+      - B) Inherent risk
+      - C) Accepted risk
+      - D) Avoided risk
+      answer: A
+    - question: 'An owner reviews a risk and decides to run the old payment terminal one more year,
+        records the decision and signs it. This decision is best described as:'
       options:
-      - A) Always accepted
-      - B) Assessed on both dimensions, often warranting contingency planning
-      - C) Ignored
-      - D) Treated as a vulnerability
-      answer: B
-    - question: 'Asset valuation matters because it:'
+      - A) Risk transfer to the manufacturer
+      - B) Risk mitigation by a new control
+      - C) Risk avoidance by ending the service
+      - D) Risk acceptance with a documented owner
+      answer: D
+    - question: 'A retailer lists its payment system, its website and its staff laptops, then rates
+        which losses it could survive. The rating exercise is best described as:'
       options:
-      - A) Sets the patch schedule
-      - B) Determines proportionate control investment
-      - C) Defines the threat actor
-      - D) Fixes the likelihood
+      - A) Threat modelling of attacker behaviour
+      - B) Asset valuation to support risk decisions
+      - C) Vulnerability scanning of each device
+      - D) Quantitative loss expectancy calculation
       answer: B
-    - question: 'Inherent risk is assessed:'
+    - question: 'A board states in writing how much delivery-delay risk it will carry before a project
+        needs escalation. That statement is the organisation''s:'
       options:
-      - A) After controls
-      - B) Before considering existing controls
-      - C) Only for new systems
-      - D) By auditors only
-      answer: B
+      - A) Residual risk
+      - B) Control baseline
+      - C) Risk appetite
+      - D) Impact rating
+      answer: C
 - ordinal: 2
   title: Risk Assessment Methods
   content_type: reading
@@ -91,57 +119,84 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Compare qualitative and quantitative assessment approaches.
-  - Conduct a structured risk assessment following recognised guidance.
-  - Communicate uncertainty honestly in assessment output.
+  - Compare qualitative and quantitative assessment of the same two risks and state where they disagree
+  - Conduct a structured assessment of a described system by defining its scope, gathering evidence and rating each risk
+  - Communicate uncertainty in an assessment by recording estimates, their sources and their limits
   topics:
-  - Qualitative scales and matrices.
-  - 'Quantitative measures: SLE, ARO, ALE.'
-  - Assessment scope and boundaries.
-  - Bias and uncertainty in estimation.
-  lab: 'Lab: Calculate annualised loss expectancy for two scenarios, then produce the same assessment
-    qualitatively, and explain where the two approaches disagree and why.'
+  - Qualitative scales, likelihood-impact matrices and relative prioritisation.
+  - 'Quantitative measures: single loss expectancy, annual rate of occurrence and annualised loss expectancy.'
+  - Assessment scope, boundaries and why conclusions stop at the boundary.
+  - Estimation bias, false precision and honest communication of uncertainty.
+  lab: >-
+    Lab: On the medium-enterprise range, gather the facts that feed two assessments of the file server
+    fs01 failing, calculate an annualised loss expectancy for the outage, rank both scenarios on a
+    qualitative matrix, and state where the two approaches disagree. Evidence: the firewall rule that
+    allows workstations to reach fs01; an asset value, an occurrence frequency and an annualised loss
+    expectancy for the outage; a matrix cell for each of the two scenarios; one sentence on where the
+    approaches disagree and why. Pass: each input to the calculation is recorded before the result; each
+    scenario sits in one named matrix cell; the disagreement names a feature of each approach, not a
+    preference.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account your instructor assigned, open a terminal and record the start time.
+    - hosts: [siem01, fw01]
+      action: From siem01, read the rules on fw01 and record the name of the rule that allows the workstation network to reach the server network.
+    - hosts: [siem01, fs01]
+      action: From siem01, open the file share on fs01 and record whether it answers, as evidence the file service is live for clients.
+    - hosts: [siem01]
+      action: Estimate an asset value for fs01 and how many full outages a year to plan for, and calculate the annualised loss expectancy.
+    - hosts: [siem01, web01]
+      action: Rank the fs01 outage and a defacement of the public website web01 in a likelihood-by-impact matrix, and record each cell.
+    - hosts: [siem01]
+      action: Record in one sentence where the calculated figure and the matrix placement disagree, and which estimate each approach is most sensitive to.
   refs:
   - nist-sp-800-30r1
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Annualised loss expectancy is calculated as:'
+    - question: 'A single outage of a file server costs an estimated 40,000 dollars, and the organisation
+        expects two such outages a year. The annualised loss expectancy is:'
       options:
-      - A) SLE divided by ARO
-      - B) SLE multiplied by ARO
-      - C) ARO minus SLE
-      - D) SLE plus ARO
-      answer: B
-    - question: 'Single loss expectancy represents:'
+      - A) 40,000 dollars
+      - B) 20,000 dollars
+      - C) 42,000 dollars
+      - D) 80,000 dollars
+      answer: D
+    - question: 'A team cannot find reliable loss figures for losing a community library''s catalogue, but
+        must still tell the board which of four risks to fund first. The best fit is:'
       options:
-      - A) Losses per year
-      - B) The expected monetary loss from one occurrence
-      - C) The control cost
-      - D) The recovery time
+      - A) An annualised loss expectancy per risk
+      - B) A qualitative likelihood-by-impact matrix
+      - C) Deferring the decision until data arrives
+      - D) Treating all four risks as equal
       answer: B
-    - question: 'A qualitative risk matrix is most useful when:'
+    - question: 'Two assessors rate the same risk differently: one anchors on last year''s incident, the
+        other on the newest one. The failing they share is best described as:'
       options:
-      - A) Precise loss data exists
-      - B) Data is limited and relative prioritisation is the goal
-      - C) Regulatory fines are known
-      - D) Only one asset exists
-      answer: B
-    - question: 'Quantitative assessment is often criticised because:'
+      - A) Estimation bias in the likelihood input
+      - B) False precision in a calculated result
+      - C) A scope boundary drawn too narrowly
+      - D) A quantitative measure applied twice
+      answer: A
+    - question: 'An assessment of a mail service concludes the risk is high, but its scope excluded the
+        mail provider''s own network. The conclusion is best handled by:'
       options:
-      - A) It is too fast
-      - B) Input estimates can convey false precision
-      - C) It ignores impact
-      - D) It cannot be documented
-      answer: B
-    - question: 'Defining assessment scope matters because:'
+      - A) Extending it to cover the provider anyway
+      - B) Lowering the rating to avoid alarm
+      - C) Stating that the conclusion stops at the assessed boundary
+      - D) Re-rating every other service to match
+      answer: C
+    - question: 'An analyst reports the annual rate of occurrence as exactly 1.37 outages per year,
+        derived from two observed incidents. The report''s main weakness is:'
       options:
-      - A) It sets the budget
-      - B) Conclusions are only valid within the boundary assessed
-      - C) It selects the assessor
-      - D) It fixes the risk rating
-      answer: B
+      - A) False precision that two observations cannot support
+      - B) A missing impact estimate for the outage
+      - C) An unsuitable scope
+      - D) Ignoring the asset value
+      answer: A
 - ordinal: 3
   title: Risk Treatment and Controls
   content_type: reading
@@ -149,16 +204,38 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Select among avoid, mitigate, transfer and accept.
-  - Distinguish preventive, detective and corrective controls.
-  - Justify control selection against cost and residual risk.
+  - Select among avoid, mitigate, transfer and accept for three assessed risks and justify each choice
+  - Classify controls as preventive, detective or corrective from what each one does in a described incident
+  - Justify a control choice against its cost and the residual risk expected after it is in place
   topics:
-  - The four treatment options.
-  - Control types and functions.
-  - Compensating controls.
-  - Cost-benefit of control selection.
-  lab: 'Lab: For three assessed risks, recommend a treatment option each with justification, name a specific
-    control, and state the expected residual risk after treatment.'
+  - 'The four treatment options: avoid, mitigate, transfer and accept.'
+  - Preventive, detective and corrective control functions.
+  - Compensating controls when the intended control is not feasible.
+  - Cost, residual risk and the treatment decision record.
+  lab: >-
+    Lab: On the medium-enterprise range, read the firewall rules as controls in place, test one permitted
+    path, identify one forbidden path, and select a treatment for the remaining gap. Evidence: each fw01
+    rule that allows traffic between zones, with source, destination and purpose; each recorded rule's
+    control function and the function no rule exercises; the result of one permitted connection to web01;
+    one traffic path the rule set forbids; a treatment option, a named control and its cost.
+    Pass: each rule marked preventive or detective with a one-sentence reason; the missing control
+    function named; the forbidden path named from the rule set, not from memory; the treatment names
+    the residual risk expected after the control is in place.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account your instructor assigned, open a terminal and record the start time.
+    - hosts: [siem01, fw01]
+      action: From siem01, list the rules on fw01 and record each rule's name, source zone, destination zone and what it allows.
+    - hosts: [siem01, web01]
+      action: From siem01, open the web service on web01 and record whether the connection succeeds, as evidence a permitted path works.
+    - hosts: [siem01, fw01]
+      action: Choose one zone pair the rule set does not allow and record the rule searched for and the default action that answered instead.
+    - hosts: [siem01]
+      action: Classify each recorded rule as preventive or detective from what it does to the traffic it matches, and record which control function the rule set does not exercise.
+    - hosts: [siem01]
+      action: Select a treatment for the recorded gap, naming the option, a named control, cost consideration and the residual risk expected after it.
   refs:
   - nist-sp-800-37r2
   - nist-cswp-29
@@ -166,41 +243,46 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Purchasing cyber insurance is an example of risk:'
+    - question: A company stops offering public file uploads altogether after an assessment. Which
+        treatment option did it choose?
       options:
-      - A) Avoidance
-      - B) Transfer
-      - C) Mitigation
-      - D) Acceptance
+      - A) Risk mitigation
+      - B) Risk avoidance
+      - C) Risk transfer
+      - D) Risk acceptance
       answer: B
-    - question: 'Discontinuing a service to eliminate its risk entirely is risk:'
+    - question: 'Ransomware encrypts the files on a server, and a restored backup returns the service to
+        working order the same day. The backup is best classified as a:'
       options:
-      - A) Avoidance
-      - B) Transfer
-      - C) Acceptance
-      - D) Mitigation
+      - A) Preventive control
+      - B) Detective control
+      - C) Deterrent control
+      - D) Corrective control
+      answer: D
+    - question: 'A standard requires a second network path between two sites, but the budget cannot fund
+        one this year. An equivalent alternative control is best called:'
+      options:
+      - A) A compensating control
+      - B) A preventive control
+      - C) A corrective control
+      - D) Risk acceptance
       answer: A
-    - question: An intrusion detection system is primarily which control type?
+    - question: 'A firewall rule blocks workstation access to a database server, and an intrusion
+        detection sensor watches the same zone. The sensor''s control function is:'
       options:
-      - A) Preventive
-      - B) Detective
-      - C) Corrective
-      - D) Deterrent
+      - A) Preventive, it stops the first packet
+      - B) Detective, it watches and alerts
+      - C) Corrective, it restores the service
+      - D) Deterrent, it discourages attackers
       answer: B
-    - question: 'A compensating control is used when:'
+    - question: 'A treatment leaves a residual risk that the owner has accepted in writing. A year later
+        the same risk is re-rated higher. The owner should first:'
       options:
-      - A) The primary control is cheaper
-      - B) The intended control is not feasible and equivalent protection is needed
-      - C) Risk is accepted
-      - D) No risk exists
-      answer: B
-    - question: 'Risk acceptance should always be:'
-      options:
-      - A) Informal
-      - B) Documented and approved by an accountable owner
-      - C) Decided by the analyst
-      - D) Permanent
-      answer: B
+      - A) Renew the acceptance unchanged
+      - B) Transfer the risk to the supplier
+      - C) Review the acceptance against the new rating
+      - D) Delete the risk from the register
+      answer: C
 - ordinal: 4
   title: Governance, Compliance and Assurance
   content_type: reading
@@ -208,16 +290,38 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Describe the role of governance in risk management.
-  - Explain the purpose of audit and independent assurance.
-  - Distinguish compliance obligations from risk-driven decisions.
+  - Assign accountability for a risk decision to the role that bears its consequence and justify the assignment
+  - Describe what an audit finding needs in evidence before it can be raised against a control
+  - Distinguish a compliance obligation from a risk-based decision in a described control gap
   topics:
-  - Governance structures and accountability.
-  - Three lines model.
-  - Audit, evidence and findings.
-  - Regulatory versus risk-based drivers.
-  lab: 'Lab: Map five controls in a described environment to their accountable owner and the assurance
-    activity that verifies each, identifying any control with no verification.'
+  - Governance structures, accountability and the risk decision record.
+  - The three lines model and where assurance sits.
+  - Audit evidence, findings and independent verification.
+  - Regulatory obligations versus risk-based control decisions.
+  lab: >-
+    Lab: On the medium-enterprise range, verify which controls produce evidence, map each
+    observed control to an accountable owner and an assurance activity, and
+    name any control the range cannot verify. Evidence: the log indices siem01 holds, the host or zone
+    each covers and the newest timestamp each shows; the fw01 rule that ships logs to the management network; one
+    sign-in test result against dc01; an owner and a verification activity for each observed control;
+    any control with no verification on the range. Pass: every observed control
+    has one owner and one assurance activity; each control with no verification says what evidence
+    an auditor needs instead; no owner is the analyst who did the mapping.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account your instructor assigned, open a terminal and record the start time.
+    - hosts: [siem01]
+      action: From siem01, query the log store and record which log indices exist, the host or zone each covers and the newest timestamp each shows.
+    - hosts: [siem01, fw01]
+      action: From siem01, record the fw01 rule that sends every zone's logs to the management network, with its ports.
+    - hosts: [siem01, dc01]
+      action: From siem01, confirm the sign-in service on dc01 answers a connection attempt and record the result as evidence the identity control operates.
+    - hosts: [siem01]
+      action: Map each observed control to an accountable owner and an assurance activity that verifies it, and record the mapping.
+    - hosts: [siem01]
+      action: Name one control the range shows running but cannot verify, and record the evidence an auditor would ask for instead.
   refs:
   - nist-cswp-29
   - nist-sp-800-37r2
@@ -225,41 +329,46 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'The Govern function in NIST CSF 2.0 addresses:'
+    - question: A risk register lists an accepted risk on the payroll system, and the payroll business
+        unit bears the loss if it fires. Who is accountable for the decision?
       options:
-      - A) Malware removal
-      - B) Risk management strategy, roles, policy and oversight
-      - C) Packet capture
-      - D) Backup testing
-      answer: B
-    - question: 'Independent assurance is valuable primarily because it:'
+      - A) The security analyst who operates the payroll system
+      - B) The external auditor
+      - C) The payroll business owner
+      - D) The platform vendor
+      answer: C
+    - question: 'An auditor writes that a control has failed, citing a screenshot with no date, system
+        name or source. Before the finding can be raised it needs:'
       options:
-      - A) Is cheaper
-      - B) Reduces the risk of self-assessment bias
-      - C) Removes the need for controls
-      - D) Guarantees compliance
-      answer: B
-    - question: 'Compliance and security differ in that compliance:'
+      - A) Evidence tied to a time, source and system
+      - B) A stricter control standard
+      - C) Approval from the control owner
+      - D) A second auditor to agree with the finding
+      answer: A
+    - question: 'A regulation requires every supplier contract to include security terms, and the team
+        adds them to renewals without assessing which suppliers matter most. This is best described as:'
       options:
-      - A) Always produces security
-      - B) Demonstrates conformance to specified requirements at a point in time
-      - C) Is continuous by nature
-      - D) Replaces risk assessment
-      answer: B
-    - question: 'An audit finding without evidence is:'
+      - A) A risk-based treatment decision applied to every supplier
+      - B) An independent assurance activity
+      - C) A compensating control
+      - D) A compliance obligation met without a risk-based choice
+      answer: D
+    - question: 'The three lines model places operational management, a risk function and internal audit.
+        Checking that the other two lines do what they claim belongs to:'
       options:
-      - A) Still actionable
-      - B) Not defensible and should not be raised
-      - C) A best practice
-      - D) A control
-      answer: B
-    - question: 'Accountability for a risk decision should sit with:'
+      - A) The third line, internal audit
+      - B) The first line, operational management
+      - C) The second line, the risk function
+      - D) The supplier, as fourth line
+      answer: A
+    - question: 'A control worked on audit day, but nobody has looked at its logs since, and six months
+        of failures went unnoticed. The untested assumption is that compliance:'
       options:
-      - A) The security analyst
-      - B) The business owner who bears the consequence
-      - C) The auditor
-      - D) The vendor
-      answer: B
+      - A) Replaces the need for monitoring
+      - B) Applies to every control equally
+      - C) Only proves conformance at one moment in time
+      - D) Requires no independent review
+      answer: C
 - ordinal: 5
   title: Business Continuity and Resilience
   content_type: reading
@@ -267,56 +376,86 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Define recovery time and recovery point objectives.
-  - Explain business impact analysis.
-  - Describe continuity and disaster recovery planning.
+  - Derive a recovery time objective and a recovery point objective for a described process from its business impact analysis
+  - Explain how a continuity plan is exercised and what an exercise proves that a document cannot
+  - Identify the single point of failure that most threatens a stated recovery objective in a described system
   topics:
-  - Business impact analysis.
-  - RTO, RPO and maximum tolerable downtime.
-  - Continuity strategies and alternate sites.
-  - Plan testing and exercise.
-  lab: 'Lab: Conduct a short business impact analysis for two processes, derive RTO and RPO for each,
-    and identify the single point of failure that most threatens the tighter objective.'
+  - Business impact analysis and the consequence of losing a process over time.
+  - Recovery time objective, recovery point objective and maximum tolerable downtime.
+  - Continuity strategies, alternate sites and replication frequency.
+  - Plan testing, exercises and what they prove.
+  lab: >-
+    Lab: On the medium-enterprise range, run a short business impact analysis for the file service on
+    fs01 and the public web service on web01, set an RTO and an RPO for each, and name the single point
+    of failure that most threatens the tighter objective. Evidence: the hosts that each service depends
+    on and whether any has a second instance; an RTO and an RPO for each service with the consequence
+    over time that justifies it; the single host whose loss breaks the tighter objective. Pass: each
+    dependency is taken from the range, not from memory; each objective states a consequence over time;
+    the single point of failure names one host and the objective it threatens.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account your instructor assigned, open a terminal and record the start time.
+    - hosts: [siem01, fs01]
+      action: From siem01, open the file share on fs01 and record whether it answers, as evidence the file service is live.
+    - hosts: [siem01, web01]
+      action: From siem01, open the web service on web01 and record whether it answers, as evidence the public service is live.
+    - hosts: [siem01, fs01, web01]
+      action: List the hosts behind each service and record which of them no second host can stand in for.
+    - hosts: [siem01]
+      action: Set a recovery time objective and a recovery point objective for each service, and record the consequence over time that justifies each.
+    - hosts: [siem01]
+      action: Name the single point of failure that most threatens the tighter objective and record which objective it threatens.
   refs:
-  - nist-sp-800-61r3
+  - nist-sp-800-30r1
+  source_gaps:
+  - The NIST guide dedicated to IT contingency planning and business continuity is not in the
+    reference library, so the continuity strategies and plan-exercise topics have no dedicated
+    source and teach from the impact assessment guidance.
   quiz:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'Recovery time objective specifies:'
+    - question: 'A mail outage may last two hours before the business stops functioning; after two hours
+        the impact becomes unacceptable. This outer limit is:'
       options:
-      - A) Acceptable data loss
-      - B) The target duration within which a process must be restored
-      - C) Backup frequency
-      - D) Retention period
+      - A) The recovery time objective for the mail service
+      - B) The maximum tolerable downtime
+      - C) The recovery point objective
+      - D) The backup window
       answer: B
-    - question: 'Business impact analysis primarily determines:'
+    - question: A team can restore a file service within one hour but loses everything typed since last
+        night's copy. Which objective did the team miss?
       options:
-      - A) Threat likelihood
-      - B) The consequence over time of losing a process
-      - C) Control cost
-      - D) Vendor risk
-      answer: B
-    - question: 'A continuity plan that is never exercised is:'
+      - A) The recovery time objective
+      - B) The maximum tolerable downtime
+      - C) The recovery point objective
+      - D) The exercise schedule
+      answer: C
+    - question: 'A continuity plan exists as a polished document nobody has ever followed, and the last
+        restore took three times its estimate. What the plan still lacks is:'
       options:
-      - A) Adequate if documented
-      - B) Of unproven effectiveness and likely to fail under pressure
-      - C) Compliant by default
-      - D) A detective control
-      answer: B
-    - question: 'A tighter RPO generally requires:'
+      - A) An exercise that proves it works under pressure
+      - B) A longer policy statement approved by senior management
+      - C) A second written copy
+      - D) An approved version number
+      answer: A
+    - question: A tighter recovery point objective is agreed for the payment database. What must change
+        to make the new objective achievable?
       options:
-      - A) Less frequent backup
-      - B) More frequent replication or backup
-      - C) Longer retention
-      - D) Slower recovery
-      answer: B
-    - question: 'Maximum tolerable downtime is:'
+      - A) Longer backup retention for the database
+      - B) A slower recovery path
+      - C) A larger server
+      - D) More frequent backups or replication
+      answer: D
+    - question: 'A business impact analysis ranks the ordering system above the staff directory because
+        orders stop paying customers within minutes. The analysis measures:'
       options:
-      - A) Always equal to RTO
-      - B) The outer limit beyond which the impact becomes unacceptable
-      - C) The backup window
-      - D) The patch window
+      - A) Threat likelihood for each process
+      - B) Consequence over time of losing each process
+      - C) Control cost for each process
+      - D) Vendor risk for each process
       answer: B
 - ordinal: 6
   title: Third-Party and Supply Chain Risk
@@ -325,16 +464,37 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Assess risk introduced by suppliers and service providers.
-  - Specify security requirements in contractual terms.
-  - Monitor third-party risk through the relationship lifecycle.
+  - Assess the risk a supplier introduces by examining what it holds, what depends on it and what it must evidence
+  - Specify security requirements a supplier must meet in contractual terms, including a right to audit
+  - Rank concentration and fourth-party exposure across the services a described organisation depends on
   topics:
-  - Supplier risk assessment and tiering.
-  - Contractual security requirements and right to audit.
-  - Fourth-party and concentration risk.
-  - Ongoing monitoring and offboarding.
-  lab: 'Lab: Produce a supplier assessment questionnaire of ten questions for a cloud provider handling
-    sensitive data, and state what evidence would satisfy each question.'
+  - Supplier assessment, tiering and the evidence each tier must show.
+  - Contractual security requirements, breach notice and the right to audit.
+  - Concentration risk and fourth-party dependence in upstream supplier chains.
+  - Ongoing monitoring and secure offboarding of a supplier.
+  lab: >-
+    Lab: On the medium-enterprise range, treat the DMZ web and mail services as supplier-operated,
+    record what each exposes and what would be lost at offboarding, and rank the two by concentration
+    risk. Evidence: the fw01 rule that allows workstations to reach web01 and mail01, with its ports;
+    what each DMZ service serves; for each service, the data a supplier would hold and the dependency
+    lost at offboarding; a concentration ranking of the two services with a reason. Pass: each service's
+    exposure is observed on the range, not assumed; each offboarding entry names the data and the access
+    that must be returned or revoked; the ranking gives one reason tied to dependency.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account your instructor assigned, open a terminal and record the start time.
+    - hosts: [siem01, fw01]
+      action: From siem01, record the fw01 rule that lets the workstation network reach the DMZ, with the ports it allows.
+    - hosts: [siem01, web01]
+      action: From siem01, open the web service on web01 and record that it answers and what it serves.
+    - hosts: [siem01, mail01]
+      action: From siem01, record the mail service mail01 provides and which workstation ports the recorded rule allows to reach it.
+    - hosts: [siem01]
+      action: For each DMZ service, record the data a supplier would hold and the dependency the organisation would lose at offboarding.
+    - hosts: [siem01]
+      action: Rank the two services by concentration risk, record the ranking and give one reason tied to dependency for the first.
   refs:
   - nist-sp-800-37r2
   - nist-sp-800-218
@@ -342,38 +502,43 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Fourth-party risk refers to risk arising from:'
+    - question: 'A payment provider a shop depends on itself relies on one cloud region. If that region
+        fails, the shop''s checkout fails with it. This chain is best labelled:'
       options:
-      - A) Your direct suppliers
-      - B) Your suppliers' own suppliers
-      - C) Your customers
-      - D) Regulators
-      answer: B
-    - question: 'Concentration risk occurs when:'
+      - A) Fourth-party dependence
+      - B) Offboarding failure
+      - C) Concentration risk across the payment chain
+      - D) Right to audit
+      answer: A
+    - question: Three of an organisation's five critical services run on one provider's platform. Which
+        risk does this arrangement create regardless of how well the provider performs?
       options:
-      - A) Many suppliers are used
-      - B) Many critical services depend on a single provider
-      - C) Contracts are short
-      - D) Costs are high
-      answer: B
-    - question: 'A right-to-audit clause is valuable because it:'
+      - A) Fourth-party risk from the provider's own suppliers
+      - B) Offboarding risk
+      - C) Audit risk
+      - D) Concentration risk
+      answer: D
+    - question: 'A supplier shows a current security certificate for the data centre it runs, but a
+        tenancy is configured by its staff with default settings. The certificate alone does not show:'
       options:
-      - A) Reduces price
-      - B) Provides a contractual basis to verify supplier claims
-      - C) Transfers all risk
-      - D) Guarantees uptime
+      - A) Whether the data centre has power backup
+      - B) Whether your own use meets your requirements
+      - C) Whether the certificate covers the site
+      - D) Whether the supplier exists
       answer: B
-    - question: 'Supplier offboarding should always include:'
+    - question: A right-to-audit clause is negotiated into a cloud contract. What does it let the
+        customer do that a certificate does not?
       options:
-      - A) A final invoice only
-      - B) Return or verified destruction of data and revocation of access
-      - C) A reference letter
-      - D) Contract renewal
-      answer: B
-    - question: 'Relying solely on a supplier''s certification is insufficient because it:'
+      - A) Skip its own supplier assessment
+      - B) Transfer the risk to the supplier
+      - C) Verify the supplier's own claims against its systems
+      - D) Reduce the contract price
+      answer: C
+    - question: 'A photo supplier holds the only copy of an organisation''s product images, and the
+        contract ends next month. Offboarding must include:'
       options:
-      - A) Costs too much
-      - B) Covers a defined scope at a point in time, which may not match your use
-      - C) Is always fraudulent
-      - D) Cannot be verified
-      answer: B
+      - A) Return of the data and revocation of access
+      - B) A final invoice
+      - C) A renewal offer
+      - D) A reference letter
+      answer: A
