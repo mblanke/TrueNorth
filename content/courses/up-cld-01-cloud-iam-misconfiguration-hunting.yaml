@@ -1,0 +1,554 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# C543 - Cloud IAM Misconfiguration Hunting - DRAFT course content.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C543
+title: Cloud IAM Misconfiguration Hunting
+version: '1.0'
+difficulty: intermediate
+duration_hours: 3
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C303
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Systems Security Analyst; Cyber Defense Analyst (PR-CDA-001).'
+  - 'NIST CSF 2.0: PR.AA; ID.RA.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Cloud Identity and Authorisation Models
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish authentication from authorisation in a described cloud sign-in and data access attempt
+  - Map the principals, roles and policies in a described cloud account to the permissions each holds
+  - Classify each permission grant as identity-based, resource-based or a trust relationship
+  topics:
+  - Principals in a cloud account - users, groups, roles and federated identities.
+  - Authentication verifies identity; authorisation decides what that identity may do.
+  - Identity-based policies, resource-based policies and permission boundaries.
+  - Wildcard actions and resources, and why access reviews flag them.
+  - Trust relationships and cross-account role assumption.
+  lab: >-
+    Lab: On the cloud-security range, map who holds what in the simulated cloud account. Evidence: the
+    name of each principal the account holds with its attached policy; the effect, actions and resources
+    of one identity-based policy; the principals and effect of one resource-based bucket policy; the
+    principal named in one role trust policy. Pass: every principal listed with its attached policy;
+    each recorded grant marked identity-based, resource-based or trust; every wildcard statement flagged
+    with a one-sentence reason.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in your lab notes.
+    - hosts: [jump01, localstack01]
+      action: From jump01, query the simulated identity service on localstack01 and record each principal
+        name with the policy attached to it.
+    - hosts: [jump01, localstack01]
+      action: Read one identity-based policy on localstack01 and record its effect, its actions and the
+        resources it names.
+    - hosts: [jump01, localstack01]
+      action: Read one bucket policy on localstack01 and record the principals it names and the effect of
+        each statement.
+    - hosts: [jump01, localstack01]
+      action: Read one role trust policy on localstack01 and record the principal it trusts and what that
+        principal may do with the trust.
+    - hosts: [jump01]
+      action: Mark each recorded grant identity-based, resource-based or trust, and flag every wildcard
+        statement with one sentence of reason.
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A developer signs in to a cloud console successfully, but the console then refuses to open
+        a storage bucket. Which control succeeded and which failed?
+      options:
+      - A) Authentication succeeded; authorisation failed
+      - B) Authorisation succeeded; authentication failed
+      - C) Both succeeded, so the bucket does not exist
+      - D) Both failed, because the token expired
+      answer: A
+    - question: Three machine workloads in one cloud account need the same read permissions and no
+        interactive sign-in. Which principal type should hold those permissions?
+      options:
+      - A) A shared user account with a password
+      - B) One user per workload, each with its own policy
+      - C) A role that each workload can assume
+      - D) A group that contains all three workloads
+      answer: C
+    - question: One policy is attached to a role and allows reading a bucket; another policy sits on the
+        bucket itself and names authenticated principals. What are these two policy kinds?
+      options:
+      - A) Permission boundary and service control
+      - B) Identity-based and resource-based
+      - C) Inline and managed
+      - D) Trust policy and access policy
+      answer: B
+    - question: A policy grants every action on every resource to a deployment role. Which review finding
+        applies to that policy?
+      options:
+      - A) Acceptable, because wildcards keep policies short
+      - B) Acceptable, because the role is trusted
+      - C) A finding only when the role is unused
+      - D) Over-broad, because it grants more than the role needs
+      answer: D
+    - question: An auditor in one account must read a single reporting bucket owned by another account.
+        Which mechanism grants this without sharing any password?
+      options:
+      - A) A cross-account role with a trust relationship
+      - B) A shared password for the owning account
+      - C) A wildcard policy on every bucket
+      - D) A local group that contains the auditor
+      answer: A
+- ordinal: 2
+  title: IAM Policy Evaluation Logic
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Trace a cloud authorisation request through explicit denies, allows and the implicit default deny
+  - Predict the allow or deny decision for a described request against both policy kinds
+  - Explain why a cross-account request needs permission from both the caller and the resource side
+  topics:
+  - Evaluation order - explicit deny first, then allow, then the implicit default deny.
+  - Identity-based and resource-based policies in the same request.
+  - Cross-account requests and the permission required on both sides.
+  - Reading a policy statement for its effect, action and resource elements.
+  - The confused-deputy trap and how request context prevents it.
+  source_gaps:
+  - A cloud provider's own policy evaluation reference is not in the reference library.
+  lab: >-
+    Lab: On the cloud-security range, trace three simulated authorisation requests through policy
+    evaluation before observing the real decisions. Evidence: the allowed actions and resources in the
+    deployment principal's identity policy; the principals and effects in one bucket policy; the observed
+    decision for each of the three requests. Pass: an expected decision written for each request from the
+    evaluation rules; each observed decision recorded; each expected and observed pair marked match or
+    mismatch with a one-sentence reason.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in your lab notes.
+    - hosts: [jump01, localstack01]
+      action: From jump01, read the deployment principal's identity policy on localstack01 and record its
+        allowed actions and resources.
+    - hosts: [jump01, localstack01]
+      action: Read one bucket policy on localstack01 and record the principals it names and the effect of
+        each statement.
+    - hosts: [jump01, localstack01]
+      action: As the deployment principal, attempt the three requests your instructor assigned and record
+        each observed decision.
+    - hosts: [jump01]
+      action: Write the expected decision for each request from the evaluation rules, compare it with the
+        observed decision and mark each pair match or mismatch with a reason.
+  refs:
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A request matches an allow in the caller's identity policy and an explicit deny in the
+        resource policy. What does the evaluator decide, and why?
+      options:
+      - A) Allow, because identity policies are checked first
+      - B) Deny, because an explicit deny overrides every allow
+      - C) Allow, because the caller owns the request
+      - D) Deny, because the resource policy has no allow
+      answer: B
+    - question: A developer's policy allows listing and reading objects. The developer tries to delete an
+        object, and no statement mentions deletion. What happens?
+      options:
+      - A) Deletion succeeds, because no statement forbids it
+      - B) Deletion succeeds, because listing implies it
+      - C) Deletion is denied by the implicit default deny
+      - D) Deletion waits until an administrator approves it
+      answer: C
+    - question: Account A's user holds an identity policy allowing reads of a bucket in account B, and
+        account B's bucket policy never mentions account A. What happens?
+      options:
+      - A) The read succeeds, because the user's own policy allows it
+      - B) The read succeeds, because public buckets need no policy
+      - C) The read is denied, because the user lacks a boundary
+      - D) The read is denied, because both sides must grant permission
+      answer: D
+    - question: A transfer service accepts requests from any account that signs them and trusts the
+        message alone. Which evaluation trap does this describe?
+      options:
+      - A) A confused-deputy request that trusts the claimed caller
+      - B) An implicit deny caused by a missing resource policy
+      - C) A permission boundary that limits the service role
+      - D) A trust relationship that requires reauthentication
+      answer: A
+    - question: An auditor reads a policy statement that allows the write-object action on one named
+        storage path. For which request does that statement grant permission?
+      options:
+      - A) Any write to any path in the account
+      - B) Any read of the named storage path
+      - C) A write to the named path only
+      - D) A write to the path from any other account
+      answer: C
+- ordinal: 3
+  title: Public Exposure Sweeps
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Enumerate the storage buckets, vaults and endpoints a simulated cloud account exposes publicly
+  - Judge each public exposure against a written data-handling policy
+  - Rank public exposures by the sensitivity of the data each one reaches
+  topics:
+  - Exposure surfaces - object storage, secret vaults and management endpoints.
+  - Anonymous access versus authenticated access in storage settings.
+  - Sweeping an account for public resources with an audit tool.
+  - Judging each exposure against a written data-handling policy.
+  - Ranking findings by data sensitivity and who can reach them.
+  lab: >-
+    Lab: On the cloud-security range, sweep the simulated account for public exposure and judge each
+    finding against the data-handling policy your instructor supplies. Evidence: each finding the sweep
+    reports; the storage settings that show which buckets allow anonymous reads; the principals that may
+    read the development vault. Pass: every exposure listed with the setting that proves it; each marked
+    in policy or against policy with a one-sentence reason; the top two ranked by data sensitivity.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in your lab notes.
+    - hosts: [jump01, prowler01]
+      action: From jump01, run one audit sweep against the simulated account from prowler01 and record
+        each finding identifier and title.
+    - hosts: [jump01, localstack01]
+      action: On localstack01, open the settings of each bucket the sweep flagged and record which ones
+        allow anonymous reads.
+    - hosts: [jump01, azure-mock01]
+      action: On azure-mock01, read the development vault's access policy and record which principals may
+        read its secrets.
+    - hosts: [jump01]
+      action: Mark each exposure in policy or against policy with a one-sentence reason and rank the top
+        two by the sensitivity of the data each reaches.
+  refs:
+  - nist-sp-800-145
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A bucket setting lets anyone with no account and no sign-in download its objects. In an
+        exposure sweep, how is that access best classified?
+      options:
+      - A) Authenticated access, because a network connection is still needed
+      - B) Encrypted access, because the objects are stored with encryption
+      - C) Internal access, because the bucket stays inside the account boundary
+      - D) Anonymous public access, because no identity is checked
+      answer: D
+    - question: An analyst runs an audit sweep across an account's storage, vaults and endpoints before
+        judging anything. What does the sweep primarily produce?
+      options:
+      - A) An inventory of settings that differ from the intended baseline
+      - B) A complete list of every object stored across all of its buckets
+      - C) A patch level for every virtual machine registered in the account
+      - D) A monthly count of failed sign-in attempts across all of its accounts
+      answer: A
+    - question: The data-handling policy says client records stay private. A sweep finds one bucket of
+        client records readable without any sign-in. Which judgement is correct?
+      options:
+      - A) In policy, because the bucket belongs to the client records team
+      - B) Against policy, because public access reaches protected data
+      - C) In policy, because every object in it is stored with encryption
+      - D) Against policy, because the bucket lacks an owner label
+      answer: B
+    - question: A sweep finds four exposures - an empty test bucket, a bucket of published marketing
+        files, a vault of database passwords and a metrics dashboard. Which exposure ranks first?
+      options:
+      - A) The test bucket, because test data changes often
+      - B) The marketing files, because they are already public
+      - C) The vault of database passwords
+      - D) The metrics dashboard, because dashboards attract attention
+      answer: C
+    - question: Two buckets are readable without any sign-in - one holds cached images, one holds session
+        tokens for a web application. Why does the session-token bucket rank higher?
+      options:
+      - A) Images are larger, so they cost more to serve
+      - B) Session tokens let whoever holds them act as other users
+      - C) Cached images are never sensitive in any setting
+      - D) Session tokens expire, while images never do
+      answer: B
+- ordinal: 4
+  title: Privilege Escalation Paths in Cloud
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Trace a privilege escalation path from a low-privilege principal to administrative control
+  - Identify the wildcard permissions and trust relationships that open each hop in the path
+  - Propose the least-privilege change that closes a traced escalation path
+  topics:
+  - Privilege escalation as a path of small permissions, not one flaw.
+  - Wildcard identity actions that let a principal change permissions.
+  - Trust relationships that let a principal assume a stronger role.
+  - Long-lived credentials left in repositories and pipeline variables.
+  - Drawing the path from starting principal to administrative control.
+  lab: >-
+    Lab: On the cloud-security range, acting as the low-privilege principal your instructor assigned,
+    trace an escalation path that ends at administrative control. Evidence: the permissions your starting
+    principal holds; the wildcard identity action in the dev-deploy policy; each repository file that
+    records credentials, named by path only; each role the path could reach through dev-deploy's
+    permissions or a trust policy. Pass: the path drawn from your starting principal, through dev-deploy,
+    to administrative control with the permission that opens each hop; one least-privilege change named
+    for the weakest hop.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH as the low-privilege principal your instructor assigned and note
+        the start time.
+    - hosts: [jump01, localstack01]
+      action: From jump01, list the actions your assigned principal may perform on localstack01 and
+        record each one.
+    - hosts: [jump01, localstack01]
+      action: Read the dev-deploy policy on localstack01 and record the wildcard identity action it
+        grants and the permission changes it opens.
+    - hosts: [jump01, gitlab01]
+      action: On gitlab01, search the public repository for files that record credentials and record each
+        file name, not its contents.
+    - hosts: [jump01, localstack01]
+      action: List the roles on localstack01 and record each one the path could reach through dev-deploy's
+        permissions or a trust policy.
+    - hosts: [jump01]
+      action: Draw the path from your assigned principal through dev-deploy to administrative control,
+        name the permission that opens each hop and propose one least-privilege change for the weakest
+        hop.
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A role may attach any policy to any user, and one over-privileged user already exists in
+        the account. What does that combination form?
+      options:
+      - A) A separation-of-duties control
+      - B) A permission boundary
+      - C) A privilege escalation path
+      - D) A compensating control
+      answer: C
+    - question: A deployment principal's policy includes every identity action on every resource. Which
+        single capability makes this the most dangerous part of the policy?
+      options:
+      - A) Changing its own or another principal's permissions
+      - B) Reading objects from every storage bucket in the account
+      - C) Starting and stopping virtual machines
+      - D) Listing the user names held in the account
+      answer: A
+    - question: A role's trust policy names any principal in the organisation, and every analyst may
+        assume the role. What weakness does that trust relationship contain?
+      options:
+      - A) It grants permissions directly instead of through a policy
+      - B) It lets the role be assumed from one network only
+      - C) It forgets to name an administrator for the role
+      - D) It scopes by account instead of the named principals who need it
+      answer: D
+    - question: An analyst finds a long-lived cloud access key written in a file inside a public code
+        repository. What is the immediate risk of that exposure?
+      options:
+      - A) The repository fails its next licence scan
+      - B) Anyone who reads the repository can use the key's permissions
+      - C) The key stops working when the file is edited
+      - D) The repository's build times increase noticeably
+      answer: B
+    - question: A deployment principal needs only to write build outputs to one bucket, but its policy
+        allows every storage action everywhere. What is the least-privilege correction?
+      options:
+      - A) Add an explicit deny statement for every other storage bucket
+      - B) Move the principal to a group that holds no policies
+      - C) Scope the policy to the write action and one bucket
+      - D) Duplicate the policy under a shorter policy name
+      answer: C
+- ordinal: 5
+  title: Detecting Misconfigurations in Audit Logs
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Query simulated cloud audit logs for policy changes and denied authorisation decisions
+  - Distinguish benign administrative activity from anomalous permission use in log entries
+  - Write a finding line that names the principal, the action and the log evidence
+  topics:
+  - Cloud audit logs - the events that record decisions and changes.
+  - Filtering audit logs by principal, event name, resource and time.
+  - Benign administrative patterns - approved changes, ticket references, working hours.
+  - Anomalous patterns - permission probing, unusual hours, unexplained policy edits.
+  - The finding line - principal, action, time and log source.
+  lab: >-
+    Lab: On the cloud-security range, hunt the simulated account's audit logs for policy changes and
+    denied authorisation decisions. Evidence: the event types the audit ingest holds; each policy change
+    event in the exercise window with its principal, resource and time; the count of denied decisions for
+    one principal and the actions denied. Pass: each policy change marked benign administrative or
+    anomalous with a one-sentence reason; one finding line naming the principal, the action and the log
+    evidence.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in your lab notes.
+    - hosts: [jump01, cloud-siem01]
+      action: From jump01, open the log console on cloud-siem01 and record the event types the cloud
+        audit ingest holds.
+    - hosts: [jump01, cloud-siem01]
+      action: Filter for policy change events in the exercise window and record each event's principal,
+        resource and time.
+    - hosts: [jump01, cloud-siem01]
+      action: Filter for denied authorisation decisions for one principal and record the count and the
+        actions denied.
+    - hosts: [jump01]
+      action: Mark each policy change benign administrative or anomalous with a one-sentence reason and
+        write one finding line naming the principal, action and log source.
+  refs:
+  - nist-sp-800-92
+  - sigma
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: An analyst must show who changed a cloud permission last week. Which record answers that
+        question directly?
+      options:
+      - A) An audit log entry naming the principal, action and time
+      - B) The permission's creation date in the account inventory
+      - C) A firewall session summary for the console network
+      - D) The monthly count of failed sign-in attempts
+      answer: A
+    - question: A principal changes one bucket policy at midday on a weekday, from the management
+        network, matching an approved change ticket. How should the analyst classify it?
+      options:
+      - A) Anomalous, because bucket policies should never change
+      - B) Benign administrative activity, consistent with the ticket
+      - C) Anomalous, because the change happened during the day
+      - D) Benign, because no alarm fired in the console
+      answer: B
+    - question: A hunt filters audit logs for denied authorisation decisions and finds fifty denials for
+        one principal trying many different actions. What does that pattern suggest?
+      options:
+      - A) The logs are incomplete and need re-collection
+      - B) The principal is following a documented procedure
+      - C) The denials are all false positives by definition
+      - D) Permission probing, a common step before misuse
+      answer: D
+    - question: Which finding line best records a suspicious policy change for handover to the fixing
+        workflow?
+      options:
+      - A) Someone changed permissions and it looked strange
+      - B) The adversary is active and should be stopped now
+      - C) Principal deploy-user edited the reporting bucket policy at 03:12 (audit log)
+      - D) Please review all bucket policies as soon as possible
+      answer: C
+    - question: After a misconfiguration is confirmed, an analyst must show every action that principal
+        took that day. Which query scope produces that?
+      options:
+      - A) All audit events for the principal's name on that date
+      - B) All events for the whole account in the month
+      - C) Only the events the console dashboard shows by default
+      - D) Only events marked high severity by the log platform
+      answer: A
+- ordinal: 6
+  title: Fix-and-Verify Drills
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select the least-privilege policy change that closes each confirmed misconfiguration
+  - Apply each change in the simulated account and re-test the previously allowed access
+  - Verify a fix by recording the new decision for the over-privileged request and one legitimate action
+  topics:
+  - Least-privilege fixes - scope actions and resources to the documented need.
+  - The fix workflow - change, re-test the old access, re-test the legitimate use.
+  - Re-running the sweep to confirm no new exposure appeared.
+  - Writing the closure note - finding, change and verification result.
+  - Handling a fix that breaks a legitimate workflow.
+  lab: >-
+    Lab: On the cloud-security range, close one confirmed over-privilege finding and prove the fix holds.
+    Evidence: the current decision when the over-privilege check is first repeated; the scoped action and
+    resource list after the change; the new decision for the over-privilege check; the result of one
+    legitimate deployment action. Pass: the over-privilege check denied after the change; the legitimate
+    action still succeeding; a closure note stating the finding, the change and both verification results.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH with the credentials your instructor assigned and note the start
+        time.
+    - hosts: [jump01, localstack01]
+      action: From jump01, repeat the over-privilege check from the earlier modules against localstack01
+        and record the current decision.
+    - hosts: [jump01, localstack01]
+      action: Scope the offending policy on localstack01 to the documented deployment actions and record
+        the new action and resource list.
+    - hosts: [jump01, localstack01]
+      action: Repeat the over-privilege check and record the new decision, then run one legitimate
+        deployment action and record its result.
+    - hosts: [jump01]
+      action: Write the closure note stating the finding, the change applied and the verification result
+        for both checks.
+  refs:
+  - nist-cswp-29
+  - cis-benchmarks
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A Student narrows an over-broad policy in the training account. Which check proves the
+        fix worked without breaking the deployment it serves?
+      options:
+      - A) Confirm that the edited policy file saved without any errors
+      - B) Re-test the once-allowed access and one legitimate deployment
+      - C) Restart every management console session in the training account
+      - D) Delete the policy entirely and observe which functions stop working
+      answer: B
+    - question: After applying a least-privilege change, which record shows the verification result for
+        the previously over-privileged request?
+      options:
+      - A) The date on which the change was first requested by the team
+      - B) The version number of the edited policy document on file
+      - C) The name of the engineer who agreed the change with the team
+      - D) The new allow or deny decision for that exact request
+      answer: D
+    - question: A sweep found a vault access policy granting full rights to every principal. Which change
+        follows least privilege?
+      options:
+      - A) Grant the two named applications read rights on that vault
+      - B) Grant every principal read rights and remove write rights
+      - C) Rename the vault so its name attracts less attention
+      - D) Move the vault into a different cloud account
+      answer: A
+    - question: An analyst fixed two bucket policies this morning. Why run the exposure sweep again
+        before closing the ticket?
+      options:
+      - A) The sweep tool resets its own findings database
+      - B) Bucket policies expire and need daily renewal
+      - C) To confirm the fixes landed and introduced no new exposure
+      - D) To double the number of findings in the report
+      answer: C
+    - question: Which closure note line best pairs a found misconfiguration with the evidence that the
+        fix holds?
+      options:
+      - A) The team agrees the issue is closed for now
+      - B) The policy looked too broad and was probably fixed
+      - C) The finding was important and everyone has been informed
+      - D) Wildcard storage policy scoped to one bucket; re-test denied, deploy succeeded
+      answer: D
