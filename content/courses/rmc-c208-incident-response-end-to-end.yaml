@@ -6,9 +6,10 @@ course_code: RMC C208
 title: Incident Response — End-to-End
 version: '1.0'
 difficulty: intermediate
-duration_hours: 100
+duration_hours: 6
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: TEMP67
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
@@ -33,56 +34,87 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Command a major incident across an enterprise.
-  - Structure and sustain a large response effort.
-  - Make decisions with incomplete information.
+  - Assign incident command roles and workstreams for a multi-team enterprise response and name the single executive interface
+  - Record three response decisions made on incomplete information, each stating the information held, the assumptions made and the review trigger
+  - Sustain a prolonged response by applying shift rotation, handover discipline and a reporting cadence that protects responder time
   topics:
-  - Incident command structure at scale.
-  - Sustaining prolonged response.
-  - Decision-making under uncertainty.
-  - Escalation and executive interface.
-  lab: 'Lab: Command a simulated enterprise-wide incident, maintaining workstream coordination and producing
-    decision records for three decisions made on incomplete information.'
+  - Incident command structure for a large response; commander, workstream leads and scribes.
+  - Decision records; the information held, the assumptions made and the review trigger.
+  - Sustaining a prolonged response; shift rotation, handover discipline and responder welfare.
+  - Escalation paths and the executive interface; one cadence and defined decision rights.
+  - Revising conclusions as evidence emerges and communicating the change clearly.
+  lab: >-
+    Lab: On the large-enterprise range, stand up incident command for an active multi-host intrusion:
+    assign the command roles and workstreams, record three decisions made on incomplete information, and set
+    the executive reporting cadence. Evidence: the command structure naming the commander, each workstream lead
+    and the open alerts each lead owns; three decision records, each stating the information held, the
+    assumptions made and the review trigger; the executive cadence and the first handover time. Pass: every
+    open alert is assigned to one lead; each decision record names its information, assumptions and review
+    trigger; the cadence names a single interface role so responders are not interrupted directly.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open the incident queue on soar01 and record the start time and each open alert.
+    - hosts: [jump01, siem01]
+      action: >-
+        From jump01, open siem01 and record which detection sources are reporting: the SIEM indexes, the
+        network sensor on ids01 and the endpoint server edr01.
+    - hosts: [jump01]
+      action: Draft the command structure and record the commander, each workstream lead and the alerts that lead owns.
+    - hosts: [jump01]
+      action: Write three decision records for choices the scenario forces on incomplete information, each stating
+        the information held, the assumptions made and the review trigger.
+    - hosts: [jump01]
+      action: Set the executive reporting cadence and the handover plan, and record the first handover time and owner.
+    - hosts: [jump01]
+      action: Mark each decision ready to execute or held pending evidence with a one-sentence reason, and name the
+        decision to revisit first when new evidence arrives.
   refs:
   - nist-sp-800-61r3
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'Decisions during an incident must often be made:'
+    - question: Two hours into a ransomware response, the commander faces the decision to isolate the file server
+        while finance closes its month-end run. Which record captures that decision best?
       options:
-      - A) Only with complete information
-      - B) On incomplete information, with the reasoning and assumptions recorded
-      - C) By consensus
-      - D) By the most senior person
+      - A) The isolation request ticket number
+      - B) The name of the responder who objected
+      - C) What was decided, the information held and the assumptions made
+      - D) The final outcome for the file server once eradication had completed
+      answer: C
+    - question: A major incident runs into its eleventh day and responders are making errors from fatigue. Which
+        command practice addresses this directly?
+      options:
+      - A) Shift rotation with disciplined handovers between shifts
+      - B) Longer shifts to keep one experienced responder in charge
+      - C) A second incident commander appointed in parallel
+      - D) Fewer workstreams to track
+      answer: A
+    - question: During a major incident, executives keep telephoning the malware analyst directly for status
+        updates. What does the command structure put in their place?
+      options:
+      - A) A public status page updated hourly
+      - B) A defined reporting cadence through a single interface role
+      - C) Silence until eradication is complete
+      - D) Direct telephone lines from every executive to every workstream lead
       answer: B
-    - question: 'A decision record during an incident captures:'
+    - question: New log evidence contradicts the team's conclusion that only two workstations were affected. What
+        does incident command expect of the scope owner?
       options:
-      - A) The outcome
-      - B) What was decided, on what information and what assumptions
-      - C) The decider only
-      - D) The alternatives rejected only
-      answer: B
-    - question: 'Sustaining a prolonged response requires:'
+      - A) Keep the original conclusion in place until the incident closes
+      - B) Escalate the question to threat attribution
+      - C) Wait for the next scheduled executive report
+      - D) Revise the conclusion and communicate the change clearly
+      answer: D
+    - question: A workstream lead must choose between rebuilding a server now and waiting for more evidence, and no
+        further evidence exists. What belongs in the decision record?
       options:
-      - A) Longer shifts
-      - B) Rotation, handover discipline and attention to responder welfare
-      - C) More tooling
-      - D) Fewer workstreams
-      answer: B
-    - question: 'The executive interface during a major incident should be:'
-      options:
-      - A) Ad hoc
-      - B) A defined role and cadence so responders are not repeatedly interrupted
-      - C) Continuous
-      - D) Delegated to the analyst
-      answer: B
-    - question: 'Revising an earlier conclusion as evidence emerges is:'
-      options:
-      - A) A failure of leadership
-      - B) Expected and should be communicated clearly
-      - C) To be avoided
-      - D) A last resort
+      - A) Only the choice that was made
+      - B) The decision, the information held and the assumptions made
+      - C) Every dissenting opinion raised during the response call that day
+      - D) The estimated cost of each choice alone
       answer: B
 - ordinal: 2
   title: Scoping a Complex Compromise
@@ -91,16 +123,46 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Establish the true scope of an extensive compromise.
-  - Iterate scoping as new evidence emerges.
-  - Avoid premature scope closure.
+  - Scope a compromise across workstations, identity and cloud segments using indicator matches and adversary behaviours
+  - Expand a compromise scope iteratively as new evidence emerges from telemetry and directory records
+  - State confidence in scope completeness and name the evidence that would expand it
   topics:
-  - Scoping methodology.
-  - Indicator-driven and behaviour-driven scoping.
-  - Iterative scope expansion.
-  - Confidence in scope completeness.
-  lab: 'Lab: Scope a compromise across a simulated enterprise, documenting your scoping methodology and
-    stating explicitly what confidence you have that the scope is complete.'
+  - Scoping methodology; indicators, behaviours and the assets that connect them.
+  - Indicator-driven scoping from SIEM, endpoint and network telemetry.
+  - Behaviour-driven scoping; the actions the adversary must have performed.
+  - Iterative scope expansion as new evidence emerges.
+  - Stating confidence in scope completeness and what would change it.
+  lab: >-
+    Lab: On the large-enterprise range, scope an active intrusion that began on one workstation: follow
+    the indicator matches and the behaviours the adversary must have performed across the corporate, server
+    and cloud segments, and state the confidence. Evidence: every host that matched the indicator, with its
+    address and segment; the account, source address and time of each related sign-in on dc01; whether
+    aadconnect01 synchronises any affected account into the cloud segment; a scope statement for each segment
+    marked complete or incomplete with the confidence held. Pass: each matched host is listed with its segment;
+    each segment is marked complete or incomplete with a one-sentence reason; the evidence that would expand
+    the scope is named for every incomplete segment.
+  lab_range:
+    template: large-enterprise
+    scenario: apt-nation-state
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open the case on soar01 and record the initial indicator and the workstation that
+        raised it.
+    - hosts: [jump01, siem01]
+      action: From jump01, search siem01 for every host that matched the indicator and record each host name,
+        address and network segment.
+    - hosts: [jump01, edr01]
+      action: From jump01, open edr01 and record the process activity and network connections the endpoint agent
+        captured on each matched host.
+    - hosts: [jump01, dc01]
+      action: From jump01, query dc01 for sign-ins by the affected account and record each source address and its
+        time.
+    - hosts: [jump01, aadconnect01]
+      action: From jump01, read the aadconnect01 synchronisation records and record whether any affected account
+        also exists in the cloud segment.
+    - hosts: [jump01]
+      action: Mark each segment complete or incomplete with a one-sentence reason, and name the evidence that would
+        expand each incomplete segment.
   refs:
   - nist-sp-800-61r3
   - mitre-attack
@@ -108,41 +170,47 @@ modules:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Premature scope closure leads to:'
+    - question: Eradication ran on every host the SIEM flagged, and the same behaviour reappeared on two new
+        servers the next morning. What did the scope miss?
       options:
-      - A) Faster recovery
-      - B) Eradication that misses attacker footholds, causing recurrence
-      - C) Better metrics
-      - D) Reduced cost
-      answer: B
-    - question: 'Scoping should be driven by:'
+      - A) The hosts' outstanding patch levels
+      - B) The SIEM's log retention window
+      - C) The team's recent change approvals
+      - D) Footholds outside the indicator matches
+      answer: D
+    - question: A scoping team has every host matching a file-hash indicator but no picture of what the adversary
+        did on them. Which addition makes the scope complete?
       options:
-      - A) Indicators alone
-      - B) Both indicators and the behaviours the adversary must have performed
-      - C) Asset criticality only
-      - D) Alert volume
-      answer: B
-    - question: 'Stating confidence in scope completeness is important because:'
+      - A) Behaviour-driven scoping from the actions the adversary must have performed
+      - B) A faster SIEM with more storage for matches
+      - C) More file-hash indicators from a vendor threat feed
+      - D) A wider vulnerability scan of the whole subnet
+      answer: A
+    - question: During scoping, a cloud segment appears in the intrusion for the first time. What does the scope
+        owner do before eradication proceeds?
       options:
-      - A) It hedges responsibility
-      - B) Eradication and recovery decisions depend on how complete the picture is
-      - C) Auditors require it
-      - D) It delays action
-      answer: B
-    - question: 'New evidence contradicting the current scope should trigger:'
+      - A) Continue on the original scope plan unchanged
+      - B) Close the alert as a duplicate entry
+      - C) Reassess the scope and state the confidence held
+      - D) Ask the cloud vendor to investigate it alone
+      answer: C
+    - question: >-
+        Two analysts read the same sign-in records: one says the compromise is contained to a single
+        workstation, the other counts three source addresses. What does the disagreement most need?
       options:
-      - A) Continuation of the plan
-      - B) Scope reassessment before proceeding with eradication
-      - C) Escalation only
-      - D) Documentation only
+      - A) A larger alert queue for triage
+      - B) A stated confidence in the current scope
+      - C) Attribution of the three source addresses found
+      - D) A new detection rule for sign-ins
       answer: B
-    - question: 'Scoping by indicators alone is insufficient because attackers:'
+    - question: An adversary's infrastructure changes every week, but each entry creates the same kind of rogue
+        account. Why does indicator-only scoping fail against this pattern?
       options:
-      - A) Use no indicators
-      - B) Change infrastructure and tooling while retaining behaviour
-      - C) Avoid logging
-      - D) Work slowly
-      answer: B
+      - A) Indicators expire before ingestion finishes
+      - B) Indicators cannot name user accounts
+      - C) Behaviour persists while indicators change
+      - D) Behaviour needs vendor tooling to see
+      answer: C
 - ordinal: 3
   title: Coordinated Eradication
   content_type: reading
@@ -150,16 +218,46 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Plan eradication across many systems simultaneously.
-  - Time eradication to deny the adversary reaction.
-  - Verify eradication effectiveness.
+  - Plan simultaneous eradication across endpoints, identity and cloud so the adversary cannot re-establish access
+  - Sequence credential, token and trust resets with host removal to close every foothold at once
+  - Design post-eradication verification that hunts for the adversary's known behaviours instead of waiting for alerts
   topics:
-  - Eradication planning at scale.
-  - Timing and simultaneity.
-  - Credential and trust reset.
-  - Eradication verification.
-  lab: 'Lab: Plan a coordinated eradication for a compromise spanning identity, endpoints and cloud, sequencing
-    actions so the adversary cannot re-establish access between steps.'
+  - Eradication planning at scale; scope, order and rollback.
+  - Timing and simultaneity; denying the adversary observation and reaction.
+  - Credential and trust reset; passwords, service accounts, tokens and key material.
+  - Rebuild versus clean-in-place decisions for compromised hosts.
+  - Verification by active hunting for known behaviours after the action.
+  lab: >-
+    Lab: On the large-enterprise range, plan a coordinated eradication for the scoped intrusion: order the
+    removal and rebuild of every foothold across endpoints, identity and cloud, and set the credential and
+    trust resets that execute at one moment. Evidence: each confirmed foothold with its host and evidence;
+    the accounts the footholds used, including service accounts; which accounts aadconnect01 synchronises
+    into the cloud segment; the eradication order marking each foothold rebuilt or cleaned; the single reset
+    time; the behaviours the hunt must search for afterwards. Pass: every foothold appears in the order with
+    a rebuild or clean decision; one reset time covers the corporate forest and the cloud segment; each
+    action is marked simultaneous or staged with a one-sentence reason.
+  lab_range:
+    template: large-enterprise
+    scenario: apt-nation-state
+    steps:
+    - hosts: [jump01, soar01]
+      action: From jump01, open the case on soar01 and record each confirmed foothold with its host and the
+        evidence that confirms it.
+    - hosts: [jump01, dc01]
+      action: From jump01, query dc01 for the accounts those footholds used and record each account name and
+        whether it is a service account.
+    - hosts: [jump01, aadconnect01]
+      action: From jump01, read aadconnect01 and record which of those accounts synchronise into the cloud segment.
+    - hosts: [jump01]
+      action: >-
+        Write the eradication order: mark each foothold rebuilt or cleaned, and record the single time every
+        credential and trust reset executes.
+    - hosts: [jump01, siem01]
+      action: From jump01, prepare the post-eradication hunt on siem01 and record each adversary behaviour the
+        hunt must search for after the action.
+    - hosts: [jump01]
+      action: Mark each planned action simultaneous or staged with a one-sentence reason, and state which staged
+        action would let the adversary re-establish access.
   refs:
   - nist-sp-800-61r3
   - nist-sp-800-63-4
@@ -167,41 +265,46 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Eradication across many systems is often executed simultaneously because:'
+    - question: A response team removes the malware it found on Monday, cleans two more servers on Wednesday and
+        the rest on Friday, and the same accounts reappear each time. Why?
       options:
-      - A) It is more efficient
-      - B) Staged removal lets the adversary observe and re-establish access
-      - C) Tools require it
-      - D) It reduces downtime
+      - A) The malware reinstalls itself without credentials
+      - B) Staged removal lets the adversary observe each step and regain access
+      - C) The antivirus signatures were stale
+      - D) Removal requires domain administrator rights that the on-call team does not hold
       answer: B
-    - question: 'Credential reset during eradication must include:'
+    - question: The hosts are rebuilt from clean images, but the response plan leaves the service accounts
+        untouched. What most likely follows?
       options:
-      - A) User passwords only
-      - B) Service accounts, trusts, tokens and key material
-      - C) Administrators only
-      - D) Nothing if hosts are rebuilt
-      answer: B
-    - question: 'Verification of eradication is established by:'
+      - A) Nothing, because the rebuilt hosts are all verified clean
+      - B) A compliance finding at the next audit
+      - C) Slower sign-ins for domain users
+      - D) Rapid re-compromise using the retained credentials
+      answer: D
+    - question: The eradication plan covers the corporate forest and the subsidiary forest, both compromised.
+        When should the credential resets across both forests execute?
       options:
-      - A) Absence of alerts
-      - B) Active hunting for the adversary's known behaviours after the action
-      - C) System uptime
-      - D) Ticket closure
-      answer: B
-    - question: 'Eradicating endpoints while leaving identity compromised results in:'
+      - A) Simultaneously, so neither forest can regain the other
+      - B) One forest at a time to limit the operational risk involved
+      - C) After monitoring confirms the first forest is clean
+      - D) Whenever each forest owner becomes available
+      answer: A
+    - question: After eradication, no alerts have fired for two days. What does the response lead require before
+        declaring success?
       options:
-      - A) Successful eradication
-      - B) Rapid re-compromise using the retained credentials
-      - C) Partial improvement only
-      - D) No change
-      answer: B
-    - question: 'The eradication plan should be prepared:'
+      - A) System uptime statistics collected for the rebuilt hosts
+      - B) Closure of the incident ticket
+      - C) Active hunting for the adversary's known behaviours
+      - D) A vendor attestation of cleanliness
+      answer: C
+    - question: The plan resets every user password but keeps the same VPN pre-shared keys and inter-forest trusts.
+        What does the plan miss?
       options:
-      - A) During execution
-      - B) Before execution, with scope confidence established first
-      - C) After recovery
-      - D) By each system owner independently
-      answer: B
+      - A) Nothing material to eradication
+      - B) Refresher training for all users plus a new awareness campaign
+      - C) The patch baseline for rebuilt hosts
+      - D) Other credential and trust material the adversary may hold
+      answer: D
 - ordinal: 4
   title: Recovery and Trust Restoration
   content_type: reading
@@ -209,16 +312,46 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Restore services safely after major compromise.
-  - Re-establish trust in identity and infrastructure.
-  - Manage business expectations during extended recovery.
+  - Sequence service restoration so identity trust is re-established before dependent services return
+  - Prioritise rebuilds by business criticality and dependency order from an observed service inventory
+  - Define heightened monitoring and business expectations for the period after recovery
   topics:
-  - Recovery sequencing at scale.
-  - Trust restoration in identity systems.
-  - Rebuild strategy and prioritisation.
-  - Business expectation management.
-  lab: 'Lab: Produce a recovery plan for a compromised identity infrastructure, sequencing restoration
-    so that trust is re-established before dependent services return.'
+  - Recovery sequencing; identity trust before dependent services.
+  - Rebuild strategy; verified sources, new credentials and validated configuration.
+  - Prioritising rebuilds by business criticality and dependency order.
+  - Re-establishing trust in identity, certificates and shared credentials.
+  - Heightened monitoring and business expectation management after recovery.
+  lab: >-
+    Lab: On the large-enterprise range, plan the recovery after eradication: build the inventory from what
+    the range reports, order the rebuilds so identity trust returns before dependent services, and set the
+    heightened monitoring that follows. Evidence: the hosts and services reporting into siem01; the domain
+    accounts, service accounts and computer trusts on dc01; the ca01 certificates for the affected servers,
+    with each expiry; the rebuild order with each service's criticality and dependencies; the heightened
+    monitoring rules and what they must alert on. Pass: identity trust precedes every dependent service in
+    the order; each service is marked safe to return or held with a one-sentence reason; the expectation
+    message for one held service names its owner and next review time.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01, siem01]
+      action: From jump01, record from siem01 which hosts and services are reporting, so the recovery inventory
+        starts from observed state.
+    - hosts: [jump01, dc01]
+      action: From jump01, record from dc01 the domain accounts, service accounts and computer trusts that exist
+        for the affected segment.
+    - hosts: [jump01, ca01]
+      action: From jump01, record from ca01 the certificates the affected servers hold and the expiry date of each
+        one.
+    - hosts: [jump01]
+      action: >-
+        Write the rebuild order: record each service with its criticality, its dependencies and whether
+        trust is re-established before it returns.
+    - hosts: [jump01, siem01]
+      action: From jump01, define the heightened monitoring rule set on siem01 and record which repeat-access
+        attempts it must alert on.
+    - hosts: [jump01]
+      action: Mark each service safe to return or held with a one-sentence reason, and state the expectation
+        message for the service owner whose return is held.
   refs:
   - nist-sp-800-61r3
   - nist-sp-800-63-4
@@ -226,41 +359,46 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Restoring dependent services before identity trust is re-established:'
+    - question: After a domain compromise, the recovery team restores the finance application first and points it
+        at the directory that eradication has not yet cleared. What is wrong with that sequence?
       options:
-      - A) Accelerates recovery
-      - B) Reintroduces compromised trust into the recovered environment
-      - C) Is standard sequencing
-      - D) Has no effect
-      answer: B
-    - question: 'Business expectation management during recovery matters because:'
+      - A) Finance applications should always be rebuilt last during a recovery
+      - B) The application needs new hardware before returning
+      - C) Restoring services before identity trust is re-established
+      - D) Nothing, provided the backups verified cleanly
+      answer: C
+    - question: Executives press the recovery team to restore the customer portal tonight, before the directory
+        rebuild is verified. What does that pressure risk?
       options:
-      - A) It reduces cost
-      - B) Pressure to restore quickly can drive unsafe shortcuts
-      - C) Executives require updates
-      - D) It improves morale
+      - A) A budget increase for the recovery
+      - B) Unsafe shortcuts in the rebuild sequence
+      - C) More accurate status reporting to customers
+      - D) Faster notifications to affected customers
       answer: B
-    - question: 'Rebuild prioritisation should follow:'
+    - question: Twenty systems need rebuilding and the incident commander asks for the order. What sets the
+        rebuild queue?
       options:
-      - A) Alphabetical order
-      - B) Business criticality and dependency order
-      - C) Ease of rebuild
-      - D) System age
-      answer: B
-    - question: 'Trust in a rebuilt environment is established by:'
+      - A) Alphabetical order by host name and network segment
+      - B) Whichever team becomes available first
+      - C) The age of each system
+      - D) Business criticality and dependency order
+      answer: D
+    - question: A rebuilt server is declared clean on the strength of a single antivirus scan run against its old
+        image. Why is trust in it not established?
       options:
-      - A) Declaring it clean
-      - B) Rebuilding from verified sources with new credentials and validated configuration
-      - C) Scanning once
-      - D) Monitoring only
-      answer: B
-    - question: 'Heightened monitoring after recovery is necessary because:'
+      - A) Trust comes from verified sources and validated configuration
+      - B) Antivirus scans are unreliable as the sole evidence on a rebuilt server
+      - C) The server should have been renamed first
+      - D) A scan proves the image is current
+      answer: A
+    - question: The environment is recovered and the response lead keeps heightened monitoring in place. What is
+        that monitoring watching for?
       options:
-      - A) Tools need tuning
-      - B) Residual or repeat access attempts are common after eradication
-      - C) Baselines change
-      - D) Auditors require it
-      answer: B
+      - A) Baseline configuration drift on rebuilt hosts
+      - B) Expiry of security tool licences
+      - C) Residual or repeat access attempts after eradication
+      - D) Failures in the backup job schedule during the recovery window
+      answer: C
 - ordinal: 5
   title: Crisis Communication and Stakeholders
   content_type: reading
@@ -268,56 +406,89 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Manage communication during a crisis.
-  - Coordinate legal, regulatory and public messaging.
-  - Maintain internal confidence and external credibility.
+  - Draft holding statements for staff, customers, regulators and media that acknowledge without speculating
+  - Extract reportable facts, times and affected systems from response records for legal and regulatory coordination
+  - Plan a communication cadence that keeps internal staff informed and protects external credibility
   topics:
-  - Crisis communication planning.
-  - Legal and regulatory coordination.
-  - Public and customer communication.
-  - Internal communication.
-  lab: 'Lab: Produce a communication plan for a major breach covering internal staff, customers, regulators
-    and media, with holding statements for the first 24 hours.'
+  - Crisis communication planning and the holding statement.
+  - Legal and regulatory coordination; obligations, timelines and one voice.
+  - Public and customer communication; certainty, retraction and credibility.
+  - Internal communication during a breach; informed staff speculate less.
+  - Attribution in public; why early naming carries legal and diplomatic risk.
+  lab: >-
+    Lab: On the large-enterprise range, build the communication plan for the breach from the facts the
+    response records hold: separate established fact from unsupported claim, draft holding statements for
+    the first 24 hours, and set who owns each audience. Evidence: every reportable fact with its time and
+    source; the first detection and containment times and the affected host count from siem01; each
+    unsupported claim, with the evidence that would confirm it; one holding statement each for staff,
+    customers and regulators; the 24-hour update cadence and each audience's owner. Pass: each statement
+    uses only recorded facts; each is marked fact-only or speculative with a one-sentence reason; the line
+    to remove before release is named for any speculative statement.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01, soar01]
+      action: From jump01, open the case on soar01 and record every reportable fact with the time and the source
+        that establishes it.
+    - hosts: [jump01, siem01]
+      action: From jump01, record from siem01 the first detection time, the containment time and the number of
+        hosts affected.
+    - hosts: [jump01]
+      action: Separate the recorded facts from claims not yet supported, and record for each unsupported claim the
+        evidence that would confirm it.
+    - hosts: [jump01]
+      action: Draft one holding statement each for staff, customers and regulators, using only the recorded facts
+        and naming no unconfirmed cause.
+    - hosts: [jump01]
+      action: Set the update cadence for the first 24 hours and record the owner of each audience.
+    - hosts: [jump01]
+      action: Mark each statement fact-only or speculative with a one-sentence reason, and name the line to remove
+        before release.
   refs:
   - nist-sp-800-61r3
   quiz:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'A holding statement is used to:'
+    - question: A retailer confirms an intrusion at 09:00 but cannot yet say what data was taken. What does its
+        first public statement do?
       options:
-      - A) Provide full detail early
-      - B) Acknowledge the situation credibly while facts are still being established
-      - C) Deny the incident
-      - D) Assign attribution
+      - A) Describes the attacker's most likely country of origin for reporters
+      - B) Acknowledges the situation credibly while facts are established
+      - C) Promises a full technical report tonight
+      - D) Denies that any incident occurred
       answer: B
-    - question: 'Communicating certainty before facts are established risks:'
+    - question: A spokesperson tells reporters the stolen data was encrypted and therefore safe; three days later
+        unencrypted copies surface. What is the cost of that early certainty?
       options:
-      - A) Reassuring stakeholders usefully
-      - B) Having to publicly retract, damaging credibility
-      - C) Regulatory breach only
-      - D) Nothing
-      answer: B
-    - question: 'Internal communication during a breach is important because:'
+      - A) Faster media cycles for a week
+      - B) Regulator fines and nothing else
+      - C) Reassured customers and reporters in the short term
+      - D) A public retraction that damages credibility
+      answer: D
+    - question: Front-line staff learn of the breach from a customer's social media post and begin speculating to
+        callers. Which communication failure caused this?
       options:
-      - A) Staff need reassurance only
-      - B) Staff are stakeholders and uninformed staff speculate or misinform externally
-      - C) It satisfies HR
-      - D) It reduces calls
-      answer: B
-    - question: 'Regulatory communication should be coordinated with:'
+      - A) Internal staff were not informed early with approved facts
+      - B) The media statement was too short and too technical for callers
+      - C) The regulators were notified too late
+      - D) The executives were briefed too often
+      answer: A
+    - question: A regulator's 72-hour notification window opens in the middle of eradication. Who owns the
+        notification and its timeline?
       options:
-      - A) Media messaging only
-      - B) Legal counsel, with obligations and timelines tracked deliberately
-      - C) The technical team
-      - D) Customers first
-      answer: B
-    - question: 'Speculating publicly about attribution during a breach is unwise because:'
+      - A) The media relations team
+      - B) Whichever analyst is free first
+      - C) Legal counsel, with the obligations and timelines tracked
+      - D) The customer service desk, which handles most customer conversations
+      answer: C
+    - question: A journalist asks which country the attacker came from; the evidence points nowhere yet. Why does
+        the response team decline to speculate?
       options:
-      - A) It is uninteresting
-      - B) Early attribution is frequently wrong and carries legal and diplomatic risk
-      - C) It aids the attacker
-      - D) Regulators forbid it
+      - A) Attribution is a matter for police investigators only, not for companies
+      - B) Early attribution is often wrong and carries legal and diplomatic risk
+      - C) Speculation helps the attacker hide
+      - D) Journalists cannot verify technical claims
       answer: B
 - ordinal: 6
   title: Programme-Level Learning
@@ -326,16 +497,45 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Extract systemic learning from major incidents.
-  - Drive organisational change from incident findings.
-  - Measure whether the organisation is improving.
+  - Analyse incident records in aggregate to expose systemic causes that no single incident shows
+  - Propose organisational changes for a shared root cause and name the sponsor level able to enact each
+  - Define improvement measures from detection and containment times and repeat root causes
   topics:
-  - Systemic analysis of incidents.
-  - Organisational change from findings.
-  - Trend analysis across incidents.
-  - Measuring capability improvement.
-  lab: 'Lab: Analyse three incident reports for common systemic causes, propose organisational changes
-    addressing the shared root cause, and define how you would measure whether they worked.'
+  - Systemic analysis; why the incident was possible, not only what happened.
+  - Reading incident records in aggregate for recurring patterns.
+  - Organisational change; sponsorship able to alter process, resourcing or structure.
+  - Trend analysis across incidents and repeat root causes.
+  - Measuring improvement; detection and containment times, repeat causes and reporting quality.
+  lab: >-
+    Lab: On the large-enterprise range, turn the incident into programme learning: measure how the response
+    performed, find the systemic gaps behind the timeline, and propose changes with a sponsor and a measure
+    for each. Evidence: the detection-to-containment time and the alerts raised before review, from siem01;
+    each case-history decision dependent on missing telemetry or an unclear owner; each gap classified as
+    tooling, process or ownership; one organisational change per gap, with its sponsor level; the siem01
+    measures for detection time, containment time and repeat root causes. Pass: each gap is classified with
+    a one-sentence reason; each change names a sponsor level able to change process or resourcing; each
+    change is ranked by expected effect on the measures.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01, siem01]
+      action: From jump01, record from siem01 the time from first detection to containment and the number of
+        alerts raised before review.
+    - hosts: [jump01, soar01]
+      action: From jump01, open the case history on soar01 and record each decision that depended on missing
+        telemetry or an unclear owner.
+    - hosts: [jump01]
+      action: Classify each recorded gap as tooling, process or ownership, and state which other incidents the
+        same gap would explain.
+    - hosts: [jump01]
+      action: Propose one organisational change per gap and record the sponsor level able to enact each change.
+    - hosts: [jump01, siem01]
+      action: >-
+        From jump01, define on siem01 the measures that show improvement: detection time, containment time
+        and repeat root causes.
+    - hosts: [jump01]
+      action: Rank the proposed changes by expected effect on the measures, with a one-sentence reason for each
+        rank.
   refs:
   - nist-sp-800-61r3
   - nist-cswp-29
@@ -343,38 +543,42 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Analysing incidents in aggregate reveals:'
+    - question: Five incidents in a year each received a clean root-cause fix, yet the same class of failure keeps
+        recurring. What does analysing them together reveal?
       options:
-      - A) Individual errors
-      - B) Systemic patterns invisible in any single incident
-      - C) Attribution
-      - D) Tool gaps only
-      answer: B
-    - question: 'Organisational change from incident findings requires:'
+      - A) The identity of the attacker
+      - B) Individual analyst error in each case, five times running
+      - C) A systemic pattern invisible in any single incident
+      - D) A tooling licence due for renewal
+      answer: C
+    - question: The post-incident review shows patching failed because no team owned exception tracking. What does
+        the recommended change need in order to succeed?
       options:
-      - A) A technical fix
-      - B) Sponsorship at a level able to change process, resourcing or structure
-      - C) A new tool
-      - D) More analysts
-      answer: B
-    - question: 'Recurring incidents with the same root cause indicate:'
+      - A) Sponsorship able to change process and ownership
+      - B) A faster patch tool with a new licence and more storage
+      - C) A larger incident response team
+      - D) A new dashboard for metrics
+      answer: A
+    - question: The same file-share permission error appears in three separate incidents across the year. What does
+        that recurrence indicate about the earlier remediation?
       options:
-      - A) Bad luck
-      - B) That previous remediation addressed symptoms rather than the cause
-      - C) Increased targeting
-      - D) Better detection
-      answer: B
-    - question: 'Improvement is best measured by:'
+      - A) Detection and reporting improved between the incidents
+      - B) Targeting of the organisation increased
+      - C) The recurrence is coincidence
+      - D) It addressed symptoms rather than the cause
+      answer: D
+    - question: A response programme wants evidence that its capability is improving year over year. Which measure
+        shows that best?
       options:
-      - A) Fewer incidents
-      - B) Reduced detection and containment times and fewer repeat causes
-      - C) More alerts
-      - D) Larger team
+      - A) The total number of security incidents reported to the programme each year
+      - B) Reduced detection and containment times with fewer repeat causes
+      - C) The volume of alerts raised each month
+      - D) The headcount of the response team
       answer: B
-    - question: 'A reduction in reported incidents may indicate:'
+    - question: After a training push, reported incidents drop by half. Why does the programme hold off celebrating?
       options:
-      - A) Improved security only
-      - B) Either improved security or degraded detection and reporting
-      - C) Better tooling
-      - D) Lower risk
-      answer: B
+      - A) Training always reduces the number of incidents a programme receives
+      - B) The measure is incapable of falling
+      - C) Incident reports are never incomplete
+      - D) The drop may reflect degraded detection or reporting
+      answer: D
