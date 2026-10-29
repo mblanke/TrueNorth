@@ -1,0 +1,198 @@
+# Instructor pack for C205 - Lab: Hardened Lab Network. Staff only: answer keys, expected
+# range values and lab setup live here, never in the course file Students read.
+course_code: C205
+audience: staff_only
+overview: 'C205 is an intermediate lab course of six 60-minute modules (6 hours contact) in which
+  Students harden, verify and hand over one medium-enterprise range: fw01 routing four zones
+  (corporate, servers, dmz, management), dc01 and fs01 in servers, web01 and mail01 in the dmz,
+  ws01 and ws02 in corporate, and siem01 in management. Module 1 reads the deployed range back
+  into a zone and flow design; module 2 records the as-built state against a hardening baseline;
+  module 3 proves the segmentation with positive and negative tests at fw01; module 4 proves
+  telemetry reaches the collector on siem01; module 5 runs an authorised test of the server zone;
+  module 6 assembles the handover pack from the evidence of the earlier modules. Each module ends
+  with a five-item quiz passed at 70 percent. Students hand in lab notes per module (zone and flow
+  records, baseline marks, test results, telemetry evidence, findings, runbook and residual risks).'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (requirements, constraints, zones and flows), 35 lab on the range, 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (baselines, capture, drift), 35 lab on the range, 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (rule order, default deny, positive and negative tests), 35 lab on the range, 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (sensors, telemetry validation, coverage), 35 lab on the range, 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (authorisation, verification, findings), 35 lab on the range, 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (as-built, runbooks, residual risk), 35 lab on the range, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 C: a constraint limits the solution space instead of stating a needed capability, so
+    the four-switch cap bounds the design while the thirty-workstation support is the requirement.
+    A calls the constraint a requirement; B mistakes it for something a test can pass or fail; D
+    confuses a design input with a risk to accept. Q2 A: the allowed-flow matrix exists to drive
+    the firewall ruleset the build implements. B jumps ahead to monitoring; C confuses acceptance
+    tests with the flow inventory; D confuses the matrix with operating documentation. Q3 D: the
+    record of rejected options tells future reviewers why the chosen approach won. A treats
+    documentation as padding; B shifts blame; C invents a market survey no one asked for. Q4 B:
+    a connection either fails or it does not, so the criterion is decidable; A and C are matters
+    of taste and D is agreement, none of which a test can decide. Q5 A: the separate zone bounds
+    what a compromise of the web server can reach. B, C and D name cost, speed and logging, which
+    segmentation does not buy.'
+- module: 2
+  notes: 'Q1 B: hardening from memory produces inconsistent settings between matching hosts and
+    omissions nothing later detects. A, C and D name licence, performance and loading failures
+    that inconsistency does not cause. Q2 D: only a captured configuration records the baseline
+    state, so the silent change has something to differ from. A relies on memory, B and C record
+    the event, not the state. Q3 A: scripted application gives every host the same settings and
+    a repeatable build. B overclaims documentation, C is the opposite of consistent, D confuses
+    hardening with patching. Q4 C: the running rule list compared with the baseline record is
+    evidence of the system as it runs; A and B are attestations and D is unrelated reading. Q5 C:
+    drift is exactly the difference between the recorded state and the running system; A, B and D
+    name an approved exception, a request and a rebuild, none of which is the unapproved change.'
+- module: 3
+  notes: 'Q1 B: a broad allow between two zones defeats the default deny for every service, which
+    is what the segmentation rested on. A names a load effect, C invents log hiding, D confuses
+    segmentation with name resolution. Q2 C: enforcement close to the source limits where a
+    compromised workstation can send denied traffic. A and B name routing and broadcast, which
+    the list does not change, and D names speed. Q3 D: a discrepancy means the running rules or
+    the matrix is wrong and the two records must be reconciled; A blames the tool without checking,
+    B silently rewrites the design to match the build, C claims verification is impossible. Q4 A:
+    a cell is proved only by both directions - the allowed flow succeeds and the denied flow fails;
+    B never tests denial, C is a reading not a test, D repeats one test. Q5 B: management-plane
+    separation exists so a compromised workstation cannot reach administrative interfaces. A and
+    D name bandwidth and collection, C names account counts.'
+- module: 4
+  notes: 'Q1 D: a sensor that ships nothing leaves the zone invisible, so reporting it monitored is
+    false assurance. A names wasted resources, B overstates agent requirements, C invents a
+    retention rule. Q2 A: searching the collector for a recent event and reading its parsed fields
+    proves arrival and searchability in one step. B proves the host is up, not the pipeline; C and
+    D compare unrelated counts. Q2 is also the bridge to step 7 of the lab: check the pipeline
+    before the rule. Q3 B: a sensor outside the path between the zones misses lateral movement
+    inside them. A, C and D are activities that other deployed sources still capture. Q4 D:
+    coverage assessment asks which relevant techniques the deployed detections can see. A, B and C
+    measure cost, analyst throughput and retention. Q5 C: the alert''s source, destination and time
+    tie the firing to the attempt that caused it; A is the rule text, not the match; B and D are
+    coverage and a bare claim.'
+- module: 5
+  notes: 'Q1 B: the authorisation''s scope governs what may be tested regardless of the window, and
+    an out-of-scope test is not authorised. A misreads the window as blanket permission; C argues
+    from the host''s status; D substitutes users'' consent for authorisation. Q2 D: a scanner
+    result is a candidate until verified by hand and recorded with reproduction steps. A escalates
+    an unverified claim, B discards evidence, C publishes the tool output as if verified. Q3 A:
+    the weakness is real, so it stays a finding, recorded with the owner''s stated risk acceptance.
+    B confuses acceptance with absence, C strips its security relevance, D inflates it to an
+    incident. Q4 B: command, output and time let the owner repeat the check and later retest the
+    fix. A is a copied rating, C is opinion, D is a count. Q5 C: with no weakness and no impact the
+    note is an observation; A, B and D misapply finding, test and scope vocabulary.'
+- module: 6
+  notes: 'Q1 C: as-built documentation records what actually runs, with the deviation noted, so the
+    next decision starts from the truth. A defers to a document known wrong, B corrects silently,
+    D writes plans instead of state. Q2 A: a runbook for someone else fails if it assumes the
+    builder''s private knowledge. B, C and D are the marks of a good runbook, so they cannot be
+    the failure. Q3 B: a residual risk is handled by listing it with its accepting owner and the
+    reason. A and C hide it, D launders a temporary exception into a permanent rule. Q4 D:
+    handover completes when the receiving team can operate the network and has accepted it; A, B
+    and C are build-side milestones the receiving team never signed. Q5 C: the as-built record,
+    deviations included, is what a later design decision needs. A and D are project paperwork and
+    B is product literature; none describes the system.'
+lab_setup:
+- module: 1
+  setup: 'Revert the range to baseline and confirm the analyst account can reach the fw01
+    administration interface from siem01. Expected values Students should find: four zones -
+    corporate 10.10.100.0/24, servers 10.10.200.0/24, dmz 10.10.30.0/24, management 10.10.40.0/24 -
+    and five inter-zone rules on fw01 (corp-to-servers, corp-to-dmz, dmz-to-servers, logs-to-siem,
+    mgmt-to-all). Print or share the blank zone-diagram and matrix templates.'
+- module: 2
+  setup: 'Revert the range to baseline. Supply the hardening baseline document Students compare
+    against, with the items and values the medium-enterprise template holds, so the marking is
+    against a known state: windows-server-2022 on dc01 and fs01, ubuntu-2404 on web01, mail01 and
+    siem01, windows-11 on ws01 and ws02, pfsense on fw01. Confirm siem01 can reach every host and
+    fw01 before the lab starts.'
+- module: 3
+  setup: 'Revert the range to baseline and confirm the fw01 rule set matches the template: the five
+    rules in order, default deny behind them. Confirm from ws01 the fs01 share opens, that the
+    dmz-to-servers rule carries only 53, 88, 389 and 636, and that the denied tests below actually
+    fail on this baseline; if a denied test connects, re-revert before class. Expected results:
+    ws01 to fs01 succeeds; ws01 to web01 on a port outside 80, 443, 25, 587, 143, 993 fails; web01
+    to fs01 on the file share fails.'
+- module: 4
+  setup: 'Revert the range to baseline and confirm every zone ships logs to siem01: the
+    logs-to-siem rule allows 514, 5044 and 9200 to management, and filebeat runs on the Linux
+    hosts. Confirm OpenSearch on siem01 has recent events from each zone, designate the sign-in
+    failure Students generate on ws01, and know the field values of the deny event fw01 emits for
+    the ws01-to-web01 blocked attempt so Students'' records can be marked.'
+- module: 5
+  setup: 'Revert the range to baseline. Write and distribute the test authorisation: scope limited
+    to dc01 and fs01 in the servers zone plus one denied-flow test from ws01 to web01, permitted
+    techniques, escalation contact, and the window. Install or confirm the scanning tool on siem01
+    and know the service list it returns for dc01 (active_directory, dns, dhcp) and fs01 (smb, dfs)
+    so Students'' hand verification can be marked.'
+- module: 6
+  setup: 'Revert the range to baseline and confirm Students can reach the fw01 interface and rule
+    list from siem01 and open the fs01 share from ws01. Keep each module''s lab notes available to
+    Students - the as-built record draws on them. Supply the runbook template and know the expected
+    runbook content for restoring the fs01 share (share name, commands, values) so the marking is
+    against a known-good procedure.'
+common_faults:
+- module: 1
+  fault: Students copy the firewall's rule names into the flow matrix without recording the source
+    and destination networks, so the matrix cannot be tested later.
+  remedy: 'Have each Student read one matrix cell back as "source network to destination network
+    on service" before the diagram is accepted.'
+- module: 1
+  fault: Acceptance criteria are written as goals ("the network is secure") rather than observable
+    results.
+  remedy: Ask of each criterion "what result would a test show, and would two testers record the
+    same thing?" and have Students rewrite the failures.
+- module: 2
+  fault: Students record the baseline document's claim as the observed value instead of what the
+    host shows.
+  remedy: 'Insist every mark carries the value taken from the range in this session; spot-check one
+    host per Student against the console.'
+- module: 2
+  fault: Exceptions are marked with no reason or owner, so the record cannot be reviewed.
+  remedy: Collect the exception list mid-lab and return any row missing reason or owner.
+- module: 3
+  fault: Students test only the allowed flows and call the matrix verified.
+  remedy: 'Point at the Evidence list in the lab brief: the two denied tests are part of the
+    record, and a cell is proved only by both directions.'
+- module: 3
+  fault: A denied connection that unexpectedly succeeds is recorded as a test error without
+    deciding between rule, matrix and test.
+  remedy: Have the Student show which rule decided the connection on fw01; that reading names the
+    source of the discrepancy.
+- module: 4
+  fault: Students search the collector with a too-narrow window or wrong index and conclude the
+    telemetry is missing.
+  remedy: Before accepting a "missing" mark, have the Student widen the window to the test period
+    and search by host name rather than by message text.
+- module: 4
+  fault: The generated sign-in failure is reported as evidence with no timestamp or field values.
+  remedy: Have the Student paste the event's timestamp and source fields into the lab notes; an
+    unanchored event cannot prove the pipeline.
+- module: 5
+  fault: The scan is run against hosts outside the written scope because they answered on the
+    network.
+  remedy: 'Stop the lab, re-read the authorisation''s scope line, and have Students confirm their
+    target list against it before continuing.'
+- module: 5
+  fault: Findings repeat the scanner's severity with no impact statement.
+  remedy: Ask "what could an attacker do with this, on this network?" and have the Student rewrite
+    the severity line from that answer.
+- module: 6
+  fault: The runbook assumes the builder's context ("restore it the usual way") and cannot be
+    followed by the receiving team.
+  remedy: Swap runbooks between two Students and have each follow the other's literally; every
+    stumble is a line to fix.
+- module: 6
+  fault: Residual risks are listed with no accepting owner, so nothing distinguishes them from
+    open work.
+  remedy: Require an owner and an acceptance on every row before the handover pack is submitted;
+    the instructor may act as the accepting owner in the exercise.
