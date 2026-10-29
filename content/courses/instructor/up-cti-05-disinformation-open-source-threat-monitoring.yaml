@@ -1,0 +1,184 @@
+# Instructor pack for C559 (up-cti-05-disinformation-open-source-threat-monitoring). Staff only.
+# Six 60-minute modules on the greyspace-internet range; every module runs the same split:
+# 15 teach, 35 lab, 10 quiz. Answer letters here are the course's keys; each note says why the
+# keyed option is right and what each distractor tests.
+course_code: C559
+audience: staff_only
+overview: 'Disinformation & Open-Source Threat Monitoring is an advanced course of six 60-minute modules
+  (360 minutes, 6 hours) on the greyspace-internet range: a small office network (edge01, dc01, ws01,
+  ws02) behind a simulated internet. Each module runs the same split: 15 minutes teach, 35 minutes lab
+  on the range, 10 minutes quiz, passed at 70 percent. Say "Student" throughout and keep every
+  description defensive and observable.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (collection disciplines and provenance), 35 lab (collect and record from the
+    simulated internet), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (the collection mandate and its boundaries), 35 lab (judge three tasks against the
+    mandate), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (brand abuse and its containment owners), 35 lab (resolve, inspect and triage the
+    watch list), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (coordination signals and confidence language), 35 lab (group posts and write the
+    assessment), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (the finding note and escalation channels), 35 lab (summarise and route the
+    findings pack), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (the monitoring cycle and its measures), 35 lab (run one full cycle on the range),
+    10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (Passive collection), M01-O01: The analyst only reads and never interacts, which is the
+    passive definition. A is wrong because nothing was approached or probed; C needs light, normal-looking
+    interaction such as following an account; D is not a collection discipline. Q2 C (Collection
+    frequency), M01-O02: The requirement fixes how often the check runs. A and B are plan qualities, not
+    the schedule; D protects the analyst, not the cadence. Q3 A (Provenance), M01-O03: Address, capture
+    time and method let another analyst re-find the item. B and C add nothing re-checkable; D is
+    unreachable and irrelevant. Q4 D (Unverified, with reliability noted), M01-O01 topic on source
+    evaluation: one anonymous, uncorroborated claim is recorded as unverified. A asserts; B dismisses
+    without evidence; C discards provenance. Q5 B (Investigation linked to the organisation), M01-O01
+    topic on analyst opsec: a work-attributed account ties the research to the employer. A and C are
+    platform inconveniences; D does not follow.'
+- module: 2
+  notes: 'Q1 C (Out of scope), M02-O01: A mandate covering own brands and infrastructure cannot authorise
+    profiling a person''s private life. A and D misread "public" as "in scope"; B is a tooling answer to
+    a scope question. Q2 A (Minimise), M02-O02: Data minimisation keeps only what the finding needs.
+    B and D spread personal data further; C is retention without purpose. Q3 D (Permitted access or
+    manual review), M02-O01 topic on platform terms: terms forbid the automation, so the access changes.
+    A and B try to hide the activity; C ignores the terms. Q4 B (Capture time, source, integrity value),
+    M02-O01 topic on evidence handling: those three make a capture usable later. A and D are not
+    verifiable; C states a conclusion, not a record. Q5 A (Stop and report to incident response),
+    M02-O03: Offered credential dumps are a stop point. B and C would join a criminal market; D
+    publishes the finding without any response.'
+- module: 3
+  notes: 'Q1 D (Lookalike domain consistent with brand abuse), M03-O01: One-letter difference plus a
+    sign-in page is the classic pattern. A is a monitoring source, not a label; B ignores the sign-in
+    page; C claims a hijack with no evidence of compromise. Q2 B (Certificates for the names, expected
+    or not), M03-O01 topic on certificate transparency: CT logs are public issuance records.
+    A is browsing data; C and D are secrets the logs do not hold. Q3 C (Unrelated, record and keep
+    watching), M03-O02: A hobby blog with no company reference fails the abuse test. A and B inflate the
+    mark; D punishes an unrelated party. Q4 A (The registrar), M03-O03: The selling registrar processes
+    abuse reports and can suspend a registration. B has no standing; C and D cannot act on the domain.
+    Q5 D (Protects own staff, others stay exposed), M03-O03: Edge blocking is containment at one vantage.
+    A and B are takedown effects only a registrar or host can produce; C is attribution the block does
+    not give.'
+- module: 4
+  notes: 'Q1 A (Coordinated amplification), M04-O01: Identical text, near-simultaneous posting and
+    week-old accounts are the three recorded signals together. B is contradicted by the account ages;
+    C is a tooling excuse; D asserts funding the posts cannot show. Q2 C (Likely authentic support),
+    M04-O01 topic on inauthentic behaviour: a long history with personal posts outweighs agreement with
+    the campaign. A and B key on the position alone; D is a false absolute. Q3 B (Inference), M04-O03:
+    "Run by one operator" goes beyond what the posts show. A, C and D are observations a record could
+    support. Q4 B (Evidence base is thin), M04-O01 topic on confidence language: low confidence says the
+    finding may not hold. A and C contradict the level chosen; D confuses confidence with effort. Q5 C
+    (Revise and record what changed), M04-O03: An assessment updates when evidence contradicts it, and
+    the change is recorded. A freezes a wrong inference; B destroys the record; D games the level.'
+- module: 5
+  notes: 'Q1 B (Finding, evidence, confidence, recommended action), M05-O01: Those four are the finding
+    note for a decision-maker. A and D are annex material; C never leaves the worksheet. Q2 D (Labelled
+    unverified with source), M05-O01 topic on unverified material: a manager may receive it, but labelled
+    and sourced. A and C pass it as fact; B refuses a legitimate request without need. Q3 C (Timed
+    resolution record), M05-O01: Date, time and the resolver used make the line checkable. A and B are
+    conclusions without evidence; D is urgency, not evidence. Q4 C (The owner who can act first),
+    M05-O03: Active abuse reaching staff goes to whoever can block it, then wider. A buries the finding;
+    B is the later takedown step, not the first internal move; D delays response. Q5 B (Before any
+    public statement), M05-O01 topic on responsible disclosure: the abuse contact gets the chance to
+    remove the content first. A inverts the order; C and D make publicity the trigger.'
+- module: 6
+  notes: 'Q1 D (Collection plan names sources and indicators), M06-O01: The cycle starts from the plan;
+    everything after depends on it. A, B and C all happen later in or after the cycle. Q2 A (High impact
+    first, labelled low confidence), M06-O02: Escalation weighs impact and confidence together, and the
+    label carries the uncertainty. B ignores impact; C stalls both; D drops a finding rather than
+    labelling it. Q3 C (Feed lessons into the next plan), M06-O01 topic on the cycle: the loop closes
+    when results change the next collection plan. A and B end the record; D is range administration.
+    Q4 B (Time from abuse appearing to finding recorded), M06-O03: Detection timeliness is the
+    programme measure. A and D count effort, not value; C is staffing. Q5 A (Findings can be re-checked
+    and audited), M06-O01 topic on the monitoring record: provenance is what makes a record trustworthy
+    later. B, C and D are things provenance does not do.'
+lab_setup:
+- module: 1
+  setup: 'Before class: reimage the greyspace-internet range and confirm edge01, dc01, ws01 and ws02
+    are up and ws01 reaches the simulated internet through edge01. Confirm the news, search and social
+    site packs serve pages. Supply: the collection worksheet and the monitored organisation name the
+    Students search for.'
+- module: 2
+  setup: 'Before class: reimage the range and confirm ws01 reaches the simulated internet. Supply: the
+    one-page collection mandate, the task list (lookalike domain list, terms page review, persona
+    sign-up step) and confirm the social site''s terms page is reachable. Brief the Students that no
+    real personal data is involved anywhere on the range.'
+- module: 3
+  setup: 'Before class: reimage the range. Confirm the threat infrastructure pack is enabled on the
+    simulated internet and that at least one lookalike domain on the watch list resolves, and that
+    dc01 answers DNS for the office domain with its published records. Supply: the monitoring worksheet
+    and the watch list.'
+- module: 4
+  setup: 'Before class: reimage the range. Confirm the social site pack serves posts and shows account
+    creation dates and follower counts, and that the corpus contains the coordinated posting pattern
+    for the assigned topic. Supply: the assigned topic and the worksheet.'
+- module: 5
+  setup: 'Before class: reimage the range. Supply: the findings pack (five to eight findings of mixed
+    confidence and impact drawn from the module 3 and 4 exercises) and the report template. No new
+    range state is needed beyond ws01 at the desktop.'
+- module: 6
+  setup: 'Before class: reimage the range. Confirm the watch list resolves through edge01, the social
+    site serves the topic with the coordination pattern present and the earlier worksheets are
+    available. Supply: the fresh watch list and the cycle report section of the worksheet.'
+common_faults:
+- module: 1
+  fault: Students record what a post says but not where and when they captured it, so nothing can be
+    re-checked.
+  remedy: Stop the lab at the first item and check the provenance fields before allowing collection to
+    continue; the worksheet has one row per item with source, capture time and method.
+- module: 1
+  fault: Students mark searching a search site as active collection because it sends queries.
+  remedy: Return to the definitions, where active collection touches the target in a way the target
+    could notice; a public search is passive. Ask what would make the same search active.
+- module: 2
+  fault: Students treat "it is public" as making any collection permitted.
+  remedy: Take the critic-profiling task first and walk the mandate line by line; public availability
+    sets scope limits only where the mandate names them.
+- module: 2
+  fault: Students keep bystander personal details in captures in case they matter later.
+  remedy: Show the minimisation rule next to the captured page; have them re-crop one capture in the
+    lab and say what they removed and why.
+- module: 3
+  fault: Students mark every lookalike domain as confirmed abuse without comparing it to the known
+    names or checking what the site serves.
+  remedy: Have them read the inspected page's recorded claim back before triage; the mark must quote
+    the evidence line that supports it.
+- module: 3
+  fault: Students route the takedown to the network team because that is the team they know.
+  remedy: Put the three owners on the board with what each controls; the registrar owns the
+    registration, the provider the hosting, the network team only the office edge.
+- module: 4
+  fault: Students call any account that agrees with a campaign inauthentic.
+  remedy: Pair one long-history account with one week-old account from the corpus and compare their
+    posting records; the signal is behaviour, not position.
+- module: 4
+  fault: Assessments state the inference ("one operator") as if it were observed.
+  remedy: Have them mark each sentence observation or inference, then rewrite every inference sentence
+    to start from what the record shows.
+- module: 5
+  fault: Executive summaries open with collection detail instead of the finding.
+  remedy: Read one good and one poor summary aloud; the first sentence answers "what happened", not
+    "how I found it".
+- module: 5
+  fault: Findings are routed to a distribution list instead of an owner who can act.
+  remedy: For each finding ask "who can act on this today, and through which channel"; the answer is
+    one owner and one channel, recorded in the worksheet.
+- module: 6
+  fault: Students escalate by topic interest rather than by impact and confidence.
+  remedy: Make the escalation list two-column (impact, confidence) and have them justify each row from
+    the columns before naming the owner.
+- module: 6
+  fault: The cycle ends at the report; the improvement step is skipped or left vague.
+  remedy: The report is not done until the worksheet holds one concrete change to the collection plan,
+    with what observed result prompted it.

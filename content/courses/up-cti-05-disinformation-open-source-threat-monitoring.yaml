@@ -1,0 +1,579 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# `refs` are keys into content/catalogue/references.yaml.
+# Six modules of 60 minutes (360 minutes = 6 hours). Every module runs its lab on the
+# greyspace-internet range: a small office network (edge01, dc01, ws01, ws02) with a
+# simulated internet behind the edge router.
+
+course_code: C559
+title: Disinformation & Open-Source Threat Monitoring
+version: '1.0'
+difficulty: advanced
+duration_hours: 6
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C556
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Threat Analyst; Executive Cyber Leadership.'
+  - 'NIST CSF 2.0: DE.CM, GV.OC, RS.CO.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: OSINT Collection Disciplines
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish passive, semi-passive and active collection for a stated monitoring requirement
+  - Plan a collection cycle that names its sources, indicators and collection frequency
+  - Record provenance for each collected item so another analyst can re-check the finding
+  topics:
+  - Open-source collection disciplines, from passive through semi-passive to active collection.
+  - Collection planning from a monitoring requirement, with sources and indicators.
+  - Evaluating a source for reliability, freshness and bias before relying on it.
+  - Operational security of the analyst, and keeping the investigation unattributed.
+  - Provenance records of source, capture time and method, so findings can be re-checked.
+  lab: >-
+    Lab: On the greyspace-internet range, collect open-source items that mention the monitored
+    organisation from the simulated internet, and record each item with enough provenance to re-check
+    it. Evidence: three posts that mention the organisation, each with its source site, capture time
+    and posting time; the distinct sites the search site returns for the organisation name; the
+    resolved address of one hostname found during collection. Pass: every collected item carries
+    source, capture time and method; each item is marked passive or semi-passive with a one-sentence
+    reason; the note on active collection states what it would require and why it was not done.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01, open the browser and reach the simulated internet through the office
+        network, then record the start time in the collection worksheet.
+    - hosts: [ws01]
+      action: Visit the news site and the social site in the simulated internet and record three posts
+        that mention the monitored organisation, each with its posting time and source site.
+    - hosts: [ws01]
+      action: Search the simulated search site for the monitored organisation name and record each
+        distinct site that returns a result.
+    - hosts: [ws01, edge01]
+      action: From ws01, resolve one hostname found during collection through the resolver behind the
+        edge router edge01, and record the hostname and the address returned.
+    - hosts: [ws01]
+      action: Mark each collected item passive or semi-passive with one sentence of reason, and write
+        one sentence on what active collection would require and why it was not done.
+  refs:
+  - nist-sp-800-150
+  - oasis-cti
+  source_gaps:
+  - An open-source intelligence methodology handbook is not in the reference library.
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: An analyst reads public posts about a company from a personal account and never
+        interacts with any poster. Which collection discipline is this?
+      options:
+      - A) Active collection
+      - B) Passive collection
+      - C) Semi-passive collection
+      - D) Internal audit collection
+      answer: B
+    - question: A monitoring requirement says a brand name must be checked across public sites once
+        a day. Which element of the collection plan does the daily check belong to?
+      options:
+      - A) Source reliability
+      - B) Provenance recording
+      - C) Collection frequency
+      - D) Analyst operational security
+      answer: C
+    - question: A colleague must re-check a finding about a social account one year later. Which
+        record makes that possible?
+      options:
+      - A) The post address, capture time and collection method
+      - B) The analyst's opinion of the account
+      - C) The organisation's internal risk register entry for the account
+      - D) The password of the account that made the post
+      answer: A
+    - question: A single anonymous account makes a strong claim about a breach, and no other source
+        repeats it. What should the analyst record?
+      options:
+      - A) The claim as confirmed fact
+      - B) The claim as a false rumour to discard without checking
+      - C) The claim without any source at all
+      - D) The claim as unverified, with the source noted
+      answer: D
+    - question: An analyst researches a campaign from a forum account that names the analyst's
+        employer. What is the main risk?
+      options:
+      - A) The forum will delete the account
+      - B) The investigation becomes linked to the organisation
+      - C) The posts will be unreadable later
+      - D) The collection plan becomes invalid and must be redone
+      answer: B
+- ordinal: 2
+  title: Legal and Ethical Boundaries of Collection
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Classify a collection task as permitted, restricted or out of scope against a stated mandate
+  - Select lawful handling for third-party personal data met during monitoring
+  - Decide when collection must stop and the finding move to legal or incident response
+  topics:
+  - The collection mandate and what the organisation authorises, owns or is a victim of.
+  - Third-party personal data met during collection, and data minimisation.
+  - Platform terms of service and the limits they place on collection.
+  - Handling captured material as potential evidence, with time, source and integrity noted.
+  - Stop points where collecting ends and legal or incident response takes over.
+  lab: >-
+    Lab: On the greyspace-internet range, apply the one-page collection mandate the instructor
+    supplies to three collection tasks, and judge each task against the mandate. Evidence: the
+    mandate's stated scope in one sentence; the resolution result for each lookalike domain on the
+    task list; the sentence the social site's terms page gives on automated collection; the outcome
+    of the persona sign-up step. Pass: each of the three tasks is marked permitted, restricted or
+    out of scope with a one-sentence reason tied to the mandate; each mark agrees with the recorded
+    evidence; any restricted task names who in the organisation must approve it.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01, read the one-page collection mandate the instructor supplied and record
+        its stated scope in one sentence.
+    - hosts: [ws01, edge01]
+      action: From ws01, resolve each lookalike domain on the task list through the resolver behind
+        edge01 and record which domains resolve and the addresses returned.
+    - hosts: [ws01]
+      action: Open the social site in the simulated internet, read its terms page and record in one
+        sentence what it says about automated collection.
+    - hosts: [ws01]
+      action: Follow the persona sign-up step on the task list and record exactly what data the
+        sign-up form requires and what the site returns.
+    - hosts: [ws01]
+      action: Mark each of the three tasks permitted, restricted or out of scope against the mandate,
+        with a one-sentence reason for each mark.
+  refs:
+  - nist-sp-800-30r1
+  - nist-cswp-29
+  source_gaps:
+  - The reference library holds no privacy-law or data-protection reference for this module.
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A mandate covers the organisation's own brands and infrastructure. A request arrives
+        to profile the private life of a critic. How should the request be classified?
+      options:
+      - A) Permitted, because the critic is public
+      - B) Restricted, pending a faster tool
+      - C) Out of scope, and refused under the mandate
+      - D) Permitted, because collection is open-source
+      answer: C
+    - question: Monitoring captures a screenshot that includes a bystander's personal details
+        unrelated to the finding. What is the lawful handling?
+      options:
+      - A) Minimise the capture to what the finding needs
+      - B) Publish the capture internally for awareness
+      - C) Keep the details in case they matter later
+      - D) Send the capture to the whole distribution list
+      answer: A
+    - question: A platform's terms forbid automated collection, and the team wants a scraping
+        script. What is the correct decision?
+      options:
+      - A) Run the script from a personal account
+      - B) Run the script only outside working hours
+      - C) Run the script and delete the terms page copy
+      - D) Use the platform's permitted access or manual review instead
+      answer: D
+    - question: A captured page may become evidence in a takedown. Which record best supports that
+        use?
+      options:
+      - A) The page title alone
+      - B) The capture time, source address and an integrity value for the capture
+      - C) A note that the page looked suspicious
+      - D) The analyst's recollection of the page
+      answer: B
+    - question: Monitoring finds an offer to sell a dump of the organisation's staff credentials.
+        What is the correct next step?
+      options:
+      - A) Stop collecting and report the finding to incident response
+      - B) Buy the dump to learn its contents
+      - C) Reply to the seller for more detail
+      - D) Post the finding on the social site
+      answer: A
+- ordinal: 3
+  title: Monitoring Brand and Infrastructure Abuse
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Detect brand abuse by comparing observed domains, certificates and accounts against known names
+  - Triage a suspected abuse finding as confirmed, suspected or unrelated with recorded evidence
+  - Select a containment action for confirmed abuse and name the party that owns it
+  topics:
+  - Brand abuse through lookalike domains, fake accounts and spoofed sign-in pages.
+  - Domain monitoring through registration watches and certificate transparency logs.
+  - Triage of abuse findings, weighing evidence, confidence and the unrelated lookalike.
+  - Attack infrastructure that monitoring can observe from the defender's side.
+  - Containment and takedown through registrar abuse reports, provider reports and edge blocking.
+  lab: >-
+    Lab: On the greyspace-internet range, watch the organisation's domain names for abuse: resolve a
+    watch list through the range resolver, inspect one resolved lookalike site and triage every
+    finding. Evidence: the resolution result for each watch-list domain; the address each resolving
+    domain returns; what the inspected page claims and what it asks a visitor for; the DNS records
+    the range publishes for the organisation's own domain. Pass: every watch-list domain has a
+    recorded result; each finding is marked confirmed, suspected or unrelated with one sentence of
+    evidence; each confirmed finding names one containment action and its owning party.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01 and open the monitoring worksheet and watch list the instructor supplied.
+    - hosts: [ws01, edge01]
+      action: From ws01, resolve each domain on the watch list through the resolver behind edge01 and
+        record which domains resolve and the address each returns.
+    - hosts: [ws01]
+      action: Open one resolved lookalike site in the browser and record what the page claims and
+        what it asks a visitor to enter.
+    - hosts: [ws01, dc01]
+      action: From ws01, read through dc01's DNS service the records the range publishes for the
+        organisation's own domain, and record each record's type and text.
+    - hosts: [ws01]
+      action: Compare each finding against the organisation's known names and mark it confirmed
+        abuse, suspected or unrelated, with the evidence for the mark.
+    - hosts: [ws01]
+      action: For each finding marked confirmed, record one containment action and the party that
+        owns it, chosen from the registrar, the hosting provider or the network team.
+  refs:
+  - nist-sp-800-150
+  - nist-sp-800-92
+  source_gaps:
+  - A brand-protection or domain-abuse monitoring guide is not in the reference library.
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A newly registered domain differs from a company's name by one letter and serves a
+        staff sign-in page. What is the best label for the domain?
+      options:
+      - A) A certificate transparency entry the monitoring team logged
+      - B) An unrelated personal site that happens to carry a similar name
+      - C) A domain hijack of one of the company's own systems
+      - D) A lookalike domain consistent with brand abuse
+      answer: D
+    - question: What can a brand-monitoring team see in a certificate transparency log about
+        the organisation's names?
+      options:
+      - A) The browsing history that members of the public left on monitored sites
+      - B) Certificates issued for the organisation's names, expected or not
+      - C) The passwords that protect the user accounts named in the log
+      - D) The private keys that each issued certificate is mathematically bound to
+      answer: B
+    - question: A lookalike domain hosts a hobby blog with no reference to the monitored company.
+        What is the correct triage mark?
+      options:
+      - A) Confirmed abuse, and escalate it to takedown immediately
+      - B) Suspected abuse, and watch the domain hourly
+      - C) Unrelated, record it and keep watching
+      - D) Confirmed abuse, and block the whole address range at once
+      answer: C
+    - question: A confirmed lookalike domain must be taken down. Which party can act on a registrar
+        abuse report for it?
+      options:
+      - A) The registrar that sold the domain registration
+      - B) The organisation's own staff who reported the domain
+      - C) The visitors who reached the page before the takedown
+      - D) The certificate authority that serves unrelated websites
+      answer: A
+    - question: The network team blocks a phishing domain at the office edge. What does this
+        containment achieve?
+      options:
+      - A) It removes the domain registration from the registry database for everyone
+      - B) It deletes the phishing page so no visitor anywhere can reach it
+      - C) It proves who registered the domain and attributes the campaign to them
+      - D) It protects the organisation's staff, while other visitors stay exposed
+      answer: D
+- ordinal: 4
+  title: Assessing Influence Campaigns
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish organic discussion from coordinated amplification using content and account behaviour
+  - Assess claims in a narrative as supported, unsupported or contradicted by collected evidence
+  - Write a campaign assessment that separates observation from inference and states confidence
+  topics:
+  - Influence campaigns, the narratives they push and the audiences they target.
+  - Coordination signals such as repeated phrasing, synced posting times and young accounts.
+  - Inauthentic behaviour contrasted with enthusiastic but authentic support.
+  - Confidence language for assessments, and what a confidence level does not claim.
+  - Separating observation from inference, and naming what would change the assessment.
+  lab: >-
+    Lab: On the greyspace-internet range, examine the social site's posts on the topic the instructor
+    assigns, record coordination signals and write a short assessment. Evidence: the account name,
+    posting time and follower count for each of the twenty most recent posts on the topic; the groups
+    of posts that share phrasing or posting-time patterns; the three-sentence assessment. Pass: every
+    collected post appears in the record; each group is marked organic discussion or coordinated
+    amplification with the signal that supports the mark; the assessment states what was observed,
+    what is inferred and one thing that would change the inference.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01, open the social site in the simulated internet and record the topic the
+        instructor assigned for the exercise.
+    - hosts: [ws01]
+      action: Collect the twenty most recent posts on that topic and record each post's account name,
+        posting time and follower count.
+    - hosts: [ws01]
+      action: For each account, record whether the site shows an account creation date, and record
+        the date where it is shown.
+    - hosts: [ws01]
+      action: Group the posts that share repeated phrasing, identical text or near-identical posting
+        times, and record the groups with their shared signal.
+    - hosts: [ws01]
+      action: Mark each group organic discussion or coordinated amplification, and record the signal
+        that supports each mark.
+    - hosts: [ws01]
+      action: Write a three-sentence assessment that states what was observed, what is inferred and
+        one thing that would change the inference, and record it in the worksheet.
+  refs:
+  - oasis-cti
+  - nist-sp-800-150
+  source_gaps:
+  - Academic frameworks for assessing coordinated inauthentic behaviour are not in the reference
+    library.
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: Twenty accounts post the same sentence about a company within two minutes of each
+        other, and every account is a week old. How should this pattern be read?
+      options:
+      - A) Coordinated amplification of a narrative
+      - B) Organic discussion by long-standing members
+      - C) A fault in the monitoring worksheet
+      - D) Proof of who funds the campaign
+      answer: A
+    - question: An account with a five-year history and personal posts also argues for the campaign's
+        position. How should the analyst read that account?
+      options:
+      - A) Coordinated amplification, because the position matches
+      - B) Inauthentic, because the position matches
+      - C) Likely authentic support, despite the shared position
+      - D) A bot, because no authentic account agrees with a campaign
+      answer: C
+    - question: Which sentence from a campaign assessment states an inference rather than an
+        observation?
+      options:
+      - A) Forty accounts posted the same phrase between 09:00 and 09:03
+      - B) The accounts are run by one operator
+      - C) The phrase first appeared on one account a week earlier
+      - D) Twelve of the forty accounts were created the same day
+      answer: B
+    - question: An assessment says the coordination finding holds with low confidence. What does
+        that statement tell the reader?
+      options:
+      - A) The finding is certainly wrong
+      - B) The evidence base is thin and the finding may not hold
+      - C) The finding is a proven fact
+      - D) The analyst did not finish the collection
+      answer: B
+    - question: New posts collected a day later contradict the assessment's timing inference. What
+        should the analyst do with the assessment?
+      options:
+      - A) Leave it unchanged and stop monitoring
+      - B) Delete the record of the first posts
+      - C) Revise the assessment and record what changed and why
+      - D) Raise the confidence level to balance the contradiction
+      answer: C
+- ordinal: 5
+  title: Reporting Upstream Responsibly
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a finding note that states the observation, evidence, confidence and recommended action
+  - Select the detail and caveats an executive audience needs from a monitoring report
+  - Route a confirmed abuse finding to the owner who can act, through the right channel
+  topics:
+  - The finding note with what happened, the evidence, the confidence and the recommended action.
+  - Unverified material, labelling it, caveating it and deciding what not to forward.
+  - Tailoring for the audience, the executive summary against the technical annex.
+  - Escalation channels and timeliness, who needs the finding first and how it travels.
+  - Responsible disclosure, notifying the registrar or platform before speaking publicly.
+  lab: >-
+    Lab: On the greyspace-internet range, turn the findings pack the instructor supplies into
+    decision-ready reports. Evidence: the ordered list of findings by how soon a decision-maker must
+    act, with one reason per position; the executive summary of the top finding; the mark of each
+    summary sentence as observation or inference; the owner and channel named for each finding. Pass:
+    the summary states what happened, the evidence, the confidence and the recommended action; every
+    observation sentence has its evidence attached; each finding is routed to an owner who can act,
+    with the channel named.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01 and open the findings pack and the report template the instructor
+        supplied.
+    - hosts: [ws01]
+      action: Order the pack's findings by how soon a decision-maker must act and record the order
+        with one reason for each position.
+    - hosts: [ws01]
+      action: Draft the executive summary of the top finding in four sentences covering what
+        happened, the evidence, the confidence and the recommended action.
+    - hosts: [ws01]
+      action: Mark each sentence of the summary as observation or inference, and attach the recorded
+        evidence that supports each observation.
+    - hosts: [ws01]
+      action: Name the owner each finding routes to, such as the network team, the mail provider, the
+        registrar or legal, and record the escalation channel for each.
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  source_gaps:
+  - An intelligence-writing or analytic-tradecraft style guide is not in the reference library.
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: What belongs in the executive summary of a monitoring report sent to
+        decision-makers?
+      options:
+      - A) Every raw post, screenshot and capture that the collection step produced
+      - B) The finding, its evidence, the confidence and the recommended action
+      - C) The analyst's working notes, the search history and the personal remarks
+      - D) The full technical annex with every query, capture and working note attached
+      answer: B
+    - question: A manager asks for a claim that collection has not verified. How should the analyst
+        pass it on?
+      options:
+      - A) Passed on as an established fact, because the manager requested it
+      - B) Omitted entirely, because unverified material must never be forwarded at all
+      - C) Passed on as fact, with the confidence raised to hide the gap
+      - D) Labelled as unverified, with the source given for the reader to weigh
+      answer: D
+    - question: Which line from a finding note pairs the observation with its supporting
+        evidence?
+      options:
+      - A) The domain is clearly malicious, and it was registered only yesterday afternoon
+      - B) Someone hostile and well resourced is operating behind this whole campaign
+      - C) The lookalike domain resolved on 2026-10-29 10:04 through the office resolver
+      - D) Please treat this finding as very urgent and act today
+      answer: C
+    - question: Monitoring confirms an active phishing domain that staff are reaching. Who should
+        receive the finding first?
+      options:
+      - A) The whole company directory, so that everyone can watch for it
+      - B) The registrar first, before anyone inside the organisation hears
+      - C) The owner who can act first, then the wider distribution
+      - D) Nobody at all, until the campaign has completely run its course
+      answer: C
+    - question: An organisation wants to publicise a takedown it requested. Responsible disclosure
+        says to notify the registrar or platform at which point?
+      options:
+      - A) Only after the public post, so that the story keeps its freshness
+      - B) Before any public statement, so the abuse can be removed first
+      - C) Never, because the registrars cannot act on reports like this anyway
+      - D) Only if a journalist asks about the case directly, and never otherwise
+      answer: B
+- ordinal: 6
+  title: Running the Monitoring Cycle End to End
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Execute one full monitoring cycle on the range, from collection through report
+  - Judge which collected items merit escalation by their impact and confidence
+  - Propose one improvement to the monitoring programme from the cycle's recorded results
+  topics:
+  - 'The monitoring cycle: plan, collect, process, analyse, report, and how each stage feeds the next.'
+  - Prioritising findings by impact and confidence when the analyst's time is short.
+  - The monitoring record of worksheets, provenance and re-checking earlier findings.
+  - Programme measures such as coverage, timeliness and the false-alarm rate.
+  - Feeding the cycle's lessons back into the next collection plan.
+  lab: >-
+    Lab: On the greyspace-internet range, run one full monitoring cycle with the skills from the
+    earlier modules: collect, resolve, review, triage, select and report. Evidence: the resolution
+    results for the fresh watch list; any new posts that repeat the coordination signals; the
+    confirmed, suspected and unrelated marks with a confidence for each; the escalation list with the
+    impact and confidence that justify it; the cycle report and the one recorded improvement. Pass:
+    every watch-list domain and the social review appear in the record; each item carries a mark and
+    a confidence; the escalation list names impact and confidence for every item selected; the report
+    and one improvement to the collection plan are recorded.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01, record the cycle's start time and open the collection worksheet from
+        the earlier modules.
+    - hosts: [ws01, edge01]
+      action: From ws01, resolve the fresh watch list through the resolver behind edge01 and record
+        which domains resolve and the addresses returned.
+    - hosts: [ws01]
+      action: Review the social site for new posts on the monitored topic and record any post that
+        repeats the coordination signals recorded earlier.
+    - hosts: [ws01]
+      action: Mark each collected item confirmed, suspected or unrelated, and give each mark a
+        confidence of high, medium or low with one sentence of reason.
+    - hosts: [ws01]
+      action: Select the items that merit escalation and record the impact and the confidence that
+        justify each selection.
+    - hosts: [ws01]
+      action: Write the cycle's report and one improvement to the collection plan, and record both in
+        the worksheet with their times.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-150
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A monitoring cycle produces its first useful output only after which step is done?
+      options:
+      - A) The final report is written, reviewed and widely distributed
+      - B) The takedown request is completed and confirmed by the registrar
+      - C) The public statement is cleared by the leadership team
+      - D) The collection plan names its sources and indicators
+      answer: D
+    - question: Two findings arrive in the same hour. One has high impact and thin evidence; one has
+        low impact and strong evidence. Which escalation order is best?
+      options:
+      - A) High impact first, labelled as low confidence
+      - B) Low impact first, because its evidence is already certain
+      - C) Both held back until the evidence levels fully match
+      - D) Only the low-impact finding, and hold the other
+      answer: A
+    - question: A team has run one full monitoring cycle and wants the next cycle to work
+        better. What closes the loop of the cycle?
+      options:
+      - A) Deleting the collection worksheet once the final report is written
+      - B) Archiving the raw captures and nothing at all beyond them
+      - C) Feeding the cycle's lessons into the next collection plan
+      - D) Resetting the entire range to its original clean baseline state
+      answer: C
+    - question: Which measure best shows the value of a brand-abuse monitoring programme over
+        time?
+      options:
+      - A) The total number of public posts that the analyst reads each week
+      - B) The time from abuse appearing to the finding being recorded
+      - C) The overall size of the monitoring team that runs the programme
+      - D) The total count of domains that currently sit on the watch list
+      answer: B
+    - question: Why does the monitoring record keep provenance for every item that is
+        collected?
+      options:
+      - A) So any finding can be re-checked and the programme audited
+      - B) So the collection worksheet loads faster during the lab exercise
+      - C) So the confidence levels can be removed from the record later
+      - D) So the finished reports need no evidence attached to their claims
+      answer: A
