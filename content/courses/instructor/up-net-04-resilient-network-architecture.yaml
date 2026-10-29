@@ -1,0 +1,214 @@
+# Instructor pack for C516 Resilient Network Architecture (staff only; never learner content).
+# Companion to content/courses/up-net-04-resilient-network-architecture.yaml. Every answer letter
+# below is that course's key; the notes say why the keyed option is right and what each distractor
+# tests. All labs run on the large-enterprise range, anchored on jump01 (10.50.105.10).
+
+course_code: C516
+audience: staff_only
+overview: >-
+  Resilient Network Architecture is an advanced individual course of six 50-minute modules
+  (300 minutes, 5 hours). Each module has the same split: 15 minutes teaching, 25 minutes lab on
+  the large-enterprise range, and a 10-minute assessment block for the five-item quiz passed at
+  70 percent. Every lab is anchored on jump01 in the management VLAN, which reaches all zones, and
+  Students hand in lab notes carrying their recorded evidence. Say "Student" throughout and keep
+  every description defensive and observable.
+timings:
+- module: 1
+  minutes: 50
+  plan: 15 teach (path mapping and blast radius), 25 lab (trace the workstation to database
+    path on the range), 10 quiz
+- module: 2
+  minutes: 50
+  plan: 15 teach (pairs, single-homed services, shared fate), 25 lab (enumerate redundant pairs
+    and design one fix), 10 quiz
+- module: 3
+  minutes: 50
+  plan: 15 teach (failover against load balancing, health checks, session state), 25 lab
+    (examine the DMZ web pair and judge the pattern it forms), 10 quiz
+- module: 4
+  minutes: 50
+  plan: 15 teach (in-band against out-of-band paths), 25 lab (trace the management path and mark
+    it), 10 quiz
+- module: 5
+  minutes: 50
+  plan: 15 teach (drill plan, guardrails, timelines), 25 lab (run the bounded DNS drill on the
+    redundant pair), 10 quiz
+- module: 6
+  minutes: 50
+  plan: 15 teach (the whole-design review and the ranked change plan), 25 lab (carry out the
+    review and name the proving drill), 10 quiz
+answer_key_notes:
+- module: 1
+  notes: >-
+    Q1 B: every zone's traffic crosses the core firewall, so its failure stops the most services;
+    the workstation (A), one database (C) and one cable (D) each take a far smaller part of the
+    estate with them. Q2 C: a component is a single point of failure only when no other component
+    can carry the flow; cost (A), log volume (B) and vendor support (D) say nothing about the path.
+    Q3 D: every host depends on the time source, so the blast radius is the whole estate; the
+    subnet (A) and one application (B) understate it, and C wrongly assumes free recovery. Q4 A: a
+    shared power feed is a correlated failure, one event removing both members; B and C mistake the
+    pair for protection it does not have, and D miscasts a resilience weakness as capacity. Q5 C: a
+    finding is usable when it names the paths that stop; model and version (A) and rule count (B)
+    are detail without impact, and D is a cost note.
+- module: 2
+  notes: >-
+    Q1 A: both members serve all day and either carries the load alone, which is active-active with
+    load sharing; B describes an idle standby, C a restore after the event, and D capacity held for
+    peaks, not failure. Q2 D: the shared power feed is shared fate, one event removing both
+    members; operating systems (A), data volume (B) and licensing (C) do not defeat the pair. Q3 B:
+    the pair is redundant for the directory but single-homed for DHCP, a single point of failure
+    inside an otherwise redundant pair; A overstates it, C misnames the arrangement, and D wrongly
+    waves it off. Q4 C: the offline copy meets recovery when a fault or an error is copied to both
+    members, which the replica cannot; A and B are performance, and D is a maintenance concern. Q5
+    A: failover that has never been exercised is not redundancy, so the service remains a single
+    point of failure; B trusts the document, C misnames it, and D confuses the dormant member with
+    an outage.
+- module: 3
+  notes: >-
+    Q1 C: an idle standby that takes the service after a health check is hot standby failover; A
+    and B share work among active members, and D is scheduled downtime, not failure handling. Q2
+    A: the check tests the port, not the service the client needs, so a broken page behind an open
+    port still passes; B and C are what a deeper check would test, and D inverts the point. Q3 D:
+    the client continues only with shared session state or affinity that survives the member
+    change; a shorter interval (A) and weights (B) govern distribution, and a round-robin reset (C)
+    affects new requests only. Q4 B: load balancing shares work among active members while failover
+    switches to a standby; A swaps the requirements, C inverts the aims, and D denies the
+    distinction. Q5 C: with no persistence, the new member holds no state for that session, so the
+    connection breaks; A and B need state or persistence the design lacks, and D describes
+    degradation, not the hard failure.
+- module: 4
+  notes: >-
+    Q1 D: administering switches over the links that carry user traffic is in-band management; a
+    management VLAN (A) and a console server (B) are out-of-band patterns, and C is the opposite
+    answer. Q2 B: out-of-band means reaching the device without crossing the network it manages;
+    encryption (A), licensing (C) and maintenance windows (D) change none of the path. Q3 A: the
+    production path's central component carries both management and user traffic, so one failure
+    removes both; B is an account concern, C an operations concern, and D describes isolation, not
+    the shared risk. Q4 C: the jump host gives administrators one controlled entry to every zone
+    from the management network; A describes a perimeter device, B a backup store, and D a
+    balancer. Q5 D: only a drill that disables the production path and still reaches the device
+    proves the out-of-band path; the data sheet (A), diagram (B) and purchase record (C) are paper
+    evidence.
+- module: 5
+  notes: >-
+    Q1 A: the plan must state a hypothesis, a predicted blast radius and a success measure before
+    anything is stopped; cost (B), vendor names (C) and a change number (D) may appear but do not
+    make the drill testable. Q2 C: the estate's only time server is the last instance of a service,
+    which the guardrail forbids drilling; hours (A), monitoring (B) and vendor presence (D) are not
+    the broken rule. Q3 B: only timestamps for the failure, the client errors and the recovery
+    measure how long clients lost the service; a configuration export (A), a host count (C) and a
+    ticket number (D) record context, not duration. Q4 D: when observation contradicts prediction,
+    the process requires investigating why and recording the design change it justifies; accepting
+    the prediction (A) and repeating until success (B) defeat the drill, and closing the record (C)
+    loses the finding. Q5 A: a retest drill whose observation matches the prediction proves the
+    widened check; the vendor note (B), a second balancer (C) and an updated document (D) record or
+    add, but do not prove.
+- module: 6
+  notes: >-
+    Q1 B: the review hands over a ranked list of single points of failure with the change that
+    removes each; an inventory (A), a purchase order (C) and a diagram copy (D) are inputs or
+    artefacts, not the review's product. Q2 A: the firewall ranks first because its blast radius is
+    the whole estate; user visibility (B) and repair speed (D) do not outrank blast radius, and
+    replacement cost (C) is not the ranking measure. Q3 B: both fixes remove single points of
+    failure, so they group as resilience changes; monitoring (A), productivity (C) and maintenance
+    (D) are different groupings. Q4 C: the drill that proves the change stops the active member and
+    measures what clients see; a port scan (A) and a configuration review (B) show state, not
+    behaviour, and a survey (D) measures opinion. Q5 D: recording from memory loses the evidence,
+    so the next change starts from memory instead of record; A and B dismiss the loss, and C
+    concerns classification, not evidence.
+lab_setup:
+- module: 1
+  setup: Deploy large-enterprise and confirm jump01 (10.50.105.10) reaches fw01 (10.50.105.1) on
+    the management VLAN and reaches ws01 (10.50.101.100) through fw01 (management to
+    corporate_lan, mgmt-to-all allows 22 and 3389), and that ws01 reaches sql01 (10.50.102.30).
+    The expected path is ws01 to fw01 to sql01 over the corp-to-server rules, which allow 80, 443,
+    445, 1433, 389 and 636 and no ICMP, so a trace route from ws01 cannot cross fw01 and the lab
+    tests port 1433 instead. ws01 takes its DHCP address from dc01 (10.50.101.10) and its DNS from
+    dc01 and dc02 (10.50.101.11). Have the lab note template with the four evidence items ready.
+- module: 2
+  setup: Same range state. dc01 (10.50.101.10) runs active_directory, dns, dhcp and gpo and holds
+    all five operations master roles; dc02 (10.50.101.11) runs active_directory and dns only, so
+    DHCP is the single-homed service. sql02 (10.50.102.31) lists sql01 (10.50.102.30) as its
+    replication partner. ntp01 (10.50.105.30) is the only time server and ca01 (10.50.102.50) the
+    only certificate authority. Check that Students can query service state on both domain
+    controllers from jump01.
+- module: 3
+  setup: Same range state. web01 (10.50.100.10) runs nginx and php, web02 (10.50.100.11) runs
+    apache and tomcat; both answer HTTPS on the server itself. No rule permits management to DMZ on
+    443 and the corp-to-dmz rules deny, so the lab reaches each web server over SSH from jump01
+    (mgmt-to-all allows 22) and requests the home page there. Confirm Students can open those SSH
+    sessions and that the server headers of the two stacks are distinguishable over HTTPS. The
+    expected verdict for the judgement step is that neither pattern is in place as built, since no
+    balancer or distribution address exists and the stacks differ, so accept a failover or
+    load-balancing choice only when the Student frames it as the change to make.
+- module: 4
+  setup: Same range state. jump01 (10.50.105.10) and ansible01 (10.50.105.20) sit on the management
+    VLAN 105 with fw01 (10.50.105.1) as gateway. fw01 holds one interface in each of the seven
+    zones, and no second device or link reaches the corporate LAN. Confirm Students can list
+    fw01's interfaces and read its rules from jump01, and that ansible01 answers on the management
+    network.
+- module: 5
+  setup: Same range state, plus a snapshot of dc02 (10.50.101.11) taken before the session so the
+    DNS Server service can be restored even if the restart fails. ws02's DNS list must include
+    dc01 and dc02; confirm a name lookup against dc02 succeeds from ws02 before the module. The
+    drill stops the DNS Server service on dc02 only, never dc01, and the restart is by service
+    start, not a reboot.
+- module: 6
+  setup: Same range state, unchanged from module 5, with the range restored and dc02's DNS Server
+    service confirmed running. Students need the findings they recorded in modules 1 to 5, so keep
+    the returned lab notes available; no new hosts or rules are added for the review.
+common_faults:
+- module: 1
+  fault: Students run the port-1433 test from jump01 instead of from the workstation, so they
+    record the management path and miss the DHCP and DNS dependencies.
+  remedy: Insist step 3 runs in a remote session on ws01; compare a jump01 test with a ws01 test
+    on the board and ask which one a client's failure actually follows.
+- module: 1
+  fault: The path is recorded as the firewall and the database only, dropping the name resolution
+    and address assignment hops.
+  remedy: Have each Student read their hop list aloud against the question "what must answer for
+    the query to start?" before the judgement step.
+- module: 2
+  fault: Students call any two hosts a redundant pair, counting replication or spare capacity as
+    service redundancy.
+  remedy: Ask of each pair "can the survivor carry the service alone right now?" and have them
+    cite the service list they recorded, not the hardware count.
+- module: 2
+  fault: The designed redundancy names a host the range does not have, or adds new hardware.
+  remedy: Require the design to name exact existing node ids; a design that needs a purchase is
+    recorded as a proposal, not the lab answer.
+- module: 3
+  fault: Students accept the two DMZ web servers as a failover pair without checking the stacks.
+  remedy: Point at the recorded server headers; nginx with php and apache with tomcat cannot serve
+    as each other's standby unchanged, which is the finding.
+- module: 3
+  fault: The pattern choice names no health check, so it cannot be exercised or drilled.
+  remedy: Ask "what would this check probe, and what would it miss?" of every choice; a pattern
+    without a check is not a design.
+- module: 4
+  fault: Students mark the path out-of-band because the management VLAN is separate from user
+    traffic.
+  remedy: "Return to the definition: the path still crosses fw01, the production network's central
+    component, so it shares the production path's fate."
+- module: 4
+  fault: The proposed out-of-band change is a product name with no zone named.
+  remedy: Require one change per zone with the zone named; a change that names no zone cannot be
+    checked on the range.
+- module: 5
+  fault: Students stop the service before writing the hypothesis and prediction, then fit the
+    observation to a retro-fitted plan.
+  remedy: Collect the lab notes at step 1 before any session touches dc02; a plan written after
+    the failure fails the pass item outright.
+- module: 5
+  fault: The drill is left dirty, with the DNS Server service stopped on dc02 at the end.
+  remedy: Step 5 records the recovery time, and the closing check confirms the service running and
+    name lookups succeeding from ws02 before anyone leaves the range.
+- module: 6
+  fault: The review restates every finding from the course with equal weight instead of ranking by
+    blast radius.
+  remedy: Make Students order their top two and say why the third is lower; a list with no ranking
+    is not a review.
+- module: 6
+  fault: The change plan proposes drilling the last instance of a service to prove a fix.
+  remedy: Re-apply the module 5 guardrail; the proving drill must target a pair member, and the
+    plan says which member and what the prediction tests.
