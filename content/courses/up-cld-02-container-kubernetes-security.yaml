@@ -1,0 +1,566 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# C544 - Container & Kubernetes Security - DRAFT course content.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C544
+title: Container & Kubernetes Security
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C543
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Systems Security Analyst.'
+  - 'NIST CSF 2.0: PR.PS, PR.DS, DE.CM.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Container Fundamentals and Isolation
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish a container from a virtual machine by what each isolates and what each shares
+  - Identify the kernel mechanisms a container platform uses to isolate workloads on one host
+  - Classify the isolation boundaries that separate a running pod from its node
+  topics:
+  - Images, layers and the shared kernel model of containerisation.
+  - Namespaces and control groups as the isolation mechanisms of one host.
+  - Containers versus virtual machines, and what each shares with the host.
+  - The container attack surface, from the runtime down to the host kernel.
+  - Reading a pod specification for isolation-relevant settings.
+  lab: >-
+    Lab: On the cloud-security range, inventory the k3s cluster from the jump host and work out
+    what each container shares with its node. Evidence: every running pod with its namespace and
+    node; for the web-app pod, whether its containers run privileged and whether the host process
+    namespace is shared; how many containers the worker node's runtime reports. Pass: all three
+    items recorded exactly as the cluster shows them; one sentence per pod on which isolation
+    boundaries separate it from the node; one sentence naming the kernel mechanism a container
+    process crosses to reach the node.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and record the start time.
+    - hosts: [jump01, k3s-master]
+      action: From jump01, list every running pod across the cluster and record each pod name,
+        its namespace and the node it runs on.
+    - hosts: [jump01, k3s-master]
+      action: From jump01, describe the web-app pod and record the node it runs on, whether its
+        containers run privileged and whether the host process namespace is shared.
+    - hosts: [jump01, k3s-worker01]
+      action: From jump01, list the containers the runtime on k3s-worker01 reports and record how
+        many containers that node hosts.
+    - hosts: [jump01]
+      action: For each recorded pod, write one sentence on the isolation boundaries that separate
+        its containers from the node, and name the kernel mechanism that separates a container's
+        process view from the node's.
+  refs:
+  - nist-sp-800-190
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A developer claims a container holds a full guest operating system, so a kernel
+        flaw in the image cannot touch the host. Is the claim right?
+      options:
+      - A) Yes, the image carries its own kernel
+      - B) No, containers share the host kernel, so a kernel flaw affects the host
+      - C) Yes, namespaces replace the kernel for every process
+      - D) No, containers are safe only inside virtual machines
+      answer: B
+    - question: Which kernel mechanism gives a container process its own view of process IDs and
+        network interfaces?
+      options:
+      - A) A hypervisor
+      - B) Control groups
+      - C) Namespaces
+      - D) An overlay filesystem
+      answer: C
+    - question: A pod is limited to a fixed share of CPU and memory on a busy node. Which kernel
+        mechanism enforces the limit?
+      options:
+      - A) Control groups
+      - B) Namespaces
+      - C) The image registry
+      - D) The image digest
+      answer: A
+    - question: 'A team moves a service from a virtual machine into a container on a shared node.
+        Compared with the virtual machine, the container chiefly increases host risk because:'
+      options:
+      - A) The image carries more libraries than a comparable virtual machine image
+      - B) The runtime starts workloads faster than a hypervisor starts its guests
+      - C) The container writes fewer logs than a virtual machine would write
+      - D) Many workloads share one host kernel, so isolation rests on kernel mechanisms
+      answer: D
+    - question: 'An analyst inspects a running container and asks where its immutable root
+        filesystem comes from. It is assembled from:'
+      options:
+      - A) The node's own disk partitions
+      - B) The layers of the container image
+      - C) A guest operating system install
+      - D) The control group settings
+      answer: B
+- ordinal: 2
+  title: Image Hygiene and Scanning
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select a base image for a service that limits size and known vulnerabilities
+  - Interpret a scanner report and classify which findings to fix before deployment
+  - Explain how digest pinning and registry access policy reduce image supply risk
+  topics:
+  - Minimal base images and the attack surface of an image layer.
+  - Vulnerability scanning of images in the registry and the pipeline.
+  - Reading scanner severity reports and fixing before deployment.
+  - Digest pinning, mutable tags and image provenance.
+  - Registry access policy and the risk of anonymous pull.
+  lab: >-
+    Lab: On the cloud-security range, audit the images the k3s cluster runs and the registry that
+    serves them. Evidence: every image reference in use, marked pinned or mutable; the scanner's
+    Critical and High finding counts for one cluster image; whether the registry allows anonymous
+    pull. Pass: each image marked pinned or mutable with a one-sentence reason; the scanner counts
+    recorded as the registry shows them; one change proposed for each mutable image and for the
+    anonymous pull setting.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and record the start time.
+    - hosts: [jump01, k3s-master]
+      action: From jump01, list the images every running pod uses and record each image reference
+        exactly as written, noting which end in a mutable tag.
+    - hosts: [registry01]
+      action: On registry01, scan one image the cluster runs with the registry's vulnerability
+        scanner and record the Critical and High finding counts.
+    - hosts: [registry01]
+      action: On registry01, open the project access settings and record whether anonymous pull is
+        enabled.
+    - hosts: [jump01]
+      action: Mark each image pinned or mutable with one sentence of reason, and write one change
+        to make for each mutable image and for the anonymous pull setting.
+  refs:
+  - nist-sp-800-190
+  - nist-sp-800-218
+  - cis-benchmarks
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A team deploys from an image referenced as :latest. What operational risk does the
+        mutable tag create?
+      options:
+      - A) The image grows on every pull
+      - B) Scans of the image take longer
+      - C) The registry refuses further pulls of images that use mutable tags
+      - D) The running workload may not match the code the team reviewed
+      answer: D
+    - question: A team builds a new service image and wants the smallest practical attack
+        surface. Which image choice helps most?
+      options:
+      - A) A minimal base image with only the libraries the service needs
+      - B) The newest distribution release as the base
+      - C) An image with debugging tools preinstalled
+      - D) An image assembled from several base layers
+      answer: A
+    - question: A scanner reports a Critical vulnerability in a library the service never calls.
+        What is the sound triage decision?
+      options:
+      - A) Accept it permanently because the library is never called
+      - B) Fix it at the next rebuild and verify the new scan
+      - C) Rebuild the image from the same base unchanged
+      - D) Remove the image from scanning altogether
+      answer: B
+    - question: 'A team pins every deployment to an image digest rather than a tag. The pinning
+        helps because a digest:'
+      options:
+      - A) Hides the image contents from pullers
+      - B) Replaces the need for scanning
+      - C) Identifies one immutable image build, unlike a mutable tag
+      - D) Encrypts the image inside the registry
+      answer: C
+    - question: 'The internal image registry allows anonymous pull. This is a problem chiefly
+        because:'
+      options:
+      - A) Anyone who reaches the registry can retrieve images that may embed configuration
+          details
+      - B) Anonymous pull requests are served more slowly than authenticated pull requests
+      - C) Anonymous pull prevents the registry's vulnerability scanner from scanning images
+      - D) Anonymous pull changes the digest of every image stored in the registry
+      answer: A
+- ordinal: 3
+  title: Pod Security and RBAC
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Apply a pod security standard to a namespace and identify workloads that violate it
+  - Interpret a Role and RoleBinding to determine what a service account can do
+  - Identify over-privileged bindings in a cluster and propose least-privilege replacements
+  topics:
+  - Pod security standards, from the privileged profile to the restricted profile.
+  - securityContext settings, including runAsNonRoot, read-only root filesystem and capability
+    drops.
+  - Roles, ClusterRoles and bindings, and how RBAC grants verbs on resources.
+  - Service accounts and the token each pod mounts by default.
+  - Finding over-privileged bindings and applying least privilege.
+  lab: >-
+    Lab: On the cloud-security range, review who holds power over the cluster and how far the
+    running pods reach into their hosts. Evidence: the subjects bound to the cluster-admin role;
+    the securityContext fields of the privileged-debug pod, including the privileged and hostPID
+    settings; the exact result when the limited service account lists pods. Pass: the three items
+    recorded exactly as the cluster shows them; each finding marked follows-least-privilege or
+    does-not with a one-sentence reason; one change proposed for each finding marked does-not.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and record the start time.
+    - hosts: [jump01, k3s-master]
+      action: From jump01, list the cluster's role bindings on k3s-master and record every subject
+        that holds the cluster-admin role.
+    - hosts: [jump01, k3s-master]
+      action: From jump01, describe the privileged-debug pod running on k3s-worker01 and record
+        its securityContext, including the privileged and hostPID settings.
+    - hosts: [jump01, k3s-master]
+      action: From jump01, request a pod list using the limited service account the instructor
+        assigned and record the exact result or error text.
+    - hosts: [jump01]
+      action: Mark each finding follows-least-privilege or does-not with one sentence of reason,
+        and propose one change for every finding marked does-not.
+  refs:
+  - nist-sp-800-190
+  - cis-benchmarks
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A pod must never run processes as the root identity. Which securityContext setting
+        expresses this?
+      options:
+      - A) privileged set to false
+      - B) hostPID set to false
+      - C) readOnlyRootFilesystem set to true
+      - D) runAsNonRoot set to true
+      answer: D
+    - question: A Role grants get and list on pods in one namespace, and a RoleBinding binds it
+        to a service account. What can that account do?
+      options:
+      - A) Modify pods in every namespace
+      - B) Read secrets in every namespace
+      - C) Read pods in that namespace only
+      - D) Create and delete pods in that namespace
+      answer: C
+    - question: Why does binding the cluster-admin role to a general dashboard service account
+        violate least privilege?
+      options:
+      - A) A compromise of the dashboard pod grants full control of the cluster
+      - B) Dashboards cannot read pod logs anyway
+      - C) Cluster roles expire after a fixed period
+      - D) Bindings of this kind cannot be listed
+      answer: A
+    - question: 'A reviewer reads a pod specification that sets hostPID to true. This setting
+        means the container:'
+      options:
+      - A) Encrypts its process traffic
+      - B) Sees the host's process table instead of an isolated view
+      - C) Runs without a kernel
+      - D) Cannot be scheduled on the node
+      answer: B
+    - question: 'The restricted profile of a pod security standard differs from the baseline
+        profile chiefly in that it:'
+      options:
+      - A) Allows privileged containers for system work
+      - B) Applies only to system namespaces
+      - C) Ignores volume mounts and host ports
+      - D) Also forbids running as root and most privilege escalation
+      answer: D
+- ordinal: 4
+  title: Runtime Detection for Containers
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe what a runtime sensor records about the behaviour of running containers
+  - Classify a runtime alert as expected activity or a true detection using its context
+  - Tune a detection rule so a benign administrative action no longer alerts
+  topics:
+  - Runtime sensors, system call capture and the rules that flag unusual container behaviour.
+  - The Kubernetes audit log as a detection source for cluster requests.
+  - Expected container behaviour and baselining what is normal.
+  - Alert forwarding from the sensor to the monitoring platform.
+  - Tuning detection rules and documenting suppressions with review dates.
+  lab: >-
+    Lab: On the cloud-security range, prove the runtime sensor sees activity inside a container
+    and judge what it reported. Evidence: the sensor's rule count on the runtime security host;
+    the rule name, priority and container named in the alert that opening a shell in the web-app
+    pod produces; whether the alert reached the monitoring platform. Pass: the alert found and
+    recorded exactly as the sensor emitted it; the forwarded copy confirmed present or absent on
+    the monitoring platform; the alert classified expected-administration or worth-escalation
+    with a one-sentence reason.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and record the start time.
+    - hosts: [jump01, falco01]
+      action: From jump01, confirm the runtime sensor on falco01 is running and record how many
+        rules it has loaded.
+    - hosts: [jump01, k3s-worker01]
+      action: From jump01, open a short interactive shell inside the web-app pod on k3s-worker01,
+        close it and record the time so the event can be found.
+    - hosts: [falco01, cloud-siem01]
+      action: On falco01, find the alert that the shell produced and record its rule name,
+        priority and container; then check cloud-siem01 for the forwarded copy and record whether
+        it arrived.
+    - hosts: [jump01]
+      action: Classify the shell alert as expected-administration or worth-escalation with one
+        sentence of reason, and write the narrow suppression condition that keeps the true
+        detection while silencing this benign event.
+  refs:
+  - nist-sp-800-190
+  - nist-sp-800-94
+  - sigma
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'A container has already started and no image scan is running. A runtime sensor
+        can still detect a threat by:'
+      options:
+      - A) Scanning the image again before every pull
+      - B) Reading the build pipeline log
+      - C) Watching system call behaviour of running processes
+      - D) Querying the registry for the digest of the running image
+      answer: C
+    - question: 'A long-running web container starts an interactive shell it has never run
+        before. This is best treated as:'
+      options:
+      - A) Normal behaviour for any image
+      - B) An anomaly worth triage because it departs from the container's baseline
+      - C) A registry fault rather than a security event
+      - D) Proof of a kernel compromise on the node
+      answer: B
+    - question: 'The Kubernetes audit log adds value that host runtime alerts lack because it
+        records:'
+      options:
+      - A) System calls of each container process
+      - B) The layers of every image pulled
+      - C) Network packets inside the pod network
+      - D) Requests to the API server, including who asked and what was denied
+      answer: D
+    - question: 'A team forwards every runtime alert from the sensor host to a central monitoring
+        platform. The forwarding chiefly enables:'
+      options:
+      - A) Correlation with other sources and retention beyond the sensor host
+      - B) Faster system call capture on the node
+      - C) Automatic rebuilds of vulnerable images
+      - D) Access control on the image registry
+      answer: A
+    - question: 'A suppression for a benign event is safe to keep only if it:'
+      options:
+      - A) Removes the detection rule entirely
+      - B) Is narrow, documented and reviewed on a schedule
+      - C) Ignores every event that comes from one whole namespace
+      - D) Lowers the priority of all alerts at once
+      answer: B
+- ordinal: 5
+  title: Escape Attempts and Controls
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify pod configurations that weaken the boundary between container and host
+  - Test whether runtime and configuration controls block or record a boundary crossing
+  - Propose containment for a suspected container-to-host compromise on a shared node
+  topics:
+  - How privileged mode, host namespace sharing and host mounts expose the host.
+  - Escape conditions created by common container misconfigurations.
+  - Controls that narrow the escape path, from capability drops to read-only mounts.
+  - Verifying controls against escape conditions and recording the result.
+  - Containment when a container is suspected to have reached the host.
+  lab: >-
+    Lab: On the cloud-security range, test the controls that stand between the containers and
+    their host nodes. Evidence: every setting in the privileged-debug pod specification that
+    connects the container to the host; whether the web-app container can write to a system path
+    outside its mounted volumes; each runtime alert that names the privileged-debug pod. Pass:
+    every host-reaching setting recorded with the namespace or mount it exposes; the write attempt
+    recorded as blocked or allowed with the exact output; pods ranked by escape risk with a
+    one-sentence reason for the highest.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and record the start time.
+    - hosts: [jump01, k3s-master]
+      action: From jump01, read the specification of the privileged-debug pod and record every
+        setting that connects its container to the host, such as privileged mode, host namespace
+        sharing and host mounts.
+    - hosts: [jump01, k3s-worker01]
+      action: From jump01, list the processes visible inside the privileged-debug container on
+        k3s-worker01 and record whether the view extends beyond the container's own processes.
+    - hosts: [jump01, k3s-worker01]
+      action: From jump01, attempt to write one file to a system path inside the web-app container
+        and record whether the read-only root filesystem blocks it, with the exact output.
+    - hosts: [jump01, falco01]
+      action: Check the runtime sensor on falco01 for alerts that name the privileged-debug pod
+        and record each rule that fired.
+    - hosts: [jump01]
+      action: Rank the cluster's pods from highest to lowest escape risk, write one sentence of
+        reason for the highest, and propose the single configuration change that reduces that risk
+        most.
+  refs:
+  - nist-sp-800-190
+  - mitre-attack
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: Which single pod setting most directly weakens the boundary between the container
+        and the node?
+      options:
+      - A) privileged set to true
+      - B) The image referenced by digest
+      - C) A CPU and memory limit
+      - D) A label on the namespace
+      answer: A
+    - question: A container can see every process on the node, not just its own. Which
+        configuration caused this?
+      options:
+      - A) A host mount of the node's disks
+      - B) Sharing the host process namespace
+      - C) A read-only root filesystem on the container
+      - D) Dropped capabilities
+      answer: B
+    - question: 'Dropping capabilities and forcing a read-only root filesystem both help against
+        escape because they:'
+      options:
+      - A) Hide the pod from vulnerability scanners
+      - B) Speed the start-up of the container
+      - C) Replace the need for namespaces
+      - D) Reduce what a compromised process can change
+      answer: D
+    - question: 'Pod security settings are applied but can still be misconfigured. Runtime
+        detection adds a safety net against escape attempts because it:'
+      options:
+      - A) Prevents every escape from every container
+      - B) Replaces the pod security settings
+      - C) Records behaviour the configuration should have blocked, so gaps become visible
+      - D) Patches the node kernel automatically
+      answer: C
+    - question: 'Evidence suggests one container on a shared node has reached that node. Sound
+        containment begins by:'
+      options:
+      - A) Rebuilding the image registry
+      - B) Isolating that node's workloads and treating the host as suspect
+      - C) Deleting the cluster audit logs
+      - D) Restarting the container and moving on
+      answer: B
+- ordinal: 6
+  title: Hardening Review and Control Testing
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Combine image, pod, RBAC and runtime findings into one prioritised hardening plan
+  - Judge which findings to remediate first using impact and effort
+  - Verify that an applied hardening change removes the finding it targeted
+  topics:
+  - Collecting findings from scanners, pod specifications, role bindings and alerts.
+  - Prioritising findings by exploitability and impact.
+  - Sequencing hardening changes and re-testing after each one.
+  - Recording a baseline and evidencing control improvement.
+  lab: >-
+    Lab: On the cloud-security range, combine the findings of the earlier modules into one ranked
+    hardening plan and say how each change will be proven. Evidence: the count of privileged
+    pods, the subjects holding cluster-admin and the pods using mutable tags; the registry's
+    current Critical and High scanner counts; the runtime alerts forwarded in the last hour with
+    the highest-priority rule among them. Pass: one ranked list of hardening changes covering all
+    four finding sets; a one-sentence impact reason for the top three; a statement of the evidence
+    that will show the top change worked.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and record the start time.
+    - hosts: [jump01, k3s-master]
+      action: From jump01, collect the cluster's posture from k3s-master and record the count of
+        privileged pods, the subjects holding cluster-admin and the pods running mutable image
+        tags.
+    - hosts: [registry01]
+      action: On registry01, record the scanner's current Critical and High finding counts for the
+        images the cluster runs.
+    - hosts: [falco01, cloud-siem01]
+      action: From falco01 and cloud-siem01, record how many runtime alerts were forwarded in the
+        last hour and the highest-priority rule among them.
+    - hosts: [jump01]
+      action: Combine the four finding sets into one ranked list of hardening changes, ordered by
+        risk, and write a one-sentence impact reason for the top three.
+    - hosts: [jump01]
+      action: Choose the top change and record exactly what evidence, gathered after it is
+        applied, would show the finding is gone.
+  refs:
+  - nist-sp-800-190
+  - cis-benchmarks
+  - mitre-attack
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A hardening review lists privileged pods, mutable image tags, an over-broad
+        cluster-admin binding and unscanned images. Which finding should be fixed first?
+      options:
+      - A) The mutable tags, because they change often
+      - B) The unscanned images, because scanning is cheap
+      - C) The privileged pods, because they are easy to see
+      - D) The over-broad cluster-admin binding, because its compromise grants full cluster
+          control
+      answer: D
+    - question: 'A change is applied to fix one finding, and the cluster is re-tested immediately.
+        The re-test proves:'
+      options:
+      - A) That the scanner database updated
+      - B) That the cluster is now immune to every attack that could occur
+      - C) That the specific finding is gone and no new violation appeared
+      - D) That the policy file still parses
+      answer: C
+    - question: 'A team records a full baseline of the cluster''s posture before hardening begins.
+        The baseline is most useful because it:'
+      options:
+      - A) Shows whether the next review improves or regresses
+      - B) Satisfies the image registry
+      - C) Replaces the need for runtime detection
+      - D) Fixes the misconfigurations by itself
+      answer: A
+    - question: 'A policy requires every deployment to reference images by digest. The strongest
+        evidence that the policy is enforced is:'
+      options:
+      - A) A signed note from the pipeline owner approving the change
+      - B) A pod list showing every image referenced by digest
+      - C) A current scanner licence
+      - D) A faster deployment record
+      answer: B
+    - question: 'A team holds a list of approved hardening changes for the cluster. The changes
+        are best sequenced by:'
+      options:
+      - A) Alphabetical order of the finding names
+      - B) The tool that happens to be installed
+      - C) The age of each finding
+      - D) Risk reduction against effort, highest-risk first
+      answer: D
