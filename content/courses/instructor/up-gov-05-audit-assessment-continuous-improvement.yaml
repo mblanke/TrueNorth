@@ -1,0 +1,223 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+
+course_code: C505
+audience: staff_only
+overview: >-
+  Audit, Assessment & Continuous Improvement is an advanced individual course of six 60-minute
+  modules (360 minutes, 6 hours) on the medium-enterprise range. Each module teaches for about
+  15 minutes, runs a range lab for about 35, and closes with a five-item quiz for about 10,
+  passed at 70 percent. The labs carry one assessment forward module by module: an evidence
+  sample, then control tests, then findings, then a plan of action and milestones, then
+  improvement actions with metrics, then a report with an authorisation recommendation. The
+  stated policy the labs test against is: corporate workstations may reach DMZ web and mail
+  services only on ports 80, 443, 25, 587, 143 and 993, the domain password policy requires a
+  minimum length of 12 with lockout after 5 failures for 15 minutes, the domain administrators
+  group holds two accounts, and the boundary rules allow nothing from the corporate network to
+  the DMZ beyond those ports. Students hand in their recorded evidence, their findings, the
+  plan of action and milestones, the improvement actions and the report with its
+  recommendation. Say 'Student' throughout and keep every description defensive and observable.
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: >-
+    Q1 B, M01-O01: Effectiveness means the control works when exercised, so a re-performed test
+    answers it; a signed policy (A) and a training count (C) are conformance evidence only.
+    Q2 C, M01-O02: A defensible sample projects to its population with stated confidence;
+    convenience (A), the administrator's favourites (B) and newness (D) all bias the result.
+    Q3 A, M01-O03: Only the dated export can be re-performed; recall (B), an undated screenshot
+    (C) and the assessor's summary (D) are all indirect or unverifiable.
+    Q4 D, M01-O01: Breaking in within agreed rules is a penetration test; an audit checks
+    conformance and an assessment grades controls, neither of which attacks.
+    Q5 B, M01-O03: Documented but unenforced is a weakness with evidence, and it feeds a risk
+    decision; treating it as conforming (A) or out of scope (D) hides a real gap.
+- module: 2
+  notes: >-
+    Q1 C, M02-O01: Enforcement is shown by exercising the control; exports (A), interviews (B)
+    and change tickets (D) are examine-method evidence.
+    Q2 D, M02-O03: Six of ten sampled systems comply, so the control is partially implemented,
+    and the sample results are the evidence; most (A) and any-gap-is-total (B) are both wrong
+    grades, not readings of the evidence.
+    Q3 B, M02-O02: The assessor records and reports; removing the rule (A) or widening the
+    policy (C) changes the environment mid-assessment, and stopping (D) abandons the plan for
+    one observation.
+    Q4 A, M02-O01: Disabling a rule changes the range; every other action is read-only.
+    Q5 C, M02-O02: The absence of a log entry is a gap in the evidence base that the report
+    must state, not proof the control works (A) or that the attempt never happened (D).
+- module: 3
+  notes: >-
+    Q1 A, M03-O01: 'Weak' is a judgement; a finding needs condition, criteria and cited
+    evidence before it can be tracked or remediated.
+    Q2 B, M03-O01: Each weakness has its own condition, severity and remediation, so merged
+    findings cannot be closed independently.
+    Q3 D, M03-O02: Severity follows likelihood and impact; internet reachability of every
+    server raises the impact of exploitation far above the printer's.
+    Q4 C, M03-O03: The door is real but outside the approved scope, so it is recorded as an
+    out-of-scope note for the system owner; hiding it (D) is worse than misgrading it.
+    Q5 A, M03-O02: One version behind with no known weakness is an observation; severity
+    arrives only when a weakness in that version is published.
+- module: 4
+  notes: >-
+    Q1 D, M04-O03: Honest tracking shows ongoing with a revised milestone and reports the slip
+    to the risk owner; blanking (C) or closing (A) the entry hides residual risk.
+    Q2 C, M04-O01: A completable milestone names one control action one owner can perform and
+    verify; the other options are unbounded aims, not milestones.
+    Q3 A, M04-O02: Closure follows evidence from a re-test; a passed date (B), an owner's word
+    (C) or the next cycle (D) are none of them evidence the control works.
+    Q4 B, M04-O03: Risk-based scheduling orders by severity against the resources available;
+    raise order, tracker age and alphabetical order carry no risk meaning.
+    Q5 D, M04-O03: A partial fix leaves residual risk, so the entry stays ongoing and the risk
+    owner is told; closing it (A, B) would record risk the organisation has not accepted.
+- module: 5
+  notes: >-
+    Q1 B, M05-O01: The loop asks why weaknesses arose and acts on causes across people,
+    process and technology; per-finding fixes leave the causes in place.
+    Q2 A, M05-O02: Shared accounts are a process failure with a people element, so individual
+    accounts plus training, then re-assessment, addresses the cause; recounting (B) or
+    re-writing the finding (D) measures or records without acting.
+    Q3 C, M05-O03: Blocked-connection counts are already in the SIEM, so the fall in attempts
+    from workstations to restricted ports measures the change without new tooling.
+    Q4 D, M05-O02: Recurring sampling defects are a process weakness; the fix rewrites the
+    method and tests it at the next assessment.
+    Q5 B, M05-O01: The loop closes when a re-assessment shows the weakness did not return;
+    filing (A) or choosing a metric (D) are steps inside the loop, not its end.
+- module: 6
+  notes: >-
+    Q1 C, M06-O01: 'The network is secure' asserts beyond what scoped evidence supports;
+    conclusions may state only what the evidence and scope cover.
+    Q2 A, M06-O02: Every server internet-reachable with high likelihood and high impact is
+    high residual risk, which an organisation accepts only knowingly and with conditions.
+    Q3 D, M06-O03: An actionable recommendation names the decision, its duration and its
+    conditions; the others are sentiment (A), status (B) or evasion (C).
+    Q4 B, M06-O03: Conditions state what is accepted for now and the actions that close it;
+    they are not punishment (A) and do not replace findings (C) or monitoring (D).
+    Q5 C, M06-O03: Without re-assessment or monitoring, the authorisation rests on stale data;
+    nothing since shows the controls still work.
+lab_setup:
+- module: 1
+  setup: >-
+    Revert the medium-enterprise range to its baseline before the module. Check siem01, fw01,
+    dc01, ws01 and ws02 are reachable as the lab needs and that the SIEM holds logs for every
+    node the sample will draw on. Assign each Student the siem01 analyst account and confirm
+    they can sign in. State the assessment policy up front: corporate workstations may reach
+    DMZ web and mail services only on ports 80, 443, 25, 587, 143 and 993, the domain password
+    policy requires a minimum length of 12 with lockout after 5 failures for 15 minutes, and
+    the domain administrators group holds two accounts. The baseline values Students should
+    find are those same values; nothing this module records is changed.
+- module: 2
+  setup: >-
+    Revert the range to baseline again so this module's lab starts clean. Confirm ws01 and
+    web01 are reachable from the corporate network on the policy ports and blocked elsewhere,
+    and that the SIEM records fw01 and ws01 events. Restate the policy: DMZ web and mail
+    services only on ports 80, 443, 25, 587, 143 and 993; password policy minimum 12, lockout
+    at 5 failures for 15 minutes; two domain administrators. Warn Students the range is
+    read-only this module: any Student who changes a setting fails the lab pass item.
+- module: 3
+  setup: >-
+    Revert the range to baseline. Check web01 reports its service version to ws01 over the
+    corp-to-dmz rule (port 80) and that dc01 answers queries for the domain administrators
+    group. Confirm the
+    over-broad rule on fw01 is present in the baseline so every Student finds the same
+    weakness, and confirm the two domain administrator accounts and the web01 service version
+    Students should expect. State the policy once more; Students compare rules against it.
+- module: 4
+  setup: >-
+    Revert the range to baseline so the Module 3 findings are reproducible. Approve one
+    weakness per Student for remediation - by default the over-broad fw01 rule - and have the
+    change procedure for fw01 ready. Confirm the SIEM keeps recording fw01 events through the
+    change so the logging-continuity check works. After the module, revert fw01 to baseline
+    again so Module 5 starts from the recorded assessment state.
+- module: 5
+  setup: >-
+    Revert the range to baseline and confirm the SIEM holds the assessment-period data the
+    review examines: failed sign-in events against dc01 and fw01 blocked-connection events.
+    Generate a realistic failed-sign-in pattern against dc01 if the baseline period is empty,
+    with one source host clearly dominant, so the top-source step has a defensible answer.
+    No range setting is changed in this module; the lab is analysis and writing only.
+- module: 6
+  setup: >-
+    Revert the range to baseline for the final lab. Confirm fw01 and dc01 answer the status
+    queries and the SIEM is readable, so Students can state which findings remain open against
+    the current rule set, password policy and privileged accounts. Have each Student bring
+    their recorded evidence from Modules 1 to 5; the lab assembles the report from it. Decide
+    the decision context in advance - the range is authorised for continued use after the
+    assessment - so every Student recommends against the same system state.
+common_faults:
+- module: 1
+  fault: Students read the fw01 rule export and call the boundary control effective without
+    ever exercising it.
+  remedy: Point at the Module 1 quiz distinction between examine and test evidence; have each
+    Student mark each of their evidence items examine-method or test-method before the quiz.
+- module: 1
+  fault: Sample items are chosen because they are easy, then presented as if the result covers
+    the whole population.
+  remedy: Have each Student write one sentence stating what population their sample projects
+    to; if the sentence cannot be written, the sample is not defensible yet.
+- module: 2
+  fault: Students treat a blocked connection that never appears in the SIEM as proof the
+    attempt never happened, or as proof the control works.
+  remedy: Walk through what the SIEM could and could not show for that attempt, then have
+    Students state the gap in their own evidence in one sentence, as the quiz answer puts it.
+- module: 2
+  fault: A control is graded from memory or impression, with no evidence item cited for the
+    grade.
+  remedy: Reject any grade line without an evidence citation and have the Student name the
+    recorded item that supports it before the grade stands.
+- module: 3
+  fault: Findings read as judgements - 'patching is weak', 'rules are sloppy' - with no
+    condition, criteria or evidence.
+  remedy: Have Students rewrite one of their own findings into condition, criteria, cause and
+    effect form; the rewrite is the deliverable, not the first draft.
+- module: 3
+  fault: Everything noticed is written as a finding, including items with no weakness behind
+    them.
+  remedy: Drill the Module 3 distinction - a finding has a weakness against criteria, an
+    observation does not - and have Students split their notes into the two lists before
+    writing.
+- module: 4
+  fault: A plan of action and milestones entry is marked closed because the owner said the
+    work was done, with no re-test recorded.
+  remedy: Ask for the re-test evidence by name; if the Student cannot point to the recorded
+    item from the ws01 test, the entry stays ongoing.
+- module: 4
+  fault: Milestones are written as aims - 'improve security', 'harden the boundary' - that no
+    one owner can complete.
+  remedy: 'Apply the quiz test aloud: can one owner perform this and can it be verified? Have
+    the Student rewrite the milestone until both answers are yes.'
+- module: 5
+  fault: Every improvement action is labelled technology, because buying something feels like
+    the fix.
+  remedy: For each action ask what a person or a process change alone would achieve; the
+    shared-account example usually converts to process plus people.
+- module: 5
+  fault: Metrics are chosen that nothing in the SIEM can measure, so the improvement can never
+    be shown to have worked.
+  remedy: Have the Student name the exact SIEM data for the metric; if the data does not
+    exist, the metric is rewritten until the SIEM can answer it.
+- module: 6
+  fault: The report concludes the network is secure, generalising far beyond the evidence and
+    scope.
+  remedy: Have Students list which conclusions their evidence actually covers and reword every
+    conclusion to that boundary, as the Module 6 quiz answer states.
+- module: 6
+  fault: The recommendation is 'authorise' or 'do not authorise' with no conditions, dates or
+    residual risk.
+  remedy: Make the conditions line a pass item; a bare verdict is returned for one more pass
+    through the residual-risk step before the quiz.
