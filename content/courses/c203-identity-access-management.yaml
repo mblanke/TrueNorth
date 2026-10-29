@@ -6,10 +6,11 @@ course_code: C203
 title: Identity & Access Management
 version: '1.0'
 difficulty: intermediate
-duration_hours: 100
+duration_hours: 6
 provenance: unsourced
 status: draft
 is_published: false
+readiness: draft
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
 prerequisites:
@@ -34,57 +35,83 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Describe joiner, mover and leaver processes.
-  - Explain identity proofing and account provisioning.
-  - Identify risks arising from poor lifecycle management.
+  - Describe the joiner, mover and leaver processes that carry an identity from creation to removal
+  - Explain identity proofing and how it differs from authenticating an account at sign-in
+  - Identify dormant, orphaned and over-privileged accounts in a directory listing and prioritise their remediation
   topics:
-  - Identity proofing and enrolment.
-  - Provisioning and deprovisioning.
-  - Role change and privilege accumulation.
-  - Orphaned and dormant accounts.
-  lab: 'Lab: Audit a directory export for dormant accounts, accounts without owners and privilege accumulation
-    across role changes, then produce a prioritised remediation list.'
+  - Identity proofing, enrolment and the lifecycle from joiner to leaver.
+  - Provisioning, deprovisioning and what a complete mover process removes.
+  - Role change and how privilege accumulates when old entitlements stay.
+  - Dormant and orphaned accounts, and the risk each kind creates.
+  - Ranking directory findings and choosing what to remediate first.
+  lab: >-
+    Lab: Audit the directory that dc-01 holds and judge which accounts the identity lifecycle has failed.
+    Evidence: the number of accounts the domain holds; the last sign-in date and the group memberships of
+    each account; each account that belongs to a leaver or records no owner, judged against the leaver list
+    the instructor supplies. Pass: every account is listed with its last sign-in date; each dormant,
+    orphaned or over-privileged account is labelled with a one-sentence reason; the three accounts to
+    remediate first are named and ranked with a reason for the order.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and note the start time in the lab record.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, list every account the domain on dc-01 holds and record the total number of accounts.
+    - hosts: [jump-box, dc-01]
+      action: For each account, record its last sign-in date and the domain groups it belongs to.
+    - hosts: [jump-box, dc-01]
+      action: Compare the account list with the leaver list the instructor supplies and mark each account that
+        belongs to a leaver or records no owner.
+    - hosts: [jump-box]
+      action: Label each finding dormant, orphaned or over-privileged with a one-sentence reason, then rank the
+        three accounts to remediate first and give the reason for the order.
   refs:
   - nist-sp-800-63-4
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'Privilege accumulation typically occurs when:'
+    - question: A finance clerk moves to the sales team and keeps access to the payroll folder from the old
+        role. Which lifecycle process failed?
       options:
-      - A) Accounts are deleted promptly
-      - B) Users change roles and retain former entitlements
-      - C) MFA is enforced
-      - D) Passwords rotate
-      answer: B
-    - question: 'An orphaned account is one that:'
+      - A) Joiner, because the account was created without identity proofing
+      - B) Leaver, because the account should have been deleted that day
+      - C) Mover, because the role change kept the payroll entitlement
+      - D) Proofing, because the identity was never verified
+      answer: C
+    - question: A directory review finds an enabled account that no manager claims and that has not signed in
+        for a year. What is the account best labelled as?
       options:
-      - A) Has never logged in
-      - B) Has no identifiable owner or responsible manager
-      - C) Is locked
-      - D) Belongs to a contractor
-      answer: B
-    - question: 'Identity proofing establishes:'
+      - A) An orphaned account with no claimed owner
+      - B) A dormant account owned by the service desk
+      - C) A shared account awaiting its next rotation
+      - D) A privileged account pending an approval
+      answer: A
+    - question: A new hire's account is provisioned before the recruiter checks the identity document the hire
+        presented. Which lifecycle step was skipped?
       options:
-      - A) What a user may access
-      - B) That a claimed identity corresponds to a real person
-      - C) Session duration
-      - D) Password strength
-      answer: B
-    - question: 'The highest-risk failure in the leaver process is:'
+      - A) Provisioning, because the account should wait for the first day
+      - B) Deprovisioning, because the account should not exist yet
+      - C) Entitlement review, because access was granted too early
+      - D) Identity proofing, because the claim was never checked
+      answer: D
+    - question: A review finds forty enabled accounts that still belong to staff who left during the past
+        year. Which risk does keeping them create?
       options:
-      - A) Delayed equipment return
-      - B) Access not revoked promptly on departure
-      - C) Missing exit interview
-      - D) Unreturned badge
+      - A) Each leaver account doubles the password reset workload
+      - B) Each leaver account is a valid way in that no owner will miss
+      - C) Each leaver account consumes a licence the budget did not plan
+      - D) Each leaver account breaks the sign-in log format
       answer: B
-    - question: 'Automated deprovisioning is valuable primarily because it:'
+    - question: An organisation removes access with a checklist the manager signs on the last day, and one
+        signature is forgotten twice a month. Which change addresses the root cause?
       options:
-      - A) Reduces licence cost
-      - B) Removes reliance on a manual step that is often missed
-      - C) Improves performance
-      - D) Simplifies auditing only
-      answer: B
+      - A) A longer checklist with a second page of signatures
+      - B) A monthly reminder message to every manager
+      - C) Deprovisioning triggered by the departure record
+      - D) Moving the checklist to the security team's queue
+      answer: C
 - ordinal: 2
   title: Authentication Mechanisms
   content_type: reading
@@ -92,57 +119,86 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Compare authentication factors and their resistance to attack.
-  - Explain phishing-resistant authentication.
-  - Assess authentication assurance for a use case.
+  - Classify authentication factors as knowledge, possession or inherence and judge each factor's resistance to phishing
+  - Distinguish phishing-resistant authentication from one-time codes and push approvals that a look-alike page can harvest
+  - Select an authentication assurance level for a stated use case and justify the choice
   topics:
-  - Knowledge, possession and inherence factors.
-  - OTP, push and FIDO2/WebAuthn.
-  - Phishing resistance and channel binding.
-  - Authentication assurance levels.
-  lab: 'Lab: Compare three MFA methods against a phishing scenario and a SIM-swap scenario, and recommend
-    one with a stated residual risk.'
+  - Knowledge, possession and inherence factors, and what each one proves.
+  - One-time codes by SMS and app, push approval and number matching.
+  - FIDO2 and WebAuthn security keys, origin binding and phishing resistance.
+  - Password policy values and what each one limits.
+  - Authentication assurance levels and choosing one for a use case.
+  lab: >-
+    Lab: On the small-enterprise range, find what stands between a workstation sign-in and the domain, then
+    judge whether the design meets multi-factor authentication. Evidence: the minimum password length, the
+    lockout threshold and the lockout duration from the policy dc-01 enforces; every element the ws-01
+    sign-in asks for, in order; a factor label of knowledge, possession or inherence for each element.
+    Pass: the three policy values are recorded exactly as the range shows them; each sign-in element is
+    labelled with its factor category; the design is marked "meets multi-factor authentication" or "does
+    not" with a one-sentence reason; one change that would add a possession factor is named.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and note the start time in the lab record.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, read the password policy dc-01 enforces and record the minimum password length, the
+        lockout threshold and the lockout duration as the range shows them.
+    - hosts: [ws-01]
+      action: Sign in to ws-01 with the account the instructor assigned and record every element the sign-in asks
+        for, in order.
+    - hosts: [ws-01]
+      action: Label each recorded element knowledge, possession or inherence, and note which elements a person
+        holding only the password could complete.
+    - hosts: [jump-box]
+      action: Mark the design "meets multi-factor authentication" or "does not" with one sentence of reason, and
+        name one change that would add a possession factor.
   refs:
   - nist-sp-800-63-4
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: Which MFA method is considered phishing-resistant?
+    - question: A bank wants staff sign-ins to fail even when an employee types the password into a look-alike
+        sign-in page. Which method meets this need?
       options:
-      - A) SMS one-time code
-      - B) FIDO2/WebAuthn security key
-      - C) Email one-time code
-      - D) Push approval without number matching
-      answer: B
-    - question: 'SMS-based one-time codes are weakened by:'
+      - A) An SMS one-time code, because the code arrives on a separate device
+      - B) Push approval, because the employee confirms each sign-in
+      - C) A FIDO2 key, because the credential is bound to the site's origin
+      - D) A longer password, because a look-alike page cannot collect it
+      answer: C
+    - question: An analyst receives repeated push approval prompts late at night for sign-ins they did not start
+        and approves one to stop them. Which weakness does this show?
       options:
-      - A) Short code length only
-      - B) SIM swapping and interception
-      - C) Clock drift
-      - D) Certificate expiry
+      - A) The password policy had allowed a weak password to be set
+      - B) Push approval without number matching can be worn down
+      - C) The push service did not encrypt its notification traffic
+      - D) The authentication logs were not retained anywhere
       answer: B
-    - question: 'MFA fatigue attacks exploit:'
+    - question: A phone number is transferred to a different SIM card without the owner's knowledge. Which
+        authentication method does this defeat most directly?
       options:
-      - A) Weak passwords only
-      - B) Repeated push prompts until a user approves one
-      - C) Expired tokens
-      - D) Federation
-      answer: B
-    - question: 'FIDO2 resists phishing largely because the credential is bound to:'
+      - A) A FIDO2 security key held at the office
+      - B) An authenticator app code generated on the phone
+      - C) A fingerprint read on the laptop
+      - D) A one-time code sent by SMS to that number
+      answer: D
+    - question: A sign-in asks for a password and then for the account's mother's maiden name. Does this design
+        meet multi-factor authentication?
       options:
-      - A) The user's password
-      - B) The origin of the relying party
-      - C) The device serial
-      - D) The IP address
-      answer: B
-    - question: 'Increasing password complexity rules alone tends to:'
+      - A) Yes, because two separate prompts were completed
+      - B) Yes, because the maiden name is hard to look up
+      - C) No, because both are knowledge the same person holds
+      - D) No, because security questions are no longer permitted
+      answer: C
+    - question: An organisation raises its password rule to fourteen characters with three symbol classes, and
+        users begin writing passwords on notes beside the screen. Which outcome should the designer have expected?
       options:
-      - A) Strongly improve security
-      - B) Encourage predictable patterns and reuse
-      - C) Prevent phishing
-      - D) Eliminate credential stuffing
-      answer: B
+      - A) Predictable patterns and reuse that offset the longer length
+      - B) Stronger resistance to guessing at every account in the domain
+      - C) More phishing, because symbols confuse employees
+      - D) Fewer lockouts, because long passwords are memorable
+      answer: A
 - ordinal: 3
   title: Authorisation Models
   content_type: reading
@@ -150,57 +206,85 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Design role-based access control for an organisation.
-  - Apply attribute-based policies where roles are insufficient.
-  - Enforce separation of duties and least privilege.
+  - Build a role-based model that maps duties to groups and separates the two sides of a sensitive process
+  - Express an access rule as attribute-based policy when role membership alone cannot carry the decision
+  - Judge a set of group memberships against least privilege and name the toxic combinations it holds
   topics:
-  - RBAC design and role explosion.
-  - ABAC and policy expression.
-  - Separation of duties and toxic combinations.
-  - Entitlement review.
-  lab: 'Lab: Design an RBAC model for six job functions, identify two toxic entitlement combinations,
-    and express one access rule as an attribute-based policy where RBAC is inadequate.'
+  - Role-based access control, roles as job duties and the path to role explosion.
+  - Attribute-based access control, and the context a role cannot express.
+  - Least privilege as a design test for group memberships.
+  - Toxic combinations and the sensitive processes one person must not complete alone.
+  - Static and dynamic separation of duties in group design.
+  lab: >-
+    Lab: On the small-enterprise range, map what each domain group can reach and judge the memberships of the
+    assigned user against least privilege. Evidence: the name and membership count of every domain group dc-01
+    holds; the groups the assigned user belongs to; the permission a member of each group holds on the shared
+    resources; the exact result when the assigned user opens an administrative share on dc-01. Pass: every
+    group is listed with its membership count; the assigned user's memberships are recorded as the range shows
+    them; each membership is marked "follows least privilege" or "does not" with a one-sentence reason; one
+    toxic combination among the groups is named with the sensitive process it enables.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and note the start time in the lab record.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, list the domain groups dc-01 holds and record each group name and membership count.
+    - hosts: [jump-box, dc-01]
+      action: List the groups the assigned standard user belongs to and record what each group can reach on the
+        domain.
+    - hosts: [ws-01, dc-01]
+      action: Sign in to ws-01 as the assigned user, try to open the administrative share on dc-01 and record the
+        exact result shown.
+    - hosts: [jump-box]
+      action: Mark each membership "follows least privilege" or "does not" with one sentence of reason, and name
+        one toxic combination among the groups with the sensitive process it enables.
   refs:
   - nist-sp-800-63-4
   quiz:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Role explosion occurs when:'
+    - question: A lender grants access to loan records only during branch hours, from a managed device, to
+        staff whose duties list that branch. Which model expresses this decision most directly?
       options:
-      - A) Too few roles exist
-      - B) Roles proliferate to capture fine-grained exceptions
-      - C) Users have no roles
-      - D) Roles are automated
-      answer: B
-    - question: 'Attribute-based access control is preferable when decisions depend on:'
+      - A) Attribute-based access control, because the rule reads context
+      - B) Role-based access control with one role per branch
+      - C) Discretionary access control, because each branch sets its own rule
+      - D) Mandatory access control with a label per branch
+      answer: A
+    - question: A company grows from five job titles to forty, and its role model now holds three hundred roles
+        because every exception needs a new one. Which failure is this?
       options:
-      - A) Job title alone
-      - B) Contextual factors such as time, location, device and data sensitivity
-      - C) Group membership only
-      - D) Username
+      - A) Privilege creep, because old entitlements were never removed
+      - B) Role explosion, because exceptions multiplied the roles
+      - C) Separation of duties, because too many duties were separated
+      - D) Least privilege, because each role grants only what is needed
       answer: B
-    - question: 'A toxic combination is a set of entitlements that together:'
+    - question: One accountant both approves supplier invoices and creates the suppliers in the ledger. Why does
+        an access reviewer flag this?
       options:
-      - A) Exceed a licence
-      - B) Allow one person to complete a sensitive process without oversight
-      - C) Slow authentication
-      - D) Conflict technically
+      - A) The accountant signs in from too many devices
+      - B) One person can complete a payment without oversight
+      - C) The approvals are recorded in the wrong log
+      - D) Two roles cannot be held at the same time for any reason
       answer: B
-    - question: 'Entitlement review is most effective when performed by:'
+    - question: A finance group grants read access to every payroll file, though only two of its nine members
+        work in payroll. Which change follows least privilege most directly?
       options:
-      - A) The security team alone
-      - B) The business owner who understands what the access is for
-      - C) The service desk
-      - D) An automated tool only
-      answer: B
-    - question: 'Least privilege applied to an administrator means:'
+      - A) Remove the group and grant the nine members the access individually
+      - B) Encrypt the payroll files so the other seven cannot read them
+      - C) Ask the seven members to confirm in writing that they need it
+      - D) Split the group so only the two payroll staff keep the access
+      answer: D
+    - question: A night-shift operator may restart a payment service but not change its configuration. The
+        change right needs business hours and a second person. Which design carries the time condition?
       options:
-      - A) No administrative access
-      - B) Elevated access only when needed and only to what is needed
-      - C) Permanent domain admin
-      - D) Shared admin accounts
-      answer: B
+      - A) An attribute-based rule that reads time and the second person
+      - B) A role-based model, because the operator holds a role
+      - C) A discretionary model, because the service owner chose the rule
+      - D) A mandatory model, because the rule is enforced centrally
+      answer: A
 - ordinal: 4
   title: Privileged Access Management
   content_type: reading
@@ -208,16 +292,45 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain the specific risks of privileged accounts.
-  - Implement just-in-time and session-recorded privileged access.
-  - Protect credentials for service and break-glass accounts.
+  - Inventory the privileged and service accounts a domain holds and judge which ones break least privilege
+  - Design a just-in-time elevation path with approval, a time limit and a record of what was done
+  - Explain how a break-glass path stays usable in an outage without becoming a standing back door
   topics:
-  - Privileged account inventory.
-  - Just-in-time elevation and approval.
-  - Session recording and monitoring.
-  - Service accounts and break-glass procedures.
-  lab: 'Lab: Design a privileged access workflow for a database administrator including request, approval,
-    time limit and session recording, and define the break-glass exception path.'
+  - Privileged and service accounts, and how each differs from a standard user account.
+  - Standing privilege and the impact a compromised administrator account carries.
+  - Just-in-time elevation with approval, a time limit and session records.
+  - Service account credentials, rotation and where they are stored.
+  - Break-glass accounts, alerting on use and the test that keeps them working.
+  lab: >-
+    Lab: On the small-enterprise range, inventory who holds privilege and how they reach it, then judge the
+    design against just-in-time access. Evidence: the name and membership count of every group with
+    administrative rights on the domain; the accounts inside those groups and whether each is shared or
+    personal; the fw-01 rules that allow administrative traffic into the server network and the source
+    network of each; the exact result when the assigned standard user attempts a privileged action on dc-01.
+    Pass: the inventory is complete as the range shows it; each finding is marked "standing privilege" or
+    "elevated on demand" with a one-sentence reason; one just-in-time design change is proposed for a
+    standing-privilege finding, with its approval step, its time limit and the account it removes from
+    standing privilege.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and note the start time in the lab record.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, list the groups that hold administrative rights on the dc-01 domain and record each
+        group name, membership count and the accounts inside it.
+    - hosts: [jump-box, fw-01]
+      action: List the fw-01 rules that allow administrative traffic into the server network and record the source
+        network each rule allows.
+    - hosts: [ws-01, dc-01]
+      action: Sign in to ws-01 as the assigned standard user, attempt a privileged action on dc-01 and record the
+        exact result shown.
+    - hosts: [jump-box]
+      action: Mark each finding "standing privilege" or "elevated on demand" with one sentence of reason.
+    - hosts: [jump-box]
+      action: Propose one just-in-time elevation change for the standing-privilege finding the marking shows
+        carries the most risk, and record its approval step, its time limit and the account it removes from
+        standing privilege.
   refs:
   - nist-sp-800-63-4
   - cis-benchmarks
@@ -225,41 +338,46 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Just-in-time privileged access reduces risk by:'
+    - question: A domain administrator account is phished while its holder works from home. Which design choice
+        turned one phished password into control of every server?
       options:
-      - A) Removing approval steps
-      - B) Limiting the window during which elevated rights exist
-      - C) Sharing credentials
-      - D) Extending session length
+      - A) The password was long and rotated every ninety days
+      - B) Standing administrative rights on every server at once
+      - C) The account was personal rather than shared between administrators
+      - D) The sign-in was recorded in the domain authentication logs
       answer: B
-    - question: 'A break-glass account should be:'
+    - question: A contractor who left three months ago still appears in the domain administrators group. Which
+        finding should the review record first?
       options:
-      - A) Used daily
-      - B) Tightly controlled, monitored and alerted on every use
-      - C) Shared widely
-      - D) Exempt from logging
+      - A) The group holds more members than the written policy allows
+      - B) A departed contractor still holds standing privilege
+      - C) The contractor's old workstation still holds cached domain credentials
+      - D) The group's description field no longer matches its purpose
       answer: B
-    - question: 'Session recording of privileged access primarily supports:'
+    - question: A database administrator needs elevated rights twice a month for scheduled maintenance. Which
+        design fits just-in-time privileged access?
       options:
-      - A) Performance tuning
-      - B) Accountability and post-incident reconstruction
-      - C) Licence compliance
-      - D) Faster access
-      answer: B
-    - question: 'Service account credentials are high risk because they are often:'
+      - A) A permanent membership in the database administrators group
+      - B) A standing service account whose password only the administrator knows
+      - C) An approved elevation that expires after the maintenance window
+      - D) A shared administrator password that is changed after each use
+      answer: C
+    - question: 'A backup service account has not changed its password in four years, three teams hold a copy,
+        and it reads every file share. Why is this high risk?'
       options:
-      - A) Short-lived
-      - B) Long-lived, widely shared and excluded from rotation
-      - C) Protected by MFA
-      - D) Rarely privileged
-      answer: B
-    - question: 'Standing administrative privilege is dangerous chiefly because:'
+      - A) A long-lived credential that three teams hold and cannot rotate safely
+      - B) Backup applications must always run as domain administrators
+      - C) The account cannot use multi-factor authentication, so every sign-in is single-factor
+      - D) Service accounts are prohibited by the domain password policy
+      answer: A
+    - question: A storage array fails at 02:00 and recovery needs a domain administrator, but the just-in-time
+        approval service runs on the failed infrastructure. What does a correct break-glass path provide?
       options:
-      - A) It is expensive
-      - B) A compromise of the account grants immediate high-impact access
-      - C) It slows logins
-      - D) It complicates reporting
-      answer: B
+      - A) A permanently enabled administrator account used for every out-of-hours task
+      - B) A second copy of the approval service kept on a laptop
+      - C) An administrator password reset by the service desk on request
+      - D) A sealed offline credential, an alert on use and a next-day review
+      answer: D
 - ordinal: 5
   title: Federation and Single Sign-On
   content_type: reading
@@ -267,57 +385,87 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain federated identity and assertion-based trust.
-  - Compare SAML and OpenID Connect at a conceptual level.
-  - Identify risks specific to federated architectures.
+  - Trace a federated sign-in from the relying party through the identity provider and name where the trust decision sits
+  - Compare assertion-based federation with token-based federation and what each hands to the receiving service
+  - Judge the blast radius of an identity provider compromise and the limits that reduce it
   topics:
-  - Identity provider and relying party roles.
-  - Assertions, claims and tokens.
-  - SAML and OIDC flows.
-  - Federation trust risks.
-  lab: 'Lab: Trace a single sign-on flow end to end, identify where the trust decision is made, and describe
-    the impact if the identity provider were compromised.'
+  - Identity providers, relying parties and where the trust decision is made.
+  - Assertions, claims and tokens, and what each carries to the receiving service.
+  - Single sign-on across the domain, and what a workstation sign-in proves to another service.
+  - Federation as a single point of failure, and the blast radius of identity provider compromise.
+  - Token lifetimes, audience restrictions and replay between services.
+  lab: >-
+    Lab: On the small-enterprise range, trace a domain sign-in from a workstation to a service and judge what
+    the receiving service trusts. Evidence: the path the ws-01 sign-in takes to dc-01, including the fw-01
+    rules it crosses and the ports each rule allows; the credential elements dc-01 checks before the sign-in
+    succeeds; the result when ws-01 opens a domain service on dc-01; every service on the domain that
+    accepts the sign-in without asking again. Pass: the
+    sign-in path is listed in order with the fw-01 rule names it crosses; the trust decision is located at
+    dc-01 and stated in one sentence; each service that accepts the sign-in silently is listed; the blast
+    radius of a dc-01 compromise is described with the services it would reach.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and note the start time in the lab record.
+    - hosts: [fw-01]
+      action: List the fw-01 rules that carry sign-in traffic from the user network to the server network and
+        record each rule name and the ports it allows.
+    - hosts: [ws-01, dc-01]
+      action: Sign in to ws-01 as the assigned user and record the path the sign-in takes to dc-01 and the
+        credential elements dc-01 checks before it succeeds.
+    - hosts: [ws-01, dc-01]
+      action: From ws-01, open a domain service on dc-01, such as the SYSVOL share, and record whether the
+        sign-in is asked for again or accepted without asking.
+    - hosts: [jump-box]
+      action: State in one sentence where the trust decision sits, list every service that accepted the sign-in
+        silently, and describe the blast radius of a dc-01 compromise with the services it would reach.
   refs:
   - nist-sp-800-63-4
   quiz:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'In federation, the relying party trusts:'
+    - question: After a single portal sign-in, a staff member opens the expenses system without signing in
+        again. In a federated design, what does the expenses system base its decision on?
       options:
-      - A) The user's password
-      - B) Assertions issued by the identity provider
-      - C) The network
-      - D) The browser
-      answer: B
-    - question: 'Compromise of an identity provider is severe because it:'
+      - A) An assertion from the identity provider, not a password
+      - B) The staff member's password, which the portal shared with it
+      - C) The staff member's workstation address, which it recognises
+      - D) The session cookie the browser kept from the portal
+      answer: A
+    - question: A contractor's laptop is infected with malware that steals everything in the browser session.
+        Why does the single sign-on session widen this incident?
       options:
-      - A) Affects one application
-      - B) Can grant access to every federated relying party
-      - C) Only affects logging
-      - D) Requires physical access
+      - A) The malware now needs the contractor's password as well
+      - B) One stolen session reaches every federated service
+      - C) The malware changes the contractor's group memberships
+      - D) The identity provider logs the theft and locks the account
       answer: B
-    - question: OpenID Connect adds what to OAuth 2.0?
+    - question: A payment service accepts a token that was issued for the staff directory service, and the
+        payment is approved. Which missing check allowed this?
       options:
-      - A) Authorisation
-      - B) An identity layer with an ID token
-      - C) Encryption
-      - D) Session management only
-      answer: B
-    - question: 'Token lifetime should be set considering:'
+      - A) The signature on the token was never verified
+      - B) The token's lifetime had expired before it was presented
+      - C) The token's audience was not checked
+      - D) The token's claims listed the wrong department
+      answer: C
+    - question: A security team shortens the single sign-on session from twelve hours to one hour. Six months
+        later, help desk tickets about locked-out staff have tripled. What does the change illustrate?
       options:
-      - A) Only user convenience
-      - B) The trade-off between re-authentication burden and exposure if stolen
-      - C) Network speed
-      - D) Certificate validity
+      - A) Session length has no effect on either security or usability
+      - B) Re-authentication burden rose while the risk drop was small relative to it
+      - C) The identity provider was misconfigured during the change
+      - D) Federated sessions cannot be shortened safely at all
       answer: B
-    - question: 'Validating the audience claim in a token prevents:'
+    - question: An attacker who controls the identity provider can sign in as any employee to every federated
+        service. Which design limit keeps the damage inside one department's applications?
       options:
-      - A) Expired tokens
-      - B) A token issued for one service being replayed at another
-      - C) Weak signatures
-      - D) Clock skew
-      answer: B
+      - A) Requiring every employee to use a FIDO2 security key
+      - B) Encrypting the traffic between the services and the provider
+      - C) Segregating the provider so each one serves one department
+      - D) Logging every assertion the provider issues each day
+      answer: C
 - ordinal: 6
   title: Monitoring and Governance of Access
   content_type: reading
@@ -325,16 +473,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Detect anomalous authentication and access behaviour.
-  - Conduct access certification campaigns.
-  - Measure the effectiveness of identity controls.
+  - Read authentication events from a domain and pick out the patterns that deserve investigation
+  - Run an access certification that removes entitlements rather than confirming what already exists
+  - Measure how quickly the identity lifecycle removes access after a role change or departure
   topics:
-  - Authentication telemetry and anomalies.
-  - Impossible travel and behavioural signals.
-  - Access certification and attestation.
-  - Identity control metrics.
-  lab: 'Lab: Analyse an authentication log for anomalous patterns, identify two accounts warranting investigation,
-    and state the specific evidence supporting each.'
+  - Authentication events a domain controller records, and what each one shows.
+  - Password spraying, impossible travel and the shape of each in an event log.
+  - Access certification campaigns, attestation and rubber-stamping.
+  - Joiner, mover and leaver events as the signals governance measures.
+  - Metrics for identity controls, and the ones that measure nothing.
+  lab: >-
+    Lab: On the small-enterprise range, read the sign-in events dc-01 holds for a period the instructor
+    supplies, then decide which accounts deserve investigation. Evidence: the sign-in successes and failures
+    dc-01 records for the period, with the account, source host and time of each; the count of failures per
+    account; the successful sign-ins from the controlled test the instructor runs from ws-02. Pass: the event
+    list covers the whole period with no gaps; the failure count per account is recorded; each account that
+    shows a spraying or anomalous pattern is named with the events that support it; the two accounts to
+    investigate first are chosen with one sentence of reason each.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and note the start time in the lab record.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, read the sign-in events dc-01 holds for the period the instructor supplies and
+        record the successes and failures with the account, source host and time of each.
+    - hosts: [jump-box, dc-01]
+      action: Count the sign-in failures per account across the period and record the total for each.
+    - hosts: [ws-02, dc-01]
+      action: From ws-02, run the controlled sign-in the instructor supplies against dc-01 and record how the
+        event appears in the log.
+    - hosts: [jump-box]
+      action: Name each account whose events show a spraying or anomalous pattern with the events that support
+        it, then choose the two accounts to investigate first with one sentence of reason each.
   refs:
   - nist-sp-800-92
   - nist-sp-800-63-4
@@ -342,38 +513,43 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Impossible travel detection flags:'
+    - question: An event log shows one failed sign-in for each of two hundred accounts from a single host in
+        an hour, with two successes mixed in. What does the pattern indicate?
       options:
-      - A) Failed logins
-      - B) Successful logins from geographically distant locations too close in time
-      - C) Password changes
-      - D) New devices
-      answer: B
-    - question: 'A spike in failed authentications across many accounts from one source suggests:'
+      - A) A lockout policy that users keep triggering by mistake
+      - B) A time synchronisation fault between two domain controllers
+      - C) Password spraying that found its way into two accounts
+      - D) A legacy application that was never given a service account
+      answer: C
+    - question: A badge is read in an Ottawa office at 09:00 and the same account signs in from a device in
+        another country at 09:20. What should the analyst flag?
       options:
-      - A) Password expiry
-      - B) Password spraying
-      - C) Certificate failure
-      - D) Clock skew
-      answer: B
-    - question: 'Access certification is the process of:'
+      - A) A duplicate sign-in that the log deduplication missed
+      - B) Nothing, because both sign-ins used the correct password
+      - C) A clock drift between the office and the remote device
+      - D) Impossible travel, because the account could not cover the distance
+      answer: D
+    - question: An access certification round asks managers to confirm two hundred entitlements, and every
+        manager approves the full list within ten minutes. What has the campaign actually produced?
       options:
-      - A) Issuing certificates
-      - B) Periodically confirming that granted access is still appropriate
-      - C) Training users
-      - D) Encrypting credentials
-      answer: B
-    - question: 'Rubber-stamped certification campaigns are a problem because they:'
+      - A) Evidence that the entitlement list was accurate
+      - B) A record that managers reviewed each entitlement individually
+      - C) The appearance of review with no excess access removed
+      - D) A baseline that will shorten next year's campaign
+      answer: C
+    - question: A leaver's mailbox stays open for five weeks after departure because the ticket sat in a queue.
+        Which measurement would have caught this pattern?
       options:
-      - A) Take too long
-      - B) Create an appearance of control without reducing excess access
-      - C) Are expensive
-      - D) Require tooling
+      - A) The number of accounts the directory holds at month end
+      - B) The time from the departure record to the removal of access
+      - C) The count of password resets the service desk completed
+      - D) The percentage of staff who finished security awareness training
       answer: B
-    - question: 'A useful identity control metric would be:'
+    - question: A certification reviewer keeps a colleague's access to a shared drive because the colleague once
+        used it during a project. Which follow-up shows the review is working as designed?
       options:
-      - A) Number of users
-      - B) Time from role change to entitlement removal
-      - C) Directory size
-      - D) Number of groups
-      answer: B
+      - A) The reviewer states the project, its dates and why access is needed
+      - B) The reviewer forwards the decision to the security team for a second opinion
+      - C) The access is logged as reviewed and rechecked at the next campaign
+      - D) The colleague is asked to confirm they still want the drive
+      answer: A
