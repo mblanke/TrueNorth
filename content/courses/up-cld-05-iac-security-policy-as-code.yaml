@@ -1,0 +1,534 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C547
+title: IaC Security & Policy as Code
+version: '1.0'
+difficulty: advanced
+duration_hours: 6
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C545
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Systems Security Analyst, per the catalogue row. No DCWF mapping is asserted
+    here; framework mapping belongs to crosswalk.csv.'
+  - 'NIST CSF 2.0 functions PR.PS, GV.PO and ID.IM set the intent of the modules; no sub-category
+    codes are asserted in module text.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Terraform Review Techniques
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Review a Terraform configuration for hardcoded credentials and unsafe default values
+  - Identify state file exposure risks that an infrastructure code review must catch
+  - Classify findings from a configuration review by severity and propose a remediation for each
+  topics:
+  - 'Reading HCL structure: providers, resources, variables, outputs and module calls.'
+  - 'Plan review technique: comparing planned actions against the intended change scope.'
+  - State file contents, sensitive values and why state storage needs access control.
+  - Hardcoded credentials in tfvars files and environment-specific variable files.
+  - Recording findings with resource address, evidence and recommended fix.
+  lab: >-
+    Lab: On the cloud-security range, review the working directory on terraform01 like an assessor:
+    find the exposed state file, find credentials committed in variable files, and record each
+    finding with its resource address and a severity. Evidence: the path used to read the state
+    file without authentication; the resource addresses whose attributes expose secret values;
+    the file names and variable names holding credentials; a severity of high, medium or low for
+    each finding. Pass: both findings recorded with resource addresses and quoted evidence; each
+    finding given a severity with a one-sentence reason; one remediation proposed per finding that
+    names the storage or variable mechanism to use instead.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Open an SSH session to jump01, confirm the cloud and Terraform command line tools respond, and record the start time.
+    - hosts: [jump01, terraform01]
+      action: From jump01, read the state endpoint on terraform01 without supplying credentials and record what the response returns.
+    - hosts: [terraform01]
+      action: List the configuration and variable files in the Terraform working directory on terraform01 and record the file names.
+    - hosts: [terraform01]
+      action: Search the variable files on terraform01 for literal credential values and record each variable name with its file.
+    - hosts: [terraform01, jump01]
+      action: Match each credential in the variable files to the resource attributes visible in the state response and record the addresses involved.
+    - hosts: [jump01]
+      action: Judge each finding high, medium or low severity with a one-sentence reason, and propose one remediation for each finding.
+  refs:
+  - nist-sp-800-115
+  - cis-benchmarks
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A configuration review finds a database password assigned directly in a variables file that is
+        committed to the repository. Which finding should the reviewer record first?
+      options:
+      - A) A default value that drifted
+      - B) A hardcoded credential in a committed tfvars file
+      - C) A missing output declaration
+      - D) An unpinned provider version
+      answer: B
+    - question: The Terraform state file on the state server is readable by anyone who can reach the network.
+        What does this exposure reveal?
+      options:
+      - A) Only the number of resources in the stack
+      - B) Nothing, because state files never contain meaningful resource data
+      - C) Resource attributes in plaintext, including values marked sensitive
+      - D) Only the provider version in use
+      answer: C
+    - question: A planned change shows twelve resources to replace, while the ticket asked only for a tag update.
+        What is the correct reviewer action?
+      options:
+      - A) Approve because replace actions are usually safe
+      - B) Approve the plan and correct the tags later in the console
+      - C) Reject the plan until its scope matches the ticket
+      - D) Delete the state file to force a fresh plan
+      answer: C
+    - question: A finding shows an administrator credential readable in the state file of a production stack.
+        Which severity is defensible?
+      options:
+      - A) Low, because state files live on private networks
+      - B) High, because the credential grants control of production resources
+      - C) Medium, because rotation removes the risk within a month
+      - D) Informational, because review records capture facts without judging impact
+      answer: B
+    - question: During review the Student cannot match a resource in the code to any planned action. Which record
+        completes that finding?
+      options:
+      - A) A screenshot of the code file and the plan output
+      - B) A request to rerun the init stage
+      - C) A list of module versions in use
+      - D) The resource address, evidence and a recommended fix
+      answer: D
+- ordinal: 2
+  title: Policy-as-Code Guardrails
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select policy rules that block non-compliant infrastructure code before it reaches deployment
+  - Write a policy check that fails a plan containing a prohibited resource attribute
+  - Trace a policy decision from its rule definition to the pipeline gate that enforces it
+  topics:
+  - 'Policy as code: expressing guardrails as machine-readable rules rather than documents.'
+  - Rule engines that evaluate plans and configurations against organisational baselines.
+  - 'Common infrastructure policy rules: encryption, public exposure, tagging and sizing.'
+  - Severity, enforcement modes and the difference between advisory and blocking checks.
+  - Placing policy checks in the delivery pipeline so review happens before apply.
+  lab: >-
+    Lab: On the cloud-security range, define a policy rule that fails any configuration which
+    makes a storage bucket public, run it against the bucket configuration in the simulated
+    cloud on localstack01 and confirm the pipeline on gitlab01 blocks the failing branch. Evidence: the rule text and the attribute
+    it forbids; the evaluation output showing the failing resource; the pipeline job status for
+    the branch with the violation; the job status after the configuration is corrected. Pass: the
+    rule fails the violating configuration and passes the corrected one; the pipeline run shows
+    the policy job blocking the merge request; the Student records which severity and enforcement
+    mode the rule used.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [gitlab01]
+      action: Open the repository for the infrastructure project on gitlab01 and record the branch protection settings in force.
+    - hosts: [localstack01]
+      action: Read the storage bucket configuration on localstack01 and record the attribute that controls public access.
+    - hosts: [gitlab01]
+      action: Write a policy rule in the pipeline configuration on gitlab01 that fails when the bucket allows unauthenticated reads.
+    - hosts: [gitlab01, terraform01]
+      action: Run the pipeline on the branch and record the policy job output, including the resource the rule fails.
+    - hosts: [localstack01]
+      action: Correct the bucket configuration on localstack01 so public access is denied, and commit the change to the branch.
+    - hosts: [gitlab01]
+      action: Judge from the job outcome whether the rule behaved as advisory or blocking, and record the enforcement mode observed.
+  refs:
+  - nist-sp-800-218
+  - nist-cswp-29
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A platform team wants rules that reject unencrypted storage automatically, with no human reading
+        the configuration. Which approach fits that goal?
+      options:
+      - A) A wiki page listing prohibited settings
+      - B) A peer reviewer assigned to read every plan before merge
+      - C) Policy as code evaluated against every plan
+      - D) A quarterly configuration audit
+      answer: C
+    - question: Which rule belongs in an infrastructure baseline that a policy engine can evaluate without human
+        judgement?
+      options:
+      - A) Fail any resource that allows unauthenticated public read access
+      - B) Encourage teams to consider encryption where appropriate
+      - C) Review resource tagging after deployment each quarter
+      - D) Prefer smaller instance types where practical for the team's workload
+      answer: A
+    - question: A policy rule reports a violation, but the pipeline still deploys the change. Which setting change
+        makes the check blocking?
+      options:
+      - A) Lower the rule severity to informational
+      - B) Move the check to run after apply
+      - C) Add the offending resource to an allow list for this quarter
+      - D) Set the enforcement mode from advisory to blocking
+      answer: D
+    - question: Where in a delivery pipeline should a policy check run so it blocks non-compliant code before
+        deployment?
+      options:
+      - A) In a stage after the apply completes
+      - B) Only in the production scheduling job
+      - C) In a nightly job outside the pipeline
+      - D) At the gate that runs before apply approval
+      answer: D
+    - question: A rule fires on nearly every resource because a tag is missing, and teams start ignoring its
+        output. What is the sound response?
+      options:
+      - A) Keep the rule blocking and fix the tagging in the modules that omit it
+      - B) Demote the rule to advisory permanently
+      - C) Remove tagging from the baseline
+      - D) Exclude the noisy teams from policy checks
+      answer: A
+- ordinal: 3
+  title: Drift Detection and Remediation
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Detect configuration drift between declared infrastructure code and deployed resources
+  - Interpret a drift report to decide whether the code or the environment must change
+  - Propose a remediation that returns deployed resources to the declared baseline
+  topics:
+  - 'Drift definition: deployed state that no longer matches the declared configuration.'
+  - Manual console changes and out-of-band automation as sources of drift.
+  - Scheduled detection, refresh behaviour and how to read a drift report.
+  - 'Choosing the remediation direction: adopt the change in code or revert the resource.'
+  - Preventing drift with change process controls and least-privilege console access.
+  lab: >-
+    Lab: On the cloud-security range, run a detection pass that compares the declared
+    configuration on terraform01 against the deployed resources in the simulated cloud on
+    localstack01, then decide the remediation direction for each difference. Evidence: the
+    detection output listing resources whose live attributes differ from the declaration; the
+    attribute names and both values for each difference; a decision of adopt in code or revert
+    resource for each; the follow-up action recorded for each decision. Pass: every difference
+    recorded with attribute names and both values; each difference decided with a one-sentence
+    reason; one remediation proposed that names who must change what, the code or the resource.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Open a session on jump01 and record the identifiers of the stacks assigned for this exercise.
+    - hosts: [terraform01]
+      action: Read the declared configuration for the assigned stack on terraform01 and record the bucket and access attributes it declares.
+    - hosts: [localstack01]
+      action: List the deployed storage resources on localstack01 and record the same attributes as they exist now.
+    - hosts: [terraform01, localstack01]
+      action: Compare the declaration from terraform01 with the deployed attributes on localstack01 and record each difference with both values.
+    - hosts: [localstack01]
+      action: Apply the harmless out-of-band change the instructor announces to one bucket on localstack01 and rerun the detection pass.
+    - hosts: [jump01]
+      action: Judge each difference as adopt in code or revert the resource, with a one-sentence reason, and record the remediation owner.
+  refs:
+  - nist-sp-800-30r1
+  - cis-benchmarks
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A weekly job compares declared code with deployed resources and reports a security group that the
+        code does not contain. What is this finding?
+      options:
+      - A) Drift between the declaration and the deployment
+      - B) A plan preview error
+      - C) A state lock conflict
+      - D) An outdated provider version pinned in the lock file
+      answer: A
+    - question: An engineer changed a bucket policy directly in the cloud console, and the change is an improvement
+        the team wants to keep. What is the correct remediation direction?
+      options:
+      - A) Revert the resource and forbid console access entirely
+      - B) Ignore the difference because the change is beneficial
+      - C) Adopt the change into the configuration code and apply from the pipeline
+      - D) Delete the resource and recreate it from scratch
+      answer: C
+    - question: Which practice most reduces drift caused by manual changes to deployed infrastructure?
+      options:
+      - A) Longer review cycles for configuration code
+      - B) Least-privilege console access with changes routed through the pipeline
+      - C) Larger state files with more recorded attributes
+      - D) Disabling scheduled detection to reduce noise for the platform team's dashboards
+      answer: B
+    - question: A drift report shows a database instance size the code does not declare, and no ticket covers it.
+        What does the assessor record first?
+      options:
+      - A) An approval for the new instance size
+      - B) A new version of the database module
+      - C) A request to delete the instance
+      - D) The resource address, the declared and live sizes, and the owner to question
+      answer: D
+    - question: Drift detection runs only as a refresh inside an apply that a reviewer approved without reading.
+        What weakness does this reveal?
+      options:
+      - A) The state files have grown too large
+      - B) The provider versions are unpinned
+      - C) Detection is not independent of the change process it should police
+      - D) The variable definitions lack type constraints
+      answer: C
+- ordinal: 4
+  title: Golden Modules and Paved Roads
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Define the qualities that make a module trustworthy enough to become a golden default
+  - Compare the paved road experience with the exceptions it must still permit
+  - Design a published module catalogue entry that states ownership, inputs and guarantees
+  topics:
+  - 'Golden modules: reviewed, versioned building blocks that encode secure defaults.'
+  - 'Paved roads: the supported path that makes secure configuration the easy default.'
+  - 'Module interfaces: required and optional inputs, outputs and documented guarantees.'
+  - Versioning, change notes and deprecation for published modules.
+  - Exception handling when a workload genuinely cannot use the paved road.
+  lab: >-
+    Lab: On the cloud-security range, turn a reviewed configuration into a golden module on
+    terraform01, then use it to replace an insecure deployment pattern visible on the k3s
+    cluster. Evidence: the module directory and the inputs it declares; the version and change
+    note recorded for the first publication; the vulnerable attributes of the cluster workload
+    the module would replace; the module call that deploys the hardened equivalent. Pass: the
+    module declares secure defaults for the attributes that were vulnerable; the published
+    version and change note are recorded; the module call uses the golden module with no
+    attribute loosened.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [terraform01]
+      action: Read the reusable directory layout on terraform01 and record where published modules and their versions live.
+    - hosts: [k3s-master]
+      action: Use kubectl on k3s-master to inspect the cluster workloads, locate the privileged-debug pod scheduled on k3s-worker01, and record the attributes that make it privileged.
+    - hosts: [terraform01]
+      action: Write a module on terraform01 whose defaults deny privilege escalation and require an approved justification input to relax them.
+    - hosts: [terraform01]
+      action: Publish the module with a version and change note on terraform01 and record both values.
+    - hosts: [terraform01]
+      action: Write a call of the new module that reproduces the workload role without the vulnerable attributes and record the inputs used.
+    - hosts: [jump01]
+      action: Judge whether the module deserves golden status. Record which guarantees it encodes and which exception path it must still offer.
+  refs:
+  - nist-sp-800-218
+  - nist-sp-800-190
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: Which property makes a module trustworthy enough to publish as a golden default for every team?
+      options:
+      - A) It is the shortest to call
+      - B) It leaves every setting configurable so each team can decide everything itself
+      - C) It was written in the least time
+      - D) Reviewed defaults with a version, change notes and a named owner
+      answer: D
+    - question: A team reports that the paved road cannot serve their workload. What does a mature programme do?
+      options:
+      - A) Force the workload onto the road anyway
+      - B) Grant a documented exception with review and an expiry date
+      - C) Let each team copy their own private modules and drift apart
+      - D) Retire the paved road for everyone
+      answer: B
+    - question: A caller is deciding whether to rely on a module from the catalogue. What must the published entry
+        state so the caller can trust it?
+      options:
+      - A) The author's surname and hire date
+      - B) The cloud provider's current pricing
+      - C) Its inputs, outputs, guarantees and current version
+      - D) The complete list of every team that currently calls it
+      answer: C
+    - question: A golden module moves to a new major version and changes a required input. What protects existing
+        callers?
+      options:
+      - A) A silent merge of the new version
+      - B) Keeping the old version unpublished
+      - C) A deprecation window and change note for the old interface
+      - D) Renaming the module directory
+      answer: C
+    - question: Why does a well-run paved road reduce audit findings over time?
+      options:
+      - A) It hides resources from assessors
+      - B) Secure defaults apply automatically, so non-compliant builds become visible exceptions
+      - C) It removes infrastructure from audit scope
+      - D) It shortens the auditor's checklist
+      answer: B
+- ordinal: 5
+  title: Pipeline Gates and Secret Hygiene
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Locate the gates in a delivery pipeline where infrastructure changes must stop for review
+  - Identify secret exposure in repository and pipeline configuration and propose the fix
+  - Select the storage mechanism that keeps a credential usable to the pipeline but unreadable in code
+  topics:
+  - 'Delivery pipeline stages: commit, scan, plan, policy check, approval and apply.'
+  - 'Gate design: what a gate blocks, who approves and what evidence it records.'
+  - 'Secret hygiene: scanning, rotation and the cost of a leaked long-lived credential.'
+  - Pipeline secret stores, least-privilege deployment identities and short-lived credentials.
+  - 'Repository exposure: committed variables files and CI variables visible to forked jobs.'
+  lab: >-
+    Lab: On the cloud-security range, audit the delivery pipeline for the infrastructure project:
+    find the repository secrets that are exposed, find the weak credential store, and propose
+    where each secret should live instead. Evidence: the repository path and variable names that
+    expose credentials and who can read them; the build service entry points that respond without
+    authentication; the storage mechanism proposed for each credential; the rotation order
+    recorded for the exposed values. Pass: both exposures recorded with exact paths or names;
+    each credential matched to a least-privilege storage mechanism; a rotation order recorded
+    that starts with the longest-lived value.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [gitlab01]
+      action: List the repository files and CI variables on gitlab01 and record which entries hold credential values.
+    - hosts: [gitlab01]
+      action: Record who can read the exposed repository and its variables on gitlab01, including anonymous access.
+    - hosts: [jenkins01]
+      action: Open the build service on jenkins01 without signing in and record which console and job views respond.
+    - hosts: [jenkins01]
+      action: Inspect the credential store on jenkins01 and record how its entries are protected.
+    - hosts: [jump01]
+      action: Match each exposed credential to a storage mechanism that grants the pipeline least privilege, and record the choice.
+    - hosts: [jump01]
+      action: Judge the rotation order for the exposed values, starting with the credential that grants the broadest access, and record it with reasons.
+  refs:
+  - nist-sp-800-218
+  - cwe-top-25
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: Where does a policy gate belong in a delivery pipeline for infrastructure code?
+      options:
+      - A) Between the plan and the apply approval, so blocking happens before deployment
+      - B) After apply, as a report to the team
+      - C) Inside the commit message template, where every reviewer already looks for notes
+      - D) Only in the operations runbook
+      answer: A
+    - question: A pipeline variable holds a long-lived cloud key that every project member can read. What is the
+        strongest fix?
+      options:
+      - A) Rename the variable to something obscure
+      - B) Compress the variable before storing it
+      - C) Move the key into the application code
+      - D) Replace it with a short-lived credential assumed by a least-privilege deployment identity
+      answer: D
+    - question: A build service accepts commands from anyone on the network without a login. What does the assessor
+        record?
+      options:
+      - A) An availability finding only
+      - B) An unauthenticated execution path that reaches deployment credentials
+      - C) A cosmetic branding issue on the login page
+      - D) A documentation gap in the on-call runbook and its escalation procedures
+      answer: B
+    - question: A credentials file committed two years ago is deleted in the latest commit. Why is the exposure not
+        closed?
+      options:
+      - A) Deletion removes the file from the repository history
+      - B) Only passwords, not keys, need rotation
+      - C) Repository history retains the value, so rotation is still required
+      - D) Repository history is encrypted at rest
+      answer: C
+    - question: Which pair of findings belongs in one incident record about the same root cause?
+      options:
+      - A) Slow builds and oversized build logs
+      - B) Unpinned providers and a stale wiki page
+      - C) A public repository and its visible CI variables that expose the deployment key
+      - D) A mislabeled dashboard and a slow database query
+      answer: C
+- ordinal: 6
+  title: Continuous Assurance and IaC Security Operations
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Combine configuration review, policy output and drift reports into one assurance view
+  - Evaluate whether guardrails remain effective after a change in the platform
+  - Propose the next control improvement from a month of recorded findings
+  topics:
+  - 'Continuous assurance: scheduled reviews, policy runs and detection feeding one view.'
+  - 'Metrics that show guardrail health: coverage, exception count and time to revert.'
+  - Re-testing controls after platform or policy engine upgrades.
+  - Feeding findings into risk registers and improvement plans.
+  - Reporting assurance results to owners who can act on them.
+  lab: >-
+    Lab: On the cloud-security range, produce one assurance summary for the estate: run the
+    assessor toolkit on prowler01 against the simulated cloud, check the audit trail on
+    cloud-siem01, and combine the results with the policy and drift outputs from earlier modules.
+    Evidence: the assessor findings grouped by service; the audit trail entries that show who
+    changed configuration and when; the combined counts of blocking, advisory and drifted items;
+    one proposed control improvement ranked first. Pass: assessor output recorded with at least
+    two service groups; audit trail entries quoted with actor and time; the combined counts
+    recorded; one improvement proposed with the finding that justifies it.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Open a session on jump01 and record the estate scope assigned for the assurance exercise.
+    - hosts: [prowler01]
+      action: Run the assessor toolkit on prowler01 against the simulated cloud account and record the findings grouped by service.
+    - hosts: [cloud-siem01]
+      action: Search the audit trail on cloud-siem01 for configuration change events and record actor, action and time for the five most recent.
+    - hosts: [localstack01]
+      action: Compare the current public exposure state of the storage resources on localstack01 with the baseline recorded in earlier modules.
+    - hosts: [prowler01, cloud-siem01]
+      action: Combine the assessor findings, audit trail events and exposure state into one table with counts per category.
+    - hosts: [jump01]
+      action: Judge which control improvement ranks first from the combined table and record the finding that justifies it.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: Which combination gives the most defensible continuous assurance view for infrastructure security?
+      options:
+      - A) One annual audit report from an external firm
+      - B) Policy output alone, because the automation never overlooks or misreads a finding
+      - C) Scheduled configuration review, policy runs and drift detection in one summary
+      - D) Console screenshots collected from each team
+      answer: C
+    - question: After a policy engine upgrade, what must the platform team re-test?
+      options:
+      - A) Nothing, because upgrades preserve rule behaviour
+      - B) That each enforced rule still fires on its violating sample and passes its compliant sample
+      - C) Only the dashboard theme and layout
+      - D) Only rules that are older than one year
+      answer: B
+    - question: Which metric best shows whether the paved road is actually working?
+      options:
+      - A) The number of modules the platform team has written so far this year
+      - B) The size of the state files
+      - C) The count of pipelines configured
+      - D) The trend of exceptions granted and the mean time to revert drift
+      answer: D
+    - question: A month of findings shows the same public bucket rule firing in four different teams. What is the
+        right next improvement?
+      options:
+      - A) Fix the shared module so the default denies public access
+      - B) Add four allow-list entries for the teams
+      - C) Lower the rule to advisory severity
+      - D) Report all four teams to their managers
+      answer: A
+    - question: Who should receive the assurance report, and in what form?
+      options:
+      - A) Nobody, because findings stay inside the tool
+      - B) Every employee, in full technical detail
+      - C) The owners who can act, with findings ranked and tied to a control
+      - D) The cloud vendor, once a quarter
+      answer: C
