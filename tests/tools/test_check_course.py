@@ -210,8 +210,25 @@ def test_a_host_named_only_in_the_action_text_must_exist(tree):
     assert failed == {"hosts"}
 
 
+def test_a_listed_host_must_be_named_in_the_action_or_an_earlier_step(tree):
+    role_only = "Check the result between the domain controller and the workstation."
+    failed = _failed(
+        tree, _write(tree, _mutated(lambda d: _m(d)["lab_range"]["steps"][1].update(action=role_only)))
+    )
+    assert failed == {"hosts"}
+
+
+def test_a_host_named_in_an_earlier_step_counts_for_a_later_one(tree):
+    def later(d):
+        steps = _m(d)["lab_range"]["steps"]
+        steps[0].update(hosts=["jump01", "ws01"], action="Log on to jump01, then open ws01 in a terminal.")
+        steps[2].update(action="Record the result you see.")
+
+    assert _failed(tree, _write(tree, _mutated(later))) == set()
+
+
 def test_host_shaped_words_that_are_not_hosts_are_ignored(tree):
-    fine = "Check the x64 build and the SHA-256 digest on ws01 over TLS 1.3."
+    fine = "Check the x64 build and the SHA-256 digest on ws01 and dc01 over TLS 1.3."
     assert _failed(tree, _write(tree, _mutated(lambda d: _m(d)["lab_range"]["steps"][1].update(action=fine)))) == set()
 
 
@@ -277,7 +294,8 @@ def test_the_queue_is_the_37_unheld_courses():
     """One course per line: its path, then the suggested range template (a hint TAZ checks)."""
     rows = [ln.split() for ln in (ROOT / "tools/taz/courses/queue.txt").read_text(encoding="utf-8").splitlines()]
     queue = [Path(r[0]) for r in rows]
-    every = {p.name for p in (ROOT / "content/courses").glob("*.yaml")}
+    # The upskilling catalogue (up-*) is queued separately; this queue is the DP1/DP2 courses.
+    every = {p.name for p in (ROOT / "content/courses").glob("*.yaml") if not p.name.startswith("up-")}
     assert all(p.parent == Path("content/courses") and (ROOT / p).is_file() for p in queue)
     assert len(queue) == len({p.name for p in queue}) == 37
     assert {p.name for p in queue} == every - cc.HELD_FILES

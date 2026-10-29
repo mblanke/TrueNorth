@@ -219,6 +219,12 @@ def adapt(
 # ── ARC² checks, called not copied ───────────────────────────────────────
 
 
+def is_upskilling(code: str) -> bool:
+    """C500 and up: the self-paced upskilling catalogue, outside the DP1/DP2 programme."""
+    digits = "".join(ch for ch in str(code) if ch.isdigit())
+    return bool(digits) and int(digits) >= 500 and not str(code).upper().startswith("RMC")
+
+
 def run_arc2(
     out: Path, manifest: dict[str, Any], raw: dict[str, Any], parsed: dict[str, Any], root: Path, ledger: Ledger
 ) -> list[dict[str, Any]]:
@@ -238,6 +244,14 @@ def run_arc2(
             "qa.course_manifest_mismatch",
             "qa.course_objectives_verbatim",
         }
+        upskilling = is_upskilling(manifest["course"]["catalogue_code"])
+        if upskilling:
+            # Upskilling courses (C500 and up) sit outside the DP1/DP2 programme: no qualification
+            # mapping to propose, so qsp_code is optional (it must still be valid when present) and
+            # the "proposed, not standards-validated" note does not apply.
+            dropped |= {"qa.course.notes_proposed"}
+            if raw.get("qsp_code") is None:
+                dropped |= {"qa.course.qsp_code"}
         course_f = [f for f in arc2_qa.check_course(out, manifest, root, api) if f["check"] not in dropped]
         out_f += course_f
         ledger.ran(
@@ -245,12 +259,19 @@ def run_arc2(
             "arc2",
             "arc2.qa.check_course: publication, provenance, status, qsp_code, notes, modules, labs, refs, quiz shape, duplicate stems, miscited sources",
         )
-        out_f += arc2_qa.check_catalogue_identity(manifest, root, api)
-        ledger.ran(
-            "qa.catalogue_identity",
-            "arc2",
-            f"arc2.qa.check_catalogue_identity: {manifest['course']['catalogue_code']!r} is a course in the catalogue",
-        )
+        if upskilling:
+            ledger.not_applicable(
+                "qa.catalogue_identity",
+                "arc2",
+                f"{NA_TAZ}: upskilling courses (C500 and up) are not rows of the DP1/DP2 programme catalogue",
+            )
+        else:
+            out_f += arc2_qa.check_catalogue_identity(manifest, root, api)
+            ledger.ran(
+                "qa.catalogue_identity",
+                "arc2",
+                f"arc2.qa.check_catalogue_identity: {manifest['course']['catalogue_code']!r} is a course in the catalogue",
+            )
         scenario_ids = sorted(p.parent.name for p in (out / "05-sensor").glob("*/scenario.yaml"))
         if scenario_ids:
             for sid in scenario_ids:
