@@ -1,0 +1,207 @@
+# C107 - Secure Software Development - instructor pack (staff only).
+# Answer keys, expected range observations and setup notes live here, never in the course file.
+
+course_code: C107
+audience: staff_only
+overview: >-
+  Secure Software Development is a beginner course of six 60-minute modules. Modules 1 and 2 teach
+  the lifecycle: security requirements and threat modelling before code exists. Modules 3 and 4 turn
+  to the code itself: recognising weakness classes and writing defensive fixes. Modules 5 and 6
+  close the loop with automated testing, triage and supply chain controls. Every module ends in a
+  lab on the cloud-security range, where Students read real repositories, reports and scans on
+  gitlab01, sonarqube01 and registry01 and hand in a written lab record; the range stays read-only
+  for analysis, so no module needs write access beyond the lab account. Students hand in the lab
+  record and pass each five-item quiz at 70 percent.
+timings:
+- module: 1
+  minutes: 60
+  plan: "15 teach, 35 lab, 10 quiz"
+- module: 2
+  minutes: 60
+  plan: "15 teach, 35 lab, 10 quiz"
+- module: 3
+  minutes: 60
+  plan: "15 teach, 35 lab, 10 quiz"
+- module: 4
+  minutes: 60
+  plan: "15 teach, 35 lab, 10 quiz"
+- module: 5
+  minutes: 60
+  plan: "15 teach, 35 lab, 10 quiz"
+- module: 6
+  minutes: 60
+  plan: "15 teach, 35 lab, 10 quiz"
+answer_key_notes:
+- module: 1
+  notes: >-
+    Q1 C: the defect is cheapest before code exists, which is the shift-left argument; A, B and D
+    test whether the Student has internalised that later phases only re-touch work already done.
+    Q2 A: Prepare the Organization is the group about processes and training before development; B,
+    C and D are the three groups that act on the software itself, and the distractor D is closest in
+    wording, which tests careful reading. Q3 D: "shall be secure" names no observable behaviour, so
+    no test can pass or fail it; A invents a documentation rule that does not exist, B confuses
+    requirements with implementation choices, C is an invented taboo. Q4 B: late fixes rework design
+    records, code, tests and deployed systems, which is the cost-of-defect curve; A treats cost as
+    billing, C confuses severity with cost of change, D invents a process difference. Q5 A: the
+    lifecycle writes and verifies security requirements alongside functional ones; B delays security
+    to a review, C outsources it, D restricts it by exposure, all three a violation of requirement
+    engineering practice.
+- module: 2
+  notes: >-
+    Q1 C: the browser is outside the application's trust domain, so that crossing is the boundary;
+    A, B and D are flows between components of equal trust inside one side. Q2 A: acting as another
+    account is impersonation, so Spoofing; B changes data, C denies having acted, D gains rights, and
+    D is the tempting near miss because a stolen session can also lead to privilege misuse. Q3 D:
+    an audit log that cannot be quietly changed and carries the time counters Repudiation; A, B and C
+    name other categories, and B tests whether Students confuse secrecy with accountability. Q4 B:
+    threat modelling pays during design and again whenever the design changes; A, C and D each delay
+    it to a point where the design is already fixed. Q5 D: ranking combines likelihood with impact,
+    and easy internet reach raises likelihood; A lets impact alone decide, B reduces ranking to
+    mitigation cost, C denies that likelihood matters.
+- module: 3
+  notes: >-
+    Q1 B: reading another tenant's record by changing an address is broken access control, of which
+    insecure direct object reference is the named form; A requires injecting syntax that is
+    interpreted, C and D name classes the scenario does not touch. Q2 D: markup reaches other
+    browsers because output is not encoded for the context that renders it; A and B are real
+    weaknesses of other kinds, C sounds technical but does not cause script execution. Q3 A: a
+    deserialiser constructs objects from attacker-chosen data, which can reach code execution; B and
+    C are availability annoyances, D is nonsense for a deserialiser. Q4 B: text joined into the
+    query string becomes code the server runs, which is SQL injection, the entry the observed
+    behaviour maps to; A, C and D are real Top 25 entries whose behaviours the scenario does not
+    show, and the reason clause in each option tests that the mapping is justified from behaviour,
+    not from a class name. Q5 D: overflowed values bite when used as a buffer size or bounds check,
+    where the wrong number becomes memory corruption; A, B and C are benign uses that test whether
+    Students know the consequence, not the arithmetic.
+- module: 4
+  notes: >-
+    Q1 C: authorisation is a server-side decision on every request; A is the exact mistake the
+    scenario makes, B and D decorate the client. Q2 A: alternate encodings slip past a validator that
+    never canonicalised first; B is the encoding step that protects the output side, C and D are
+    plausible pipeline steps that do not close this gap. Q3 D: parameterisation separates code from
+    data, which removes the injection mechanism itself; A is the blocklist that always has gaps, B
+    and C only shrink the attack surface. Q4 B: stack traces expose file paths, framework versions
+    and internal structure; A overstates it, C is wrong, D understates what a trace reveals. Q5 D:
+    encoding is chosen per rendering context, so the HTML body and the JavaScript string each need
+    their own; A and C apply one choice everywhere, B mistakes strength for context.
+- module: 5
+  notes: >-
+    Q1 B: static analysis inspects source or binary without running it; A and D run the system, C
+    reads manifests. Q2 C: composition analysis matches dependency manifests against known
+    vulnerability records; A is custom-code work for static analysis, B and D are not dependency
+    findings. Q3 A: fuzzing excels at crashes and memory-safety defects reached by malformed input;
+    C is the classic limit of fuzzing, B and D are not defects at all. Q4 D: a gate that fires on
+    hundreds of false positives is bypassed, and trust in the pipeline erodes; A is the intended
+    outcome that does not survive contact with noise, B and C are unrelated. Q5 C: dynamic testing
+    exercises the running system including its configuration and environment, which static analysis
+    never sees; A repeats the failed approach, B lists components, D is a property of fuzzing, not
+    the reason.
+- module: 6
+  notes: >-
+    Q1 C: a transitive dependency is pulled in by a chosen direct library, and its risk is still
+    the team's; A and B invent rules, D confuses the lockfile with signing. Q2 A: a bill of
+    materials records the components and dependencies inside one artefact; B, C and D are build
+    metadata a bill does not carry. Q3 D: a signature assures integrity and origin for consumers; A
+    signs nothing secret, B and C are delivery properties. Q4 B: reproducibility means an
+    independent party rebuilds and compares against the published artefact; A and D drop controls,
+    C changes deployment. Q5 C: coordinated disclosure agrees a fix date with the reporter, then
+    patches and publishes; A ignores coordination, B is denial, D abandons the process.
+lab_setup:
+- module: 1
+  setup: >-
+    Revert the range to its baseline. Seed the feature specification in a repository on gitlab01
+    (the course text calls it the instructor-seeded feature repository) and confirm jump01 reaches
+    gitlab01 and the lab account can open both; the repository also holds the
+    public-repo-with-secrets finding the template seeds, which module 6 uses, so do not clean it
+    yet. Have the four SSDF practice group names on the board.
+- module: 2
+  setup: >-
+    Revert the range to its baseline. Confirm jump01 reaches k3s-master with kubectl and that the
+    web-app pod on k3s-worker01 serves requests; Students describe the flows they can observe, so
+    the cluster must be in its documented shape. Put the six STRIDE category names on the board.
+- module: 3
+  setup: >-
+    Revert the range to its baseline. Confirm the web-app pod on k3s-worker01 answers on its service
+    address and that the dashboard on k3s-worker02 renders without authentication; both behaviours
+    are the Evidence, so a broken revert hides the findings. Keep the CWE Top 25 list to hand for
+    the mapping discussion; Students classify observed behaviour only, no exploit tooling.
+- module: 4
+  setup: >-
+    Revert the range to its baseline. Load the instructor-supplied project report on sonarqube01
+    with at least three high-severity findings, that the flagged files resolve in the repository on
+    gitlab01, and that the three seeded findings include one injection, one missing authorisation
+    check and one verbose error handler. No writes to the repository are needed; fixes are
+    proposals on paper.
+- module: 5
+  setup: >-
+    Revert the range to its baseline. Load the current instructor-supplied static report on
+    sonarqube01 and publish the project image to registry01 so the dependency scan runs against it;
+    confirm the seeded findings include at least one designed false positive so triage has
+    something to catch. Note the expected false positive for marking Evidence.
+- module: 6
+  setup: >-
+    Revert the range to its baseline. Publish the project image to registry01 and confirm the bill
+    of materials and dependency scan complete against it, and that the pipeline configuration on
+    gitlab01 shows the exposed variables the template seeds. Record the component count and the
+    flagged transitive packages before
+    class so Students' Evidence can be marked against them. Have a short researcher report to hand
+    that names one of the flagged packages; the disclosure response must name that package, set the
+    fix date agreed with the reporter and place patching before publication.
+common_faults:
+- module: 1
+  fault: Students write requirements that restate policy ("the feature must be secure") or fix a
+    tool ("use library X") instead of a testable acceptance criterion.
+  remedy: Take one requirement from the room and ask "which test run would fail if this were
+    violated?"; rewrite it together until a pass or fail is decidable, then have each Student test
+    their own five the same way.
+- module: 1
+  fault: Students treat shift-left as "test earlier" and miss that design-phase defects cost less
+    because nothing is built yet.
+  remedy: Draw the cost-of-defect curve on the board and place the quiz scenario on it before the
+    lab; ask what exists at each phase that a fix would have to change.
+- module: 2
+  fault: Data flow diagrams show only boxes and miss the flows that cross a trust level, so trust
+    boundaries disappear.
+  remedy: Ask of every arrow "who do we trust on the other end?"; any answer change is a boundary.
+    Have Students list their boundaries before applying STRIDE.
+- module: 2
+  fault: Threats are labelled by surface similarity - every network issue becomes denial of service.
+  remedy: For each threat ask what the adversary gains; match that to the category definition on
+    the board before accepting the label.
+- module: 3
+  fault: Students classify from the endpoint's name or the framework's most famous class instead of
+    the observed behaviour.
+  remedy: Insist the reason sentence quotes the behaviour recorded in the lab steps; a
+    classification with no behaviour behind it is marked incomplete.
+- module: 3
+  fault: The CWE Top 25 mapping is treated as a lookup with one right entry and Students stall.
+  remedy: Accept a defensible primary entry with a stated reason; the mapping justifies, it does
+    not autocomplete. Discuss one ambiguous case in the debrief.
+- module: 4
+  fault: Proposed fixes swap the flawed construct for a different flawed construct - an encoded
+    string interpolated into a query, for example - instead of separating code from data.
+  remedy: Have each Student state the mechanism the fix removes; if the mechanism survives the fix,
+    it is insufficient, and the marking says so.
+- module: 4
+  fault: Error-handling fixes just delete the error handling, so failures become silent.
+  remedy: Point at the module's third objective; the fix must still log internally what it stops
+    showing the user.
+- module: 5
+  fault: Triage marks are copied from the scanner's severity, so every high-severity finding is a
+    "true positive".
+  remedy: Remind the room that severity ranks impact and triage decides whether the finding holds
+    in this code; the reason column must cite the code or the dependency record.
+- module: 5
+  fault: Gating decisions are all-or-nothing - gate everything, or gate nothing because of noise.
+  remedy: >-
+    Use the false positive seeded in the lab: gating on it would have blocked the build for
+    nothing; ask what severity and rule class belong behind a gate.
+- module: 6
+  fault: The bill of materials is read as a list of direct dependencies only, and transitive risk is
+    pronounced impossible.
+  remedy: Show the component count next to the direct count in the lab output; the gap is the
+    transitive set, and the flagged packages live there.
+- module: 6
+  fault: Students answer "signing" for every verification gap, including provenance.
+  remedy: Separate the two on the board - signing attests who made the artefact, provenance ties it
+    to how it was built; the lab verdict must name which one is missing and why.
