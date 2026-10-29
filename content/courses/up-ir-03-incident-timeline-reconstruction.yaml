@@ -1,0 +1,561 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C533
+title: Incident Timeline Reconstruction
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C532
+- C208
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Incident Responder (PR-CIR-001), Cyber Defense Forensics
+    Analyst (IN-FOR-002).'
+  - 'NIST CSF 2.0: RS.AN, RS.MA.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Evidence Sources and Time Fundamentals
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the host, network and security-tool sources that record timestamps during an intrusion
+  - Explain how clock skew and time zones change the order of recorded events
+  - Select the reference clock each log source should be compared against when correlating records
+  topics:
+  - Timestamps, time zones and UTC as the common reference for investigation.
+  - Clock skew, drift and unsynchronised clocks across hosts and appliances.
+  - 'Event sources: endpoint logs, network sensors, packet capture and security tooling.'
+  - Time synchronisation with NTP and recording each source's offset.
+  - What each source records and what it cannot show.
+  lab: >-
+    Lab: On the soc-training range, compare the clocks of the victim workstation v-ws01, the
+    SIEM host siem01 and the log aggregator log-agg01, and decide which source should serve as
+    the reference time for the later labs. Evidence: the time, time zone and synchronisation
+    state recorded on each of the three hosts; the timestamp one SIEM event from v-ws01 carries
+    as siem01 shows it. Pass: all three hosts recorded with the same three values; each marked
+    synchronised or offset; the proposed reference time source named with a one-sentence reason.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and record the start time in the lab notes.
+    - hosts: [jump01, v-ws01]
+      action: From jump01, read the clock on v-ws01 and record its time, its time zone and whether it shows
+        synchronisation to a network time source.
+    - hosts: [jump01, siem01]
+      action: Repeat the same three readings on siem01 and record them beside the v-ws01 values.
+    - hosts: [jump01, log-agg01]
+      action: Repeat the same three readings on log-agg01 and record them in the same table.
+    - hosts: [siem01, v-ws01]
+      action: On siem01, open one stored event received from v-ws01 and record the timestamp the ingest
+        shows for it.
+    - hosts: [jump01]
+      action: Mark each host synchronised or offset against the others, and name the source that should be
+        the reference time for these labs with one sentence of reason.
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A firewall logs an event at 10:14:59 while the collector that received it stamps the same
+        event 10:15:03. What is the most likely explanation?
+      options:
+      - A) The collector received a second, different event
+      - B) Clock skew between the two systems
+      - C) The record was replayed by the collector
+      - D) The firewall lost part of its log
+      answer: B
+    - question: Before ordering events recorded by hosts in several offices, an investigator converts every
+        timestamp to one common setting. Which convention should it be?
+      options:
+      - A) The local time of the affected host
+      - B) The local time of the response team
+      - C) Coordinated Universal Time
+      - D) The time zone of the newest log file
+      answer: C
+    - question: Workstations at a branch drift several minutes per week, and a central time source is
+        reachable. Which control corrects the drift before it corrupts an investigation?
+      options:
+      - A) Synchronising every host to the central source over NTP
+      - B) Restarting each workstation on a weekly schedule
+      - C) Increasing the retention period on the logs
+      - D) Collecting the logs from each host more often
+      answer: A
+    - question: A packet sensor records a large outbound transfer, but the endpoint kept no process logs.
+        What may the investigation state about the program that made the transfer?
+      options:
+      - A) Its exact name, read from the sensor record
+      - B) Its author and purpose
+      - C) Nothing at all about the transfer
+      - D) That the connection happened, but not which program made it
+      answer: D
+    - question: After a laptop incident, an analyst must decide which source to collect next to show
+        outbound connections to an external address. Which source fits?
+      options:
+      - A) The lease history from the DHCP server
+      - B) Connection records from the network sensor
+      - C) The display and wallpaper settings of the laptop
+      - D) The building access log for the office
+      answer: B
+- ordinal: 2
+  title: Clock Skew and Log Correlation
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Measure the offset between a host clock and the reference time source
+  - Order events from several sources into one sequence after correcting each timestamp for offset
+  - Distinguish clock skew from genuine gaps in logging coverage using the reference time
+  topics:
+  - Measuring a host's offset against a known-time reference.
+  - Correcting each timestamp by its measured offset before ordering events.
+  - Correlating records of one action across sources.
+  - Skew versus missing records, and telling the two apart.
+  lab: >-
+    Lab: On the soc-training range, measure how far the clock on v-ws01 drifts from the SIEM's
+    reference time, then place records from both hosts in one corrected order. Evidence: the
+    reference time read on siem01; the raw timestamp v-ws01 shows for one recorded sign-in; the
+    same sign-in as siem01 stored it; the offset in seconds; the corrected order of three mixed
+    records beside their raw order. Pass: the offset computed and stated in seconds; each of the
+    three records corrected before ordering; the corrected order justified against the reference
+    time in one sentence.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH and record the reference time shown on siem01 as directed in the
+        lab sheet.
+    - hosts: [v-ws01, siem01]
+      action: On siem01, find the most recent authentication event received from v-ws01 and record its
+        stored timestamp.
+    - hosts: [v-ws01, jump01]
+      action: From jump01, read the local security log entry for the same sign-in on v-ws01 and record its
+        local timestamp and time zone.
+    - hosts: [jump01, v-ws01]
+      action: Read the clock offset v-ws01 reports against its time source and record it in seconds.
+    - hosts: [jump01, siem01]
+      action: Take three mixed records from v-ws01 and siem01, apply the offset to each raw timestamp and
+        record the corrected order beside the raw order.
+    - hosts: [jump01]
+      action: State whether the ordering of the three records changes after correction, with one sentence
+        that names the reference time used.
+  refs:
+  - nist-sp-800-86
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A host clock reads 14:07:22 at the moment a reference source reads 14:05:50. What offset
+        should the investigator record?
+      options:
+      - A) 32 seconds behind the reference
+      - B) 1 minute 32 seconds behind the reference
+      - C) 1 minute 32 seconds ahead of the reference
+      - D) 2 minutes 12 seconds ahead of the reference
+      answer: C
+    - question: Three alerts were recorded while a server's clock ran four minutes fast. What must happen
+        before the alerts are placed in sequence?
+      options:
+      - A) Each timestamp is corrected by the measured offset
+      - B) The server re-sends its alerts to the collector
+      - C) The server clock is reset before the logs are read
+      - D) The alerts are sorted by the size of each log
+      answer: A
+    - question: No records arrive from a file server for two hours while its neighbours logged normally,
+        and the server's clock matches the reference exactly. What is the sound conclusion?
+      options:
+      - A) Clock skew pushed the records into another hour
+      - B) The missing records were encrypted at rest
+      - C) The neighbours' clocks are the ones that are wrong
+      - D) A logging or collection gap, not skew
+      answer: D
+    - question: A sign-in appears in the domain controller log at 09:00:05 and in the remote access log
+        at 08:59:57, with a known 8-second offset. What does the corrected pair show?
+      options:
+      - A) Two separate sign-ins by different accounts
+      - B) One action recorded by two sources
+      - C) A clock that cannot be trusted at all
+      - D) An impossible pair of records
+      answer: B
+    - question: A Windows host writes its log in local time while the sensor writes UTC, and records of
+        one connection differ by five hours. What does the difference most likely show?
+      options:
+      - A) The connection really lasted five hours
+      - B) A time-zone difference, not clock drift
+      - C) The sensor dropped most of its records
+      - D) The host was rebooted during the hour
+      answer: B
+- ordinal: 3
+  title: Merging Host and Network Evidence
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Match host records of one action to the network records of the same connection
+  - Merge endpoint, authentication and file records with network telemetry into one ordered sequence
+  - Pivot between records on a shared value such as an address or an account name
+  topics:
+  - Joining a process record to the connection record it produced.
+  - Authentication and file-share records joined to session telemetry.
+  - Pivoting between records on shared values such as addresses and accounts.
+  - Resolving conflicts between sources with corrected time and source reliability.
+  lab: >-
+    Lab: On the soc-training range, join the host evidence for v-ws01 to the network evidence
+    for the same window and state which records confirm each other. Evidence: the process
+    records collected from v-ws01 through velociraptor01 with time and parent; the connection
+    records zeek01 shows for v-ws01 with destination and port; each record pair that shares a
+    time and a destination. Pass: at least one process record matched to its connection record
+    by corrected time; every unmatched record listed; one sentence on what each unmatched record
+    still contributes to the merge.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH and record the exercise window stated in the lab sheet.
+    - hosts: [velociraptor01, v-ws01]
+      action: From velociraptor01, collect the process creation records for v-ws01 in the window and
+        record each process name, its corrected time and its parent.
+    - hosts: [zeek01, v-ws01]
+      action: On zeek01, list the connection records for v-ws01 in the same window and record the
+        destination, port and duration of each.
+    - hosts: [siem01, v-ws01]
+      action: On siem01, search the stored records that join a process on v-ws01 to an outbound
+        connection and record each pair found.
+    - hosts: [v-fs01, v-ws01]
+      action: Record the file share access entries on v-fs01 that v-ws01 generated in the window.
+    - hosts: [jump01]
+      action: Mark each host record that a network record confirms by corrected time, and list the records
+        that stand alone with one sentence on what each still contributes.
+  refs:
+  - nist-sp-800-86
+  - mitre-attack
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A workstation's process log shows a program starting at 03:10:02 and the network sensor
+        shows a new outbound connection from it at 03:10:04. What does the pair support?
+      options:
+      - A) The program initiated the connection
+      - B) The connection caused the program to start
+      - C) The records describe two different hosts
+      - D) One record is a duplicate of the other
+      answer: A
+    - question: A host record places a file copy at 02:58 and the network record of the same transfer
+        reads 03:02; the host clock runs fast. Which source settles the order?
+      options:
+      - A) The host record, because it saw the file itself
+      - B) The network record, because sensors never drift
+      - C) Either record, because both carry equal weight
+      - D) The corrected host time, checked against the reference
+      answer: D
+    - question: Endpoint logs show which file was copied but nothing about where it went. Which record
+        names the destination?
+      options:
+      - A) The workstation's start-up log
+      - B) The network sensor's connection record
+      - C) The domain controller's time service log
+      - D) The print queue log of the office
+      answer: B
+    - question: An authentication record from the domain controller and a session record from the sensor
+        share one account name and overlapping times. What may the merger state?
+      options:
+      - A) The same person typed at the keyboard both times
+      - B) The account credentials were certainly stolen
+      - C) The same account appears in both records
+      - D) The records must be discarded as duplicates
+      answer: C
+    - question: A merged sequence shows a workstation contacting an unknown external address, and the
+        same address later appears in another user's session record. What does the shared value give?
+      options:
+      - A) A pivot linking the two session records
+      - B) Proof that both users committed a crime
+      - C) A reason to delete the first session record
+      - D) Confirmation that the sensor clock drifted
+      answer: A
+- ordinal: 4
+  title: Building the Master Timeline
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Build a master timeline that orders host, network and alert records by corrected time
+  - Apply a consistent entry format with time, source and observed action to every entry
+  - Select the entries that mark each stage of an intrusion for a management brief
+  topics:
+  - The master timeline table with corrected time, source, actor and action.
+  - Ordering entries by corrected time when sources disagree.
+  - Placing alerts into the timeline at their corrected positions.
+  - Marking the stages of an intrusion, from entry to action on objectives.
+  lab: >-
+    Lab: On the soc-training range, merge the host and network records held on dfir-ws01 with
+    the alerts stored on siem01 into one master timeline ordered by corrected time. Evidence:
+    the number of records and their sources as dfir-ws01 shows them; the first and last entry of
+    the merged table; each alert from the window with its time and name; the position each alert
+    takes in the table. Pass: the table ordered by corrected time, not by raw stamp; every alert
+    placed at its corrected position with its source marked; the entries that open each stage of
+    the intrusion labelled with the stage they start.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and record the start time in the lab notes.
+    - hosts: [dfir-ws01]
+      action: On dfir-ws01, open the evidence set for the exercise and record how many records it holds
+        and which sources they come from.
+    - hosts: [dfir-ws01]
+      action: Merge the host and network records into one table ordered by corrected time and record the
+        first and last entry with their times and sources.
+    - hosts: [siem01]
+      action: On siem01, list the alerts that fall inside the exercise window and record each alert time
+        and alert name.
+    - hosts: [dfir-ws01, siem01]
+      action: Insert each alert into the table at its corrected position and record where it lands
+        between the host and network entries.
+    - hosts: [jump01]
+      action: Mark the entries that open the stages of the intrusion in the window and record the stage
+        each chosen entry starts.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A timeline entry reads only that suspicious activity was seen. What is missing before the
+        entry can survive review?
+      options:
+      - A) A longer description of the activity
+      - B) The colour code of the alert that fired
+      - C) The analyst's personal opinion on it
+      - D) The corrected time, source and observed action
+      answer: D
+    - question: Two entries fall in the same wall-clock minute, one recorded by a host running three
+        minutes fast. How should the master timeline order them?
+      options:
+      - A) By the size of the log each came from
+      - B) By corrected time, then by source reliability
+      - C) In alphabetical order of the host names that produced them
+      - D) By whichever alert happened to fire first
+      answer: B
+    - question: An alert's timestamp falls between two host entries once both are corrected. What should
+        the timeline builder do with the alert?
+      options:
+      - A) Move it to the very top of the timeline
+      - B) Leave it out, because alerts are not evidence
+      - C) Place it at its corrected position and mark its source
+      - D) Round its time to the nearest whole hour
+      answer: C
+    - question: A 400-entry master timeline must be briefed to management in one minute. Which entries
+        belong in that brief?
+      options:
+      - A) The entries that mark each stage of the intrusion
+      - B) Every entry produced by the largest log source
+      - C) The entries with the longest written descriptions
+      - D) The first hundred entries in stored order
+      answer: A
+    - question: What is the chief value of one master timeline over separate host and network lists?
+      options:
+      - A) It occupies less storage than the raw logs
+      - B) It removes the need to keep the raw logs
+      - C) It makes future alerting rules unnecessary
+      - D) It puts every record in one corrected order for analysis
+      answer: D
+- ordinal: 5
+  title: Attack Narrative Writing
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write an attack narrative that states each stage with its time and supporting evidence
+  - Separate observed fact from inference and record a confidence level for each claim
+  - Cite the timeline entry that supports every factual sentence of the narrative
+  topics:
+  - The narrative as staged prose built on the master timeline.
+  - Observed fact, inference and confidence in written findings.
+  - Citing the timeline entry that supports each sentence.
+  - Scope, stating where the evidence begins and what was searched.
+  - Readers of the narrative, from the response lead to reviewers.
+  lab: >-
+    Lab: On the soc-training range, turn the master timeline built in the previous module into
+    an attack narrative in which every sentence is backed by a timeline entry. Evidence: the
+    five timeline entries with the strongest evidence, read from dfir-ws01; the stored source of
+    each as confirmed on siem01; the drafted narrative with the entry number cited on each
+    sentence; the fact or inference mark and confidence level on each sentence. Pass: every
+    sentence carries a timeline entry citation or an explicit inference mark; each inference has
+    a confidence level and one reason; the narrative opens by stating where the evidence begins.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH and record the start time in the lab notes.
+    - hosts: [dfir-ws01]
+      action: On dfir-ws01, open the master timeline from the previous module and record the five entries
+        with the strongest evidence, with their times and sources.
+    - hosts: [siem01]
+      action: On siem01, confirm each of the five entries against the stored records and record which
+        source holds each one.
+    - hosts: [jump01]
+      action: Draft the narrative stage by stage and record, for every sentence, the timeline entry number
+        that supports it.
+    - hosts: [jump01]
+      action: Mark every sentence observed fact or inference, give each inference a confidence level and
+        record one reason for the mark.
+    - hosts: [jump01]
+      action: Read the opening sentence and record whether it states where the evidence begins, revising
+        it if it does not.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A draft narrative states that the intruder moved to the file server, but cites nothing.
+        What must the writer add before the draft survives scrutiny?
+      options:
+      - A) A stronger adjective for the movement
+      - B) The timeline entry that supports the claim
+      - C) The intruder's likely name and motive
+      - D) An estimate of the financial damage
+      answer: B
+    - question: The narrative says the adversary probably used stolen credentials, but no record shows a
+        credential theft. How should the sentence be handled?
+      options:
+      - A) Deleted, because unproven statements never belong
+      - B) Restated as an observed fact with a time
+      - C) Kept as an inference with its confidence and basis
+      - D) Copied into the timeline as a new entry
+      answer: C
+    - question: A response team must hand its attack narrative to an outside reviewer before it can act
+        on the findings. Which narrative best survives that review?
+      options:
+      - A) One that states each stage with its time and cited evidence
+      - B) One that describes the tooling in depth but gives no times
+      - C) One that presents only the final conclusion reached
+      - D) One that pastes every log line into the text verbatim
+      answer: A
+    - question: A reviewer asks why the narrative covers nothing before the first known event. What is
+        the sound answer?
+      options:
+      - A) The earlier hours were judged unimportant to the case
+      - B) The reviewer has no standing to ask that question
+      - C) A narrative may begin at any point the writer chooses
+      - D) Where the evidence begins and what was searched
+      answer: D
+    - question: Who is the primary reader the attack narrative is written for?
+      options:
+      - A) The adversary, to signal that the intrusion was found
+      - B) The payroll team, to process the incident costs
+      - C) The response lead and reviewers who must act on it
+      - D) The software vendor of the affected product
+      answer: C
+- ordinal: 6
+  title: Reviewing and Defending the Timeline
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Review a draft timeline for gaps, contradictions and entries with no cited source
+  - Defend the ordering decisions of a timeline using the measured offsets behind them
+  - Assemble the timeline, narrative and evidence sources into a handover a response lead can act on
+  topics:
+  - Reviewing for unsupported entries and missing citations.
+  - Contradictions and how to resolve them against cited evidence.
+  - Gaps that remain after search and what they mean.
+  - Defending ordering decisions with measured offsets.
+  - Handover contents, from timeline to evidence sources.
+  lab: >-
+    Lab: On the soc-training range, review a supplied draft timeline for the same window,
+    correct what fails and state whether it is ready to hand over. Evidence: every draft entry
+    with no cited source; the checked result of two such entries against the records on siem01;
+    the authentication entries on v-dc01 for the window that the draft omits; the written
+    findings with a correction for each. Pass: every unsupported entry listed; each contradiction
+    resolved against the cited evidence with one sentence; the readiness decision stated as ready
+    or not ready with the reasons recorded.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH and record the start time in the lab notes.
+    - hosts: [dfir-ws01]
+      action: On dfir-ws01, open the draft timeline supplied for the review exercise and record every
+        entry that carries no cited source.
+    - hosts: [siem01]
+      action: On siem01, check two of those entries against the stored records and record whether each
+        one holds or fails.
+    - hosts: [v-dc01, jump01]
+      action: From jump01, read the authentication entries on v-dc01 for the exercise window and record
+        the ones the draft timeline omits.
+    - hosts: [jump01]
+      action: Write the review findings, one correction for each gap and contradiction, and record the
+        offset each ordering decision rests on.
+    - hosts: [jump01]
+      action: State whether the timeline is ready to hand over to the response lead, and record the
+        reasons in one or two sentences.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: During review, an entry cites a log that the SIEM no longer holds. What is the correct
+        finding for that entry?
+      options:
+      - A) Unsupported until another source confirms it
+      - B) Automatically false and removed at once
+      - C) Allowed to stand as an observed fact
+      - D) Proof the whole timeline must be rebuilt from the beginning
+      answer: A
+    - question: Two entries claim the same account opened the same file at different corrected times, and
+        only one cites a source. What should the reviewer record?
+      options:
+      - A) Both entries, because two records agree
+      - B) The later time, because that record is newer
+      - C) A second person must have used the account
+      - D) A contradiction, to resolve against the cited evidence
+      answer: D
+    - question: The review finds no entries for the first hour of an intrusion although the sources were
+        logging throughout. What does the gap most likely indicate?
+      options:
+      - A) The intrusion did not happen during that hour
+      - B) A collection or search gap that must be closed
+      - C) Nothing, because the timeline is complete as it stands
+      - D) That every clock in the estate was correct
+      answer: B
+    - question: A reviewer challenges the order of two entries that rest on corrected times from drifting
+        clocks. What is the strongest defence of the order?
+      options:
+      - A) The order was chosen because it reads better
+      - B) The burden of proof lies with the reviewer
+      - C) The measured offsets and reference time behind the order
+      - D) An assurance that the clocks were close enough
+      answer: C
+    - question: The timeline and narrative have passed review. What does the handover to the incident
+        response lead need to contain?
+      options:
+      - A) The narrative summary alone, to keep it short
+      - B) The raw logs alone, unsorted and uncited
+      - C) The timeline, the narrative and the evidence behind each entry
+      - D) The analyst's personal working notes and nothing else
+      answer: C
