@@ -10,6 +10,7 @@ duration_hours: 100
 provenance: unsourced
 status: draft
 is_published: false
+readiness: draft
 qsp_code: ALJQ
 source:
   origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
@@ -34,54 +35,84 @@ modules:
   - Explain how instruction set architecture differs from microarchitecture.
   - Relate pipelining and out-of-order execution to observable side effects.
   topics:
-  - Von Neumann vs Harvard architectures.
-  - Registers, ALU, control unit, buses.
-  - Instruction pipelines, hazards and stalls.
-  - Speculative execution and its security consequences.
-  lab: 'Lab: Trace a short assembly routine through a CPU simulator, recording register state at each
-    stage of the pipeline, and identify where a stall occurs.'
+  - Von Neumann and Harvard organisation, and where instructions and data live in each.
+  - Registers, the arithmetic logic unit, the control unit and the buses that join them.
+  - The fetch-decode-execute cycle, the program counter and instruction flow.
+  - The line between instruction set architecture and the microarchitecture that implements it.
+  - Instruction pipelines, hazards and stalls, and the microarchitectural state speculative execution leaves behind.
+  lab: >-
+    Lab: Inspect the processor the range assigns to jump-box and decide which of its reported
+    features describe its organisation and which defend against microarchitectural attacks.
+    Evidence: the vendor, model name, core count and thread count from lscpu; each entry in the
+    Vulnerability section of the same output with the status or mitigation it reports; two
+    instruction-set extension names from the flags line. Pass: all three groups of values recorded
+    exactly as the range shows them; every Vulnerability entry marked organisation or security
+    mitigation with a one-sentence reason; one sentence on why the same processor model can report
+    different mitigations on two hosts.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH with the analyst account your instructor assigned, open a
+        terminal and note the start time in the lab notes.
+    - hosts: [jump-box]
+      action: Run lscpu on jump-box and record the vendor, model name, core count and thread count
+        it prints.
+    - hosts: [jump-box]
+      action: Read the Vulnerability section of the same lscpu output and record every entry with
+        the status or mitigation it names.
+    - hosts: [jump-box]
+      action: Read the flags line of the same output and record two instruction-set extension names
+        and the address sizes reported.
+    - hosts: [jump-box]
+      action: Classify each recorded item as organisation or security mitigation with a one-sentence
+        reason, and name one question about the processor that this output cannot answer.
   refs:
   - nist-sp-800-193
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: In the fetch-decode-execute cycle, which component holds the address of the next instruction?
+    - question: In a CPU simulator the control unit has just read an instruction word from the
+        address held in the program counter. Which stage of the fetch-decode-execute cycle comes next?
       options:
-      - A) Accumulator
-      - B) Program counter
-      - C) Stack pointer
-      - D) Status register
+      - A) The ALU computes a result from the register file
+      - B) The instruction word is decoded into control signals
+      - C) The program counter is reset to zero
+      - D) The completed result is written back to memory
       answer: B
-    - question: Which architecture uses physically separate storage for instructions and data?
+    - question: A microcontroller diagram shows program memory and data memory as physically
+        separate storage, each with its own bus. Which organisation does the diagram show?
       options:
       - A) Von Neumann
-      - B) Harvard
-      - C) RISC-V
-      - D) Superscalar
-      answer: B
-    - question: 'A pipeline hazard that occurs because an instruction needs a result not yet computed
-        is a:'
+      - B) Superscalar
+      - C) Speculative
+      - D) Harvard
+      answer: D
+    - question: An instruction in a full pipeline needs a result that the instruction before it has
+        not finished computing. What is this condition called?
       options:
-      - A) Structural hazard
-      - B) Control hazard
-      - C) Data hazard
-      - D) Cache hazard
+      - A) A data hazard
+      - B) A structural hazard
+      - C) A control hazard
+      - D) A cache miss
+      answer: A
+    - question: A processor guesses a branch direction and keeps executing; the work is undone when
+        the guess fails, but some microarchitectural state remains. Why does this concern an analyst?
+      options:
+      - A) The undone work corrupts the disk
+      - B) The leftover state can be measured to infer secret data
+      - C) The guess changes the program's printed output
+      - D) The undo doubles the processor's power draw
+      answer: B
+    - question: Two processors run the same program binary unchanged, but one finishes in half the
+        cycles of the other. What do the two processors share that lets one binary run on both?
+      options:
+      - A) Clock frequency
+      - B) Cache capacity
+      - C) Instruction set architecture
+      - D) Pipeline depth
       answer: C
-    - question: 'Speculative execution became a security concern primarily because it can:'
-      options:
-      - A) Corrupt the instruction cache
-      - B) Leave measurable traces in microarchitectural state
-      - C) Disable memory protection
-      - D) Reorder disk writes
-      answer: B
-    - question: 'Instruction set architecture (ISA) defines:'
-      options:
-      - A) The physical layout of transistors
-      - B) The contract between software and hardware
-      - C) The clock frequency
-      - D) The cache replacement policy
-      answer: B
 - ordinal: 2
   title: Memory Hierarchy and Storage
   content_type: reading
@@ -90,56 +121,90 @@ modules:
   pass_threshold: 70
   objectives:
   - Explain the trade-offs across registers, cache, RAM and persistent storage.
-  - Describe cache coherence and locality of reference.
-  - Identify how memory hierarchy affects timing-based attacks.
+  - Describe cache coherence between cores and the locality of reference that keeps data in cache
+  - Identify how the memory hierarchy shapes the timing differences that side-channel attacks measure
   topics:
-  - Cache levels L1/L2/L3 and hit/miss cost.
-  - Temporal and spatial locality.
-  - Virtual memory, paging and the TLB.
-  - DMA and memory-mapped I/O.
-  lab: 'Lab: Measure access latency across cache levels with a stride-access benchmark, plot the results,
-    and identify each cache boundary from the timing steps.'
+  - The storage tiers from registers through cache levels to main memory and persistent storage.
+  - Cache hits, misses and the cost gap between levels.
+  - Temporal and spatial locality of reference.
+  - Virtual memory, paging and the translation lookaside buffer.
+  - Shared caches, coherence and what timing differences can reveal.
+  lab: >-
+    Lab: Map the memory hierarchy the range's jump-box reports and judge which tiers its cores
+    share. Evidence: the instruction, data and unified cache sizes lscpu prints for each level;
+    the level, type and size of every cache index under /sys/devices/system/cpu/cpu0/cache; the
+    coherency line size reported there. Pass: the tiers listed in order from smallest to largest
+    with their recorded sizes; each cache index marked core-private or shared with a one-sentence
+    reason; one sentence on why a tier shared between cores makes a timing measurement observable
+    from another core.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH with the analyst account your instructor assigned, open a
+        terminal and note the start time in the lab notes.
+    - hosts: [jump-box]
+      action: Run lscpu on jump-box and record the cache size it prints for each level, including
+        the separate instruction and data listings.
+    - hosts: [jump-box]
+      action: List the cache indexes the kernel exposes under /sys/devices/system/cpu/cpu0/cache
+        and record the level, type and size each index reports.
+    - hosts: [jump-box]
+      action: Read the coherency line size the same listing reports and record it beside the index
+        it belongs to.
+    - hosts: [jump-box]
+      action: Order the recorded tiers from smallest to largest, mark each cache index core-private
+        or shared with a reason, and state which shared tier another core could probe through timing.
   refs:
   - nist-sp-800-193
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: Which storage tier has the lowest access latency?
+    - question: A program reads one small value millions of times per second, and the designer moves
+        that value into the tier with the lowest access latency. Where does the value now sit?
       options:
       - A) L3 cache
       - B) Main memory
       - C) CPU registers
       - D) NVMe SSD
       answer: C
-    - question: 'The TLB caches translations between:'
+    - question: A process touches pages scattered across a large address space, and each first touch
+        of a page is slower than the rest. Which structure caches the translations that speed up
+        later touches?
       options:
-      - A) Virtual and physical addresses
-      - B) Logical and physical disk blocks
-      - C) Instructions and microcode
-      - D) Host and network byte order
+      - A) The translation lookaside buffer
+      - B) The branch predictor
+      - C) The disk controller cache
+      - D) The write-back buffer
       answer: A
-    - question: Repeatedly accessing the same address benefits from which property?
+    - question: An image library reads every pixel of a bitmap in row order, once each, and the
+        cache keeps holding the next line before it is asked for. Which property does this access
+        pattern show?
       options:
-      - A) Spatial locality
-      - B) Temporal locality
-      - C) Write-back caching
-      - D) Branch prediction
-      answer: B
-    - question: 'Timing attacks against caches are possible because:'
+      - A) Temporal locality
+      - B) Write-back policy
+      - C) Cache coherence
+      - D) Spatial locality
+      answer: D
+    - question: Tenants share one L3 cache in a cloud appliance. A tenant times its own memory
+        accesses and watches small, repeatable differences appear. What makes those differences
+        measurable at all?
       options:
-      - A) Caches are encrypted
-      - B) Cache hits and misses take measurably different time
-      - C) The TLB is shared with the GPU
-      - D) DMA bypasses the CPU
+      - A) Cache lines are encrypted between levels
+      - B) Cache hits and misses take different times
+      - C) The TLB flushes on a fixed schedule
+      - D) Devices bypass the cache during transfers
       answer: B
-    - question: 'Direct Memory Access (DMA) allows a device to:'
+    - question: A capture card writes its samples straight into system memory while the CPU keeps
+        executing the recording application. Which mechanism lets the device place data there
+        without the CPU?
       options:
-      - A) Execute privileged instructions
-      - B) Transfer data to memory without CPU involvement
-      - C) Modify the instruction set
-      - D) Bypass the page table permanently
-      answer: B
+      - A) Direct memory access
+      - B) A system call
+      - C) The translation lookaside buffer
+      - D) A privilege ring
+      answer: A
 - ordinal: 3
   title: Operating System Interfaces and Privilege
   content_type: reading
@@ -148,55 +213,83 @@ modules:
   pass_threshold: 70
   objectives:
   - Distinguish user mode from kernel mode and describe the transition mechanism.
-  - Explain how system calls mediate access to hardware.
-  - Describe how privilege rings underpin process isolation.
+  - Explain how system calls mediate a process's access to hardware and other kernel-managed resources
+  - Describe how privilege rings underpin the isolation between user applications and the kernel
   topics:
-  - CPU privilege rings and protected mode.
-  - System call interface and traps.
-  - Interrupts, exceptions and handlers.
-  - Process isolation and memory protection.
-  lab: 'Lab: Use strace on a small program to enumerate its system calls, then map three of them to the
-    kernel resource each one touches.'
+  - CPU privilege rings, user mode and kernel mode.
+  - The system call interface, traps and the privilege transition.
+  - Interrupts and exceptions, and how the processor dispatches each to its handler.
+  - Process isolation enforced by the memory management unit and page tables.
+  lab: >-
+    Lab: Trace a simple command on jump-box and classify the work it does as user mode or kernel
+    mode. Evidence: the first and last system call names and the total call count the trace prints;
+    three distinct calls from the trace with the kernel resource each one touches; the Uid and Gid
+    lines of the traced process. Pass: every recorded call marked user-mode work or kernel-mode work
+    with a one-sentence reason; the privilege ring named for each of the two modes; one sentence on
+    why the trace cannot show the instructions the kernel executes.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH with the analyst account your instructor assigned, open a
+        terminal and note the start time in the lab notes.
+    - hosts: [jump-box]
+      action: Run the system-call tracing tool on the ls command as your instructor directs, and
+        record the first and last call names and the total call count.
+    - hosts: [jump-box]
+      action: Choose three distinct calls from the trace and record, for each one, the kernel
+        resource it touches, such as a file, a process or a memory mapping.
+    - hosts: [jump-box]
+      action: Run id on jump-box and record the user name, the group memberships and what they say
+        about the privilege held.
+    - hosts: [jump-box]
+      action: Mark each recorded call as user-mode work or kernel-mode work with a one-sentence
+        reason, and name the privilege ring each mode runs in.
   refs:
   - cis-benchmarks
   quiz:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'A system call transitions the processor from:'
+    - question: A text editor calls the operating system to save a file. When the system call
+        instruction runs, what transition does the processor make?
       options:
       - A) Kernel mode to user mode
       - B) User mode to kernel mode
-      - C) Real mode to protected mode
-      - D) Ring 3 to ring 2
+      - C) One user process to another
+      - D) The disk controller to the CPU
       answer: B
-    - question: 'On x86, unprivileged application code normally executes in:'
+    - question: A word processor is one unprivileged application among many on an x86 system with
+        privilege rings in force. Which ring does the word processor normally execute in?
       options:
       - A) Ring 0
       - B) Ring 1
       - C) Ring 2
       - D) Ring 3
       answer: D
-    - question: 'Memory protection between processes is primarily enforced by:'
+    - question: Two processes run side by side on one operating system, and neither can read the
+        other's memory. Which component enforces that boundary?
       options:
-      - A) The compiler
-      - B) The memory management unit and page tables
-      - C) The filesystem
-      - D) The network stack
-      answer: B
-    - question: 'A hardware interrupt is best described as:'
+      - A) The memory management unit and its page tables
+      - B) The compiler that built them
+      - C) The filesystem permissions
+      - D) The shell that launched them
+      answer: A
+    - question: A network card raises a hardware interrupt while the kernel is running a database
+        process. What does the processor do next?
       options:
-      - A) A compiler optimisation
-      - B) An asynchronous signal that diverts execution to a handler
-      - C) A type of cache miss
-      - D) A scheduling algorithm
-      answer: B
-    - question: Which of these is NOT a reason system calls are comparatively expensive?
+      - A) It finishes the whole database transaction first
+      - B) It powers the network card down
+      - C) It saves state and diverts execution to the interrupt handler
+      - D) It starts a replacement database process
+      answer: C
+    - question: A system call costs far more than a plain function call between two procedures.
+        Which of these is NOT a reason for that cost?
       options:
-      - A) Privilege transition overhead
-      - B) Cache and TLB effects
-      - C) Argument validation by the kernel
-      - D) They are always written in assembly
+      - A) The privilege transition itself
+      - B) Cache and pipeline effects of the switch
+      - C) Argument validation performed by the kernel
+      - D) System calls are always written in assembly
       answer: D
 - ordinal: 4
   title: Firmware, Boot and Root of Trust
@@ -209,52 +302,82 @@ modules:
   - Explain measured boot and verified boot and how they differ.
   - Assess firmware resiliency requirements for protection, detection and recovery.
   topics:
-  - UEFI and legacy BIOS boot flow.
-  - Secure boot signature verification.
-  - TPM measurement and PCR values.
-  - Firmware update, rollback protection and recovery.
-  lab: 'Lab: Read the TPM PCR values on a test system before and after a configuration change, and explain
-    which measurement changed and why.'
+  - The boot sequence from power-on through firmware to operating system handoff.
+  - Verified boot, signature checks and refusal of unapproved components.
+  - Measured boot, TPM Platform Configuration Registers and remote attestation.
+  - The hardware root of trust and why nothing later can verify it.
+  - Firmware update signing, rollback protection and recovery.
+  lab: >-
+    Lab: Reconstruct the boot sequence the range's jump-box went through and judge which stages a
+    measured boot could attest. Evidence: the firmware, loader, kernel and userspace startup times
+    from systemd-analyze; the first three entries of this boot's log with their monotonic
+    timestamps; the log entry naming the first target the service manager reached. Pass: the
+    recorded stages ordered from power-on to user space; each stage marked hashed or not-hashed
+    under measured boot with a one-sentence reason; one sentence naming the earliest stage that
+    nothing later on the platform can verify.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH with the analyst account your instructor assigned, open a
+        terminal and note the start time in the lab notes.
+    - hosts: [jump-box]
+      action: Run systemd-analyze on jump-box and record the startup time it attributes to the
+        firmware, the loader, the kernel and userspace.
+    - hosts: [jump-box]
+      action: Read this boot's log with monotonic timestamps and record the first three entries
+        with the time each one occurred.
+    - hosts: [jump-box]
+      action: Find in the same log the entry naming the first target the service manager reached
+        and record that entry with its timestamp.
+    - hosts: [jump-box]
+      action: Order the recorded stages from power-on to user space, mark each stage hashed or
+        not-hashed under measured boot with a reason, and name the earliest unverifiable stage.
   refs:
   - nist-sp-800-193
   quiz:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Verified boot differs from measured boot in that verified boot:'
+    - question: A platform checks every boot component's signature against a trusted reference
+        during startup and stops the boot when a check fails. Which boot design is this?
       options:
-      - A) Records hashes for later attestation
-      - B) Refuses to execute code that fails signature checks
-      - C) Only runs on ARM platforms
-      - D) Requires network connectivity
-      answer: B
-    - question: 'TPM Platform Configuration Registers (PCRs) store:'
+      - A) Measured boot
+      - B) Legacy BIOS boot
+      - C) Verified boot
+      - D) Network boot
+      answer: C
+    - question: A platform records a hash of each boot component into a TPM register as it starts,
+        and a verifier compares the recorded values against expected ones later. Which design is this?
       options:
-      - A) Encryption keys in plaintext
-      - B) Cumulative hash measurements of boot components
+      - A) Measured boot
+      - B) Verified boot
+      - C) Secure erase
+      - D) Rollback protection
+      answer: A
+    - question: An auditor reads one TPM Platform Configuration Register after a machine starts.
+        Which statement best describes the value held there?
+      options:
+      - A) The firmware vendor's signing key
+      - B) A cumulative hash of the measured boot components
       - C) The UEFI variable store
-      - D) Firmware source code
+      - D) A copy of the disk partition table
       answer: B
-    - question: NIST SP 800-193 organises firmware resiliency around which three principles?
+    - question: During an update, a device is offered a firmware image that carries a valid
+        signature but an older, known-weak version number. Which control should refuse it?
       options:
-      - A) Confidentiality, integrity, availability
-      - B) Protection, detection, recovery
-      - C) Identify, protect, respond
-      - D) Prevent, deter, delay
-      answer: B
-    - question: 'Rollback protection in firmware updates prevents:'
+      - A) Signature verification alone
+      - B) Measured boot
+      - C) The TPM lockout counter
+      - D) Rollback protection
+      answer: D
+    - question: A hardware root of trust is the one part of a platform whose behaviour is accepted
+        without proof. Which statement follows from that definition?
       options:
-      - A) Installing a newer signed image
-      - B) Reverting to an older vulnerable signed image
-      - C) Measuring the bootloader
-      - D) Using an external programmer
-      answer: B
-    - question: 'The root of trust for a platform is best described as:'
-      options:
-      - A) The operating system kernel
-      - B) A component that is implicitly trusted and cannot be verified by anything below it
-      - C) The administrator account
-      - D) The network gateway
+      - A) The operating system kernel is the root of trust
+      - B) Nothing later in the boot can verify the root of trust
+      - C) The administrator account is the root of trust
+      - D) The root of trust needs a signed update each boot
       answer: B
 - ordinal: 5
   title: Peripherals, Buses and Physical Interfaces
@@ -264,15 +387,38 @@ modules:
   pass_threshold: 70
   objectives:
   - Identify common system buses and their relative bandwidth and trust characteristics.
-  - Explain the risk introduced by DMA-capable external ports.
+  - Explain the memory access risk introduced by DMA-capable external ports and its IOMMU mitigation
   - Describe debug interfaces and why they matter to an attacker.
   topics:
-  - PCIe, USB, SPI and I2C.
-  - Thunderbolt/DMA attack surface and IOMMU mitigation.
-  - JTAG and UART debug headers.
-  - Peripheral firmware and supply-chain exposure.
-  lab: 'Lab: Identify the exposed debug headers on a device photograph or development board, document
-    what each interface would grant an attacker, and propose a mitigation for each.'
+  - PCIe, USB, SPI and I2C, and the relative bandwidth of each bus.
+  - Thunderbolt and other DMA-capable external ports, and the IOMMU mitigation.
+  - JTAG and UART debug headers and what each grants an attacker.
+  - Peripheral firmware the host loads but does not verify, and the supply-chain exposure it creates.
+  lab: >-
+    Lab: Inventory the buses and external ports the range's jump-box exposes and judge which of
+    them widen the platform's attack surface. Evidence: each attached device with its bus type
+    from lspci and lsusb; each storage device and the transport it attaches through from lsblk;
+    whether /sys/kernel/iommu_groups exists on jump-box and how many groups the kernel lists.
+    Pass: every recorded device and port marked widening or not-widening the attack surface with
+    a one-sentence reason; the one control named that would limit DMA-capable external ports.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH with the analyst account your instructor assigned, open a
+        terminal and note the start time in the lab notes.
+    - hosts: [jump-box]
+      action: Run lspci and lsusb on jump-box and record each attached device together with the bus
+        type it sits on.
+    - hosts: [jump-box]
+      action: Run lsblk on jump-box and record each storage device and the transport it attaches
+        through.
+    - hosts: [jump-box]
+      action: Check whether /sys/kernel/iommu_groups exists on jump-box and record how many groups
+        the kernel lists.
+    - hosts: [jump-box]
+      action: Mark every recorded device and port widening or not-widening the attack surface with
+        a one-sentence reason, and name the one control that would limit DMA-capable external ports.
   refs:
   - nist-sp-800-193
   - cis-benchmarks
@@ -280,41 +426,45 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'An IOMMU mitigates DMA attacks by:'
+    - question: A fleet laptop accepts Thunderbolt docks, and its IOMMU is enabled. What does the
+        IOMMU contribute against that exposure?
       options:
-      - A) Encrypting the PCIe bus
-      - B) Restricting which physical memory a device may address
-      - C) Disabling USB ports
-      - D) Signing device firmware
+      - A) It encrypts traffic between the device and memory
+      - B) It restricts the memory a device may address
+      - C) It disables the external ports until boot completes
+      - D) It signs each device's firmware before loading
       answer: B
-    - question: 'JTAG is primarily an interface for:'
+    - question: A technician finds a row of unlabeled test pins on a board, and the board's silk
+        screen marks them JTAG. What does that interface provide?
       options:
-      - A) High-speed storage
-      - B) Boundary scan and hardware debugging
-      - C) Wireless networking
-      - D) Power delivery
-      answer: B
-    - question: Which bus is most commonly used to attach a SPI flash chip holding platform firmware?
+      - A) Attachment of high-speed external storage devices
+      - B) Power delivery and battery charging for the board
+      - C) Wireless networking and short-range pairing
+      - D) Boundary scan and hardware debug access
+      answer: D
+    - question: Platform firmware on a small board is held in a flash chip. Which bus most commonly
+        carries that chip?
       options:
-      - A) PCIe
-      - B) SPI
+      - A) SPI
+      - B) PCIe
       - C) SATA
-      - D) Ethernet
-      answer: B
-    - question: 'A UART header on a production device is a concern mainly because it may expose:'
-      options:
-      - A) A serial console with privileged access
-      - B) The device MAC address
-      - C) The screen resolution
-      - D) The battery level
+      - D) USB
       answer: A
-    - question: 'Peripheral devices matter to supply-chain risk because they:'
+    - question: A production device ships with an exposed debug header wired to a UART. What is the
+        main concern about what that header may grant?
       options:
-      - A) Cannot be updated
-      - B) Run their own firmware that the host generally does not verify
-      - C) Always use encrypted links
-      - D) Are exempt from procurement review
-      answer: B
+      - A) The device's network address and hostname
+      - B) The battery charge level and its cycle count
+      - C) A serial console with privileged access
+      - D) The screen resolution and its refresh rate
+      answer: C
+    - question: Why does each peripheral attached to a platform widen its attack surface?
+      options:
+      - A) It cannot receive updates after purchase
+      - B) Its links to the host are always encrypted
+      - C) It is exempt from procurement security review
+      - D) It runs firmware the host does not verify
+      answer: D
 - ordinal: 6
   title: Virtualisation and Platform Hardening
   content_type: reading
@@ -323,15 +473,40 @@ modules:
   pass_threshold: 70
   objectives:
   - Explain the difference between type 1 and type 2 hypervisors.
-  - Describe hardware virtualisation extensions and nested paging.
-  - Apply a recognised benchmark to harden a platform configuration.
+  - Describe the hardware virtualisation extensions and nested paging that accelerate guest execution
+  - Apply a recognised benchmark to harden a platform configuration against its recommendations
   topics:
   - Hypervisor types and the virtual machine monitor.
-  - Intel VT-x / AMD-V and second-level address translation.
-  - VM escape and isolation boundaries.
-  - Configuration hardening with published benchmarks.
-  lab: 'Lab: Harden a virtual machine against a CIS Benchmark for its operating system, record the pass
-    rate before and after, and document any control you deliberately did not apply and why.'
+  - Hardware virtualisation extensions and second-level address translation.
+  - Virtual machine escape and the isolation boundaries it crosses.
+  - Container isolation and the shared host kernel.
+  - Configuration hardening against published benchmarks, and marking each control met or not-met.
+  lab: >-
+    Lab: Audit the range's jump-box against the benchmark excerpt your instructor supplies and
+    judge which controls the platform already meets. Evidence: the virtualisation technology
+    reported by systemd-detect-virt on jump-box; the effective values of the SSH directives
+    PermitRootLogin and PasswordAuthentication from the running configuration; the benchmark
+    section each recorded directive maps to. Pass: each excerpt control marked met or not-met
+    exactly as the running configuration shows with a one-sentence reason; any control
+    deliberately left unmet named together with the risk accepted.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH with the analyst account your instructor assigned, open a
+        terminal and note the start time in the lab notes.
+    - hosts: [jump-box]
+      action: Run systemd-detect-virt on jump-box and record the virtualisation technology it
+        reports.
+    - hosts: [jump-box]
+      action: Read the effective SSH server configuration on jump-box and record the values of the
+        PermitRootLogin and PasswordAuthentication directives.
+    - hosts: [jump-box]
+      action: Map each recorded directive to its section in the benchmark excerpt your instructor
+        supplied.
+    - hosts: [jump-box]
+      action: Mark each excerpt control met or not-met with a one-sentence reason, and name any
+        control deliberately left unmet together with the risk accepted.
   refs:
   - cis-benchmarks
   - nist-sp-800-190
@@ -339,38 +514,43 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'A type 1 hypervisor runs:'
+    - question: A data centre server runs one hypervisor installed straight onto its hardware with
+        no host operating system beneath it. Which hypervisor type is this?
       options:
-      - A) As an application on a host OS
-      - B) Directly on the hardware
-      - C) Inside a container
-      - D) Only in firmware
+      - A) A type 2 hypervisor
+      - B) A type 1 hypervisor
+      - C) A container runtime
+      - D) An emulator
       answer: B
-    - question: 'Second-level address translation (EPT/NPT) reduces overhead by:'
+    - question: Each guest on a hypervisor manages its own page tables. How does second-level
+        address translation reduce the cost of running those guests?
       options:
-      - A) Removing the need for a TLB
-      - B) Handling guest-to-host page translation in hardware
-      - C) Compressing guest memory
-      - D) Disabling paging in the guest
-      answer: B
-    - question: 'A VM escape is an attack in which code:'
+      - A) It removes the need for a translation lookaside buffer
+      - B) It compresses each guest's memory
+      - C) It performs guest-to-host page translation in hardware
+      - D) It disables paging inside the guest
+      answer: C
+    - question: Code running inside a guest virtual machine reaches the hypervisor itself and then
+        the host. What is this event called?
       options:
-      - A) Crashes the guest OS
-      - B) Breaks out of the guest into the hypervisor or host
-      - C) Consumes excessive CPU
-      - D) Migrates a VM between hosts
-      answer: B
-    - question: 'Containers differ from virtual machines principally because containers:'
+      - A) A virtual machine escape
+      - B) A guest kernel panic
+      - C) A denial of service against the guest
+      - D) A live migration
+      answer: A
+    - question: An architect compares containers with virtual machines on one host. Which statement
+        about the isolation they provide is correct?
       options:
-      - A) Cannot be networked
-      - B) Share the host kernel
-      - C) Require more memory
-      - D) Cannot be orchestrated
-      answer: B
-    - question: 'CIS Benchmarks are best described as:'
+      - A) Containers need a hypervisor of their own
+      - B) Containers are always isolated more strongly than virtual machines
+      - C) Containers cannot be networked with each other
+      - D) Containers share the host kernel, so their isolation is weaker
+      answer: D
+    - question: A platform team must harden a new server configuration against a recognised
+        baseline. Which description fits the document they should apply?
       options:
       - A) Mandatory legal requirements
-      - B) Consensus-based configuration hardening recommendations
-      - C) A vulnerability scanner
+      - B) A commercial vulnerability scanner
+      - C) Consensus-based configuration hardening recommendations
       - D) An incident response standard
-      answer: B
+      answer: C
