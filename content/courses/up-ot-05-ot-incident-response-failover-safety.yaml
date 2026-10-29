@@ -1,0 +1,598 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+
+course_code: C553
+title: OT Incident Response & Failover Safety
+version: '1.0'
+difficulty: advanced
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C550
+- C551
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Incident Responder (PR-CIR-001), Systems Security Analyst.'
+  - 'NIST CSF 2.0: RS.MA, RS.MI, RC.RP.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: IR When Availability Rules Everything
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish availability-first incident response from enterprise incident response on triage, containment and recovery priorities
+  - Rank the triage questions for a written plant incident by their production and safety consequences
+  - Assign a response priority to each event in a written OT scenario from its effect on process output
+  topics:
+  - What incident response means when the process must keep running.
+  - Availability-first triage, with process impact weighed before evidence value.
+  - Response phases adapted to an industrial control system environment.
+  - Who decides during a plant incident, and how process and response authority share.
+  - Priority scales that treat lost output as the primary harm.
+  lab: >-
+    Lab: On the large-enterprise range, test which telemetry the monitoring VLAN holds for the
+    isolated OT cell and judge its coverage against an availability-first triage need. Evidence: the
+    result of the siem01 and syslog01 checks for OT segment sources, each recorded with the reason the
+    isolated cell returns none; the confirmation from ids01 that OT zone traffic reaches its monitoring
+    port; a covered or not covered verdict for hmi01, hmi02 and plc01. Pass: both host-log checks
+    recorded with their result and the isolation reason; the ids01 mirror feed
+    recorded as active or not; each of hmi01, hmi02 and plc01 marked covered or not covered with a
+    one-sentence reason; the single largest coverage gap named for triage use.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open the monitoring dashboards and note the start time in the lab record.
+    - hosts: [siem01]
+      action: On siem01, search its indexes for log sources from the OT segment and record the result with
+        the reason the isolated cell gives none.
+    - hosts: [ids01]
+      action: On ids01, confirm the mirror feed that copies OT zone traffic to the sensor and record whether
+        the feed is active.
+    - hosts: [syslog01]
+      action: On syslog01, check its feeds for any OT host sending syslog and record the result with the
+        reason nothing routes from the isolated cell.
+    - hosts: [jump01]
+      action: Mark hmi01, hmi02 and plc01 covered or not covered with one sentence of reason each, and name
+        the largest gap that would slow triage.
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: Ransomware has encrypted a corporate file server while the plant controllers keep running
+        normally. Under an availability-first plan, what does triage examine first?
+      options:
+      - A) The encrypted server's recovery point
+      - B) What the process depends on today
+      - C) The malware family behind the encryption
+      - D) Who opened the infected attachment
+      answer: B
+    - question: >-
+        A control-system engineer objects to isolating a compromised OT switch because three product
+        lines share it. The responder's best first record is:
+      options:
+      - A) A request to disable the switch regardless
+      - B) A note that the engineer is obstructing the response
+      - C) The output each line loses under isolation, with names
+      - D) A decision to postpone every containment action until the shift ends
+      answer: C
+    - question: During an OT incident, which activity moves from the end of the enterprise lifecycle to the
+        front of availability-first planning?
+      options:
+      - A) Writing the after-action report
+      - B) Removing the adversary's persistence
+      - C) Interviewing the wider workforce
+      - D) Defining the safe state to restore
+      answer: D
+    - question: >-
+        A flow computer keeps totals that feed billing, and its failure stops revenue reporting but
+        not production. On an availability-first priority scale this is best recorded as:
+      options:
+      - A) High business, low process consequence
+      - B) Low consequence because production continues
+      - C) No consequence until an auditor asks
+      - D) The highest-priority incident on the site
+      answer: A
+    - question: >-
+        A decision to power-cycle a frozen HMI workstation sits with the shift process operator
+        rather than the remote responder because:
+      options:
+      - A) Operators hold the incident commander role by default
+      - B) The operator owns the running process's safe state
+      - C) Responders hold no accounts on the OT network
+      - D) Power-cycling always requires a written change request
+      answer: B
+- ordinal: 2
+  title: Containment Decisions Under Production Pressure
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Choose a containment action for a written OT compromise that keeps the process inside its safe state
+  - Predict the production effect of isolating each asset in a described OT network segment
+  - Justify a containment delay or refusal when the action would force a plant shutdown
+  topics:
+  - Containment options ranked by how much process they disturb.
+  - Isolation boundaries, from a single asset to a whole cell.
+  - The safe state as the constraint every containment action must respect.
+  - Delayed containment and the risk the wait accepts.
+  - Recording a refused action so the decision can be reviewed later.
+  lab: >-
+    Lab: On the large-enterprise range, work out which containment actions the network itself allows for
+    a suspected compromise of hmi01 and judge each against the running process. Evidence: the ot-fw01
+    rules that decide what the OT cell may reach; the fw01 confirmation that no corporate-to-OT path
+    exists because the transit is not built; the destination and port hmi01 uses to write to historian01.
+    Pass: three containment options ranked
+    immediate, delayed or refused, each with a one-sentence production reason; the chosen option for
+    hmi01 justified against the safe state; the record names the role that must agree before any change
+    is applied.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and record the start time and the scope of this containment exercise.
+    - hosts: [ot-fw01]
+      action: On ot-fw01, list the rules that govern traffic leaving the OT cell and record each rule's
+        source, destination and action.
+    - hosts: [fw01]
+      action: On fw01, confirm no interface or rule faces the OT cell and record that the corporate-to-OT
+        transit is not yet built.
+    - hosts: [hmi01, historian01]
+      action: From hmi01, confirm which historian01 service the HMI writes to and record the destination
+        and port in use.
+    - hosts: [jump01]
+      action: Rank three containment options for hmi01, denying its write path, isolating the cell, or
+        powering it down, as immediate, delayed or refused, each with a one-sentence production reason.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: >-
+        A PLC shows logic changes nobody made, and its cell can be cut off without touching two
+        shipping lines. Which containment action best fits the safe state?
+      options:
+      - A) Shutting the whole plant down
+      - B) Rebuilding every workstation in the plant
+      - C) Cutting the plant's internet uplink
+      - D) Isolating that cell at the OT firewall
+      answer: D
+    - question: >-
+        A responder delays blocking a compromised engineering workstation because a batch finishes
+        in two hours. The risk this delay accepts is best described as:
+      options:
+      - A) The evidence on the workstation expiring
+      - B) Further adversary movement during the wait
+      - C) The batch failing without the workstation
+      - D) The firewall rules expiring before the block
+      answer: B
+    - question: Compromise is confirmed on one HMI workstation and nowhere else. Which isolation boundary
+        disturbs the least production while containing it?
+      options:
+      - A) The single workstation
+      - B) The whole OT cell
+      - C) The core firewall perimeter
+      - D) The plant-wide network
+      answer: A
+    - question: >-
+        A process engineer refuses a responder's request to power-cycle a PLC mid-run. The record
+        that lets reviewers judge the refusal later states:
+      options:
+      - A) The engineer's job title and shift pattern
+      - B) The responder's disagreement in full
+      - C) The action refused, the risk and the reason
+      - D) A promise to revisit the request next quarter
+      answer: C
+    - question: >-
+        Before denying traffic from a compromised HMI to the plant historian, the responder predicts
+        the production effect. The correct prediction is that:
+      options:
+      - A) The historian stops recording and the process stops with it
+      - B) The denial has no effect of any kind
+      - C) Every HMI in the cell loses its displays
+      - D) The HMI loses its write path while the process runs
+      answer: D
+- ordinal: 3
+  title: Manual Fallback and Process Safety
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Sequence the steps of a manual fallback from automated control to local operation
+  - Identify the preconditions a written fallback procedure checks before operators act
+  - Verify that a fallback drill restored the stated safe state without adding new risk
+  topics:
+  - Manual fallback, degraded modes and the safe state.
+  - Preconditions for fallback, covering authority, communications and current process values.
+  - Handover between automated and local control without a process upset.
+  - Drills that prove a fallback works before an incident forces it.
+  - Restoring automated control after a fallback ends.
+  source_gaps:
+  - the ISA/IEC 62443 series and process-safety guidance on manual fallback are not in the reference library
+  lab: >-
+    Lab: On the large-enterprise range, walk a manual fallback for the simulated process served by plc01
+    and judge whether the drill reached its stated safe state. Evidence: the preconditions recorded
+    before the change of control; the control mode shown on hmi02 after the handover; the process values
+    recorded while the process runs under manual control; the mode and values observed once automated
+    control resumes. Pass: every precondition checked and recorded before the handover; the fallback
+    completed in the stated order with no skipped step; the post-fallback values match the safe state
+    the drill defines; one deviation or improvement recorded for the next drill.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [eng-ws01]
+      action: Log on to eng-ws01, open the programming view for plc01 and record its current control mode
+        and key process values.
+    - hosts: [hmi02]
+      action: On hmi02, record the operator display state and the alarms active before the fallback begins.
+    - hosts: [eng-ws01, plc01]
+      action: From eng-ws01, switch plc01 from automatic to manual control in the order the drill defines
+        and record each step as taken.
+    - hosts: [hmi02, plc01]
+      action: On hmi02, watch the process under manual control for a short interval and record whether the
+        values hold inside the safe band.
+    - hosts: [eng-ws01, hmi02]
+      action: Return plc01 to automatic control, then record the mode shown on hmi02 and compare the values
+        against the pre-fallback record.
+    - hosts: [eng-ws01]
+      action: Mark the drill complete or failed against the safe state and record one deviation to carry
+        into the next drill.
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A fallback procedure lets operators run a furnace from a local panel. Which precondition
+        must be verified before the handover starts?
+      options:
+      - A) The panel shows the current process values
+      - B) The plant website still resolves
+      - C) The corporate wireless signal reaches the panel
+      - D) The maintenance backlog is up to date
+      answer: A
+    - question: >-
+        During a handover from automated to local control, disturbing the process is avoided
+        chiefly by:
+      options:
+      - A) Performing the handover as fast as possible
+      - B) Stopping the process first, then switching modes
+      - C) Matching the outputs before switching modes
+      - D) Asking the operator to watch the alarm list more closely
+      answer: C
+    - question: >-
+        A site runs its first manual fallback drill in eighteen months and the local panel's mode
+        switch fails. The drill's chief finding is that:
+      options:
+      - A) Operators need more alarms
+      - B) The original incident was unavoidable and would repeat
+      - C) Automation should never be trusted
+      - D) The fallback path had decayed without regular drills
+      answer: D
+    - question: >-
+        After a fallback drill the controller returns to automatic, but one loop sits in manual
+        with its output frozen. Judged against the safe state, this outcome is:
+      options:
+      - A) Complete, because automatic mode is indicated
+      - B) Incomplete, because one loop is unrecovered
+      - C) Complete, because the loop holds its value
+      - D) A new incident requiring the plant to stop
+      answer: B
+    - question: >-
+        A fallback procedure names the shift process operator as the person who may order the
+        change of control. This rule exists mainly because:
+      options:
+      - A) The operator sees what the responder cannot
+      - B) The operator outranks every responder on site
+      - C) Remote responders never speak to operators
+      - D) The operator can act faster than any remote responder
+      answer: A
+- ordinal: 4
+  title: Forensics Without Stopping the Plant
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Order the evidence collection steps for a running OT host from least to most disruptive
+  - Select, for each artefact in a written case, a collection method that leaves the process running
+  - Record the live-response limits that bound what collected evidence can prove
+  topics:
+  - Order of volatility applied to a running industrial host.
+  - Live collection that leaves the process running.
+  - Configuration drift on controllers and workstations as evidence.
+  - Limits of live response, and what a capture cannot prove.
+  - Handover of collected material to offline forensics.
+  lab: >-
+    Lab: On the large-enterprise range, take a triage collection from the suspected hmi01 at its own
+    console while its process view stays live, and judge which questions the collection can and cannot
+    answer. Evidence: the failed edr01 attempt to reach the isolated cell, recorded as a response
+    limit; the local collection run on hmi01, with its artefact list and start and completion times;
+    the running configuration read from plc01 over its programming path; confirmation that historian01
+    kept writing during the collection. Pass: collection ordered from least to most disruptive as
+    performed; every artefact stamped with its capture time; the edr01 reach limit recorded with its
+    consequence for response; each unanswered question listed with the offline step that would answer
+    it.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [edr01]
+      action: Log on to edr01, try to reach hmi01 through the response console and record the failed
+        connection as the first live-response limit.
+    - hosts: [hmi01]
+      action: At the hmi01 console, start the local triage collection the instructor prepared and record
+        the artefacts requested and the time the task starts.
+    - hosts: [hmi01]
+      action: While the collection runs, leave the HMI display open and record whether the process view
+        keeps updating.
+    - hosts: [eng-ws01, plc01]
+      action: From eng-ws01, read the running configuration of plc01 over its programming path and record
+        it as read, with the read time.
+    - hosts: [historian01]
+      action: On historian01, confirm the tags for the affected cell kept updating during the collection
+        and record the last write time.
+    - hosts: [hmi01]
+      action: Back at the hmi01 console, record the collection result, then list each question the triage
+        picture cannot answer and the offline step that would answer it.
+  refs:
+  - nist-sp-800-86
+  - nist-sp-800-83r1
+  - volatility3
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: >-
+        Memory, running configuration, log files and an offline backup image are gathered from a
+        live controller. The order that respects volatility is:
+      options:
+      - A) Backup image first, then logs, configuration, memory
+      - B) Configuration, memory, backup image, logs
+      - C) Memory, running configuration, logs, backup image
+      - D) Logs, backup image, memory, configuration
+      answer: C
+    - question: >-
+        An analyst needs the installed scheduled tasks from a running HMI workstation. The
+        collection method that best leaves the process undisturbed is:
+      options:
+      - A) A remote read through the endpoint agent
+      - B) Shutting the workstation down and imaging the disk
+      - C) Restarting the workstation into recovery mode
+      - D) A local read at the workstation's own console
+      answer: D
+    - question: >-
+        A live memory capture shows no injected code in the regions it covered. The correct
+        conclusion for the incident record is:
+      options:
+      - A) The workstation holds no malicious code
+      - B) The capture proves only what it sampled
+      - C) Memory captures never show injected code
+      - D) The process must stop before memory can be collected
+      answer: B
+    - question: >-
+        A controller's running logic differs from the engineering office's signed-off version. In
+        the incident record this difference is best treated as:
+      options:
+      - A) Proof that an attacker wrote the running logic
+      - B) A routine backup failure
+      - C) Evidence that the engineering office made an error
+      - D) Configuration drift needing explanation first
+      answer: D
+    - question: >-
+        Process data kept flowing to the plant historian throughout a workstation collection.
+        Recording this fact matters to the case because it shows:
+      options:
+      - A) The historian was compromised by the same attacker as well
+      - B) The collection tool was faulty
+      - C) The collection did not interrupt the trail
+      - D) The historian needed no investigation
+      answer: C
+- ordinal: 5
+  title: Recovery and Recommissioning Drills
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Order the recovery steps that return a rebuilt controller to service without bypassing validation
+  - Verify, before recommissioning, that a restored host matches its documented baseline
+  - Write a recommissioning gate that names its checks and the authority that releases the asset
+  topics:
+  - Recovery from known-good sources, covering images, configurations and spare parts.
+  - Validation before a recovered asset rejoins the process.
+  - The recommissioning gate and who signs the release.
+  - Drills that rehearse recovery while the plant keeps running.
+  - Watching a recovered asset after its return to service.
+  lab: >-
+    Lab: On the large-enterprise range, rehearse the recovery of a rebuilt controller and judge whether
+    it is fit to rejoin the running process. Evidence: the known-good source named for the rebuild; the
+    comparison of plc02's running configuration against the documented baseline held on eng-ws01; the
+    historian01 writes recorded after the controller rejoins; the release decision with its checks.
+    Pass: the rebuild names a known-good source and records its version; every baseline difference is
+    explained or fixed before reconnection; the recommissioning gate lists its checks and the role that
+    signs; post-return historian writes show the controller back in service.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [eng-ws01]
+      action: Log on to eng-ws01, open the configuration store and record the documented baseline
+        configuration held for plc02.
+    - hosts: [plc02]
+      action: Read the running configuration of plc02 and record each value that differs from that baseline.
+    - hosts: [eng-ws01, plc02]
+      action: From eng-ws01, apply the baseline to plc02 and record each change made and the source version
+        it came from.
+    - hosts: [hmi02, plc02]
+      action: On hmi02, confirm the displays driven by plc02 resume and record the values shown at
+        reconnection.
+    - hosts: [historian01]
+      action: On historian01, record the first write received from plc02 after its return and its timestamp.
+    - hosts: [eng-ws01]
+      action: Decide the release, listing the checks the recommissioning gate requires and the role that
+        signs the asset back into service.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-193
+  - nist-cswp-29
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: >-
+        A rebuilt controller needs its control logic restored. The source that best protects the
+        recovery is:
+      options:
+      - A) The most recent automatic backup, whatever changed it
+      - B) A signed-off configuration with a recorded version
+      - C) A copy taken from the twin controller without checks
+      - D) Whatever logic the closest spare carries
+      answer: B
+    - question: >-
+        Before a recovered HMI workstation rejoins the OT cell, validation should confirm that:
+      options:
+      - A) Its desktop settings match the standard image
+      - B) It can reach the corporate network first
+      - C) Its licence server is reachable
+      - D) Its software matches the documented baseline
+      answer: D
+    - question: >-
+        A rebuilt controller waits to rejoin the running process. In the recovery plan, a
+        recommissioning gate is best described as:
+      options:
+      - A) A firewall rule applied at reconnection
+      - B) A spare-parts storeroom checklist
+      - C) A named set of checks and a sign-off
+      - D) A maintenance window booked by the planners
+      answer: C
+    - question: >-
+        After a recovered controller returns to service, the responder's main task for its first
+        shift is to:
+      options:
+      - A) Watch its behaviour and values
+      - B) Close the incident tickets about it
+      - C) Rebuild it again as a precaution
+      - D) Move it to a different cell
+      answer: A
+    - question: >-
+        A recovery drill is run while the plant keeps producing. The drill's most valuable result
+        is:
+      options:
+      - A) Proof that a passed drill will always pass again
+      - B) Which steps disturb production the most
+      - C) Proof that recovery steps never disturb production
+      - D) A finished report for the auditors alone
+      answer: B
+- ordinal: 6
+  title: The End-to-End Plant Response Drill
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Run the full response cycle for a plant incident, from detection through recommissioning
+  - Apply the availability-first priorities of the earlier modules to one connected scenario
+  - Defend each response decision in a handover note another responder could act on
+  topics:
+  - One scenario across all phases, from detection, containment and fallback to recovery.
+  - Handover notes that carry decisions between shifts.
+  - Where the modules' priorities conflict and how to choose.
+  - Measuring the drill against its stated safe state.
+  lab: >-
+    Lab: On the large-enterprise range, run one connected drill from alert to recommissioning and hand
+    it over as a written record. Evidence: the alert on siem01 that starts the drill, with its time; the
+    containment change made on ot-fw01 and the process state kept through it; the fallback completed from
+    eng-ws01 with its preconditions; the triage collection taken at the affected workstation's console,
+    with edr01's lack of reach into the cell noted; the release decision recorded. Pass: each
+    phase performed in order with its time recorded; the safe state held
+    at every containment and fallback step; the handover note states each decision, its reason and its
+    actor; the drill closes with the asset released through the recommissioning gate.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01, find the drill alert for the OT cell and record its time and content.
+    - hosts: [ot-fw01, hmi01]
+      action: On ot-fw01, apply the drill's containment rule for the affected cell, then on hmi01 record
+        whether the process view stays live.
+    - hosts: [eng-ws01]
+      action: From eng-ws01, complete the fallback to manual control in the drill's stated order and record
+        the preconditions checked.
+    - hosts: [hmi01]
+      action: At the affected workstation's console, run the drill's triage collection and record the task
+        start and completion times, noting that edr01 cannot reach the isolated cell.
+    - hosts: [historian01]
+      action: On historian01, record whether process writes continued through containment and note any gap
+        in their timestamps.
+    - hosts: [eng-ws01, hmi01]
+      action: Restore automatic control through the drill's checks and record the values against the safe
+        state.
+    - hosts: [ot-fw01, siem01]
+      action: Close the drill, recording the recommissioning gate release and the containment rule reverted
+        as the drill directs.
+    - hosts: [jump01]
+      action: Write the handover note, giving each decision, its reason and its actor, in the order taken.
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: >-
+        A drill starts with a monitoring alert about the OT cell and ends with a released
+        controller. The phase that comes between containment and recovery is:
+      options:
+      - A) Publishing the after-action report
+      - B) Scanning the corporate network
+      - C) Updating the risk register
+      - D) Evidence collection and fallback
+      answer: D
+    - question: >-
+        During the drill, containment and the shift's production target conflict. The
+        availability-first rule for choosing is to:
+      options:
+      - A) Keep the safe state and record the production cost
+      - B) Meet the production target and hide the containment delay
+      - C) Let the on-call responder decide alone
+      - D) Stop all containment until the target is met
+      answer: A
+    - question: >-
+        A shift handover during an active incident is best served by a note that states:
+      options:
+      - A) The responder's opinion of the plant's owners
+      - B) Each decision taken, its reason and who took it
+      - C) The full firewall rule set from memory
+      - D) A promise to brief the next shift in person only
+      answer: B
+    - question: >-
+        The drill closes by comparing the recorded process values against the stated safe state.
+        This comparison measures:
+      options:
+      - A) The speed of the historian
+      - B) The cost of the drill
+      - C) Whether the response held the outcome it promised
+      - D) The skill of the alert writer and the drill designer
+      answer: C
+    - question: >-
+        A completed drill with every gate passed is best described as evidence that:
+      options:
+      - A) The plant can never be disrupted again
+      - B) The responders no longer need training
+      - C) The alerting rules are perfect
+      - D) The rehearsed path works as tested
+      answer: D

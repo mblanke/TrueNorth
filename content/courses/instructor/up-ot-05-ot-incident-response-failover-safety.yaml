@@ -1,0 +1,193 @@
+# Instructor pack for C553 (OT Incident Response & Failover Safety). Staff only: the answer
+# keys and facilitation notes below are not for publication to Students.
+# Draft, unsourced: see the course file header. Range: large-enterprise, with its OT cell
+# (hmi01, hmi02, plc01, plc02, eng-ws01, ot-fw01, historian01) and the monitoring VLAN
+# (siem01, ids01, edr01, syslog01). The OT VLAN is isolated on the template, so Students work
+# on OT hosts by console or from eng-ws01, never over the corporate jump host.
+course_code: C553
+audience: staff_only
+overview: >-
+  OT Incident Response & Failover Safety is an advanced individual course of six 50-minute
+  modules (300 minutes, 5 hours). Each module has the same split: 10 minutes teach, 30 minutes
+  lab on the large-enterprise range, 10 minutes assessment (quiz). The course teaches an
+  availability-first incident response practice for an operational technology environment:
+  triage by process impact, containment inside the safe state, manual fallback drills,
+  forensics that leave the process running, and recovery through a recommissioning gate.
+  Modules 1, 3, 4 and 5 follow the catalogue's four named modules; module 2 is the containment
+  bridge and module 6 is the end-to-end capstone drill. Each module teaches three objectives,
+  practises them on the range, and ends with a five-item quiz passed at 70 percent.
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 teach (availability-first triage and priority), 30 lab (telemetry reachability
+    checks on siem01, ids01, syslog01 from jump01), 10 assessment'
+- module: 2
+  minutes: 50
+  plan: '10 teach (containment options and the safe state), 30 lab (ot-fw01 rule review, fw01
+    OT-leg check, hmi01 write path), 10 assessment'
+- module: 3
+  minutes: 50
+  plan: '10 teach (manual fallback and preconditions), 30 lab (fallback drill for plc01 from
+    eng-ws01, observed on hmi02), 10 assessment'
+- module: 4
+  minutes: 50
+  plan: '10 teach (order of volatility and live limits), 30 lab (edr01 reach check, local
+    triage collection at the hmi01 console, plc01 configuration read), 10 assessment'
+- module: 5
+  minutes: 50
+  plan: '10 teach (known-good recovery and the gate), 30 lab (plc02 baseline comparison and
+    reconnection, historian01 writes), 10 assessment'
+- module: 6
+  minutes: 50
+  plan: '10 teach (the full cycle), 30 lab (end-to-end drill: siem01 alert, ot-fw01
+    containment, eng-ws01 fallback, console collection at the affected workstation, release),
+    10 assessment'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (process dependency first), M1-O02: Availability-first triage asks what the process depends
+    on before examining evidence; the recovery point (A) tests enterprise-first habits and the malware
+    family (C) tests evidence-first habits. Q2 C (record the production cost), M1-O01: The record keeps
+    the impact of isolation and the objector together; A and B test force-through reflexes, D tests
+    avoidance. Q3 D (safe state first), M1-O03: Recovery planning moves to the front; A and B are
+    enterprise-phase activities, C is a distractor on who to involve. Q4 A (business high, process low),
+    M1-O03: The scale separates business from process consequence; B and C test single-axis thinking,
+    D tests escalation bias. Q5 B (operator owns the safe state), M1-O01: Authority follows process
+    knowledge; A tests role confusion, C a network-access myth, D a paperwork reflex.'
+- module: 2
+  notes: 'Q1 D (isolate the cell), M2-O01: The option disturbs the least product while containing the
+    confirmed fault; A and C test overshoot, B is disproportionate. Q2 B (adversary advances during the
+    wait), M2-O02: Delayed containment trades dwell time for production; A and D test invented technical
+    deadlines, C reverses the reasoning. Q3 A (single workstation), M2-O02: The narrowest boundary that
+    contains the compromise disturbs the least; the wider options test boundary overshoot. Q4 C (action,
+    risk and reason), M2-O03: A reviewable refusal records what was refused and why; A and B test
+    personality records, D defers without recording. Q5 D (write path lost, process runs), M2-O02:
+    Denying the HMI-to-historian path breaks telemetry, not control; A tests control/telemetry
+    confusion, C overgeneralises to the cell, B denies any effect.'
+- module: 3
+  notes: 'Q1 A (current values at the panel), M3-O02: The local controller must hold the process state
+    before the handover; B, C and D test corporate-world preconditions that do not gate a fallback. Q2
+    C (bumpless transfer), M3-O01: Matching outputs before switching is the standard bumpless handover;
+    A risks haste errors, B stops the process, D adds watching instead of prevention. Q3 D (the path
+    decayed), M3-O03: An untested fallback is not a working one; A, B and C test blame-shifting and
+    over-general conclusions. Q4 B (incomplete against the safe state), M3-O03: A loop outside its
+    stated mode is an unrecovered change; A and C test mode-label trust, D escalates a finding into a
+    new incident. Q5 A (operator sees the process), M3-O02: Authority follows visibility; B tests rank
+    assumptions, C an absolutist myth, D a speed-instead-of-visibility reflex.'
+- module: 4
+  notes: 'Q1 C (memory, configuration, logs, image), M4-O01: Order of volatility, most transient first;
+    every distractor inverts part of the order. Q2 D (local read at the workstation''s own console),
+    M4-O02: The isolated cell holds no endpoint agent for hmi01, so the only collection that leaves the
+    process running is the one taken at its own console, as the lab records; A is the enterprise habit
+    the lab disproves, the failed edr01 connection being the live-response limit, and B and C stop or
+    disturb the running workstation.
+    Q3 B (only what was sampled), M4-O03: Live captures bound their own conclusions; A overclaims, C
+    over-negates, D is a stopping reflex the module forbids. Q4 D (drift, then explain), M4-O03:
+    Configuration drift is explained before attribution; A assigns blame from a difference, B and C
+    pre-assign innocence or error. Q5 C (collection did not interrupt the trail), M4-O02: Continuous
+    historian writes evidence the process stayed live; A and D invent conclusions about the historian,
+    B about the tool.'
+- module: 5
+  notes: 'Q1 B (signed-off, versioned source), M5-O01: Known-good means provenance and version, not
+    recency or convenience; A trusts a possibly altered backup, C and D trust unchecked neighbours.
+    Q2 D (baseline match, account state), M5-O02: Validation compares the restored host to its
+    documented state; A, B and C test surface checks that prove nothing about integrity. Q3 C (checks
+    plus sign-off), M5-O03: The gate is the named set of checks and the releasing authority; A confuses
+    it with a control, B with inventory, D with scheduling. Q4 A (watch behaviour and values), M5-O01:
+    Post-return monitoring is the responder''s first-shift task; B, C and D test avoidance and repeat
+    work. Q5 B (which steps disturb production and how long), M5-O03: A drill against a running plant
+    measures production cost; A overclaims from one pass, C mistakes a producing drill for a
+    non-disruptive recovery, D reduces the drill to paperwork.'
+- module: 6
+  notes: 'Q1 D (collection and fallback), M6-O01: The cycle runs containment, evidence and fallback,
+    then recovery; A and C are post-incident, B is out of scope. Q2 A (safe state, then record the
+    cost), M6-O02: Availability-first resolves the conflict in the process''s favour and records what
+    it cost; B hides the cost, C breaks the shared-authority rule from module 1, D inverts the
+    priority. Q3 B (decisions, reasons, actors), M6-O03: A handover note carries decisions another
+    responder can act on; A is personal, C is not a note, D refuses the record. Q4 C (did the response
+    hold its promised outcome), M6-O03: Comparing values to the safe state measures the response, not
+    the tooling or the writer; A, B and D test measuring the wrong thing. Q5 D (the path works at the
+    tested conditions), M6-O01: A drill proves only what it rehearsed; A, B and C overclaim from one
+    success.'
+lab_setup:
+- module: 1
+  setup: Range on the large-enterprise template at baseline. Confirm siem01, ids01 and syslog01 are
+    reachable from jump01 and that the monitoring-mirror feed from the OT zone to ids01 is active.
+    The values Students should find are that the siem01 and syslog01 searches for OT segment sources
+    come back empty, because the isolated cell has no routed path to the monitoring VLAN, and that the
+    ids01 mirror feed is active. No OT host is touched in this lab.
+- module: 2
+  setup: Range at baseline. Confirm Students can read (not change) the rules on ot-fw01 and fw01, and
+    that hmi01 can write to historian01 so the write path is observable. fw01 has no interface or rule
+    toward the OT cell (the corporate-to-OT transit is not built, tracker issue 235), and that absence
+    is the expected Student finding, so no corporate-to-OT rule should be created before class. Freeze rule
+    changes for the exercise window.
+- module: 3
+  setup: Range at baseline. Confirm eng-ws01 holds the programming view for plc01 and that hmi02
+    displays the plc01 process. Rehearse the switch between automatic and manual control on a spare
+    controller first if the template supports it; otherwise keep the drill read-observe-record.
+- module: 4
+  setup: Range at baseline. The OT cell is isolated, so edr01 holds no agent on hmi01 and cannot run
+    a remote collection. Confirm from edr01 that a connection to hmi01 fails, and prepare a local
+    triage collection on hmi01 that completes without disturbing the HMI display. Confirm eng-ws01
+    can read plc01's running configuration and that historian01 writes are visible with timestamps.
+- module: 5
+  setup: Range at baseline. Confirm eng-ws01 holds a documented baseline for plc02 and can apply it,
+    that hmi02 shows the plc02-driven displays, and that historian01 records plc02 writes. Snapshot
+    plc02's state before class so the rebuild is repeatable.
+- module: 6
+  setup: Range at baseline, all earlier module hosts available. Prepare the drill alert on siem01, a
+    containment rule ready to apply on ot-fw01, and the local triage collection on hmi01 (edr01
+    cannot reach the isolated cell, so the collection runs at the workstation's console). Stage a
+    snapshot point so the whole cycle can be rerun. Time-box each phase and brief Students to record
+    times as they go.
+common_faults:
+- module: 1
+  fault: Students triage the loudest IT symptom first and never ask what the process depends on.
+  remedy: Make the first triage question "what does the process depend on right now?" on the board
+    before the lab starts, and mark each lab line against it.
+- module: 1
+  fault: Telemetry coverage is recorded as complete because the mirror feed is active.
+  remedy: Point at the difference between network visibility (ids01) and host evidence (hmi01, plc01);
+    one mirror is not host telemetry.
+- module: 2
+  fault: Students jump to the widest isolation available because it contains everything.
+  remedy: Rank every option by product disturbed before containment strength; the lab record must
+    carry a production reason per option.
+- module: 2
+  fault: A refused containment action is recorded as "blocked, escalated" and nothing else.
+  remedy: 'Require the three fields from the module: the action refused, the risk of acting, and the
+    process reason given.'
+- module: 3
+  fault: Students switch modes without recording preconditions, then cannot say what the safe state was.
+  remedy: Hold the precondition list as a checklist on eng-ws01; the handover starts only when every
+    line is checked and recorded.
+- module: 3
+  fault: Post-drill verification stops at the mode label showing "automatic".
+  remedy: Compare values, not labels; the frozen loop in quiz 4 is the pattern to watch for.
+- module: 4
+  fault: Students order collection by convenience (image first) instead of by volatility.
+  remedy: Drill the order on the board with the reason per artefact before the lab, then have Students
+    justify their own sequence in the record.
+- module: 4
+  fault: A clean capture region is recorded as proof the workstation is clean.
+  remedy: 'Use the quiz 3 phrasing in the lab record: the capture proves only what it sampled, at that
+    moment.'
+- module: 4
+  fault: Students assume the edr01 console can reach the OT cell and look for an enrolled hmi01 agent.
+  remedy: Point at the failed connection they recorded in step 1; the isolation that protects the
+    process also bounds live response, and that limit belongs in the record with its consequence.
+- module: 5
+  fault: Students restore from the newest backup without asking what changed it.
+  remedy: Force the two fields in the lab record, source and version, before any rebuild is applied.
+- module: 5
+  fault: The asset is released as soon as the baseline is applied.
+  remedy: Keep the gate open until the checks and the signing role are named; application is not
+    release.
+- module: 6
+  fault: Phases run out of order, with evidence collected after recovery has already begun.
+  remedy: Read back the phase order with times from the lab record before the release decision; the
+    sequence is itself a pass/fail item.
+- module: 6
+  fault: Handover notes record actions ("ran a collection") with no decision, reason or actor.
+  remedy: Rewrite one line of each note in class to the three-field form, decisions, reasons and
+    actors, and time it with the drill clock.
