@@ -6,9 +6,10 @@ course_code: C207
 title: Incident Response Foundations
 version: '1.0'
 difficulty: intermediate
-duration_hours: 100
+duration_hours: 6
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
@@ -33,16 +34,41 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Apply a recognised incident response framework end to end.
-  - Define roles, authority and decision rights.
-  - Integrate incident response with wider risk management.
+  - Sequence the six phases of the incident response lifecycle against a declared case record
+  - Assign the incident commander, lead analyst and communications roles for a declared incident in a RACI matrix
+  - Distinguish decisions the incident commander may take alone from those needing authority above the role
   topics:
-  - Lifecycle frameworks and CSF alignment.
-  - Incident commander and role definition.
-  - Decision rights and delegated authority.
-  - Integration with risk and continuity.
-  lab: 'Lab: Define an incident response RACI for six roles across the full lifecycle, and identify every
-    decision that requires authority above the incident commander.'
+  - The incident response lifecycle phases and where a declared case sits in them.
+  - The incident commander role, the authority it holds and the decisions it owns.
+  - 'RACI matrices for response roles: responsible, accountable, consulted and informed.'
+  - Escalation thresholds that need authority above the incident commander.
+  - Integrating response with risk management and business continuity activation.
+  lab: >-
+    Lab: On the SOC training range, open the declared incident case in TheHive and map its tasks, roles and
+    decisions to the incident response lifecycle. Evidence: the case title, severity and task list as TheHive
+    shows them; the lifecycle phase assigned to each task; the role named for incident commander, lead analyst
+    and communications in the drill case; one decision recorded as within the incident commander's authority
+    and one recorded as needing escalation above the role. Pass: every case task assigned to a lifecycle
+    phase; each of the three roles named; both decisions marked with a one-sentence reason for the authority
+    level chosen.
+  lab_range:
+    template: soc-training
+    scenario: incident-response-drill
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH or Guacamole, open the TheHive console and note the start time.
+    - hosts: [jump01, thehive01]
+      action: From jump01, open the declared incident case the instructor designates and record the case
+        title, severity and the response tasks the case template created.
+    - hosts: [thehive01]
+      action: 'For each case task, record which lifecycle phase it belongs to: preparation, detection and
+        analysis, containment, eradication, recovery or post-incident activity.'
+    - hosts: [thehive01]
+      action: From the case tasks and their assignees, record who fills the incident commander, lead analyst
+        and communications roles for this incident.
+    - hosts: [thehive01]
+      action: Mark one decision recorded in the case that the incident commander may take alone and one that
+        needs authority above the role, each with a one-sentence reason.
   refs:
   - nist-sp-800-61r3
   - nist-cswp-29
@@ -50,41 +76,46 @@ modules:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'An incident commander''s primary function is to:'
+    - question: A ransomware incident is declared and the response plan names an incident commander. During
+        containment, which decision belongs to the incident commander rather than to an individual analyst?
       options:
-      - A) Perform forensic analysis
-      - B) Coordinate the response and hold decision authority
-      - C) Communicate with media
-      - D) Rebuild systems
+      - A) Disconnecting the one workstation they are personally examining
+      - B) Setting containment priorities across all response teams
+      - C) Scanning one suspicious file with the standard detection rule set
+      - D) Reading the evening firewall logs for one subnet
       answer: B
-    - question: 'NIST SP 800-61 Rev. 3 frames incident response as:'
+    - question: A responder writes the post-incident report two weeks after eradication finishes. In which
+        lifecycle phase does this activity belong?
       options:
-      - A) A standalone technical process
-      - B) Part of cybersecurity risk management aligned to the CSF
-      - C) A compliance exercise
-      - D) A vendor service
-      answer: B
-    - question: 'Decision rights should be defined in advance because:'
+      - A) Containment
+      - B) Recovery
+      - C) Post-incident activity
+      - D) Detection and analysis
+      answer: C
+    - question: In a RACI matrix for a declared incident, two people are listed as consulted for containment
+        decisions. What does the matrix require of them?
       options:
-      - A) It reduces documentation
-      - B) Ambiguity during an incident causes delay and inconsistent action
-      - C) It satisfies audit
-      - D) It lowers cost
-      answer: B
-    - question: 'A RACI matrix clarifies:'
+      - A) They give input when asked and carry no decision authority
+      - B) They approve every containment action before it runs on any host
+      - C) They execute the containment actions on the hosts
+      - D) They receive a copy of the closing report only
+      answer: A
+    - question: The incident commander wants to shut down the revenue-earning ordering system during peak
+        trading. Which authority makes that decision?
       options:
-      - A) Technical architecture
-      - B) Who is responsible, accountable, consulted and informed
-      - C) Severity levels
-      - D) Escalation timing
-      answer: B
-    - question: 'Incident response should integrate with business continuity because:'
+      - A) The lead analyst with the deepest tool knowledge on shift
+      - B) The security team's standing charter, which already allows it
+      - C) The responder who found the impact
+      - D) Authority above the incident commander, as the plan defines
+      answer: D
+    - question: A manufacturing firm's incident commander confirms ransomware across every production server.
+        Which wider organisational process does this finding most directly activate?
       options:
-      - A) They share tooling
-      - B) A severe incident may require continuity activation
-      - C) Both are audited
-      - D) They have the same owner
-      answer: B
+      - A) Quarterly vulnerability scanning
+      - B) The password rotation schedule
+      - C) Business continuity planning
+      - D) The asset inventory review
+      answer: C
   po:
     qsp_code: ALJQ
     po_code: PO_010
@@ -95,57 +126,88 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Collect evidence in a defensible manner.
-  - Maintain chain of custody documentation.
-  - Apply order of volatility to collection.
+  - Order the collection of artefacts from a compromised workstation by volatility
+  - Verify the integrity of collected evidence with hashes taken before and after transfer
+  - Complete a defensible chain of custody record for a collected evidence item
   topics:
-  - Order of volatility.
-  - Forensic imaging and hashing.
-  - Chain of custody records.
-  - Legal admissibility considerations.
-  lab: 'Lab: Acquire a forensic image of a test volume, record hashes before and after, complete a chain
-    of custody form, and verify the image integrity independently.'
+  - 'Order of volatility: memory, network state, disk, backups and log archives.'
+  - Forensic imaging and hashing to prove evidence has not changed.
+  - 'Chain of custody records: who handled the evidence, when and why.'
+  - Working from verified copies to keep the original admissible.
+  - Legal admissibility considerations for incident evidence.
+  lab: >-
+    Lab: On the SOC training range, collect volatile evidence from the compromised workstation v-ws02 in
+    volatility order, verify it with hashes and record a chain of custody entry. Evidence: the collection
+    artefacts Velociraptor offers for v-ws02; the order they were collected in with each collection timestamp;
+    the hash value recorded before and after the evidence moved to the analysis workstation and whether the
+    two match; the custody fields the instructor's form requires. Pass: the most volatile artefact collected
+    first; both hashes recorded and matching; every custody field completed with collector, time and purpose.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH or Guacamole, open the Velociraptor console and note the start time.
+    - hosts: [velociraptor01, v-ws02]
+      action: From velociraptor01, list the collection artefacts available for v-ws02 and record each one that
+        exposes memory, running processes or network connections.
+    - hosts: [velociraptor01, v-ws02]
+      action: Collect the artefacts for v-ws02 in volatility order, most volatile first, and record the order
+        with each collection timestamp.
+    - hosts: [velociraptor01, dfir-ws01]
+      action: Move the collected output to dfir-ws01 and record the hash of the evidence file before and after
+        the move.
+    - hosts: [dfir-ws01]
+      action: Compare the two hash values, record whether they match, and complete the chain of custody entry
+        with collector, time and purpose.
+    - hosts: [jump01]
+      action: Rank memory, network connections, the disk image and the log archive by volatility and record one
+        sentence defending the first item to collect.
   refs:
   - nist-sp-800-86
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Order of volatility dictates collecting first:'
+    - question: A responder arrives at a live, compromised workstation that is still on the network. Following
+        the order of volatility, which source is collected first?
       options:
-      - A) Disk images
-      - B) The most volatile data such as memory and network state
-      - C) Backups
-      - D) Log archives
-      answer: B
-    - question: 'Hashing an image before and after transfer demonstrates:'
+      - A) Running process memory
+      - B) The operating system's event log archive
+      - C) Last night's backup tape
+      - D) The full disk image
+      answer: A
+    - question: 'An image is hashed on the collection host and the hash is computed again on the analysis
+        workstation. Matching values demonstrate:'
       options:
-      - A) Confidentiality
-      - B) That the image was not altered
-      - C) Authorship
-      - D) Completeness of collection
-      answer: B
-    - question: 'Chain of custody records:'
+      - A) That the image is encrypted correctly
+      - B) Who collected the image
+      - C) That the image did not change in transit
+      - D) That every file inside was analysed
+      answer: C
+    - question: A crown counsel asks who touched the memory image, when and for what purpose. Which record
+        answers that question?
       options:
-      - A) The analysis findings
-      - B) Who handled the evidence, when and for what purpose
-      - C) The system owner
-      - D) The incident severity
-      answer: B
-    - question: 'Working on the original evidence rather than a verified copy risks:'
+      - A) The detection rule that fired
+      - B) The forensic timeline
+      - C) The incident severity rating
+      - D) The chain of custody entry
+      answer: D
+    - question: An analyst runs the examination directly on the only copy of the seized disk. What is the most
+        serious consequence?
       options:
-      - A) Slower analysis
-      - B) Altering the evidence and undermining its admissibility
-      - C) Hash mismatch only
-      - D) Nothing if careful
+      - A) The examination takes longer to finish
+      - B) The original evidence may be altered, weakening its admissibility
+      - C) The hash values stop matching automatically
+      - D) The analyst needs more storage space
       answer: B
-    - question: 'Capturing memory before powering off is important because memory contains:'
+    - question: A responder must capture data that will vanish when the power is cut. Which choice follows the
+        order of volatility on a running server?
       options:
-      - A) Persistent artefacts
-      - B) Volatile data such as running processes, keys and network connections
-      - C) The filesystem
-      - D) Boot configuration
-      answer: B
+      - A) Network connections and live process state before the disk image
+      - B) The disk image before network connections and live process state
+      - C) The log archive before anything running in memory
+      - D) The mounted backup share before the routing table
+      answer: A
 - ordinal: 3
   title: Host-Based Investigation
   content_type: reading
@@ -153,16 +215,43 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Investigate a compromised host systematically.
-  - Identify persistence mechanisms.
-  - Build a host timeline from multiple artefact sources.
+  - Enumerate the persistence mechanisms visible on a compromised workstation's autostart locations
+  - Build a host timeline from filesystem, registry and memory artefact sources
+  - Determine the earliest confirmed evidence of compromise from the timeline
   topics:
-  - Process, service and autostart analysis.
-  - Persistence techniques and locations.
-  - Filesystem and registry artefacts.
-  - Timeline construction.
-  lab: 'Lab: Investigate a compromised host image, identify the persistence mechanism, build a timeline
-    of attacker activity, and state the earliest confirmed evidence of compromise.'
+  - Process, service and autostart analysis on a suspect host.
+  - 'Persistence mechanisms and where they hide: scheduled tasks, services, run keys.'
+  - Filesystem, registry and memory artefacts and the timestamps they carry.
+  - Corroborating timestamps across independent artefact sources.
+  - Timeline construction and bounding the window of compromise.
+  lab: >-
+    Lab: On the SOC training range, investigate the compromised workstation v-ws03 with Velociraptor and the
+    analysis workstation and establish what persistence was installed and when the compromise began. Evidence:
+    the scheduled tasks, services and autostart entries on v-ws03 that show an unexpected account, path or
+    publisher; the earliest suspicious timestamp each artefact source shows; the artefact judged to be the
+    persistence mechanism. Pass: every unexpected autostart entry listed with its path and account; the earliest
+    confirmed compromise time stated with the artefact that proves it; the persistence mechanism named with a
+    one-sentence reason.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH or Guacamole, open the Velociraptor console and note the start time.
+    - hosts: [velociraptor01, v-ws03]
+      action: From velociraptor01, collect the scheduled tasks, services and autostart entries from v-ws03 and
+        record every entry with an unexpected account, path or publisher.
+    - hosts: [dfir-ws01]
+      action: Open the collected v-ws03 artefacts on dfir-ws01 and record the creation time of each unexpected
+        entry.
+    - hosts: [dfir-ws01]
+      action: Build a timeline from the filesystem, registry and memory artefacts with the timeline tools on
+        dfir-ws01 and record the earliest suspicious event each source shows.
+    - hosts: [dfir-ws01]
+      action: Compare the three sources for the same event and record where the timestamps agree and where they
+        differ.
+    - hosts: [jump01]
+      action: Name the artefact judged to be the persistence mechanism, state the earliest confirmed evidence
+        of compromise and record a one-sentence reason for each.
   refs:
   - nist-sp-800-86
   - mitre-attack
@@ -171,40 +260,45 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Establishing the earliest evidence of compromise is important because it:'
+    - question: A compromised laptop shows a scheduled task created by an account that has never signed in
+        interactively. What does the task most likely represent?
       options:
-      - A) Assigns blame
-      - B) Bounds the period requiring investigation and scoping
-      - C) Sets severity
-      - D) Determines the tool
+      - A) A vendor update
+      - B) A backup job
+      - C) A routine patch campaign
+      - D) A persistence mechanism
+      answer: D
+    - question: Filesystem timestamps on a compromised host look consistent, but the memory artefacts disagree
+        with them. What should the investigator do?
+      options:
+      - A) Trust the filesystem timestamps as authoritative
+      - B) Corroborate the event across independent artefact sources before recording it
+      - C) Discard the memory artefacts as corrupt
+      - D) Report the earliest timestamp without comment
       answer: B
-    - question: 'A scheduled task created by an unexpected account most likely indicates:'
+    - question: During a host investigation, the team needs to bound how far back to look for attacker activity.
+        Which finding bounds that period?
       options:
-      - A) Normal maintenance
-      - B) A persistence mechanism
-      - C) A backup job
-      - D) A patch
-      answer: B
-    - question: 'Timeline analysis combines artefacts to:'
+      - A) The severity rating assigned at declaration
+      - B) The size of the disk image
+      - C) The earliest confirmed evidence of compromise
+      - D) The number of detection rules that fired
+      answer: C
+    - question: An investigator suspects fileless code that never touched the disk. Which artefact source is
+        most likely to reveal it?
       options:
-      - A) Reduce data volume
-      - B) Establish the sequence and relationships of attacker actions
-      - C) Prove attribution
-      - D) Replace imaging
-      answer: B
-    - question: 'Timestamp manipulation by an attacker means analysts should:'
+      - A) A memory capture
+      - B) The registry run keys
+      - C) The scheduled task folder
+      - D) The browser history
+      answer: A
+    - question: A timeline shows the attacker's tool appearing minutes before a data transfer begins. What does
+        timeline construction add over reading the artefacts separately?
       options:
-      - A) Trust filesystem times fully
-      - B) Corroborate across independent artefact sources
-      - C) Ignore timestamps
-      - D) Use only registry data
-      answer: B
-    - question: 'Memory analysis is particularly valuable for detecting:'
-      options:
-      - A) Deleted files
-      - B) Injected code and fileless techniques
-      - C) Firmware changes
-      - D) Network topology
+      - A) It reduces the storage the case needs
+      - B) It establishes the sequence and relationship of attacker actions
+      - C) It proves who the attacker was
+      - D) It removes the need for imaging
       answer: B
 - ordinal: 4
   title: Network Investigation
@@ -213,16 +307,41 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Reconstruct attacker activity from network telemetry.
-  - Identify command-and-control and exfiltration.
-  - Correlate network and host evidence.
+  - Identify command-and-control beaconing in network telemetry from a compromised host
+  - Distinguish exfiltration from backup traffic in flow and DNS records
+  - Correlate a network connection to the host process that created it
   topics:
-  - Flow and packet analysis in response.
-  - Command-and-control patterns.
-  - Exfiltration detection.
-  - Host and network correlation.
-  lab: 'Lab: Given network telemetry from a compromise, identify the command-and-control channel and any
-    exfiltration, and correlate both to the responsible host process.'
+  - Flow records and full packet capture in incident response.
+  - 'Command-and-control patterns: periodic beaconing, jitter and callback channels.'
+  - Exfiltration signatures in DNS queries and outbound volume.
+  - Encrypted channels and the metadata that still distinguishes them.
+  - Correlating network events with host telemetry to find the process.
+  lab: >-
+    Lab: On the SOC training range, examine the outbound traffic from the executive workstation v-ws04 in the
+    network monitoring tools and decide whether it shows command-and-control, exfiltration or both. Evidence:
+    the external destinations v-ws04 contacts and the interval between connections; the DNS query pattern
+    recorded for those destinations; whether the captured session payloads are readable; the verdict recorded
+    for each destination. Pass: every external destination listed with its contact interval; the DNS pattern
+    recorded with the query length and volume; each destination marked command-and-control, exfiltration or
+    benign with a one-sentence reason.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH or Guacamole and open the network monitoring console at the address
+        the instructor provides.
+    - hosts: [seconion01, v-ws04]
+      action: From the console, query the connection logs for outbound traffic from v-ws04 and record each
+        external destination with the number of connections and the interval between them.
+    - hosts: [seconion01, v-ws04]
+      action: Open the DNS logs for v-ws04 and record the query volume and the longest subdomain length
+        for each destination.
+    - hosts: [pcap01]
+      action: Open the matching session in the packet capture tool on pcap01 and record whether the payload
+        content is readable.
+    - hosts: [jump01]
+      action: Mark each destination command-and-control, exfiltration or benign with a one-sentence reason, and
+        record which verdict the interval evidence supports most.
   refs:
   - nist-sp-800-94
   - mitre-attack
@@ -230,41 +349,46 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Data exfiltration over DNS is often detected by:'
+    - question: Flow records from a branch office show an internal host contacting one external domain every 60
+        seconds, including outside working hours. What does this pattern suggest?
       options:
-      - A) Low query volume
-      - B) Unusually long, high-entropy subdomains and high query volume to one domain
-      - C) Use of TCP 53
-      - D) NXDOMAIN responses
-      answer: B
-    - question: 'Correlating a network connection to a host process requires:'
+      - A) A scheduled backup window on the file server
+      - B) Normal web browsing
+      - C) Command-and-control beaconing
+      - D) A printing queue backlog
+      answer: C
+    - question: A server's DNS logs show hundreds of unusually long random-looking subdomains sent to one
+        domain. What is the most likely explanation?
       options:
-      - A) The firewall log alone
-      - B) Host telemetry linking the socket to a process and user
-      - C) DNS logs
-      - D) The MAC address
-      answer: B
-    - question: 'Command-and-control over HTTPS is difficult to detect by payload because:'
+      - A) Data exfiltration tunnelling through DNS queries
+      - B) A misconfigured mail relay
+      - C) Clients caching lookups
+      - D) An outbound-only firewall rule
+      answer: A
+    - question: Command-and-control traffic inside an encrypted session escapes payload inspection. Which
+        evidence still distinguishes it from ordinary web traffic?
       options:
-      - A) It uses UDP
-      - B) The content is encrypted, leaving mainly metadata and behaviour
-      - C) It is low volume
-      - D) It uses port 80
+      - A) The encryption algorithm the session negotiated
+      - B) The connection interval and the destination's reputation
+      - C) The absence of any user agent
+      - D) The size of the server's disk
       answer: B
-    - question: 'Flow data is valuable in investigation because it:'
+    - question: An investigator must link an outbound connection to the exact process on the workstation that
+        made it. Which evidence provides that link?
       options:
-      - A) Contains full payloads
-      - B) Is typically retained far longer than full packet capture
-      - C) Decrypts TLS
-      - D) Identifies users
-      answer: B
-    - question: 'Beaconing is characterised by:'
+      - A) The firewall's rule history for the whole month
+      - B) The flow record alone with its byte counts
+      - C) The external domain's registration details
+      - D) Host telemetry tying the socket to a running process
+      answer: D
+    - question: Full packet capture grows faster than any archive can hold, so most organisations keep flow
+        records far longer. What do investigators gain from the retained flow data?
       options:
-      - A) Random large transfers
-      - B) Regular, periodic outbound connections often with jitter
-      - C) Inbound scanning
-      - D) Broadcast traffic
-      answer: B
+      - A) A long lookback of who connected where, without payloads
+      - B) A complete replay of every session byte, years after the fact
+      - C) Decryption of the sessions it summarises without keys
+      - D) The account names behind each connection, from the records
+      answer: A
 - ordinal: 5
   title: Malware Triage in Response
   content_type: reading
@@ -272,16 +396,44 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Safely handle suspected malicious files.
-  - Perform initial triage to characterise a sample.
-  - Extract indicators to support scoping.
+  - Apply safe handling steps to a suspected malicious file before any analysis
+  - Characterise a suspected sample with static triage and hashing
+  - Extract host and network indicators and use them to scope the incident
   topics:
-  - Safe handling and isolation.
-  - Static triage and hashing.
-  - Dynamic triage in a sandbox.
-  - Indicator extraction and pivoting.
-  lab: 'Lab: Triage a suspected sample in an isolated environment, extract host and network indicators,
-    and use them to search for other affected systems.'
+  - 'Safe handling: isolation and no execution on production systems.'
+  - 'Static triage: file type, hashes and embedded strings.'
+  - Dynamic triage of behaviour in an isolated sandbox.
+  - 'Indicator extraction: hashes, file names, domains and destinations.'
+  - Hash fragility and behavioural indicators for scoping searches.
+  lab: >-
+    Lab: On the SOC training range, triage the suspected malicious file quarantined on the compromised
+    workstation, extract indicators and use them to find other affected systems. Evidence: the hash and file
+    type the static triage records for the sample; the files the provided rule set matches across the victim
+    workstations; the host and network indicators recorded for the incident; the hosts the indicator search
+    returns. Pass: the sample handled only on the isolated analysis workstation; the hash and file type
+    recorded; the indicator search results recorded for every workstation checked; each indicator marked
+    durable or fragile with a one-sentence reason.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH or Guacamole and open a session on the isolated analysis workstation
+        dfir-ws01.
+    - hosts: [dfir-ws01]
+      action: On dfir-ws01, record the hash and file type of the quarantined sample the instructor names,
+        without executing it.
+    - hosts: [dfir-ws01]
+      action: Run the provided rule set over the sample directory on dfir-ws01 and record every file that
+        matches.
+    - hosts: [velociraptor01]
+      action: From velociraptor01, search the victim workstations for files matching that hash or rule and
+        record which hosts hold a match.
+    - hosts: [misp01]
+      action: Record the sample's host and network indicators as event attributes on misp01, using the incident
+        tag the instructor provides.
+    - hosts: [jump01]
+      action: Mark each recorded indicator durable or fragile with a one-sentence reason, and state which
+        searches would come next to scope the incident.
   refs:
   - nist-sp-800-83r1
   - yara
@@ -290,40 +442,45 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'Suspected malware should be analysed:'
+    - question: A suspected malicious attachment arrives on the mail gateway and must be examined today. Where
+        should the analysis run?
       options:
-      - A) On the responder's workstation
+      - A) On the affected user's own workstation, for speed and convenience
       - B) In an isolated environment with no production connectivity
-      - C) On the affected host
-      - D) In the SIEM
+      - C) On the responder's own laptop
+      - D) Inside the production monitoring platform
       answer: B
-    - question: 'Extracting indicators from a sample primarily supports:'
+    - question: A hash search for the sample returns nothing on other systems, yet the behaviour is known. Which
+        indicator type should the team search next?
       options:
-      - A) Attribution
-      - B) Scoping, by finding other affected systems
-      - C) Eradication only
-      - D) Reporting
-      answer: B
-    - question: 'A file hash is a fragile indicator because:'
+      - A) The sample's file size
+      - B) The sample's original file name
+      - C) The sample's creation timestamp copied from the file header at build time
+      - D) Behavioural indicators such as destinations and registry changes
+      answer: D
+    - question: A recompiled build of the same malware defeats a hash search. Why is a file hash called a
+        fragile indicator?
       options:
-      - A) It is long
-      - B) Trivial changes to the file produce a completely different hash
-      - C) It cannot be searched
-      - D) It is not unique
-      answer: B
-    - question: 'YARA rules are used to:'
+      - A) One changed byte produces a completely different hash
+      - B) It is too long to share safely
+      - C) It cannot be stored in a threat intel platform
+      - D) It matches too many unrelated files
+      answer: A
+    - question: The team needs to find every file that carries the family's identifying text and structure, not
+        one exact build. Which approach fits?
       options:
-      - A) Capture network traffic
-      - B) Identify files matching described patterns and characteristics
-      - C) Image disks
-      - D) Parse logs
-      answer: B
-    - question: 'Behavioural indicators are generally more durable than hashes because they:'
+      - A) Searching the exact hash across every known share
+      - B) Comparing file sizes only
+      - C) A pattern rule describing the family's characteristics
+      - D) Waiting for a vendor signature
+      answer: C
+    - question: Indicators collected from one sample are being written into the threat intel platform so other
+        teams can search them. Which indicator will still match a rebuilt variant next month?
       options:
-      - A) Are easier to write
-      - B) Describe what the malware does rather than a specific build
-      - C) Are vendor supplied
-      - D) Match more files
+      - A) The exact hash of the file as first seen
+      - B) The command-and-control destination the sample contacts
+      - C) The compilation timestamp recorded in the header
+      - D) The original file name recorded at delivery
       answer: B
 - ordinal: 6
   title: Exercising and Improving the Capability
@@ -332,54 +489,84 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Design and run a tabletop exercise.
-  - Measure response capability objectively.
-  - Drive improvement from exercise findings.
+  - Design exercise injects that force decisions at each response phase
+  - Evaluate a response exercise against observable behaviours rather than impressions
+  - Convert exercise findings into an owned improvement plan
   topics:
-  - Tabletop and functional exercise design.
-  - Injects and realistic scenarios.
-  - Observation, evaluation and metrics.
-  - Improvement planning.
-  lab: 'Lab: Design a tabletop exercise with five injects for a ransomware scenario, define the observable
-    behaviours you would evaluate, and produce an improvement plan template.'
+  - Tabletop and functional exercises and what each tests.
+  - Injects that introduce new information and force decisions.
+  - Observable behaviours, evaluators and objective measures of response.
+  - Improvement planning with owners, actions and due measures.
+  - Re-testing to confirm the capability actually improved.
+  lab: >-
+    Lab: On the SOC training range, review the completed drill case in TheHive and turn its weaknesses into a
+    tabletop exercise and improvement plan. Evidence: two decisions in the case timeline that were delayed,
+    missing or made without authority; one inject for each of five response phases, written to test a named
+    decision; the observable behaviour each inject evaluates; an improvement plan entry for each weakness.
+    Pass: each inject states the phase, the decision it forces and the role that must decide; every weakness in
+    the plan has an owner and a measurable completion test; the plan names the retest that would confirm the
+    fix.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH or Guacamole and open the completed drill case the instructor names in
+        TheHive.
+    - hosts: [thehive01]
+      action: Read the case timeline and record two decisions that were delayed, missing or taken without the
+        authority the plan requires.
+    - hosts: [thehive01]
+      action: Write one inject for each of five response phases, each phrased as new information the exercise
+        participants receive.
+    - hosts: [thehive01]
+      action: 'Record the observable behaviour each inject evaluates: which role must decide and within what
+        time.'
+    - hosts: [thehive01]
+      action: Draft an improvement plan entry for each recorded weakness with an owner, an action and a
+        measurable completion test.
   refs:
   - nist-sp-800-61r3
   quiz:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'A tabletop exercise primarily tests:'
+    - question: A security manager wants to learn whether the response team can make containment decisions under
+        pressure, without touching any live system. Which exercise type fits?
       options:
-      - A) Technical tooling
-      - B) Decision-making, coordination and process understanding
-      - C) Network throughput
-      - D) Backup integrity
-      answer: B
-    - question: 'Exercise injects are used to:'
+      - A) A full functional exercise on production
+      - B) A red team engagement
+      - C) A tabletop exercise
+      - D) A vulnerability scan
+      answer: C
+    - question: Mid-exercise, the facilitator announces that the backup repository is also encrypted. Why does a
+        well designed exercise include this kind of announcement?
       options:
-      - A) Fill time
-      - B) Introduce new information that forces decisions and reveals gaps
-      - C) Test hardware
-      - D) Score participants
+      - A) To close the exercise and move to the debrief
+      - B) To force decisions with information nobody prepared for
+      - C) To score each participant against their peers
+      - D) To confirm the backup policy works
       answer: B
-    - question: 'An exercise that every participant passes easily is likely:'
+    - question: Every team finishes the annual exercise with no gaps recorded and no inject changed their plan.
+        What does this outcome most likely show?
       options:
-      - A) Well designed
-      - B) Insufficiently challenging to reveal real weaknesses
-      - C) Too long
-      - D) Correctly scoped
-      answer: B
-    - question: 'The most valuable exercise output is:'
+      - A) The response capability is mature
+      - B) The exercise achieved its purpose for every team involved
+      - C) The evaluators were thorough
+      - D) The exercise was too easy to expose weaknesses
+      answer: D
+    - question: After a functional exercise, the review lists ten observations. Which output makes the exercise
+        worth the time it cost?
       options:
-      - A) A pass rate
-      - B) A prioritised, owned improvement plan
-      - C) Attendance records
-      - D) A scenario document
-      answer: B
-    - question: 'Functional exercises differ from tabletops because they:'
+      - A) An improvement plan with named owners and completion tests
+      - B) A recording of the exercise session
+      - C) A higher attendance figure than last year
+      - D) A longer scenario document for next time
+      answer: A
+    - question: A tabletop is run in January and four gaps are found. How does the organisation confirm the
+        fixes actually worked?
       options:
-      - A) Involve fewer people
-      - B) Actually execute technical response actions in a controlled environment
-      - C) Take less time
-      - D) Require no planning
-      answer: B
+      - A) By filing the exercise report with management
+      - B) By assuming the owners completed their actions
+      - C) By re-running the exercise against the same gaps
+      - D) By increasing the number of injects next year
+      answer: C
