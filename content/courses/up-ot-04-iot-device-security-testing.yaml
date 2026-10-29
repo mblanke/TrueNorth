@@ -1,0 +1,560 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C552
+title: IoT Device Security Testing
+version: '1.0'
+difficulty: advanced
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C549
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Vulnerability Assessment Analyst; Cyber Defense Forensics Analyst (IN-FOR-002).'
+  - 'NIST CSF 2.0: ID.RA (risk assessment); PR.DS (data security).'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Firmware Acquisition
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the acquisition paths for a device's firmware and select one for a stated testing engagement
+  - Trace a firmware image from the vendor update channel to the saved file, recording each published hash
+  - Distinguish a compressed or encrypted image region from structured firmware using an entropy view
+  topics:
+  - Where firmware lives, from flash layout through bootloader, kernel and root filesystem.
+  - Acquisition paths, from vendor update packages and recovery images to direct flash reading.
+  - Reading an image header to identify its format, architecture and packing.
+  - Checksums and published signatures as evidence that an acquisition is intact.
+  - Entropy analysis and what uniform high entropy suggests about an image region.
+  lab: >-
+    Lab: Acquire the office router's firmware package from the vendor's update page on the greyspace
+    internet and establish that the saved copy is intact. Evidence: the package name, size and published
+    checksum exactly as the page shows them; the saved file's SHA-256 hash and whether it matches; the
+    format and architecture the firmware analysis toolkit reports. Pass: the published checksum and the
+    saved file's hash both recorded with the match result stated; the reported format and architecture
+    recorded; the acquisition marked "verified channel" or "unverified channel" with a one-sentence reason.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Open the vendor update page for the office router that the instructor names on the greyspace
+        internet, and record the package name, its size and the published checksum.
+    - hosts: [ws01]
+      action: Download the firmware package from the vendor update page and record the saved file name and
+        the time of download.
+    - hosts: [ws01, ws02]
+      action: Copy the saved package to ws02, record the copy's SHA-256 hash, compare it with the published
+        checksum and record whether the two match.
+    - hosts: [ws02]
+      action: Open the package with the firmware analysis toolkit the instructor installed on ws02 and record
+        the image format and processor architecture the toolkit reports.
+    - hosts: [ws02]
+      action: Judge the acquisition and mark it "verified channel" or "unverified channel" with a one-sentence
+        reason, and record one question to put to the device owner about the update channel.
+  refs:
+  - binwalk
+  - nist-sp-800-193
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A door controller's vendor publishes signed update packages for its firmware, and a hobbyist
+        forum hosts a copy of an older package. Which acquisition path should the Student use first?
+      options:
+      - A) The forum copy, because older packages are less likely to be changed
+      - B) The vendor update package, because the channel publishes a signature to verify
+      - C) Direct reading of the flash chip, because the forum copy may be modified
+      - D) Rebuilding the firmware from source code, because that avoids untrusted channels
+      answer: B
+    - question: A vendor's update page publishes only an old MD5 checksum beside a firmware download. What does
+        matching that checksum establish about the downloaded copy?
+      options:
+      - A) That the vendor itself produced and authorised the file
+      - B) That the file contains no vulnerability the vendor left behind
+      - C) That the downloaded copy is byte-for-byte the file the page described, and nothing more
+      - D) That the firmware's update mechanism is safe from tampering in transit
+      answer: C
+    - question: An entropy view of a firmware image shows one uniformly high-entropy region near the end of the
+        image, with structured regions elsewhere. What does that region most likely hold?
+      options:
+      - A) Compressed or encrypted data, such as a packed kernel or archive
+      - B) The bootloader, because bootloaders are always encrypted
+      - C) Empty flash space, because unused storage reads as high entropy
+      - D) A configuration file, because settings are hidden from listing tools
+      answer: A
+    - question: A Student unpacks a device image and wants the partition holding the running operating system's
+        files. Which partition is that?
+      options:
+      - A) The bootloader partition
+      - B) The recovery image partition
+      - C) The factory settings partition
+      - D) The root filesystem partition
+      answer: D
+    - question: A reviewer asks months later how an acquired firmware package was obtained. Which record answers
+        the question best?
+      options:
+      - A) The date of the engagement and the name of the device owner
+      - B) The saved package file with its hash and the page that published it
+      - C) The toolkit's version and the settings used to inspect the image
+      - D) The room and workstation where the download was performed
+      answer: B
+- ordinal: 2
+  title: Firmware Unpacking and Analysis
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Unpack a firmware image into its filesystem and enumerate the components the vendor ships
+  - Locate version strings, startup scripts and enabled services inside an unpacked filesystem
+  - Report each finding from unpacked firmware in language a device owner can act on
+  topics:
+  - Firmware packing with squashfs, jffs2, cpio archives and compressed kernels.
+  - Running binwalk and reading its signature table.
+  - Walking an unpacked root filesystem, from init scripts and rc directories to daemon configs.
+  - Version strings, kernel banners and what they date.
+  - From finding to report with severity, evidence path and remediation phrasing.
+  lab: >-
+    Lab: Unpack the acquired router image on ws02 and read what the vendor ships inside it. Evidence: each
+    signature binwalk reports with its offset; the root directories of the extracted filesystem; each version
+    string with the path of the file it came from; the services the firmware starts at boot with the file that
+    starts each. Pass: signatures listed with their offsets; version strings recorded with their file paths;
+    boot services recorded with the file that starts each; every finding carries one actionable sentence a
+    device owner could follow.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws02]
+      action: Confirm the firmware package acquired in the previous lab is present on ws02 and record its file
+        name and hash.
+    - hosts: [ws02]
+      action: Run binwalk against the package on ws02 and record every signature it reports with its offset.
+    - hosts: [ws02]
+      action: Extract the filesystem image binwalk identified and record the directories at the root of the
+        unpacked filesystem.
+    - hosts: [ws02]
+      action: Search the unpacked filesystem for version strings and startup service definitions, and record
+        each version string with the path of its file.
+    - hosts: [ws02]
+      action: List the services the firmware starts at boot and record each one with the configuration file
+        that starts it.
+    - hosts: [ws02]
+      action: Judge the findings and write one actionable sentence per finding, ranking them by how directly each
+        weakens the device.
+  refs:
+  - binwalk
+  - nist-sp-800-193
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: Binwalk reports a squashfs signature at one offset inside a router firmware image. What is the
+        right next step?
+      options:
+      - A) Re-run binwalk with different settings until it reports more signatures
+      - B) Patch the image so the signature table reports every known format
+      - C) Extract the reported offset and examine the filesystem it contains
+      - D) Treat the image as packed and abandon extraction in favour of emulation
+      answer: C
+    - question: An unpacked root filesystem contains an init script that starts a management daemon no vendor
+        document mentions. What should the Student record?
+      options:
+      - A) The daemon as a vulnerability, because undocumented software is always malicious
+      - B) The finding as unverifiable, since the vendor never published the daemon
+      - C) The init script alone, because the rest of the daemon cannot be examined
+      - D) The daemon, its config file and its network binding as a finding
+      answer: D
+    - question: A kernel banner inside an unpacked image shows a version released eight years before the device
+        went on sale. What does that finding indicate?
+      options:
+      - A) The image was assembled by an attacker from old components
+      - B) The vendor shipped a kernel without current security fixes
+      - C) The acquisition is corrupt and must be repeated from another source
+      - D) The device updates its kernel silently, so the banner is stale
+      answer: B
+    - question: A draft report line reads "old software found in firmware." Which rewrite makes the finding
+        actionable for a device owner?
+      options:
+      - A) The management web server is version 2.1, fixed in version 2.4; update the firmware
+      - B) The firmware contains software that has not been maintained recently
+      - C) Several components in the image are older than best practice would allow
+      - D) Outdated packages were present and should be addressed where possible
+      answer: A
+    - question: A read-only, compressed filesystem format is common for the root filesystem on small embedded
+        Linux devices. Which format is that?
+      options:
+      - A) NTFS
+      - B) ext4
+      - C) squashfs
+      - D) FAT32
+      answer: C
+- ordinal: 3
+  title: Hardware Entry Points
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish UART console, JTAG debug and SPI flash access by what each exposes on a circuit board
+  - Identify the pin headers and test points a device photograph or board layout reveals
+  - Classify each physical entry point by the access it grants and the effort it needs
+  topics:
+  - UART serial consoles, from pin identification and baud rate probing to what a console exposes.
+  - JTAG debug ports, their chain, boundary scan and vendor lock features.
+  - SPI NOR flash, read both in circuit and off the board.
+  - Board reconnaissance from photographs, silkscreen labels and pin counts.
+  - Protective controls such as console lockdown, debug fuse settings and signed boot.
+  lab: >-
+    Lab: Work out from the vendor's hardware documentation which physical entry points the office
+    router's board exposes and what access each would grant. Evidence: each entry point the
+    documentation names, with the page that names it; the pin count and silkscreen label the
+    documentation gives each documented header, port or chip; the access each entry point grants and
+    any protective control the documentation states for it. Pass: every documented entry point recorded
+    and each marked "usable as shipped" or "usable only with the device opened" with a one-sentence
+    reason; each entry point classified by the access it grants (console, debug or flash read); any
+    documented protective control recorded against the entry point it protects.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Search the greyspace internet for the office router's hardware documentation and record each
+        page that covers the board's headers, ports or flash chip.
+    - hosts: [ws01]
+      action: Read the board and hardware manual pages on ws01 and record each physical entry point the
+        documentation names, with the page that names each one.
+    - hosts: [ws01]
+      action: Record, for each documented entry point, the pin count and silkscreen label the documentation
+        gives and what the entry point exposes on the board.
+    - hosts: [ws01]
+      action: Record the access each entry point grants and any protective control the documentation states
+        for it, such as console lockdown, a debug fuse setting or signed boot.
+    - hosts: [ws01]
+      action: Judge each documented entry point and mark it "usable as shipped" or "usable only with the
+        device opened" with a one-sentence reason, and classify it by the access it grants.
+  source_gaps:
+  - No range template provides a physical embedded board, so the lab practices board reconnaissance
+    from vendor documentation instead of on hardware.
+  refs:
+  - nist-sp-800-115
+  - nist-sp-800-193
+  - owasp-iot
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A Student attaches a serial adapter to a four-pin header, watches a boot log scroll past and
+        reaches a prompt early in boot. Which entry point has the Student reached?
+      options:
+      - A) The SPI flash chip
+      - B) The JTAG debug port
+      - C) A cloud management agent
+      - D) The UART console
+      answer: D
+    - question: What does a JTAG debug port give a tester that a serial console on the same board does not?
+      options:
+      - A) Control of the processor's execution, including halting and stepping it
+      - B) A faster path to the bootloader's update menu
+      - C) The ability to read the flash chip without opening the case
+      - D) Access to the device's configuration over the network
+      answer: A
+    - question: A tester reads an SPI NOR flash chip while it remains soldered to the board. What is this
+        technique called?
+      options:
+      - A) Off-chip dumping
+      - B) In-circuit reading
+      - C) Boundary scanning
+      - D) Firmware emulation
+      answer: B
+    - question: A board photograph shows an unlabelled four-pin header near the processor. What is the safest
+        first step?
+      options:
+      - A) Connect a serial adapter and try common baud rates one after another
+      - B) Apply power through the header to see which pin pair responds
+      - C) Check the board documentation and confirm pin purpose before connecting
+      - D) Short the header pins together to force the bootloader into recovery
+      answer: C
+    - question: A device's UART console is enabled and requires a password, but only once the operating system
+        has finished booting. What can an attacker reach before that check?
+      options:
+      - A) Nothing, because the password applies from the first line of boot
+      - B) Only the flash chip contents, and only with the chip desoldered
+      - C) The network configuration, by sending break signals repeatedly
+      - D) Early boot messages and, on many devices, a bootloader prompt before the password check
+      answer: D
+- ordinal: 4
+  title: Network Exposure of Embedded Devices
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Enumerate the services an embedded device exposes on each of its network interfaces
+  - Rank the entry points by reachability, authentication strength and impact if reached
+  - Propose one containment change for the highest-ranked entry point and state its cost
+  topics:
+  - Network-facing entry points among management interfaces, debug services and cloud agents.
+  - Interface binding and which services answer on the LAN, the WAN and the management network.
+  - Default and shared management accounts as an entry point.
+  - Ranking entry points by reachability, authentication and impact.
+  - Containment choices among interface ACLs, management networks and service disablement.
+  lab: >-
+    Lab: Enumerate the entry points edge01 presents on its network interfaces and rank them by exposure.
+    Evidence: each open service with its port; the interface each service binds; the source networks the
+    firewall rules allow to each management service; the result of one sign-in attempt with the operator
+    account the instructor assigned. Pass: every open service recorded with its port; each entry point
+    ranked high, medium or low exposure with a reason; one containment change proposed for the
+    highest-ranked entry point with its cost to the operator stated.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: From ws01, enumerate the open ports on edge01 and record each service with its port number.
+    - hosts: [ws01, edge01]
+      action: Read the listening configuration on edge01 and record which interface each service binds to,
+        so the reachability of every service from the greyspace network is clear.
+    - hosts: [ws01]
+      action: Try one management service on edge01 with the standard operator account the instructor assigned
+        and record whether it accepts or refuses the sign-in.
+    - hosts: [ws01]
+      action: Read the firewall rules on edge01 and record which source networks each management service
+        allows.
+    - hosts: [ws01]
+      action: Judge the entry points and rank each high, medium or low exposure with a reason, then propose one
+        containment change for the highest-ranked entry point and record its cost to the operator.
+  refs:
+  - nist-sp-800-115
+  - nist-sp-800-213
+  - owasp-iot
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A device's management web interface answers on every network interface it has. Which single
+        change most reduces its exposure?
+      options:
+      - A) Bind the management interface to the internal network only
+      - B) Move the management port from its default to a higher number
+      - C) Add a second management account with a stronger password
+      - D) Enable HTTPS on the management interface alongside HTTP
+      answer: A
+    - question: Why is one shared management account an entry point even when its password is long?
+      options:
+      - A) Because shared accounts cannot appear in audit logs correctly
+      - B) Because the password is public knowledge or recoverable from the firmware
+      - C) Because shared accounts are always locked to a single interface
+      - D) Because a long password forces the device to weaken its rate limiting
+      answer: B
+    - question: Four entry points are ranked by reachability, authentication strength and impact. Which of
+        these is the most exposed?
+      options:
+      - A) A diagnostic port reachable only from a soldered header
+      - B) A management interface limited to the management network with strong credentials
+      - C) A local configuration file readable only with the case opened
+      - D) The password-only management service reachable from the internet
+      answer: D
+    - question: A device runs an always-on cloud agent that only makes outbound connections. Why does it still
+        count as a network entry point?
+      options:
+      - A) Because outbound connections consume bandwidth the device needs
+      - B) Because the agent's updates bypass the device's own update channel
+      - C) Because whoever controls the agent's channel can reach the device through it
+      - D) Because outbound-only designs prevent the device from being monitored
+      answer: C
+    - question: A clinic needs its patient-check devices managed remotely but must not expose management to
+        the ward network. Which containment fits without breaking normal duties?
+      options:
+      - A) Restrict the management service to a dedicated management network
+      - B) Disable management entirely and configure devices by hand on each ward
+      - C) Replace the management service with periodic full firmware reinstallations
+      - D) Publish the management interface to the internet behind a port forwarding rule
+      answer: A
+- ordinal: 5
+  title: Device Traffic Analysis
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Capture device traffic on a range network and summarise its destinations, ports and intervals
+  - Distinguish expected device traffic from beaconing and lookups of unregistered names
+  - Record a suspicious flow as evidence with times, addresses and counts
+  topics:
+  - Baseline device traffic such as name lookups, time sync, update checks and telemetry.
+  - Capture points and what each sees, at the workstation, switch port and gateway.
+  - Beaconing with periodic connections, fixed intervals and small repeated payloads.
+  - Name and certificate signals, unregistered lookups, self-signed certificates and mismatched names.
+  - Evidence recording for a flow with timestamps, addresses, ports and connection counts.
+  lab: >-
+    Lab: Capture the traffic between the office network and the greyspace internet on edge01 and judge each
+    external destination against an expected baseline. Evidence: each external destination with its port and
+    connection count; the interval for any destination contacted repeatedly; one evidence line for every
+    destination that needs investigation, with time, source, destination and port. Pass: every destination
+    recorded with its port and count; each marked "expected office traffic" or "needs investigation" with a
+    reason; a complete evidence line for each needs-investigation destination.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [edge01]
+      action: Start a packet capture on edge01 for traffic between the corporate network and the greyspace
+        network, and record the capture start time.
+    - hosts: [ws01]
+      action: On ws01, browse the news site and the webmail service on the greyspace internet for a few
+        minutes as the office profile would.
+    - hosts: [edge01]
+      action: Stop the capture on edge01 and record every external destination with its port and connection
+        count.
+    - hosts: [edge01]
+      action: Measure the interval between connections to each destination and record any destination
+        contacted at a regular interval.
+    - hosts: [ws01]
+      action: Judge each destination and mark it "expected office traffic" or "needs investigation" with a
+        reason, and write one evidence line for each needs-investigation destination.
+  refs:
+  - nist-sp-800-94
+  - nist-sp-800-115
+  - owasp-iot
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A smart camera contacts one external address every 60 seconds, sends a few bytes each time and
+        keeps the pattern up day and night. What does this pattern most suggest?
+      options:
+      - A) A clock synchronisation service drifting out of adjustment
+      - B) A firmware update check waiting for the vendor's release window
+      - C) Beaconing to a command channel at a fixed interval
+      - D) A streaming feed whose encoder sends constant-size frames
+      answer: C
+    - question: Which traffic belongs in the expected baseline of a small office device that is working
+        normally?
+      options:
+      - A) Periodic name lookups for the vendor's update and time servers
+      - B) Daily uploads of the full office file share to a new external host
+      - C) Hourly sign-in attempts against the device's management port from abroad
+      - D) Continuous connections to an address registered one week ago
+      answer: A
+    - question: A device's suspicious traffic never leaves the site; it only crosses the internal segment.
+        Which capture point sees it?
+      options:
+      - A) The upstream provider's edge, outside the site's control
+      - B) The greyspace internet uplink beyond the gateway
+      - C) No passive point can see traffic that stays internal
+      - D) The office switch or gateway carrying the internal segment
+      answer: D
+    - question: A device resolves a name that was registered last week and then opens a TLS connection that
+        presents a self-signed certificate. How should the Student treat the combination?
+      options:
+      - A) As normal, because new names and self-signed certificates are common on the internet
+      - B) As suspicious and worth investigating as a priority
+      - C) As expected, provided the name resolves successfully each time
+      - D) As proof of compromise that justifies disconnecting the device immediately
+      answer: B
+    - question: Which recorded line is reusable evidence for a flow investigation?
+      options:
+      - A) The device was behaving oddly for a while during the night
+      - B) Someone probably installed a backdoor and the device phones home
+      - C) The device's traffic looked abnormal compared with the office baseline
+      - D) From 03:14 to 03:19, workstation to one external address, 6 connections on one port
+      answer: D
+- ordinal: 6
+  title: Hardening Checklist for Deployments
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write hardening checklist items from device findings and a recognised deployment baseline
+  - Verify each checklist item against the live configuration of a range device
+  - Order the checklist items an operator applies before the device joins the network
+  topics:
+  - Turning findings into deployment checks for changed defaults, disabled services and unique credentials.
+  - IoT baselines for procurement and deployment, NIST SP 800-213 and NIST IR 8259.
+  - Verifying an item on a live device by recording the state before and after the change.
+  - Ordering checks with exposure first, then identity, then logging and monitoring.
+  - Handover records and what the checklist leaves with the device owner.
+  lab: >-
+    Lab: Turn the findings from the earlier modules into a hardening checklist and verify its first item
+    against the live edge01 configuration. Evidence: edge01's current state, with its open services and the
+    networks each answers on; each checklist item with the finding it came from; the configuration line
+    before and after the change; the re-scan result. Pass: every item names the finding it came from; the
+    first item applied with the before and after state recorded; the re-scan shows whether the service still
+    answers; the remaining items ordered highest risk first with a reason for the first.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: On ws01, record the current state of edge01, its open services, their ports and the networks
+        each answers on.
+    - hosts: [edge01]
+      action: Read edge01's running configuration and record the management authentication method and the
+        account names it references.
+    - hosts: [ws01]
+      action: Draft the hardening checklist on ws01, one item per finding from the earlier modules, each
+        naming the finding it came from.
+    - hosts: [edge01]
+      action: Apply the first-ranked item by disabling the unneeded service on edge01, and record the
+        configuration line before and after the change.
+    - hosts: [ws01]
+      action: Re-scan edge01 from ws01 and record whether the disabled service still answers, comparing
+        the result with the open services recorded at the start of the lab.
+    - hosts: [ws01]
+      action: Judge the checklist and order the remaining items highest risk first with a reason for the first,
+        and record what the checklist hands the device owner at handover.
+  refs:
+  - nist-sp-800-213
+  - nist-ir-8259
+  - owasp-iot
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A new IoT device must join a production network tomorrow and ships with management reachable
+        on every interface. Which checklist item comes first?
+      options:
+      - A) Enable detailed logging and forward it to the collector
+      - B) Update the device to the newest firmware the vendor published
+      - C) Rename the management account and lengthen its password
+      - D) Close the management service to everything but the management network
+      answer: D
+    - question: A Student applies "disable the diagnostic service" to a device. What completes the
+        verification of that item?
+      options:
+      - A) The vendor's documentation stating that the service can be disabled
+      - B) A screenshot of the command entered to disable the service
+      - C) A before and after record showing the service no longer answers
+      - D) The device owner's written agreement that the service is unneeded
+      answer: C
+    - question: An audit finds one management password shared across every deployed unit of a device. Which
+        checklist item addresses it for new deployments?
+      options:
+      - A) Set a unique management password for this device at deployment
+      - B) Lengthen the shared password and rotate it every ninety days
+      - C) Move the management service to a higher, less visible port
+      - D) Document the shared password in the deployment record for traceability
+      answer: A
+    - question: A team is writing a deployment checklist for IoT devices and wants a recognised starting
+        point. Which source does it start from?
+      options:
+      - A) The device vendor's marketing datasheet
+      - B) A recognised device security baseline such as NIST SP 800-213
+      - C) The most popular community hardening thread for the model
+      - D) The defaults the device ships with, confirmed by a port scan
+      answer: B
+    - question: The hardening checklist is finished and every item is applied. What does it leave with the
+        device owner?
+      options:
+      - A) The tester's raw scan output and packet captures
+      - B) The vendor's default configuration for comparison
+      - C) Each applied item with its verified state and the date checked
+      - D) A list of the findings that could not be fixed, for the record
+      answer: C
