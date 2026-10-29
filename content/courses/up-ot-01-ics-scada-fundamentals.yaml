@@ -1,0 +1,564 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+
+course_code: C549
+title: ICS & SCADA Fundamentals
+version: '1.0'
+difficulty: foundation
+duration_hours: 4
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C105
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Systems Security Analyst; Cyber Defense Analyst (PR-CDA-001).'
+  - 'NIST CSF 2.0: ID.AM, PR.PS.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: PLC
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the processor, input and output modules and power supply of a programmable logic controller and state each part's role
+  - Trace one scan cycle of a controller from input read to output write and state why the interval stays fixed
+  - Distinguish a controller's determinism requirement from a general-purpose server's throughput requirement
+  topics:
+  - A controller built from processor, memory, input and output modules and a power supply.
+  - The scan cycle of read inputs, execute logic, write outputs, repeated on a fixed interval.
+  - Ladder logic rungs, contacts, coils and timers as the controller's programming language.
+  - Determinism and uptime, not throughput, as the design goal that sets controllers apart.
+  - Sensors and actuators a controller reads and drives, such as level switches, starters and valves.
+  lab: >-
+    Lab: On the large-enterprise range, examine the two controller simulators plc01 and plc02 from the
+    engineering workstation eng-ws01 and describe what each controller actually does. Evidence: the project
+    each controller runs, the inputs it reads and the outputs it writes on each scan, and one difference
+    between the two programs. Pass: all three items recorded from the range; each controller's scan order
+    stated as read, execute, write; each difference marked "expected" or "needs investigation" with a
+    one-sentence reason.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [eng-ws01]
+      action: Log on to eng-ws01, open the controller programming application and record which project it opens by
+        default.
+    - hosts: [eng-ws01, plc01]
+      action: From eng-ws01, go online with plc01 and record the rungs of its ladder program and every output each
+        rung writes.
+    - hosts: [plc01]
+      action: Watch plc01 run one scan cycle and record the order in which it reads inputs, executes logic and
+        writes outputs.
+    - hosts: [eng-ws01, plc02]
+      action: Open the project loaded on plc02 and record one rung or tag that differs from the program on plc01.
+    - hosts: [eng-ws01]
+      action: Mark each recorded difference "expected" or "needs investigation" with a one-sentence reason, and
+        state what a controller change request would need to show.
+  refs:
+  - nist-sp-800-183
+  - owasp-iot
+  source_gaps:
+  - The industrial control security benchmark that treats safety and availability as first-class goals is not in the
+    reference library; controller determinism and patch-window guidance here rest on range observation alone.
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A bottling plant counts bottles with a sensor wired to a controller input module. During one scan
+        cycle, when does the controller read the sensor?
+      options:
+      - A) Continuously, while it executes the logic
+      - B) At the start of the scan, before it executes the logic
+      - C) At the end of the scan, after it writes outputs
+      - D) Only when an operator opens the screen and asks for a value
+      answer: B
+    - question: An engineer replaces a general-purpose file server with a controller for a chemical dosing pump.
+        Which requirement is new and decides the design?
+      options:
+      - A) Disk throughput on the server for its large log files
+      - B) The number of concurrent office users the server supports
+      - C) A fixed worst-case time from input read to output write
+      - D) Support for the desktop productivity software the office expects
+      answer: C
+    - question: A controller program shows a rung with a normally open contact wired to a start button and a coil
+        wired to a motor starter. What does the rung do?
+      options:
+      - A) Energises the motor starter coil when the start button contact closes
+      - B) Reads the motor current and writes it to the historian
+      - C) Sends the button state to the HMI over the network
+      - D) Stores the button count in controller memory for the operator
+      answer: A
+    - question: A vendor quote offers a controller with higher scan speed but no fixed worst-case scan interval. Why
+        is that quote the wrong choice for a plant?
+      options:
+      - A) Higher scan speed always costs more than the plant budget allows
+      - B) Operators cannot read screens that update too quickly
+      - C) The historian stores data faster than the network allows
+      - D) The plant cannot rely on the time between input and output
+      answer: D
+    - question: A maintenance technician says the controller can be patched like any office server because it is
+        just a small computer. Which teaching point corrects this?
+      options:
+      - A) A controller contains no processor, so there is nothing to patch
+      - B) Patch windows follow production, because an unplanned stop can be the hazard
+      - C) Controllers run ordinary office software, so the same patches apply to them
+      - D) The controller power supply blocks every software change while it runs
+      answer: B
+- ordinal: 2
+  title: HMI and Historian Anatomy
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the screens, setpoints and alarms an HMI presents to an operator and the commands it accepts
+  - Explain how a historian collects process values and serves them as trends over time
+  - Distinguish operator-writable control actions from read-only displays on an HMI
+  topics:
+  - The HMI as the operator's window of screens, setpoints, alarm banners and command buttons.
+  - Alarm management, alarm floods and why an unacknowledged alarm list hides new events.
+  - The historian as a time-series archive of process values, tags and collection intervals.
+  - The data path from controller to HMI to historian, and what a link failure breaks.
+  - Read-only trend displays versus operator-writable control actions.
+  lab: >-
+    Lab: On the large-enterprise range, map what operators at hmi01 and hmi02 see and what the historian
+    historian01 keeps. Evidence: three elements each HMI screen presents, one button that would change the
+    process, the tags the historian collects with their collection interval, and one difference between the
+    two HMI workstations. Pass: all four items recorded; each process-changing button marked
+    "operator-writable" with the action it would start; the difference marked "expected" or "needs
+    investigation" with a one-sentence reason.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [hmi01]
+      action: Log on to hmi01 with the operator account the instructor assigned and record the screens the HMI
+        offers.
+    - hosts: [hmi01]
+      action: On the main screen, record three elements the HMI presents and one button that would change the
+        process.
+    - hosts: [hmi02]
+      action: Log on to hmi02 and record one way its screens or alarm list differ from the screens on hmi01.
+    - hosts: [historian01]
+      action: Open the historian on historian01 and record the tags it collects and each tag's collection interval.
+    - hosts: [hmi01, historian01]
+      action: Trace one tag from the screen on hmi01 back to its source and record the hops it crosses to reach
+        historian01.
+    - hosts: [hmi01]
+      action: Mark each recorded item "read-only display" or "operator-writable control" with a one-sentence
+        reason for the marking.
+  refs:
+  - nist-sp-800-92
+  - cis-benchmarks
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'A failed network switch leaves an operator facing hundreds of unacknowledged alarms within two
+        minutes. The main operational risk of this alarm flood is:'
+      options:
+      - A) The historian will stop collecting process values
+      - B) The controllers will halt until the alarms clear
+      - C) Trend displays become read-only until acknowledged
+      - D) A new, important alarm is hidden among the noise
+      answer: D
+    - question: Which historian function turns raw process values into a trend an analyst can review?
+      options:
+      - A) Archiving tagged process values at a set collection interval
+      - B) Writing new ladder logic directly to the plant controller
+      - C) Issuing operator commands to the process actuators on request
+      - D) Generating the alarm banner list shown on the HMI
+      answer: A
+    - question: A screen shows a tank level as a number and a colour bar, next to a button labelled Start Pump.
+        Which statement is correct?
+      options:
+      - A) Both the level display and the button are operator-writable controls
+      - B) Both the level display and the button are read-only displays
+      - C) The level is a read-only display and the button is operator-writable
+      - D) The level is a setpoint and the button is an alarm banner
+      answer: C
+    - question: The link between a controller and the historian fails for one hour. What does the analyst most
+        likely find afterwards?
+      options:
+      - A) The controller stopped running its program during the whole outage
+      - B) The historian holds a one-hour gap in that controller's tags
+      - C) The HMI screens went blank for the whole plant during the outage
+      - D) The alarms were all automatically acknowledged by the historian afterwards
+      answer: B
+    - question: Before a shift change, an operator adjusts a setpoint on the HMI. Where does that action first take
+        effect?
+      options:
+      - A) In the historian archive, then the controller
+      - B) On the screens of every other operator first
+      - C) In the controller that drives the process
+      - D) In the alarm banner before anything changes
+      answer: C
+- ordinal: 3
+  title: Industrial Protocols on the Wire
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Recognise Modbus TCP function codes, registers and coils in a packet capture of controller traffic
+  - Explain why many industrial protocols authenticate nothing and encrypt nothing
+  - Select the capture point that shows controller-to-device traffic on the OT network
+  topics:
+  - Modbus TCP with master and slave roles, function codes, registers, coils and cleartext frames.
+  - DNP3, OPC UA and EtherNet/IP at a glance, and which of them add authentication.
+  - Unauthenticated, unencrypted east-west traffic as the normal state of many OT networks.
+  - Capture points on the range, at the engineering workstation and on the SPAN feed.
+  - What a protocol-aware sensor can and cannot prove about a control command.
+  lab: >-
+    Lab: On the large-enterprise range, capture the traffic between the engineering workstation eng-ws01 and
+    the controllers, then read it as a protocol analyst would. Evidence: the function codes and register
+    addresses of the commands eng-ws01 sends to plc01, one captured frame showing whether the traffic is
+    encrypted, and the OT alerts the sensor ids01 raises on the same traffic. Pass: three function codes
+    recorded with what each does; each captured frame marked "encrypted" or "cleartext" with the field that
+    shows it; each ids01 alert marked "expected" or "needs investigation" with a one-sentence reason.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [eng-ws01]
+      action: Log on to eng-ws01, start a packet capture on its OT interface and note the start time.
+    - hosts: [eng-ws01, plc01]
+      action: From eng-ws01, poll plc01 for its holding registers and record the function code and register address
+        of each request.
+    - hosts: [eng-ws01, plc02]
+      action: Repeat one poll against plc02 and record whether the same function codes and register addresses appear.
+    - hosts: [eng-ws01]
+      action: Open one captured frame and record the field that shows whether the payload is encrypted or
+        cleartext.
+    - hosts: [ids01]
+      action: On the sensor ids01, open the alert view for the OT network and record each alert raised during the
+        capture, with its protocol and time.
+    - hosts: [eng-ws01]
+      action: Mark each recorded alert "expected for this traffic" or "needs investigation" with a one-sentence
+        reason each.
+  refs:
+  - owasp-iot
+  - nist-sp-800-94
+  source_gaps:
+  - The industrial protocol and segmentation reference that documents Modbus and DNP3 weaknesses in depth is not in
+    the reference library; the protocol descriptions here come from range captures alone.
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A capture of controller traffic shows request frames reading holding registers in cleartext, with
+        no login step. Which protocol matches this description?
+      options:
+      - A) Modbus TCP
+      - B) TLS 1.3
+      - C) SNMPv3 with authentication
+      - D) DNS over TLS
+      answer: A
+    - question: An OT network segment carries controller traffic that any connected device can read, and any
+        connected device can write. Which design decision explains this exposure?
+      options:
+      - A) The controllers use proprietary firmware that cannot be inspected
+      - B) The switches encrypt traffic only at the network edge
+      - C) The engineers chose protocols whose specifications are closed
+      - D) The chosen protocols perform no authentication on either endpoint
+      answer: D
+    - question: An analyst wants to see the traffic between the engineering workstation and the controllers. Where
+        should the capture point sit?
+      options:
+      - A) On the corporate email server, where all the security logs are central
+      - B) On a switch port that mirrors the OT network to the sensor
+      - C) On the external DNS resolver that serves the office network's name lookups
+      - D) On the wireless access point serving the staff on the office floor
+      answer: B
+    - question: A sensor reports that a master wrote to a coil it has never written before. What can the sensor
+        prove from the capture alone?
+      options:
+      - A) That the operator who logged in approved the command
+      - B) That the value written corrupted the process
+      - C) That an unauthenticated write to that coil occurred
+      - D) That the firmware of the slave is out of date
+      answer: C
+    - question: Why does adding encryption alone not fully protect a Modbus TCP write command?
+      options:
+      - A) Encryption hides the payload but the protocol still authenticates no sender
+      - B) Encryption increases the controller's scan time beyond its fixed worst-case interval
+      - C) Encryption stops the historian from collecting the register values it needs
+      - D) Encryption requires replacing every sensor on the plant floor with new hardware
+      answer: A
+- ordinal: 4
+  title: Purdue Model Segmentation
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Place a named OT asset on the correct Purdue model level from the function it performs
+  - Explain the purpose of each Purdue level and of the demilitarised zone between IT and OT
+  - Judge a firewall rule set against a policy that keeps control traffic inside the OT network
+  topics:
+  - Purdue levels 0 to 5, from field devices through control, supervision, site operations and enterprise.
+  - The demilitarised zone between IT and OT, and the flows it brokers.
+  - Default deny between zones and explicit allows for named flows only.
+  - Reading the OT firewall's rule set and the unrouted boundary toward the enterprise.
+  - Air-gapped OT segments and what still crosses them, such as time, portable media and people.
+  lab: >-
+    Lab: On the large-enterprise range, read the segmentation that keeps control traffic inside the OT
+    network and judge it against this policy: no OT system may open a connection to the corporate
+    network, and the firewall, not the asset, decides. The OT network sits behind ot-fw01 on one isolated
+    segment, and the transit toward fw01 is not routed, so ot-fw01's rule set is the boundary to judge.
+    Evidence: every ot-fw01 rule with its source, destination and action, the segments ot-fw01 connects,
+    and which enterprise zones the OT network can reach. Pass: every rule recorded; each marked "in policy" or
+    "over-broad" with a one-sentence reason; the OT-to-corporate reachability stated with the observation
+    that shows it.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [ot-fw01]
+      action: Log on to the OT firewall ot-fw01, open its rule editor and record each rule's source network,
+        destination network and action.
+    - hosts: [ot-fw01]
+      action: Record every network segment ot-fw01 connects and which firewall interface faces each of those
+        segments.
+    - hosts: [ot-fw01]
+      action: Record which zones beyond the OT network ot-fw01 can route to, and note that the transit leg toward
+        the core firewall fw01 is not built in this range.
+    - hosts: [ot-fw01]
+      action: Mark each recorded rule "in policy" or "over-broad" against the policy that no OT system may open a
+        connection to the corporate network, with a one-sentence reason each.
+    - hosts: [ot-fw01]
+      action: Propose one change for each rule marked "over-broad" and record which OT-to-enterprise flows will
+        need explicit rules once the transit leg is built.
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-41r1
+  source_gaps:
+  - The OT segmentation and control-network architecture reference is not in the reference library; the Purdue level
+    descriptions here rest on range topology alone.
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A bottling plant's controller drives the conveyor motor directly, below any HMI. On the Purdue
+        model, which level does that controller occupy?
+      options:
+      - A) Level 4, site business operations
+      - B) Level 5, the enterprise network
+      - C) Level 1, basic control
+      - D) Level 3, site operations
+      answer: C
+    - question: A plant wants historian data visible to business analysts without opening the control network to
+        them. Which Purdue structure serves this?
+      options:
+      - A) A flat network with access control lists on every switch
+      - B) A demilitarised zone between IT and OT that brokers the data flow
+      - C) Encryption of every OT frame in transit
+      - D) A second controller that copies tags to the office
+      answer: B
+    - question: 'A rule set on the OT firewall allows any OT system to reach any enterprise system on any port.
+        Judged against least privilege for control traffic, this rule is:'
+      options:
+      - A) In policy, because replies are stateful
+      - B) In policy, because the source is inside OT
+      - C) Over-broad only if the destination is the internet
+      - D) Over-broad, because one named data flow should replace it
+      answer: D
+    - question: A team claims its OT network is fully air-gapped. Which daily detail most weakens that claim?
+      options:
+      - A) Engineers carry programs between zones on laptops and USB media
+      - B) The office printers use the same vendor as the plant
+      - C) Enterprise users share files over the corporate network
+      - D) The business runs its email on a cloud service
+      answer: A
+    - question: An analyst must choose where the strongest boundary in the Purdue model sits. Which pair of zones
+        should the strictest default-deny rule set separate?
+      options:
+      - A) The DMZ web servers and the corporate workstations
+      - B) The corporate workstations and the enterprise resource planning servers
+      - C) The security operations tools and the log collectors
+      - D) The enterprise network and the OT control network
+      answer: D
+- ordinal: 5
+  title: Safety vs Security Priorities
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain why safety outranks confidentiality in most industrial security decisions
+  - Classify a described OT incident by its first consequence to people, the process or the product
+  - Select a containment order for a controller alert that preserves the safe state first
+  topics:
+  - The safe state, safety instrumented systems and why the process must reach it first.
+  - The OT priority order of safety first, then availability and integrity of control, then confidentiality.
+  - Why an unplanned shutdown can itself be the hazard in a continuous process.
+  - Containment in OT, whether to isolate, hold the safe state or let it run.
+  - Who decides, the process owner and control engineer, not the IT on-call alone.
+  lab: >-
+    Lab: On the large-enterprise range, use the alarm list on hmi01 and the output states of plc02 to decide
+    how an analyst should respond to a suspicious command without endangering the process. Evidence: the
+    active alarms on hmi01 with the consequence each implies, the current output states plc02 drives, and an
+    ordered response that states which action comes first and why. Pass: each alarm marked "safety
+    consequence" or "process consequence" with a one-sentence reason; the response ordered safety action
+    first; the confidentiality-only actions listed last with the reason.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [hmi01]
+      action: Log on to hmi01 with the operator account the instructor assigned and record every active alarm on
+        the alarm list.
+    - hosts: [plc02]
+      action: On the controller plc02, record the current state of each output the ladder program drives.
+    - hosts: [hmi01, plc02]
+      action: Match each alarm to the controller output it concerns and record whether the alarm implies a safety
+        consequence or a process consequence.
+    - hosts: [eng-ws01]
+      action: On eng-ws01, review the program on plc02 and record which output state is the documented safe state
+        for the process.
+    - hosts: [eng-ws01]
+      action: Write the response order for a suspicious command seen on plc02, with the action that reaches the
+        safe state first, then each later action, and one sentence of reason each.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-30r1
+  source_gaps:
+  - The industrial safety and security priority reference is not in the reference library; the safety-first ordering
+    here rests on range alarms and instructor guidance alone.
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A water plant's chlorine dosing controller receives an unauthorised write command. Which
+        consequence makes this incident severe above all others?
+      options:
+      - A) The register values and the dosing recipe leaked outside the organisation
+      - B) The dose could move outside the range that keeps the water safe
+      - C) The historian lost its collection interval
+      - D) The trend display showed the wrong colour
+      answer: B
+    - question: An incident commander must act on a controller alert during full production. Which priority order
+        should shape the response plan?
+      options:
+      - A) Confidentiality of the recipe, then containment, then safety
+      - B) Evidence preservation, then confidentiality, then safety
+      - C) Speed of the network, then containment, then availability
+      - D) Safety, then the availability and integrity of control, then confidentiality
+      answer: D
+    - question: Why can an immediate, unplanned shutdown be the wrong first response to a cyber alert in a
+        continuous process plant?
+      options:
+      - A) Shutdowns always destroy or corrupt the evidence investigators need
+      - B) Shutdowns are impossible without the vendor's engineers present
+      - C) An uncontrolled stop can itself create the hazard safety systems prevent
+      - D) The historian cannot record process values while the shutdown continues
+      answer: C
+    - question: Which containment action keeps a dosing process safe while the network is investigated?
+      options:
+      - A) Hold the controller at its documented safe state and cut network access
+      - B) Restart the controller with its default settings and reconnect it
+      - C) Move the HMI screen to the corporate network for monitoring
+      - D) Increase the historian collection interval for the duration of the inquiry
+      answer: A
+    - question: Who should hold the final decision when an IT team wants to isolate a controller and a process
+        engineer disagrees?
+      options:
+      - A) The most senior executive available on the day
+      - B) The process owner, with the control engineer, against the safe state
+      - C) The vendor's support line, because it built and knows the controller best
+      - D) The first analyst who raised the alert
+      answer: B
+- ordinal: 6
+  title: Inventory and Defence of the ICS Estate
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Build a Purdue-modelled inventory of an OT estate from host roles and network evidence
+  - Select the telemetry that would reveal unauthorised control traffic on an OT network
+  - Order the first response actions for an OT alert so the safe state is preserved
+  topics:
+  - Asset inventory for OT with role, Purdue level, address and owner for every device.
+  - Mapping observed protocols and hosts to the inventory to find the unexplained.
+  - Telemetry that matters in OT, such as protocol-aware sensor alerts, firewall logs and alarm records.
+  - The IT and OT handoff when an alert arrives, and what neither side does alone.
+  - Writing the first-response order of safe state, containment, then notification.
+  lab: >-
+    Lab: On the large-enterprise range, combine the sensor view on ids01 with the OT asset list reachable
+    from eng-ws01 and judge the estate's readiness. Evidence: the OT assets eng-ws01 can reach, each with
+    its role and Purdue level; each OT alert the sensor holds, with its protocol and time; and one ordered
+    first-response list for the most serious alert. Pass: every asset recorded with role and level; each
+    alert marked "matches the inventory" or "unexplained" with a one-sentence reason; the response list
+    ordered safe state first.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal, note the start time and open the lab evidence record.
+    - hosts: [eng-ws01]
+      action: Move to the console of eng-ws01, which sits on the isolated OT network no management host can route
+        to, and list the OT devices it can reach; record each address, role and service.
+    - hosts: [eng-ws01]
+      action: Assign each recorded device a Purdue level and record the level with one sentence of reason.
+    - hosts: [jump01, ids01]
+      action: Return to jump01 and open the sensor console on ids01, which the management network reaches over
+        SSH; record each OT alert with its protocol, source, destination and time.
+    - hosts: [jump01]
+      action: Match each alert against the inventory and mark it "matches the inventory" or "unexplained" with a
+        one-sentence reason.
+    - hosts: [jump01]
+      action: For the most serious alert, write the first-response order with the safe-state action first, then
+        containment, then notification.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-94
+  - nist-sp-800-92
+  source_gaps:
+  - The OT asset inventory and industrial network monitoring reference is not in the reference library; the
+    inventory and telemetry guidance here rests on the range's own sensor and firewall logs alone.
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A sensor raises an alert for a controller address that appears nowhere in the asset inventory. What
+        is the correct first classification?
+      options:
+      - A) Unexplained asset, to be investigated before any response
+      - B) A false positive, to be suppressed and closed
+      - C) A duplicate record of the historian
+      - D) An inventory typo, to be corrected in the asset list and ignored
+      answer: A
+    - question: Which telemetry pair gives the earliest useful signal that an OT network is carrying traffic it
+        should not?
+      options:
+      - A) Office badge records and payroll exports
+      - B) Marketing dashboards and licence counts
+      - C) Protocol-aware sensor alerts and OT firewall logs
+      - D) Vendor press releases and patch notes
+      answer: C
+    - question: An alert shows an unauthorised write to a controller during production. Which first action best
+        follows the taught priority order?
+      options:
+      - A) Wipe the controller and rebuild it from defaults
+      - B) Publish the alert to the whole company mailing list
+      - C) Copy the process recipe to a report for the regulator
+      - D) Confirm the process is in its safe state, then contain
+      answer: D
+    - question: A plant's Purdue map shows the historian one level above the controllers. What traffic between
+        them should the inventory expect?
+      options:
+      - A) Office print jobs and badge swipes
+      - B) Tag values collected on a fixed interval
+      - C) Domain authentication exchanges
+      - D) Email and calendar synchronisation
+      answer: B
+    - question: An OT alert arrives at the security operations centre at night. What does the taught handoff
+        require of the on-call analyst?
+      options:
+      - A) Isolate every OT host immediately and alone
+      - B) Reboot the controllers to clear the alarms
+      - C) Escalate to the process owner before any OT change
+      - D) Wait for the morning shift without recording anything
+      answer: C
