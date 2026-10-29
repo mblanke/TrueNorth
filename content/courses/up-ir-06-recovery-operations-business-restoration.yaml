@@ -1,0 +1,527 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C536
+title: 'Recovery Operations & Business Restoration'
+version: '1.0'
+difficulty: advanced
+duration_hours: 6
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites: [C532, C533]
+source:
+  origin: 'TAZ upskilling catalogue v1 (2026-10-28)'
+  notes:
+  - 'NICE work roles: Cyber Defense Incident Responder (PR-CIR-001); Cyber Defense Infrastructure Support Specialist.'
+  - 'NIST CSF 2.0: RC.RP, RC.CO, PR.IR.'
+  - 'Self-paced upskilling, outside DP1/DP2.'
+  - 'Unpublished pending Standards review.'
+modules:
+- ordinal: 1
+  title: 'Recovery Prioritisation and Dependency Mapping'
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  source_gaps:
+  - 'Contingency planning guidance equivalent to NIST SP 800-34 is not held in the reference library.'
+  objectives:
+  - Rank affected systems in a recovery order that follows their dependencies and business impact
+  - Map the upstream services each critical system needs before it can restart safely
+  - Record recovery priorities in a written sequence that other responders can follow without explanation
+  topics:
+  - 'Dependency mapping for identity, name resolution, storage and mail services.'
+  - 'Recovery time objectives and recovery point objectives as prioritisation inputs.'
+  - 'Interdependency risks, including hidden dependencies on directory and DNS services.'
+  - 'Business impact statements and system owners as prioritisation evidence.'
+  - 'Documenting a recovery order that survives staff turnover.'
+  lab: >-
+    Lab: On the medium-enterprise range, identify which services dc01, fs01, web01 and mail01
+    provide, work out which services each one depends on, and write a recovery order for the four
+    hosts with a reason for each position. Evidence: the service list recorded for each host; the
+    dependency pairs recorded from name resolution, directory and firewall checks; the written
+    recovery order with one reason per position. Pass: every dependency pair supported by an
+    observation recorded in the lab notes; the order places dc01 first or gives an argued reason
+    for another order; no host appears in the order without a dependency or impact reason.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01, open a command prompt and record the start time in the lab notes.
+    - hosts: [ws01, dc01]
+      action: From ws01, resolve dc01 by name and record which service answered, then list the directory, DNS
+        and DHCP roles dc01 runs.
+    - hosts: [fs01]
+      action: Connect to fs01 and record the shares it publishes and the DFS namespaces that reference them.
+    - hosts: [fw01]
+      action: List the fw01 rules that connect the corporate, servers and DMZ zones, and record which zone-to-zone
+        paths each rule allows.
+    - hosts: [web01, mail01]
+      action: Record the services web01 and mail01 each provide, then check whether both can reach dc01 for
+        directory lookups and record the result of each check.
+    - hosts: [ws01]
+      action: Write a dependency map for dc01, fs01, web01 and mail01, then give a recovery order with one reason
+        per position.
+  refs: [nist-sp-800-61r3, nist-cswp-29]
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: Ransomware has encrypted fs01, and the incident commander asks which system to restore first. Which evidence best sets that priority?
+      options:
+      - A) The host with the most stored data
+      - B) The dependency map recorded before the incident
+      - C) The host that was patched most recently
+      - D) The order in which alerts arrived
+      answer: B
+    - question: A payment service may lose at most one hour of transactions and must be restored within four. Which pair of recovery objectives records this correctly?
+      options:
+      - A) Recovery time objective one hour, recovery point objective four hours
+      - B) Both objectives set to four hours
+      - C) Recovery point objective one hour, recovery time objective four hours
+      - D) Recovery point objective four hours, no time objective
+      answer: C
+    - question: Mail was restored hours ago, yet messages still queue. DNS resolves and the network path is open. What does this pattern most suggest?
+      options:
+      - A) The queue needs a manual flush only
+      - B) Users have not restarted their clients
+      - C) The mail store is corrupt
+      - D) An undocumented dependency on another service
+      answer: D
+    - question: Two systems carry equal business impact, but the database depends on the directory while the directory depends on nothing internal. Which order is defensible?
+      options:
+      - A) Directory first, then the database
+      - B) Database first, then the directory
+      - C) Both rebuilt at the same time
+      - D) Whichever finishes restoring sooner
+      answer: A
+    - question: A recovery order exists only in one engineer's memory. What is the most direct operational risk?
+      options:
+      - A) The order will be executed too slowly under pressure
+      - B) The order cannot be reviewed or repeated by others
+      - C) The order will leak to unauthorised staff during recovery
+      - D) The order becomes invalid after the failover completes
+      answer: B
+- ordinal: 2
+  title: 'Backup Integrity and Restore Point Readiness'
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Verify that backups are complete, restorable and free of the corruption that compromise causes
+  - Test restore points against defined criteria instead of trusting backup job reports
+  - Distinguish a clean restore point from one taken during attacker activity
+  topics:
+  - 'Backup integrity verification, including checksums and test restores.'
+  - 'Restore point selection when attacker persistence may be retained.'
+  - 'Immutability, off-line copies and ransomware resistance in backup design.'
+  - 'Backup scope decisions for system state, data and configuration.'
+  - 'Restore point documentation and retention evidence.'
+  lab: >-
+    Lab: On the medium-enterprise range, inspect the backup records that fs01 holds, check each
+    restore point against integrity evidence, and judge which restore point is safe to use for a
+    rebuild after a malware incident. Evidence: the catalogue entry recorded for each restore
+    point; the integrity check result recorded for each; the comparison between each backup time
+    and the siem01 event record. Pass: each restore point marked restorable or not with the
+    recorded evidence; any restore point inside the compromise window marked unsafe; a written
+    choice of restore point with a one-sentence reason.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [fs01]
+      action: Open the backup catalogue on fs01 and record each restore point with its date, scope and stored
+        size.
+    - hosts: [fs01]
+      action: Run the verification report for each restore point and record whether the stored checksums match
+        the media.
+    - hosts: [siem01]
+      action: Search the siem01 event record for the first sign of attacker activity and record that date and
+        time.
+    - hosts: [fs01, siem01]
+      action: Compare each backup time with the recorded compromise window and mark each restore point clean or
+        tainted.
+    - hosts: [ws01]
+      action: Restore one small file set from the cleanest candidate to ws01 and record whether the files open
+        correctly.
+    - hosts: [ws01]
+      action: Judge which restore point the rebuild should use, and write the reason in one sentence with the
+        supporting evidence.
+  refs: [nist-sp-800-83r1, nist-sp-800-61r3]
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A backup job reports success every night, yet no test restore has ever been run. What does this report actually establish?
+      options:
+      - A) That the data is recoverable in an incident
+      - B) That ransomware cannot reach the backups
+      - C) Only that the job completed without errors
+      - D) That the backups meet retention requirements
+      answer: C
+    - question: Ransomware reached the backup console and encrypted every share the account could write. Which backup design would have survived?
+      options:
+      - A) Nightly full backups on the same storage
+      - B) A second copy under the same account
+      - C) Hourly snapshots kept for seven days
+      - D) An immutable copy outside the console account
+      answer: D
+    - question: The only recent restore point was taken while the attacker still held credentials. What is the correct classification of that restore point?
+      options:
+      - A) Tainted, because restoring it reinstates attacker access
+      - B) Clean, because the backup captured consistent data
+      - C) Clean, because encryption happened later that day
+      - D) Unusable, because its age exceeds retention
+      answer: A
+    - question: A rebuild plan restores the system state and the user documents, but the rebuilt host fails
+        its first validation. Which element did both scopes leave out?
+      options:
+      - A) The operating system files
+      - B) The user documents stored on the desktop
+      - C) The application configuration files
+      - D) The page file and the temporary folders
+      answer: C
+    - question: An auditor asks for evidence that backups work. Which record answers the question most directly?
+      options:
+      - A) The storage vendor's durability certificate
+      - B) A list of successful nightly job logs
+      - C) The signed backup policy document
+      - D) A dated test restore report with results
+      answer: D
+- ordinal: 3
+  title: 'Clean-Room Rebuild Drills'
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Rebuild a compromised host from known-good media inside an isolated clean network segment
+  - Harden a rebuilt image against the access paths the incident used
+  - Keep the clean build environment separate from production throughout the rebuild
+  topics:
+  - 'Clean-room principles and isolation from the compromised network.'
+  - 'Known-good installation media, golden images and baseline configurations.'
+  - 'Rebuild sequencing for identity, storage and application hosts.'
+  - 'Credential rotation and secret replacement during rebuild.'
+  - 'Patching to current levels before any reconnection.'
+  lab: >-
+    Lab: On the medium-enterprise range, prepare a clean-room rebuild of a compromised web host:
+    confirm the build environment is isolated from production, choose known-good sources, and list
+    the credentials and configuration a rebuild must replace or reproduce. Evidence: the fw01 rule
+    review that shows which paths connect build and production; the baseline level recorded on
+    ws02; the credential list recorded from dc01; the configuration deviations recorded against
+    the web01 baseline. Pass: isolation confirmed with the recorded rule evidence; every
+    compromised credential listed for replacement; the rebuild sequence written in order with a
+    gating check for each stage.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [fw01]
+      action: List the fw01 rules that would connect a rebuild segment to production networks, and record
+        whether any path exists today.
+    - hosts: [ws02]
+      action: On ws02, confirm the build workstation runs from approved media and record the baseline
+        configuration level it carries.
+    - hosts: [dc01]
+      action: Query dc01 for the accounts the compromised host used and record which credentials a rebuild must
+        replace.
+    - hosts: [fs01]
+      action: Check fs01 for the malware quarantine area and record which quarantined items the rebuild may not
+        restore.
+    - hosts: [web01]
+      action: Compare the compromised web01 configuration with the published baseline and record every deviation
+        a rebuild must reproduce or fix.
+    - hosts: [ws02]
+      action: Write the rebuild sequence for the clean build, naming the isolation, credential and patching
+        checks that gate each stage.
+  refs: [nist-sp-800-61r3, nist-sp-800-83r1, cis-benchmarks]
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: Malware keeps reappearing on a reimaged host within a day. Which rebuild failure best explains the recurrence?
+      options:
+      - A) The rebuild ran on a network the attacker could still reach
+      - B) The antivirus definitions on the new image were a day old
+      - C) Users reopened the same phishing message after the rebuild
+      - D) The host name was reused on the network after rebuild
+      answer: A
+    - question: A team prepares to rebuild a compromised laptop. Which property makes the chosen installation media trustworthy for that rebuild?
+      options:
+      - A) It was downloaded from the internet this week
+      - B) Its integrity matches a recorded verified hash
+      - C) It is stored on the same file server
+      - D) It installed successfully on another laptop
+      answer: B
+    - question: A server is being rebuilt after compromise. Which credential change belongs in the rebuild plan even when no password theft is confirmed?
+      options:
+      - A) Only the local administrator password of that host
+      - B) No credentials, since nothing was proven stolen
+      - C) Every credential the compromised host held or used
+      - D) Only the domain administrator password of the directory
+      answer: C
+    - question: A clean build must host an application that trusts the directory. Which rebuild sequence is correct?
+      options:
+      - A) Directory joined and patched, then the application installed
+      - B) The application installed first, then the directory joined
+      - C) The application installed, connected to production, then patched
+      - D) Directory joined, application installed, and patches deferred
+      answer: A
+    - question: During a rebuild drill, a builder needs a patch file. Which way of getting it keeps the clean room clean?
+      options:
+      - A) Copy it from the nearest production file share
+      - B) Fetch it over the production proxy directly
+      - C) Accept it by email from a colleague
+      - D) Verify its hash on the isolated transfer path
+      answer: D
+- ordinal: 4
+  title: 'Validation Before Reconnection'
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Validate a rebuilt system against its baseline before any production connection is restored
+  - Test each reconnection step in a staged order that contains failures early
+  - Decide, using the recorded validation evidence, whether to reconnect the rebuilt system to production
+  topics:
+  - 'Validation criteria: patch level, configuration baseline and malware scan.'
+  - 'Staged reconnection and firewall rule ordering.'
+  - 'Functional and security testing before user access returns.'
+  - 'Go or no-go decisions recorded with evidence.'
+  - 'Monitoring to confirm a rebuilt host behaves normally.'
+  lab: >-
+    Lab: On the medium-enterprise range, validate a rebuilt web host before it rejoins production:
+    compare the build against its baseline, confirm patch and scan criteria, and stage the
+    reconnection path one rule at a time. Evidence: the configuration differences recorded against
+    the web01 baseline; the patch level and scan results recorded against the validation criteria;
+    the fw01 rule chosen to carry the first reconnection; the siem01 events recorded while the
+    host served a test page. Pass: every validation criterion marked met or not met with evidence;
+    the first reconnection rule identified by name; a written go or no-go decision that cites at
+    least three recorded items.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [web01]
+      action: Compare the rebuilt web01 configuration with its approved baseline and record every difference
+        that remains.
+    - hosts: [web01]
+      action: Check web01 patch level and malware scan results, and record each against the validation
+        criteria.
+    - hosts: [fw01]
+      action: Review the fw01 rules on the web01 zone path and record which rule would carry the first
+        reconnection.
+    - hosts: [siem01]
+      action: Watch the siem01 event stream while web01 serves a test page, and record any unexpected outbound
+        connection attempts.
+    - hosts: [ws01]
+      action: From ws01, exercise the restored service path and record the response codes and timings observed.
+    - hosts: [ws01]
+      action: Judge readiness for full reconnection and write a go or no-go decision with the supporting
+        evidence listed.
+  refs: [nist-sp-800-61r3, cis-benchmarks, nist-sp-800-92]
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A rebuilt host passes its malware scan, yet its configuration still differs from the baseline in three places. What should happen before reconnection?
+      options:
+      - A) Reconnect, because the scan is the binding check
+      - B) Reconnect with extra logging enabled
+      - C) Extend the deadline by one week
+      - D) Fix the differences, then validate again
+      answer: D
+    - question: A rebuild is validated and the team prepares to reconnect mail01. Which sequence keeps any failure after reconnection easiest to contain?
+      options:
+      - A) All firewall rules restored at once, then users
+      - B) One service path at a time, watched throughout
+      - C) Users first, then the service rules
+      - D) External access first, internal afterwards
+      answer: B
+    - question: After reconnection, which siem01 observation gives the earliest sign that a rebuilt web01 is misbehaving?
+      options:
+      - A) The test page returning the expected text
+      - B) A rise in staff help desk calls
+      - C) Unexpected outbound connections in the event stream
+      - D) The host name resolving correctly again
+      answer: C
+    - question: Who should own the go or no-go decision to return a rebuilt system to production?
+      options:
+      - A) The system owner, using the recorded validation evidence
+      - B) The rebuild technician who personally ran the scans
+      - C) Whichever responder finishes their checks first
+      - D) The firewall administrator acting alone
+      answer: A
+    - question: A manager presses for reconnection tonight because the scan was clean. What does the validation record show that a clean scan alone does not?
+      options:
+      - A) The malware scan vendor's published detection rate
+      - B) Configuration, patch and behaviour checks against criteria
+      - C) The number of staff hours spent rebuilding
+      - D) A list of users still awaiting access
+      answer: B
+- ordinal: 5
+  title: 'Recovery Communication Cadence'
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Deliver recovery updates on a fixed cadence with facts, times and sources
+  - Separate confirmed recovery facts from interpretation in every stakeholder update
+  - Adapt recovery messages for technical responders, management and affected users
+  topics:
+  - 'Recovery update cadence and a single information source.'
+  - 'Facts, interpretations and unverified claims in status updates.'
+  - 'Stakeholder needs: responders, management, affected service users.'
+  - 'Recording decisions and their times in the recovery log.'
+  lab: >-
+    Lab: On the medium-enterprise range, build a recovery communication set from evidence: pull
+    confirmed facts with times from the siem01 record, then draft updates for management and
+    affected users on a stated cadence. Evidence: three confirmed facts recorded with exact times
+    and source; a management update drafted from those facts; a user update with technical terms
+    removed; the cadence statement naming the single source every update cites. Pass: every
+    factual line traceable to the recorded times; interpretations marked as such; the cadence
+    states who sends, who receives and how often; no update presents a guess as fact.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Open the siem01 event record for the recovery window and record three confirmed facts with their
+        exact times.
+    - hosts: [ws01]
+      action: Draft a recovery update for management from the recorded facts, and mark each line as fact or
+        interpretation.
+    - hosts: [ws02]
+      action: Draft a shorter update for affected users on ws02 and record which technical terms were removed.
+    - hosts: [siem01]
+      action: Check the draft times against the siem01 record and correct any time zone or ordering errors
+        found.
+    - hosts: [ws01]
+      action: Write the update cadence for the next day, naming the single source each update will cite.
+    - hosts: [ws01]
+      action: Judge whether each drafted update could be published as written, and mark any line that states a
+        guess as fact.
+  refs: [nist-sp-800-61r3, nist-cswp-29]
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: Recovery is running overnight and stakeholders keep asking for status. Which practice answers most of those questions before they are asked?
+      options:
+      - A) Replying to each question as it arrives
+      - B) Publishing updates on a fixed cadence
+      - C) Sharing the raw event log with everyone
+      - D) Waiting until recovery finishes for one report
+      answer: B
+    - question: A recovery update states that the rebuilt server probably works as before. Which revision makes the line defensible?
+      options:
+      - A) State the tested functions with their check times
+      - B) Soften the line by adding the word preliminary
+      - C) Remove all detail to avoid confusing anyone
+      - D) Add a second opinion from memory as support
+      answer: A
+    - question: Two updates leave at the same time, one for responders and one for affected users. Which pair of contents fits?
+      options:
+      - A) Technical detail in both, to keep them consistent
+      - B) Minimal detail in both, to avoid confusion
+      - C) Names of affected accounts in both
+      - D) Service impact for users, indicators for responders
+      answer: D
+    - question: During a long recovery, two teams issue conflicting times for the same milestone. What prevents the conflict from repeating?
+      options:
+      - A) Both teams stop sending updates entirely
+      - B) A verbal agreement at the next meeting
+      - C) One recovery log that every update cites
+      - D) Blaming the team that erred first
+      answer: C
+    - question: An executive asks whether customer data left the environment. Recovery evidence cannot answer yet. What is the correct handling of that question?
+      options:
+      - A) Say no for the moment, to calm the room
+      - B) Record it as open and set an answer time
+      - C) Answer with the outcome that currently seems most likely
+      - D) Forward the question to the vendor without recording it
+      answer: B
+- ordinal: 6
+  title: 'Recovery Review and Forward Readiness'
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Conduct a recovery review that turns incident findings into owned improvements
+  - Compare the recovery that happened with the plan that was written
+  - Feed validated lessons into updated runbooks and the next exercise
+  topics:
+  - 'After-action review structure: timeline, decisions, evidence.'
+  - 'Comparing achieved recovery times with stated objectives.'
+  - 'Turning findings into owned, dated improvement actions.'
+  - 'Updating runbooks and recovery plans after review.'
+  - 'Scheduling the next rebuild drill to test changes.'
+  lab: >-
+    Lab: On the medium-enterprise range, run a recovery review: build the actual timeline from the
+    siem01 record, compare it with the recovery objectives, and convert the findings into owned
+    improvement actions. Evidence: the actual timeline recorded from the siem01 record; the
+    comparison of each milestone with its objective; three improvement actions with owners and
+    dates; the runbook sections on fs01 that each action would change. Pass: every milestone
+    supported by a recorded event time; each improvement action owned, dated and testable; a
+    written choice of the action the next drill tests first, with a reason.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Extract the recovery timeline from the siem01 record and record each milestone with its actual
+        time.
+    - hosts: [ws01]
+      action: Compare each actual time with the planned recovery objective and record where the plan was beaten
+        or missed.
+    - hosts: [ws02]
+      action: List the decisions taken during recovery on ws02 and record the evidence each decision rested
+        on.
+    - hosts: [ws01]
+      action: Draft three improvement actions from the missed objectives and record an owner and date for
+        each.
+    - hosts: [fs01]
+      action: Check fs01 for the current runbook and record which sections the new actions would change.
+    - hosts: [ws01]
+      action: Judge which improvement action the next drill must test first, and write the reason in one
+        sentence.
+  refs: [nist-sp-800-61r3, nist-cswp-29]
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A recovery succeeded, and the team wants to move on immediately. What does a structured review still provide?
+      options:
+      - A) Proof that responders followed every order
+      - B) A record for the auditor only
+      - C) Owned findings that improve the next recovery
+      - D) Confirmation that no plan change is needed
+      answer: C
+    - question: The recovery took nine hours against a four-hour objective. What should the review record about the difference?
+      options:
+      - A) A revised objective set to nine hours
+      - B) An assurance that the gap will not recur
+      - C) Nothing, because recovery still finished within the day
+      - D) The cause, and an action with an owner
+      answer: D
+    - question: A review lists many observations about a slow recovery. Which one is written in an actionable form?
+      options:
+      - A) Monthly restore tests from March, owned by the platform lead
+      - B) Backup verification practices need improvement across the board
+      - C) Communication between the response teams could have been better overall
+      - D) The team should try harder and move faster next time
+      answer: A
+    - question: After the review, what makes a runbook change stick beyond the current team?
+      options:
+      - A) A message sent round by the review chair
+      - B) A note recorded in the meeting minutes
+      - C) A dated revision tested in the next drill
+      - D) A reminder posted in the team messaging channel
+      answer: C
+    - question: The review changed the rebuild checklist. How is the change proven before a real incident?
+      options:
+      - A) It is exercised in the next drill
+      - B) It is announced at the next briefing
+      - C) It is trusted because the author wrote it
+      - D) It is filed with the incident record
+      answer: A
