@@ -1,0 +1,548 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+
+course_code: C519
+title: SIEM Query Craft
+version: '1.0'
+difficulty: foundation
+duration_hours: 3
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C204
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Analyst (PR-CDA-001).'
+  - 'NIST CSF 2.0: DE.CM, DE.AE.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Search Syntax and Fields
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Read a field:value search expression and state which stored events it matches
+  - Distinguish a full-text term from a field-level filter inside one search string
+  - Select the index pattern, time range and displayed fields that frame a Discover search session
+  topics:
+  - 'What a SIEM index stores and how the Discover view presents stored events.'
+  - 'Field:value syntax, exact matching and the difference between a term and a field filter.'
+  - 'The time range picker and why it bounds every search result set.'
+  - 'Choosing an index pattern and deciding which fields the results table shows.'
+  - 'Reading a results table row: timestamp, source host, account and event action.'
+  lab: >-
+    Lab: On the soc-training range, run two searches in Discover on siem01 and judge what each
+    matched. Evidence: the event count each search returns, three field names shown in the first
+    result row, and one sentence stating why the filtered search matched fewer events. Pass: both
+    counts recorded exactly as the range shows them; three real field names listed from the result
+    row; the reason sentence names the field filter that narrowed the match.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH with the instructor-assigned analyst account and open a
+        browser session.
+    - hosts: [jump01, siem01]
+      action: From jump01, open OpenSearch Dashboards on siem01, select the index pattern the
+        instructor names and record the event count Discover shows.
+    - hosts: [siem01]
+      action: Set the time range to the last 24 hours, run the unfiltered term search in the Discover
+        search bar and record the number of matching events.
+    - hosts: [siem01]
+      action: Add the field:value filter the instructor supplies to the same search, run it and record
+        the new count and three field names the first result row shows.
+    - hosts: [siem01]
+      action: State in one sentence why the filtered search matched fewer events, naming the field and
+        value that narrowed it.
+  refs:
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'An analyst types the word failed alone into the Discover search bar, then replaces it
+        with event.outcome:failure. What changed about the search?'
+      options:
+      - A) It now searches every stored field of every event for failure
+      - B) It matches only events whose outcome field holds that value
+      - C) It widened the time range that the search results cover
+      - D) It changed the index pattern that the search runs against
+      answer: B
+    - question: 'An index holds eight weeks of events, but the time range picker is set to the last 15
+        minutes. Which events can the search return?'
+      options:
+      - A) Every event in the index that matches the search text
+      - B) Only events recorded within the last eight weeks of stored data
+      - C) Only events recorded inside the last 15 minutes
+      - D) No events, because a matching search cannot return any events
+      answer: C
+    - question: 'Before running its first search of the shift, a triage analyst must choose the index
+        pattern that holds Windows sign-in events. Choosing the wrong index pattern means:'
+      options:
+      - A) The search runs over an index that cannot contain the wanted events
+      - B) The search text is rewritten and corrected automatically before it runs
+      - C) The time range resets to the last hour without warning
+      - D) The results table hides its timestamp column from view
+      answer: A
+    - question: 'A bare term search for the word backup matches events where any field contains that
+        word. What does process.name:backup match?'
+      options:
+      - A) Events from any stored index that mention the name anywhere at all
+      - B) Events where the process field is absent
+      - C) Every event in the results table
+      - D) Events whose process name field holds exactly that value
+      answer: D
+    - question: 'An analyst needs the source address of each matching event visible without opening any
+        document. Where does Discover put that information?'
+      options:
+      - A) In the index pattern name
+      - B) In the search bar of Discover as a saved search term
+      - C) As a selected column in the results table
+      - D) In the settings of the Discover time range picker
+      answer: C
+- ordinal: 2
+  title: Boolean Logic and Search Operators
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a search that combines two field filters with AND and removes noise with NOT
+  - Predict the result set of a search that groups OR terms inside parentheses
+  - Apply range expressions to a numeric field to bound an event count
+  topics:
+  - 'AND, OR and NOT: how each operator changes a result set.'
+  - 'Grouping terms with parentheses and reading a grouped search aloud.'
+  - 'Range expressions on counts, sizes and ports in event fields.'
+  - 'Wildcards in field values and the broad matches they invite.'
+  - 'Narrowing thousands of events to the working set a triage needs.'
+  lab: >-
+    Lab: On the soc-training range, build one compound search in Discover on siem01 that keeps
+    sign-in failure events and removes one known noisy source. Evidence: the full search text as
+    typed, the event count it returns, and the count after the NOT clause is added. Pass: the search
+    combines two filters with AND and one exclusion with NOT as written; both counts recorded; one
+    sentence states which clause removed the most events.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH with the instructor-assigned analyst account and open a
+        browser session.
+    - hosts: [jump01, siem01]
+      action: In Discover on siem01, run a search for the sign-in failure field pair the instructor
+        names and record the event count.
+    - hosts: [siem01]
+      action: Add a second field filter with AND for the host or outcome the instructor names, run the
+        search and record its full text as typed and the new count.
+    - hosts: [siem01]
+      action: Append a NOT clause that removes the noisy account or source the instructor names and
+        record the full search text as typed with the final count.
+    - hosts: [siem01]
+      action: Write one sentence naming the clause that removed the most events and the noise it
+        removed.
+  refs:
+  - nist-sp-800-92
+  - sigma
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'A search combines two field filters with AND. The first matches 500 events, the second
+        200, and 50 match both. How many events does the search return?'
+      options:
+      - A) 700, because AND joins the two lists of events together
+      - B) 650, because one filter is subtracted from the other
+      - C) 200, because the larger filter decides the final count
+      - D) 50, because AND keeps only events matching every filter
+      answer: D
+    - question: 'An analyst wants events from either of two host names in one search. Which operator
+        placed between the two host field filters returns that union?'
+      options:
+      - A) OR
+      - B) AND
+      - C) NOT
+      - D) An equals sign
+      answer: A
+    - question: 'A search with two field filters returns failed and successful sign-ins for one account.
+        The analyst appends NOT outcome:success. Which events remain?'
+      options:
+      - A) All events, because NOT cannot remove matches
+      - B) Only the failed sign-in events for that account
+      - C) Only the successful sign-in events
+      - D) No events, because the filters now contradict each other
+      answer: B
+    - question: 'An analyst adds a range filter that keeps events whose numeric field is greater than
+        1000 to a search on file transfer events. Which events does the result set keep?'
+      options:
+      - A) Every file transfer event in the index regardless of its size
+      - B) Only the file transfer events whose value is exactly 1000
+      - C) Only file transfer events whose value passes the stated bound
+      - D) The 1000 largest file transfer events stored in the whole index
+      answer: C
+    - question: 'A search uses a wildcard in a host name field to match several similarly named
+        workstations at once. What is the main risk of that wildcard?'
+      options:
+      - A) It matches more hosts than the triage question needs
+      - B) It slows the display of the results table for every search
+      - C) It removes events that use the host name exactly
+      - D) It changes the field the search inspects
+      answer: A
+- ordinal: 3
+  title: Writing a Triage Query
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Convert a stated alert question into one query on the log source that answers it
+  - 'Select the fields a triage query must return: time, host, account and action'
+  - Judge a result set as sufficient or insufficient for the alert's triage decision
+  topics:
+  - 'From alert to question: stating what the triage query must answer.'
+  - 'Choosing the log source whose events can answer the question.'
+  - 'Field selection: timestamp, host, account and action as the core columns.'
+  - 'Expressing the question as field filters instead of free text.'
+  - 'Recording the query text and result count beside the triage decision.'
+  lab: >-
+    Lab: On the soc-training range, write one triage query in Discover on siem01 that answers this
+    alert: an account shows repeated failed sign-ins on the domain controller v-dc01. Evidence: the
+    question restated in one sentence, the full query text, the result count, and the account, host
+    and outcome values of the first five results. Pass: the query targets the sign-in log source the
+    instructor names; the four core fields are visible in the results table; the recorded values show
+    whether the failures share one account.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH with the instructor-assigned analyst account and open a
+        browser session.
+    - hosts: [jump01, siem01]
+      action: In Discover on siem01, restate the v-dc01 failed sign-in alert as one question and write
+        it in the lab notes.
+    - hosts: [siem01]
+      action: Select the authentication index the instructor names and build a query of field filters
+        that matches failed sign-in events on v-dc01; record the query text.
+    - hosts: [siem01]
+      action: Run the query, record the result count and display the time, host, account and outcome
+        fields as columns.
+    - hosts: [siem01]
+      action: Record the account, host and outcome values of the first five results and state whether
+        they share one account.
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'An alert says one account generated repeated failed sign-ins on a file server
+        overnight. Which triage question does the first query need to answer?'
+      options:
+      - A) Whether the file server needs a restart after the failures
+      - B) How many total events the whole index holds in storage
+      - C) Whether the failures come from one account or many
+      - D) Which analyst is on shift and owns the triage queue
+      answer: C
+    - question: 'An analyst must answer a triage question about sign-in failures on the victim domain
+        controller. Which log source should the triage query read first?'
+      options:
+      - A) A record of the DHCP address leases the network handed out
+      - B) The access log the public web server writes each day
+      - C) The delivery queue of the mail server for that morning
+      - D) The authentication events the domain controller produces
+      answer: D
+    - question: 'A triage query returns 40 matching events shown as raw documents. Which four fields
+        should the analyst add as columns before judging the alert?'
+      options:
+      - A) Timestamp, host, account and action
+      - B) Index name, shard, node and document version
+      - C) Bytes, duration, protocol and region
+      - D) Query text, result count, range and sort order
+      answer: A
+    - question: 'A triage query for failed sign-ins is typed as free text, and a document whose
+        narration merely mentions the account name also matches. What does this show about free-text
+        searching?'
+      options:
+      - A) Free text is always the more precise choice for sign-in events
+      - B) Free text matches documents that only mention the value
+      - C) Field filters match the narration text as well as fields
+      - D) The index lost the field that the query needed to match
+      answer: B
+    - question: 'A triage query returns two failed sign-ins from one account at 09:00, and nothing else
+        in the stated window. The alert claims a password-guessing burst. What is the triage
+        judgement?'
+      options:
+      - A) The result set proves a compromise, so escalate at once
+      - B) The result set is sufficient, because any failure confirms the alert
+      - C) The query must be rerun without a time window first
+      - D) The result set contradicts the alert's claim, so question the alert
+      answer: D
+- ordinal: 4
+  title: Tuning and Testing a Triage Query
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Test a triage query against one alert case and one known-benign case
+  - Identify the filter that makes a query over-broad and narrow it
+  - Rewrite a query until its results contain only events the alert needs
+  topics:
+  - 'Testing a query on a benign case before trusting it on an alert.'
+  - 'Over-broad filters: signs a result set has outgrown its question.'
+  - 'Narrowing with an added field filter or a tighter value.'
+  - 'Comparing result counts before and after each change.'
+  - 'Keeping the tested query text with the triage decision.'
+  lab: >-
+    Lab: On the soc-training range, tune one over-broad triage query in Discover on siem01 until it
+    separates the alert case from a benign lookalike. Evidence: the starting query text and count,
+    the change made at each step with the new count, and the final query that still matches the alert
+    case. Pass: the first query's over-broad filter is named in one sentence; every change is
+    recorded with its count; the final query matches the alert case and excludes the benign case the
+    instructor describes.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH with the instructor-assigned analyst account and open a
+        browser session.
+    - hosts: [jump01, siem01]
+      action: In Discover on siem01, run the over-broad query the instructor supplies and record its
+        text and result count.
+    - hosts: [siem01]
+      action: Name in one sentence which filter makes the result set larger than the alert question
+        needs, add one field filter that narrows it and record the new count.
+    - hosts: [siem01]
+      action: Repeat the narrowing with one further field filter or a tighter value at a time, recording
+        the change and the new count, until the benign case the instructor describes no longer matches.
+    - hosts: [siem01]
+      action: Rerun the final query against the alert case, record its count and record that the four
+        core columns still display.
+  refs:
+  - sigma
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'Before trusting a new triage query on live alerts, an analyst runs it against a period
+        of known routine activity. What does this test establish?'
+      options:
+      - A) Whether the query matches activity that should not alert
+      - B) Whether the index holds enough storage space for the events
+      - C) Whether the query runs faster on the cluster than the old query
+      - D) Whether the time range picker is calibrated for this index
+      answer: A
+    - question: 'A tuned query for one account''s failed sign-ins returns events from every account in
+        the index. What is the most likely cause?'
+      options:
+      - A) The time range is too narrow for the index
+      - B) The results table hides the account column
+      - C) A field filter is missing or too loose
+      - D) The query was saved under the wrong name
+      answer: C
+    - question: 'A query matches failed sign-ins from all sources. The alert concerns one workstation
+        only. Which change narrows the query correctly?'
+      options:
+      - A) Removing the existing outcome filter from the query entirely
+      - B) Adding a filter on the host field for that workstation
+      - C) Widening the time range that the query covers to seven days
+      - D) Replacing the field filters with a bare free-text search term
+      answer: B
+    - question: 'An analyst records the result count before and after each query change. What does
+        comparing those counts show?'
+      options:
+      - A) Whether the SIEM licence the security team pays for is fully used
+      - B) How quickly the storage cluster answers each query the analyst submits
+      - C) How old the stored events in the searched index have become
+      - D) Whether the change removed noise without losing the wanted events
+      answer: D
+    - question: 'After tuning, where does the analyst record the final query text so the triage decision
+        can be checked later?'
+      options:
+      - A) Nowhere; the results table already shows the query text
+      - B) Beside the triage decision in the triage note
+      - C) Only in the address bar of the browser session
+      - D) On the configuration page of the index pattern
+      answer: B
+- ordinal: 5
+  title: Time Windowing and Pivoting
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Choose a time window that covers the stated activity period of an alert
+  - Pivot from one result to a second query on a field value it shows
+  - Sequence a chain of pivots that follows one account across two log sources
+  topics:
+  - 'The time range picker and time bounds written inside a query.'
+  - 'Window size: too wide buries the signal, too narrow loses context.'
+  - 'Pivoting on a field value such as a host or account name.'
+  - 'Following one account from authentication events into workstation activity.'
+  - 'Recording each pivot so the trail can be retraced later.'
+  lab: >-
+    Lab: On the soc-training range, follow one account across two sources in Discover on siem01:
+    start from failed sign-in events on the domain controller v-dc01 and pivot on the account name
+    into that account's activity on the workstation v-ws01. Evidence: each query text in order, each
+    result count, the account name pivoted on, and the time of the first workstation event found.
+    Pass: the first query targets sign-in events on v-dc01 in the stated window; the pivot reuses the
+    account value from a result; the final query targets v-ws01 activity for that same account.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH with the instructor-assigned analyst account and open a
+        browser session.
+    - hosts: [jump01, siem01]
+      action: In Discover on siem01, set the time window the instructor states and query failed sign-in
+        events on v-dc01; record the query text and count.
+    - hosts: [siem01]
+      action: Open one matching result, record its account field value and state that this value is the
+        pivot.
+    - hosts: [siem01]
+      action: Write a second query that keeps the events of that account on the workstation v-ws01 in
+        the same window; record its text and count.
+    - hosts: [siem01]
+      action: Record the time of the first workstation event found and write the two-query trail in
+        order so it can be retraced.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'An alert claims a burst of failed sign-ins lasting about ten minutes. Which time window
+        best balances finding the burst against burying it in routine events?'
+      options:
+      - A) One minute, so the search excludes everything else entirely
+      - B) Eight weeks, to be certain that nothing at all is missed
+      - C) The whole retention period of the index pattern
+      - D) A window that covers the burst with context on each side
+      answer: D
+    - question: 'An analyst sets a two-minute window for an alert whose activity may span an hour. What
+        is the main risk of that choice?'
+      options:
+      - A) The index reindexes itself and slows every search down
+      - B) Events from the activity fall outside the window unseen
+      - C) The results table gains an extra timestamp column at the left
+      - D) The query saves itself with the wrong name
+      answer: B
+    - question: 'An analyst opens one matching result, copies its account value and runs a new query
+        filtered on that value. What is this action called in query craft?'
+      options:
+      - A) Pivoting on a field value
+      - B) Reindexing the source data
+      - C) Exporting the result set
+      - D) Changing the index pattern
+      answer: A
+    - question: 'A failed sign-in result shows fields for host, account and outcome. To follow that
+        account''s later activity, which value does the next query filter on?'
+      options:
+      - A) The outcome value, because it caused the alert
+      - B) The host name, to the exclusion of the account
+      - C) The account value, reused from the result row
+      - D) The timestamp, rounded to the nearest day
+      answer: C
+    - question: 'Why does an analyst record each pivot query and count in order while following one
+        account across sources?'
+      options:
+      - A) The SIEM deletes the queries that an analyst does not record
+      - B) The counts are needed for the storage report
+      - C) Recording replaces the need to test the queries
+      - D) The trail can be retraced and checked by another analyst
+      answer: D
+- ordinal: 6
+  title: Saving and Sharing Detections
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Save a finished query as a named object that states its purpose
+  - Describe a query as a detection with source, fields, window and purpose
+  - Export a query's text and results so the work can be rerun later
+  topics:
+  - 'Saved searches: naming, description and the purpose stated in one line.'
+  - 'What a detection description carries: query, log source, window and owner.'
+  - 'Exporting results and query text for the triage record.'
+  - 'Turning a recurring triage query into a reusable detection description.'
+  - 'Sigma-style rule structure as a shareable detection format.'
+  lab: >-
+    Lab: On the soc-training range, package one tuned triage query from Discover on siem01 so it can
+    be rerun and reviewed. Evidence: the saved search's name and one-line purpose, its full query
+    text, the exported result file name, and a detection description stating log source, window,
+    fields and purpose. Pass: the saved search name states its purpose in plain words; the query text
+    recorded matches the saved search; the detection description names the source, the window and the
+    fields; the export is recorded as a file the range produced.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH with the instructor-assigned analyst account and open a
+        browser session.
+    - hosts: [jump01, siem01]
+      action: In Discover on siem01, open the tuned triage query the instructor names and record its
+        full query text.
+    - hosts: [siem01]
+      action: Save the search under a name that states its purpose in plain words and write a one-line
+        description; record both.
+    - hosts: [siem01]
+      action: Export the result set in the format the instructor names and record the file name the
+        range produced.
+    - hosts: [siem01]
+      action: Write a detection description for the query stating its log source, time window, key
+        fields and purpose, and record it with the export.
+  refs:
+  - sigma
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'An analyst reruns the same triage query every shift. Which Discover feature stores the
+        query text under a name so it can be reopened?'
+      options:
+      - A) The calendar inside the time range picker
+      - B) The index pattern management page in Discover
+      - C) A saved search with a stated purpose
+      - D) The export menu of the results table
+      answer: C
+    - question: 'A tuned query is saved for reuse. Which saved-search name best states its purpose to
+        the next reader?'
+      options:
+      - A) Failed sign-ins by one account on v-dc01 in the last day
+      - B) The first search run on this morning's shift so far
+      - C) Query two, final version, revised copy for this module
+      - D) An untitled search saved by the analyst without any description at all
+      answer: A
+    - question: 'A reusable detection description is handed to a reviewer. Which set of details lets the
+        reviewer rerun and judge it without asking questions?'
+      options:
+      - A) The alert's ticket number and the assignee's name
+      - B) The dashboard colour scheme and the chart types it uses
+      - C) The number of events the index holds in total
+      - D) The log source, time window, query text and key fields
+      answer: D
+    - question: 'Why does the analyst export the result set beside the query text when packaging a
+        detection?'
+      options:
+      - A) The export deletes the original events from the index
+      - B) The results show what the query matched when it ran
+      - C) The export converts the query to a new language
+      - D) The index refuses to store unexported queries
+      answer: B
+    - question: 'A SOC wants triage queries written in a vendor-neutral, version-controlled format that
+        other tools can read. Which format fits that need?'
+      options:
+      - A) A Sigma rule describing the query and its fields
+      - B) A screenshot of the dashboard taken at save time
+      - C) A spreadsheet holding the raw matched events alone
+      - D) A message about the query posted in the chat channel
+      answer: A
