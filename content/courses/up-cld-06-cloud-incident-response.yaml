@@ -1,0 +1,562 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# Cloud Incident Response (C548) - individual upskilling course on the cloud-security range.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C548
+title: Cloud Incident Response
+version: '1.0'
+difficulty: advanced
+duration_hours: 6
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C546
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Incident Responder (PR-CIR-001); Systems Security Analyst.'
+  - 'NIST CSF 2.0 categories: RS.MA, RS.MI, RC.RP.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: IR Under Shared Responsibility
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish provider duties from customer duties for each incident scenario on a simulated cloud
+    platform
+  - Select the telemetry sources that prove or disprove a suspected compromise of a cloud workload
+  - Decide which observed findings meet the activation threshold for a formally declared incident
+  topics:
+  - The shared responsibility model and how the boundary moves across service types.
+  - Activation triggers, severity and the decision to declare a cloud incident.
+  - Provider-side and customer-side telemetry, from control-plane logs to workload records.
+  - Containment authority, what the provider controls and what the customer operates.
+  - Customer duties of record-keeping when a provider acts on the customer's estate.
+  lab: >-
+    Lab: On the cloud-security range, sort the audit findings that the simulated cloud platform raises
+    into provider duties and customer duties, name the telemetry that would prove each one was
+    exploited, and decide which findings justify declaring an incident. Evidence: each prowler01
+    finding marked provider or customer; the data source behind each incident record shown on
+    cloud-siem01; one telemetry source named for each finding; a declared or not-decided marking with
+    one sentence of reason for each finding. Pass: every finding is marked provider or customer with
+    a reason; every finding names a telemetry source that exists on this range; each declared finding
+    has a one-sentence activation reason.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time.
+    - hosts: [jump01, cloud-siem01]
+      action: From jump01, open the cloud-siem01 dashboards, list the incident records shown and record
+        which data source each record came from.
+    - hosts: [jump01, prowler01]
+      action: From jump01, open the prowler01 audit report and record every finding it raises with the
+        platform each finding concerns.
+    - hosts: [jump01]
+      action: Mark each recorded finding as a provider duty or a customer duty, and name the telemetry
+        source that would prove the finding was exploited.
+    - hosts: [jump01]
+      action: Mark each finding declared or not decided for formal incident response, with one sentence
+        of reason, and record the findings to escalate first.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-145
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A web application runs on a provider's platform service. The provider patches the runtime,
+        but the application's own libraries stay unpatched and are exploited. Under the shared
+        responsibility model, who was responsible for patching the libraries?
+      options:
+      - A) The provider, because it operates the platform the application runs on
+      - B) The customer, because the libraries are the customer's to patch
+      - C) Both parties equally, because every layer is shared in the same way
+      - D) Whichever party first detects the exploitation of the library
+      answer: B
+    - question: An analyst suspects data was copied from object storage overnight. Which telemetry most
+        directly shows what was read and by which identity?
+      options:
+      - A) The public landing page of the storage bucket involved
+      - B) A network diagram showing where the storage service sits within the provider's global regions
+      - C) Provider access logs recording each read request with its identity
+      - D) The monthly invoice for storage capacity consumed
+      answer: C
+    - question: A cloud account shows a burst of failed sign-ins followed by unusual API activity from
+        one identity within the same hour. Which observation best justifies declaring an incident
+        instead of routine triage?
+      options:
+      - A) The failed sign-ins all targeted one account retired last year
+      - B) The API activity matched a known and scheduled nightly backup job
+      - C) The failed sign-ins happened during normal working hours
+      - D) The failed sign-ins and the API activity share one identity
+      answer: D
+    - question: A compromised virtual machine must be cut off from the network at once. Which containment
+        action lies with the cloud customer rather than the provider?
+      options:
+      - A) Applying a security group that blocks the workload's network traffic
+      - B) Physically unplugging the network cable of the affected host
+      - C) Patching the hypervisor that the workload happens to run on
+      - D) Rotating the provider's regional edge service certificate for the affected availability zone
+      answer: A
+    - question: A provider confirms it has mitigated abuse of a customer's leaked access key. Which record
+        remains the customer's duty to keep?
+      options:
+      - A) The provider's internal change tickets for its mitigation work
+      - B) A timeline of customer-side actions, decisions and evidence
+      - C) The provider's patch history for the hypervisors in the region
+      - D) The network diagram of the provider's edge points of presence
+      answer: B
+- ordinal: 2
+  title: Containing Compromised Workloads
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the runtime indicators that mark a container workload as compromised on a live cluster
+  - Contain a compromised workload by isolating its traffic without destroying the state it holds
+  - Choose among isolation, snapshot and termination for a compromised workload and justify the choice
+  topics:
+  - Signs of a compromised workload in runtime telemetry.
+  - Isolation with network policy, cutting a workload off while it keeps running.
+  - Snapshot before termination, preserving the state a compromise holds.
+  - Why deleting a workload first loses the artefacts an investigation needs.
+  - Blast radius, what else a compromised workload could reach on its node.
+  lab: >-
+    Lab: On the cloud-security range, find the suspicious pod running on k3s-worker02, isolate it with a
+    network policy applied through k3s-master, and judge whether isolation, snapshot or termination is
+    the right next step. Evidence: every pod on k3s-worker02 with the runtime indicator that marks it
+    suspicious or clean; the network policy applied and the connections it blocks; the workloads the
+    suspect pod could reach before and after isolation; a recommendation with one sentence of reason.
+    Pass: the suspect pod is identified by name with its indicator; an isolation policy is applied and
+    recorded; the recommendation chooses isolate, snapshot or terminate with a reason that names what
+    would be lost by the alternatives.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time.
+    - hosts: [jump01, k3s-worker02]
+      action: From jump01, list the pods running on k3s-worker02 and record each pod with the runtime
+        indicator that marks it suspicious or clean.
+    - hosts: [jump01, k3s-master]
+      action: From jump01, apply a network policy through k3s-master that denies the suspect pod's
+        traffic in both directions, and record the policy name.
+    - hosts: [jump01, k3s-worker02]
+      action: Record which other workloads on the node the suspect pod could reach before isolation and
+        which it can still reach after.
+    - hosts: [jump01]
+      action: Recommend isolate, snapshot or terminate for the suspect pod with one sentence of reason,
+        and state what the investigation would lose if the pod were terminated first.
+  refs:
+  - nist-sp-800-190
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: Runtime telemetry shows a pod making outbound connections to an address nothing else in
+        the cluster contacts. Which containment order preserves both speed and evidence?
+      options:
+      - A) Terminate the pod immediately, then analyse its image afterwards
+      - B) Wait for the pod to finish its current scheduled task
+      - C) Isolate the pod from the network first, then capture its state
+      - D) Restart the pod on a different node and watch it again
+      answer: C
+    - question: A debug pod running with host privileges and access to the host PID namespace is
+        compromised. Which fact most raises its blast radius?
+      options:
+      - A) It can read the node's filesystem and reach every pod on that node
+      - B) Its container image is small and quick to download
+      - C) It writes its application logs to standard output
+      - D) It was scheduled onto the node more recently than the others
+      answer: A
+    - question: An incident lead wants a compromised workload gone quickly, while the analyst wants to
+        know what the workload did. Which action serves both needs?
+      options:
+      - A) Terminate at once; the platform's own records are always enough
+      - B) Leave the workload running until the investigation formally ends
+      - C) Delete the workload's volumes to stop its activity at once
+      - D) Snapshot the workload, terminate it, then analyse the snapshot
+      answer: D
+    - question: Which observation from runtime telemetry best indicates a compromised workload rather
+        than a busy but legitimate one?
+      options:
+      - A) Steady traffic to a patched internal service during working hours
+      - B) A scheduled backup job completing inside its normal window
+      - C) Outbound connections to an address no other workload contacts
+      - D) A restart counter that stays at zero for a week
+      answer: C
+    - question: A compromised pod is isolated with a network policy that denies all of its traffic. What
+        does this containment achieve?
+      options:
+      - A) The pod keeps running so its state can be examined, without reaching other systems
+      - B) The pod is deleted from the cluster and its image is removed
+      - C) The pod's image is rebuilt from a clean base and redeployed
+      - D) The pod's logs are erased so no attacker tooling remains
+      answer: A
+- ordinal: 3
+  title: Containing Compromised Keys and Credentials
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Trace the activity of a compromised access key through account logs to the resources it touched
+  - Rank the revocation, rotation and session-invalidation steps for exposed credentials in a safe order
+  - Assess the blast radius of an over-privileged identity before and after it is contained
+  topics:
+  - How access keys, tokens and credentials are exposed in cloud environments.
+  - Reading account logs to trace what a compromised key touched and when.
+  - Revocation, rotation and an order that avoids locking out recovery work.
+  - Over-privileged identities and the blast radius of a leaked key.
+  - Invalidating live sessions so a revoked key stops working.
+  lab: >-
+    Lab: On the cloud-security range, find the identity on localstack01 whose policy grants far more
+    than its role needs, trace what that identity touched in cloud-siem01, and plan the containment
+    order for its key. Evidence: every identity policy on localstack01 with the permissions it grants;
+    each resource the over-privileged identity touched with a time; what revoking, rotating and
+    invalidating sessions each stop; a ranked containment order with what could still succeed after
+    each step. Pass: the over-privileged identity is named with the permission that exceeds its role;
+    every touched resource is listed from the logs with a time; the ranked order keeps the identity
+    from acting between steps and says what remains exposed after each step.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time.
+    - hosts: [jump01, localstack01]
+      action: From jump01, list the identity policies configured on localstack01 and record each policy
+        with the permissions it grants.
+    - hosts: [jump01, cloud-siem01]
+      action: From jump01, search cloud-siem01 for activity by the over-privileged identity and record
+        each resource it touched with the time it touched it.
+    - hosts: [jump01, localstack01]
+      action: Record what revoking the policy, rotating the key and invalidating the identity's live
+        sessions would each stop, using localstack01 to confirm the current state.
+    - hosts: [jump01]
+      action: Rank the three containment steps first to last so the identity cannot act between them,
+        and state what could still succeed after each step.
+  refs:
+  - nist-sp-800-57pt1r5
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: An access key is published by accident in a public repository. Which single action stops
+        the leaked key from working at once?
+      options:
+      - A) Publishing a replacement key alongside the old one
+      - B) Waiting for the leaked key to reach its scheduled expiry
+      - C) Renaming or privatising the repository after the fact and hoping nobody kept a copy
+      - D) Revoking the key and invalidating the sessions that hold it
+      answer: D
+    - question: An identity that can both create and delete every storage bucket is leaked. Why is its
+        blast radius severe?
+      options:
+      - A) The access key string is long and hard to memorise
+      - B) One leaked key lets the holder alter and destroy the whole storage estate
+      - C) The identity is normally used only during quiet overnight hours
+      - D) Bucket names are public and easy for anyone to list
+      answer: B
+    - question: Which record shows what a compromised access key actually did, not just that the key
+        existed?
+      options:
+      - A) Account logs listing each action the key performed and on which resource
+      - B) The repository file where the key was accidentally committed
+      - C) The creation date recorded on the key when it was issued
+      - D) The usage invoice for the storage the account consumed
+      answer: A
+    - question: A widely used operations identity is leaked, and the team rotates its key without
+        checking which systems depend on it. What is the likely result?
+      options:
+      - A) The leak heals itself once the rotation completes
+      - B) Nothing changes, because rotation is invisible to every client
+      - C) The old key keeps working indefinitely alongside the new one until someone notices
+      - D) Legitimate work fails while the adversary's copied session may survive
+      answer: D
+    - question: After revoking a leaked key, why must live sessions also be invalidated?
+      options:
+      - A) Sessions are unaffected by key revocation and need no further action
+      - B) Tokens issued before revocation can keep working until they expire
+      - C) Sessions belong to the provider and can never be revoked by customers
+      - D) Invalidation makes the next rotation of the key run faster
+      answer: B
+- ordinal: 4
+  title: Forensics in Ephemeral Infrastructure
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Capture the volatile artefacts of a suspect cloud workload before the platform destroys them
+  - Order a forensic capture so each artefact outlives the workload that produced it
+  - Explain how autoscaling and short-lived instances change how cloud evidence is preserved
+  topics:
+  - Volatility in the cloud, workloads and disks that vanish by design.
+  - The capture order, platform logs first, then network records, then disk and memory.
+  - Snapshots and exports, moving evidence off the ephemeral workload, and its custody inside the
+    investigated platform.
+  - Autoscaling and replacement, why an instance may not exist tomorrow.
+  - Memory and disk artefacts, what each shows about a running compromise.
+  lab: >-
+    Lab: On the cloud-security range, capture the evidence of the suspect workload on k3s-worker02 in
+    an order that survives the workload being replaced, and judge which artefacts are volatile.
+    Evidence: each log export taken from cloud-siem01 with where it was written; the state capture of
+    the suspect workload with the artefact names produced; every artefact marked volatile or
+    persistent with what destroys the volatile ones; a capture order for a workload replacement with
+    the artefact that would be lost if capture waited an hour. Pass: logs are exported before state is
+    captured; every artefact is marked volatile or persistent with its destroyer named; the written
+    order keeps every artefact available after a replacement.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time.
+    - hosts: [jump01, cloud-siem01]
+      action: From jump01, export the platform and network records for the suspect workload from
+        cloud-siem01 and record where each export was written.
+    - hosts: [jump01, k3s-worker02]
+      action: From jump01, capture the state of the suspect workload on k3s-worker02 to storage outside
+        the workload, and record the names of the artefacts produced.
+    - hosts: [jump01]
+      action: Mark each captured artefact volatile or persistent, and state what destroys the volatile
+        ones if the workload is replaced.
+    - hosts: [jump01]
+      action: Write the capture order that keeps every artefact available through a workload
+        replacement, and name the artefact lost if capture waits an hour.
+  refs:
+  - nist-sp-800-86
+  - nist-sp-800-92
+  - volatility3
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A suspicious instance is scaled away overnight by an autoscaling rule. Which artefact
+        survives by default?
+      options:
+      - A) The platform records already exported to the central logging service
+      - B) The memory contents of the instance that was removed
+      - C) The ephemeral disk that was attached to the instance
+      - D) The runtime process list of the removed instance, held only in its memory
+      answer: A
+    - question: A responder has one chance to preserve a compromised workload before it is replaced.
+        What is captured first?
+      options:
+      - A) A screenshot of the management dashboard for the file
+      - B) Nothing, until a written change approval has been granted
+      - C) The platform records of what the workload did, then its disk and memory
+      - D) Only the disk, because it is the largest store of information
+      answer: C
+    - question: Evidence snapshots are stored in the same cloud account that is under investigation.
+        What is the main risk of this placement?
+      options:
+      - A) Snapshots are encrypted twice and become slow to read back
+      - B) An attacker with account control can alter or delete the evidence
+      - C) Snapshots grow too large for the account's storage allocation
+      - D) The provider deletes every snapshot after one hour by policy
+      answer: B
+    - question: A compromised pod is replaced by autoscaling within minutes of its discovery. What does
+        this force the responder to change?
+      options:
+      - A) Evidence capture must happen before or during the replacement, not after
+      - B) Nothing, because the replacement pod holds the same evidence
+      - C) The whole investigation must move offline to written statements
+      - D) The cluster must be deleted immediately to stop any further replacement from happening
+      answer: A
+    - question: Why capture the memory of a compromised workload when a disk snapshot of it already
+        exists?
+      options:
+      - A) Memory images are smaller and cheaper to store than disks
+      - B) Memory makes the platform's own records and logs unnecessary to collect at all
+      - C) Memory holds running processes and network connections the disk cannot show
+      - D) Memory images never contain sensitive material worth protecting
+      answer: C
+- ordinal: 5
+  title: Recovery at Cloud Speed
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Restore declared workloads on the cluster from declarative definitions and recorded backups
+  - Order the recovery of dependent services so each is restored onto what it needs
+  - Verify a recovered service against its known-good baseline before recovery is declared complete
+  topics:
+  - Recovery from declarations, infrastructure as code and redeployment from clean images.
+  - Backups and restore points held in cloud storage.
+  - Recovery order for dependent services, restoring each onto what it needs.
+  - Verification against a known-good baseline before an incident is closed.
+  - Speed versus safety in cloud recovery decisions.
+  lab: >-
+    Lab: On the cloud-security range, recover the declared workloads through argocd01 and k3s-master,
+    check the newest restore point in the backup bucket on localstack01, and verify each recovered
+    workload against its baseline. Evidence: the workloads declared for automatic redeployment and any
+    workload missing from the declarations; the newest restore point for the declared data; whether
+    each redeployed workload came back healthy; a verified or not-verified marking per workload with
+    the name of any workload that cannot be recovered from the declarations alone. Pass: the declared
+    workloads are listed and each is redeployed and checked; the newest restore point is recorded with
+    its time; every workload is marked verified or not verified with the baseline comparison shown.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time.
+    - hosts: [jump01, argocd01]
+      action: From jump01, open argocd01 and record which workloads are declared for automatic
+        redeployment and which are missing from the declarations.
+    - hosts: [jump01, localstack01]
+      action: From jump01, inspect the backup bucket on localstack01 and record the newest restore
+        point available for the declared data.
+    - hosts: [jump01, k3s-master]
+      action: From jump01, redeploy the declared workloads through k3s-master and record whether each
+        came back healthy.
+    - hosts: [jump01]
+      action: Compare each redeployed workload against its expected baseline, mark the recovery verified
+        or not verified per workload, and name any workload the declarations alone cannot recover.
+  refs:
+  - nist-sp-800-193
+  - cis-benchmarks
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: Why does recovery from declared definitions beat recovery from hand-built copies of a
+        compromised environment?
+      options:
+      - A) Declarations remove the need to keep any backups at all
+      - B) Hand-built copies are always more current than any declaration
+      - C) Declarations are usually written during the incident itself
+      - D) Declarations are versioned and tested, so a rebuild matches the intended state
+      answer: D
+    - question: Data corruption from an intrusion began three days before the intrusion was detected.
+        Which restore point should the recovery use?
+      options:
+      - A) The newest backup taken before the corruption began
+      - B) The most recent backup of any kind that exists
+      - C) A backup taken after the corruption had been detected
+      - D) No backup, rebuilding the data from working memory
+      answer: A
+    - question: A sign-in service, a reporting tool and a database are all down after an incident. The
+        reporting tool and the sign-in service both need the database. What is recovered first?
+      options:
+      - A) The reporting tool, because the reports are the most urgent output
+      - B) The database, because both other services depend on it
+      - C) All three together, because the order makes no difference
+      - D) The sign-in service, because those signing in expect it to answer first
+      answer: B
+    - question: The workloads are redeployed and answering requests. What must happen before recovery is
+        declared complete?
+      options:
+      - A) The incident record is closed and archived for later review
+      - B) The old compromised workloads are restored alongside the new ones
+      - C) Each service is verified against its known-good baseline
+      - D) The backup restore points are deleted to save storage cost
+      answer: C
+    - question: Leadership demands the service be restored within the hour, but full verification takes
+        two. What is the defensible recovery decision?
+      options:
+      - A) Skip verification entirely so the deadline is met as ordered
+      - B) Restore what is verified now and report the outstanding verification honestly
+      - C) Declare the recovery complete without any checks at all
+      - D) Refuse to begin any recovery work until verification can finish
+      answer: B
+- ordinal: 6
+  title: Post-Incident Review and Detection Improvement
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Turn each finding from a completed cloud incident into a control or detection change
+  - Re-test the environment after remediation and confirm the weaknesses behind the incident are gone
+  - Write lessons-learned items that state what happened, what changed and how the change is verified
+  topics:
+  - The post-incident review, findings, timelines and root cause.
+  - Converting findings into detection and control changes.
+  - Re-testing the environment after remediation to confirm the weaknesses are gone.
+  - Lessons-learned items a reviewer can verify against the estate.
+  - Feeding incident data into the response plan and future exercises.
+  lab: >-
+    Lab: On the cloud-security range, re-test whether the containment work from earlier modules held, and
+    turn what the incident taught into verifiable changes. Evidence: the prowler01 audit result for the
+    over-privileged identity, still present or fixed; the name of a detection on cloud-siem01 that
+    would now catch the key misuse, or a note that none exists; the current policy on localstack01
+    compared with its original grants; three lessons-learned items each stating what happened, what
+    changed and how the change is verified on this range. Pass: the audit is re-run and its result for
+    the identity is recorded; the policy difference is recorded against the original; every
+    lessons-learned item names a verification a reviewer can repeat.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time.
+    - hosts: [jump01, prowler01]
+      action: From jump01, run the audit on prowler01 and record whether the over-privileged identity
+        from the containment exercise still appears.
+    - hosts: [jump01, cloud-siem01]
+      action: From jump01, check cloud-siem01 for a detection that would now catch the key misuse, and
+        record its name or note that none exists.
+    - hosts: [jump01, localstack01]
+      action: From jump01, record the over-privileged identity's current policy grants on localstack01
+        and the difference from its original grants, naming what a least-privilege replacement would
+        remove.
+    - hosts: [jump01]
+      action: Write three lessons-learned items, each stating what happened, what changed, and how the
+        change can be verified on this range.
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  - mitre-attack
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A review finds a leaked key was the entry path and over-privilege made the damage
+        severe. Which statement is the root cause finding?
+      options:
+      - A) The leaked key string was shorter than policy required
+      - B) The identity held far more permission than its role needed
+      - C) The adversary who used the key was highly skilled
+      - D) The account logs were readable by everyone on the response team without approval
+      answer: B
+    - question: An incident began with key misuse that nobody detected. Which post-incident change
+        addresses that gap most directly?
+      options:
+      - A) Buying more storage for older backup restore points
+      - B) Lengthening the password policy for interactive sign-ins
+      - C) Removing the central logging service to cut noise
+      - D) A detection that alerts when a key touches resources it never used before
+      answer: D
+    - question: Remediation claims an over-privileged identity is now fixed. Which action proves the
+        claim?
+      options:
+      - A) Reading the closure note written on the incident ticket
+      - B) Asking the identity's owner to confirm the change verbally
+      - C) Re-running the audit and comparing the identity's permissions to its role
+      - D) Waiting for the next scheduled quarterly review of the identity to arrive in a month
+      answer: C
+    - question: Which lessons-learned item can a reviewer verify directly on the range?
+      options:
+      - A) The identity's policy now grants only read access to one bucket, checked in the audit
+      - B) Everyone involved learned a great deal from the incident
+      - C) The response team intends to try harder next time
+      - D) Cloud platforms are inherently more risky than data centres
+      answer: A
+    - question: After the review is written, what most improves the organisation's next incident
+        response?
+      options:
+      - A) Deleting the incident record so the next case starts clean
+      - B) Keeping the response plan unchanged to avoid disruption
+      - C) Storing the findings in a place where only the provider's own staff can read them
+      - D) Updating the response plan and exercising the detections the review created
+      answer: D
