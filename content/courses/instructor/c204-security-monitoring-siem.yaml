@@ -1,0 +1,169 @@
+# C204 - Security Monitoring & SIEM - instructor pack (STAFF ONLY).
+# Draft pack for the draft course content/courses/c204-security-monitoring-siem.yaml.
+# Keys match the course quizzes; notes say why the keyed option is right and what each
+# distractor tests. Range work runs on the soc-training template
+# (content/ranges/soc-training): siem01 (OpenSearch + Dashboards + Sigma rules),
+# log-agg01 (rsyslog/logstash/filebeat), misp01, thehive01, velociraptor01, seconion01,
+# zeek01, pcap01, dfir-ws01, jump01 and the victim network v-dc01, v-fs01, v-web01,
+# v-mail01, v-ws01 to v-ws04. Student accounts: `analyst` on the tool hosts and jump01.
+course_code: C204
+audience: staff_only
+overview: 'Security Monitoring & SIEM is a course of six 60-minute modules (360 minutes). Each module has
+  the same split: 10 minutes teach, 40 minutes lab on the soc-training range, 10 minutes quiz (five items,
+  passed at 70 percent). Each module teaches three objectives, practises them in the range lab, and ends
+  with the quiz. Say ''Student'' throughout and keep every demonstration defensive: failed sign-ins are
+  typed deliberately, never cracked, and no offensive tradecraft is shown.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '10 teach (log sources and the path to the aggregator), 40 lab (log source inventory on the range),
+    10 quiz'
+- module: 2
+  minutes: 60
+  plan: '10 teach (normalisation and enrichment), 40 lab (raw record to enriched event), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '10 teach (Sigma structure and detection testing), 40 lab (write, test and refine one rule), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '10 teach (correlation, severity and volume), 40 lab (build and tune one correlation rule), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '10 teach (hypothesis-driven hunting), 40 lab (one stack, outliers and write-up), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '10 teach (metrics and feedback loops), 40 lab (metric set, one measured detect time, near-miss
+    review), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B, M01-O01: The inventory shows what monitoring can and cannot see; cost, dashboard speed and
+    retention are side effects, not the purpose (distractors A, C, D). Q2 C, M01-O01: Commands on servers
+    that leave no record are a coverage gap - activity with no collected telemetry. A retention shortfall
+    would mean the records exist but expire; a parsing error means they arrive malformed. Q3 A, M01-O01:
+    Only endpoint process logs record which process started; firewall, DHCP and flow data cannot attribute
+    a process. Q4 D, M01-O03: Retention follows what the team must be able to investigate, not index size,
+    vendor defaults or daily volume. Q5 B, M01-O02: Pre-filtered summaries cannot be searched later for
+    activity no rule alerted on at the time - the core argument for collecting raw events.'
+- module: 2
+  notes: 'Q1 C, M02-O01: Correlation needs one field schema and meaning; compression, longer retention and
+    time-ordering change none of the field names. Q2 D, M02-O02: Knowing the server holds the payroll share
+    changes the priority the analyst gives the alert - that is the point of asset enrichment. Q3 A, M02-O03:
+    A renamed field that parsers keep accepting is schema drift; false positive, alert fatigue and
+    deduplication are different failures. Q4 B, M02-O03: The silent parser fails detections while the
+    pipeline looks healthy - that is why it is more dangerous than an outright stop. Q5 C, M02-O02:
+    Indicator value comes from being current, relevant to the estate and carrying context, not from volume
+    or age.'
+- module: 3
+  notes: 'Q1 B, M03-O01: Version control plus review gives repeatable, auditable change; it does not make
+    searches faster (A) or cut licence cost (C). Q2 D, M03-O05: A rule that fires on every run of a common
+    tool is too broad and needs tuning; parsing, coverage and drift answers misname the failure. Q3 C,
+    M03-O03: Technique mapping exists to expose techniques with no detection coverage - the coverage gap.
+    Q4 A, M03-O02: A rule that also fires on the benign lookalike needs a narrower selection, not
+    disabling (B), a severity bump (C) or a duplicate (D). Q5 B, M03-O02: Sigma holds match logic in the
+    selection fields and the condition; index, routing and dashboard settings live elsewhere.'
+- module: 4
+  notes: 'Q1 C, M04-O01: Failed-then-successful sign-in from one address is the classic brute-force
+    footprint; a retrying service account (A) is the benign pattern the tuning must protect. Q2 A, M04-O02:
+    Deduplication protects analyst time spent re-triaging repeats; it does not make the detection more
+    accurate. Q3 D, M04-O03: Severity follows impact if true and confidence in the detection - the
+    two-source rule carries more of both. Q4 B, M04-O01: The window balances catching related events
+    against accumulating unrelated coincidences; the other pairs are not what the window trades. Q5 C,
+    M04-O05: An untriageable queue produces superficial triage and missed detections; it does not lose
+    raw events or corrupt rules.'
+- module: 5
+  notes: 'Q1 A, M05-O01: Activity, population and time frame make the hypothesis testable; a baseline (B),
+    a finished rule (C) or a vendor summary (D) is none of those. Q2 C, M05-O02: Stacking exists to surface
+    rare outliers - the one account with four entries against nine with hundreds. Q3 B, M05-O03: A null
+    hunt is a useful negative result that bounds where the activity is not; it is not proof the environment
+    is clean (C) - only that the hypothesis found nothing in the scope examined. Q4 D, M05-O04: A finding
+    becomes durable when it turns into a tested detection; email (A) and a logbook note (B) leave it
+    unoperationalised. Q5 C, M05-O03: The scope record bounds what the result does and does not cover;
+    audit, query speed and severity are not its purpose.'
+- module: 6
+  notes: 'Q1 B, M06-O02: MTTD runs from the activity to its detection (10:04 to 10:31 here); alert-to-
+    closure is time to resolve, detection-to-containment is part of response. Q2 C, M06-O01: Volume rewards
+    rapid closure over careful work - the gaming risk every count-based metric carries. Q3 A, M06-O02:
+    Coverage mapping shows exactly which techniques no detection would catch; licence, query speed and
+    closure counts are not coverage. Q4 D, M06-O04: The near miss reveals the weakness before it causes
+    harm; that it never became an incident is why the review is easy to skip, not why it matters. Q5 A,
+    M06-O03: Missed activity is by definition not observed, so the false negative rate cannot be counted
+    directly - only estimated.'
+lab_setup:
+- module: 1
+  setup: 'Range soc-training up, feeds running into log-agg01 and siem01 indexed. Create or assign the
+    standard user account on v-ws01 that each Student pair will sign in with; have a second account with a
+    typed wrong password ready. Check the analyst account works on jump01 and the OpenSearch Dashboards on
+    siem01 open from the jump host.'
+- module: 2
+  setup: 'Range soc-training up. Confirm log-agg01 holds raw records from at least two sources with
+    different field names (v-dc01 and v-web01 give a clean contrast) and that the same events are searchable
+    in normalised form on siem01. Load a handful of benign indicators on misp01, including one that matches
+    a recent event address, so the enrichment step has a findable hit.'
+- module: 3
+  setup: 'Range soc-training up with siem01 holding at least one existing Sigma rule to dissect. Script the
+    true-positive activity the Students will run on v-ws01 (for example a specific process start) and the
+    benign lookalike for v-ws02, and confirm both appear in the endpoint logs on siem01. Verify Students
+    can deploy a rule to siem01 from the analyst account.'
+- module: 4
+  setup: 'Range soc-training up. Script on v-ws01: a burst of failed sign-ins inside the window followed by
+    a success (the threat case), and separately a run of routine password typos (the routine case). Confirm
+    both patterns land on siem01 and that the analyst account can create a correlation rule. Agree the
+    window and starting threshold before the lab.'
+- module: 5
+  setup: 'Range soc-training up with several days of sign-in or process events on siem01 so the stack has
+    real spread. Pre-seed one mild outlier (an unusual hour or a rarely used account on one of v-ws01 to
+    v-ws04) if the natural data is too uniform. Prepare one confirmed hypothesis wording to show at debrief.'
+- module: 6
+  setup: 'Range soc-training up. Script the staged activity on v-web01 and note its true start time so the
+    measured detection interval can be checked. Bring one near-miss narrative from the range (a report
+    blocked before any click works well) with the monitoring weakness it exposed. Confirm Students can
+    compute the mean from recorded timestamps on siem01.'
+common_faults:
+- module: 1
+  fault: Students list the tool hosts (siem01, thehive01) as log sources and skip the victim network.
+  remedy: Point at the path from host to aggregator - ask what each of v-dc01, v-web01, v-ws01 to v-ws04
+    and fw01 can emit - before letting the inventory be marked done.
+- module: 1
+  fault: The coverage gap is named as a host with no reason attached.
+  remedy: Require the one-sentence form - activity, and what would go unseen - and reject any gap entry
+    that does not name both.
+- module: 2
+  fault: Students record raw and normalised field names as one undifferentiated list.
+  remedy: Insist on the side-by-side two-column form on the whiteboard first; a single column hides the
+    mapping the module teaches.
+- module: 2
+  fault: The enrichment step is answered as "an indicator matched" without saying what it changes.
+  remedy: Ask "what would you do differently on that alert?" - the answer must name a priority or response
+    change, not just the match.
+- module: 3
+  fault: Students copy the existing rule's fields without checking them against the recorded event values.
+  remedy: Have them read the recorded field values from the v-ws01 activity aloud and match each to a
+    selection line before deploying.
+- module: 3
+  fault: The benign lookalike is skipped once the true positive fires.
+  remedy: Do not sign off step 5 until the v-ws02 run is recorded; a rule only tested on its target is
+    half-tested.
+- module: 4
+  fault: Students tune the rule until it never fires at all, including on the threat case.
+  remedy: Keep the threat case scripted and require a re-run after every threshold change; a tuning that
+    silences the threat is a failed tuning.
+- module: 4
+  fault: Severity is assigned from the event count alone.
+  remedy: Ask the Q3 question directly - same count, different confidence - and make them argue the two
+    severities from impact and confidence.
+- module: 5
+  fault: The hypothesis is written after the queries, to fit whatever the stack showed.
+  remedy: Collect the written hypotheses before anyone opens siem01; a hypothesis written to fit the data
+    is not a test.
+- module: 5
+  fault: Every outlier is judged suspicious, or all are waved off as benign with no reason.
+  remedy: Require the one-sentence reason per outlier and ask for at least one of each judgement across
+    the class at debrief.
+- module: 6
+  fault: Metrics are defined as counts of activity (alerts closed, events seen) rather than coverage or speed.
+  remedy: Apply the module test - what does this number show about coverage or speed, and how would you
+    game it? - and reject any metric that fails both halves.
+- module: 6
+  fault: The measured detection interval uses the wrong start event.
+  remedy: Have Students name both bracketing events (staged activity on v-web01, first appearance on
+    siem01) with their timestamps before computing the mean.

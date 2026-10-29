@@ -9,6 +9,7 @@ difficulty: intermediate
 duration_hours: 100
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
@@ -34,16 +35,34 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Identify security-relevant log sources across an environment.
-  - Design a collection architecture with adequate coverage.
-  - Assess log quality and completeness.
+  - Enumerate the log sources on a described network and record the activity each one can evidence
+  - Identify coverage gaps where activity would leave no collected telemetry
+  - Classify log sources by retention need and investigation value
   topics:
-  - Endpoint, network, identity and application logs.
-  - Collection agents and forwarders.
-  - Coverage gaps and blind spots.
-  - Log quality, fidelity and retention.
-  lab: 'Lab: Produce a log source inventory for a described environment, map each source to the attack
-    techniques it could evidence, and identify the largest visibility gap.'
+  - Endpoint, network, identity and application logs and the activity each can evidence.
+  - Collection agents and forwarders on the path from host to aggregator.
+  - Coverage gaps and blind spots where activity produces no telemetry.
+  - Log quality, fidelity and retention driven by investigation need.
+  lab: >-
+    Lab: On the soc-training range, build a log source inventory for the victim network and find where
+    monitoring is blind. Evidence: each feed log-agg01 receives, with its source host and event types; the
+    SIEM indexes on siem01 with the newest timestamp and event count in each; whether a sign-in made on
+    v-ws01 reaches the SIEM; one named coverage gap with the activity it would leave unseen. Pass: the
+    inventory lists every source the range forwards; each source is matched to the investigation question
+    it answers; the coverage gap is named with a one-sentence reason; one change is proposed to close it.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH as the analyst account, open a terminal and record the start time.
+    - hosts: [jump01, log-agg01]
+      action: From jump01, list the feeds log-agg01 receives and record each source host and the event types it forwards.
+    - hosts: [siem01]
+      action: In the SIEM on siem01, list the indexes receiving victim network events and record the newest timestamp and event count for each.
+    - hosts: [siem01, v-ws01]
+      action: Sign in to v-ws01 as the standard user your instructor assigned, then query the SIEM for that sign-in and record whether it arrived.
+    - hosts: [jump01]
+      action: Name the victim host or activity with the weakest coverage, write one sentence on what an added source would evidence, and propose the change.
   refs:
   - nist-sp-800-92
   - mitre-attack
@@ -51,40 +70,40 @@ modules:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'A log source inventory is primarily used to:'
+    - question: 'A SOC lead lists every device that could produce logs and what each records before choosing what to collect. The main purpose of this inventory is to:'
       options:
-      - A) Estimate storage cost
-      - B) Understand what activity can and cannot be detected
-      - C) Assign licences
-      - D) Schedule backups
+      - A) Reduce the licence cost of the SIEM
+      - B) Show which activity the monitoring can and cannot see
+      - C) Speed up the loading of dashboards
+      - D) Shorten the retention period for old logs
       answer: B
-    - question: Which log source best evidences process execution on a host?
+    - question: 'Analysts can query sign-in records for one workstation but hold no record of the commands run on any server. This missing telemetry is best described as:'
       options:
-      - A) Firewall logs
-      - B) Endpoint process creation events
-      - C) DNS logs
-      - D) DHCP leases
-      answer: B
-    - question: 'A visibility gap means:'
+      - A) A retention shortfall
+      - B) A parsing error
+      - C) A coverage gap
+      - D) A schema drift
+      answer: C
+    - question: Which source most directly shows which process started on a workstation?
       options:
-      - A) A dashboard is missing
-      - B) Activity can occur without producing collected telemetry
-      - C) Logs are duplicated
-      - D) Retention is too long
-      answer: B
-    - question: 'Retention requirements should be driven by:'
+      - A) Endpoint process logs
+      - B) Firewall session logs
+      - C) DHCP lease records
+      - D) A network flow summary
+      answer: A
+    - question: 'A small team must decide how long authentication logs are kept. The strongest basis for the decision is:'
       options:
-      - A) Disk capacity alone
-      - B) Investigation needs and regulatory obligation
-      - C) Vendor default
-      - D) Log volume
-      answer: B
-    - question: 'Collecting only alerts rather than raw events limits:'
+      - A) The size of the largest index in storage
+      - B) The default retention set by the vendor
+      - C) The number of sign-ins seen each day
+      - D) What the team must be able to investigate
+      answer: D
+    - question: 'Collecting only pre-filtered alert summaries instead of raw events most limits an analyst''s ability to:'
       options:
-      - A) Storage
-      - B) The ability to investigate retrospectively beyond what already alerted
-      - C) Alert accuracy
-      - D) Parsing
+      - A) Tune dashboard layouts
+      - B) Search history for activity no rule alerted on at the time
+      - C) Assign severity to alerts
+      - D) Enrich alerts with asset data
       answer: B
   po:
     qsp_code: ALJQ
@@ -96,16 +115,37 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain why normalisation is required for correlation.
-  - Apply enrichment to improve alert decision quality.
-  - Evaluate the cost of parsing and schema drift.
+  - Normalise records from two log formats into one shared schema, field by field
+  - Apply asset and identity enrichment to an alert and decide how it changes priority
+  - Identify schema drift in a feed and describe its effect on downstream detections
   topics:
-  - Parsing and field normalisation.
-  - Common schemas and taxonomies.
-  - Enrichment with asset, identity and threat context.
-  - Schema drift and parser maintenance.
-  lab: 'Lab: Write a parser for a non-standard log format, normalise its fields to a common schema, and
-    enrich the output with asset criticality from a lookup table.'
+  - Parsing, field extraction and mapping sources onto a common schema.
+  - Timestamps, time zones and consistent field naming for correlation.
+  - Enrichment with asset criticality, identity and threat context.
+  - Schema drift, silent parser failure and parser maintenance.
+  lab: >-
+    Lab: On the soc-training range, follow one event from its raw form to its normalised, enriched form
+    and find where the pipeline is fragile. Evidence: the raw field names of one event on log-agg01 beside
+    the normalised names the SIEM on siem01 gives the same event; one field whose meaning differs between
+    the v-dc01 and v-web01 sources; whether any indicator held on misp01 matches an address seen in recent
+    events; the parsed field most likely to break first if a source changes format. Pass: the raw and
+    normalised field names are listed side by side; the enrichment that would change alert priority is
+    named; the drift risk is stated with the detection it would fail.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH as the analyst account, open a terminal and record the start time.
+    - hosts: [jump01, log-agg01]
+      action: From jump01, open a recent raw record on log-agg01 and list its field names exactly as the source wrote them.
+    - hosts: [siem01]
+      action: In the SIEM on siem01, find the same event after parsing and record the normalised field names beside the raw ones.
+    - hosts: [siem01]
+      action: Query recent events from v-dc01 and v-web01 and record one field whose meaning differs between the two sources.
+    - hosts: [jump01, misp01]
+      action: From jump01, open the threat intel platform on misp01 and record whether any indicator it holds matches an address seen in the recent events.
+    - hosts: [jump01]
+      action: 'Judge: name the parsed field that would break first if a source changed its format, and the detection that would then fail.'
   refs:
   - nist-sp-800-92
   - nist-sp-800-150
@@ -113,41 +153,41 @@ modules:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Normalisation enables correlation because it:'
+    - question: 'Records from the firewall name the connecting host "src_ip"; records from the web server name it "remote_host". Correlation across the two sources becomes possible only once the records:'
       options:
-      - A) Reduces volume
-      - B) Maps different sources onto consistent field names and meanings
-      - C) Encrypts fields
-      - D) Sorts events
-      answer: B
-    - question: 'Enriching an alert with asset criticality primarily improves:'
+      - A) Are compressed before they go into storage
+      - B) Are kept for a longer period in the index
+      - C) Share one field schema and meaning
+      - D) Are sorted into time order on arrival
+      answer: C
+    - question: 'An alert names a server by address alone. Attaching the record that this server holds the payroll share most directly changes:'
       options:
-      - A) Parsing speed
-      - B) Prioritisation of response
-      - C) Storage efficiency
-      - D) Rule syntax
-      answer: B
-    - question: 'Schema drift occurs when:'
+      - A) The way the log source formats its output
+      - B) The period for which the log is retained
+      - C) The syntax of the rule that raised it
+      - D) The priority the analyst gives the alert
+      answer: D
+    - question: 'A vendor update renames a log field. The parsers keep running without error, but detections on that field quietly stop matching. This failure is called:'
       options:
-      - A) Clocks desynchronise
-      - B) A source changes its log format and existing parsers silently break
-      - C) Rules are updated
-      - D) Retention expires
-      answer: B
-    - question: 'A silently failing parser is dangerous because:'
+      - A) Schema drift
+      - B) A false positive
+      - C) Alert fatigue
+      - D) Deduplication
+      answer: A
+    - question: Why is a parser that fails silently more dangerous than one that stops outright?
       options:
-      - A) It uses CPU
-      - B) Detections depending on those fields stop working without an obvious error
-      - C) It duplicates events
-      - D) It rejects enrichment
+      - A) It consumes more memory
+      - B) Its detections fail while the pipeline looks healthy
+      - C) It duplicates every event
+      - D) It slows the ingestion queue
       answer: B
-    - question: 'Threat intelligence enrichment is most useful when the indicators are:'
+    - question: 'Enriching alerts with threat intelligence adds most value when the indicators are:'
       options:
-      - A) Numerous
-      - B) Timely, relevant and accompanied by context
-      - C) Free
-      - D) Historical only
-      answer: B
+      - A) As numerous as the team can subscribe to
+      - B) Older than a year, for the history
+      - C) Current, relevant and carrying context
+      - D) Drawn from a single free feed
+      answer: C
 - ordinal: 3
   title: Detection Engineering
   content_type: reading
@@ -155,16 +195,37 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Write detection logic that expresses a hypothesis clearly.
-  - Map detections to adversary techniques.
-  - Test detections against true and false positive cases.
+  - Write a Sigma rule that expresses a detection hypothesis against one log source
+  - Test a detection against a true positive case and a benign lookalike, then refine it
+  - Map detections to adversary techniques and measure the coverage they provide
   topics:
-  - Detection as code and version control.
-  - Sigma rule structure.
-  - Technique mapping and coverage measurement.
-  - Detection testing and validation.
-  lab: 'Lab: Write a Sigma rule for a specific technique, test it against a positive sample and a benign
-    lookalike, then refine it until both outcomes are correct.'
+  - 'Detection as code: version control, review and repeatable deployment.'
+  - 'Sigma rule structure: selection fields, condition logic and field modifiers.'
+  - Mapping detections to adversary techniques and measuring coverage.
+  - Testing detections against true positive and benign lookalike cases.
+  - Tuning rules that fire on routine administrative activity.
+  lab: >-
+    Lab: On the soc-training range, write a Sigma rule for one technique, test it against the activity it
+    targets and against a benign lookalike, and refine it until it separates the two. Evidence: the selection
+    fields and condition of one existing rule on siem01; the field values the targeted activity on v-ws01
+    produced in the SIEM; whether the new rule fires on that activity; whether it also fires on the benign
+    lookalike run on v-ws02. Pass: the rule is written and deployed against real fields; the true positive
+    fires and is recorded; the benign case does not fire; one refinement for remaining weakness is stated.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH as the analyst account, open a terminal and record the start time.
+    - hosts: [siem01]
+      action: In the SIEM on siem01, open one existing Sigma rule and record its selection fields and its condition.
+    - hosts: [siem01, v-ws01]
+      action: Run on v-ws01 the activity the instructor assigned, then query siem01 and record the field values that activity produced.
+    - hosts: [siem01]
+      action: Write a Sigma rule whose selection matches those field values, deploy it on siem01 and record whether it fires.
+    - hosts: [siem01, v-ws02]
+      action: Run the benign lookalike on v-ws02 as instructed and record whether the new rule fires on it.
+    - hosts: [jump01]
+      action: 'Judge: name one activity the rule would still miss and state one refinement that would narrow that gap.'
   refs:
   - sigma
   - mitre-attack
@@ -172,40 +233,40 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Sigma is best described as:'
+    - question: 'A detection team keeps every rule in version control and peers review each change before deployment. The primary benefit of working this way is:'
       options:
-      - A) A SIEM product
-      - B) A generic, vendor-neutral signature format for log-based detection
-      - C) A packet analyser
-      - D) A threat feed
+      - A) Faster query response times when analysts search logs
+      - B) Repeatable, reviewed changes with a full history
+      - C) Lower licence cost for the SIEM
+      - D) Automatic removal of duplicate events
       answer: B
-    - question: 'Managing detections as code primarily provides:'
+    - question: 'A rule fires on every execution of a common administrative tool and floods the queue. This rule is best described as:'
       options:
-      - A) Faster queries
-      - B) Version history, review and repeatable deployment
-      - C) Lower storage
-      - D) Automatic tuning
-      answer: B
-    - question: 'Mapping detections to ATT&CK techniques enables:'
+      - A) A parsing failure in the ingestion pipeline
+      - B) A coverage gap against the technique
+      - C) A schema drift in one field
+      - D) Too broad, needing tuning
+      answer: D
+    - question: 'Mapping each detection to the adversary technique it covers lets the team measure:'
       options:
-      - A) Faster parsing
-      - B) Measurement of coverage and identification of gaps
-      - C) Reduced licence cost
-      - D) Better retention
-      answer: B
-    - question: 'A detection that fires on every execution of a common administrative tool is likely:'
+      - A) How quickly each saved search returns results
+      - B) Where ingestion storage is being wasted
+      - C) Which techniques have no detection coverage
+      - D) Which analysts need further training
+      answer: C
+    - question: 'A detection passes on the activity it targets but also fires on a benign lookalike. The correct next step is to:'
       options:
-      - A) High fidelity
-      - B) Too broad, generating unsustainable false positives
-      - C) Undetectable
-      - D) Correctly tuned
-      answer: B
-    - question: 'Testing a detection against a benign lookalike is important to establish:'
+      - A) Refine the selection so only the target activity matches
+      - B) Disable the rule and raise the threshold
+      - C) Raise the rule severity
+      - D) Duplicate the rule for the benign case
+      answer: A
+    - question: 'In a Sigma rule, the fields that must match and the logic that combines them are held in the:'
       options:
-      - A) Query performance
-      - B) That the rule discriminates rather than merely matching
-      - C) Storage impact
-      - D) Rule syntax
+      - A) The index and retention settings
+      - B) Selection and condition
+      - C) The alert routing list
+      - D) The saved dashboard layout
       answer: B
 - ordinal: 4
   title: Correlation and Alerting
@@ -214,16 +275,38 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Build correlation logic across multiple sources.
-  - Design alert severity and routing.
-  - Manage alert volume sustainably.
+  - Build a correlation rule that links events across two sources and a time window
+  - Tune a rule so routine activity no longer triggers it while the threat still does
+  - Assign severity and routing to alerts so the queue matches analyst capacity
   topics:
-  - Correlation across sources and time.
-  - Aggregation, thresholds and deduplication.
-  - Severity assignment and routing.
-  - Alert volume management.
-  lab: 'Lab: Build a correlation rule that combines a failed-authentication burst with a subsequent success
-    from the same source, and tune it so routine password errors do not trigger it.'
+  - Correlation across sources, identities and time windows.
+  - Aggregation, thresholds and deduplication of repeated alerts.
+  - Severity assignment from impact and detection confidence.
+  - Routing alerts so the queue matches analyst capacity.
+  - Alert volume, fatigue and sustainable triage.
+  lab: >-
+    Lab: On the soc-training range, build a correlation rule that links a burst of failed sign-ins to a
+    later success from the same source, then tune it until routine password errors no longer fire it.
+    Evidence: the count of failed sign-ins for v-ws01 within the instructor's window; whether the rule fired
+    when a success followed the burst; whether it still fired after the threshold was raised; the alert count
+    the tuned rule produces in one hour. Pass: the rule correlates two conditions in one window; the tuned
+    version still fires on the instructor's threat case; routine errors produce no alert; the hourly volume
+    is recorded with a judgement on whether the queue can absorb it.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH as the analyst account, open a terminal and record the start time.
+    - hosts: [siem01, v-ws01]
+      action: Make the failed sign-ins on v-ws01 that the instructor scripted, then query siem01 and record the failure count inside the window.
+    - hosts: [siem01]
+      action: Write a correlation rule on siem01 linking the failure burst to a later success from the same source, and record whether it fires.
+    - hosts: [siem01, v-ws01]
+      action: Trigger routine password errors on v-ws01 as instructed and record whether the rule fires on them.
+    - hosts: [siem01]
+      action: Raise the threshold or narrow the window on siem01, confirm the threat case still fires, and record the hourly alert count.
+    - hosts: [jump01]
+      action: 'Judge: state whether the tuned queue can absorb the volume, and name one activity the tuning could now miss.'
   refs:
   - nist-sp-800-92
   - sigma
@@ -231,41 +314,41 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Correlating failed then successful authentication from one source may indicate:'
+    - question: 'A burst of failed sign-ins from one address is followed by a success from that address. Correlating the two events most helps detect:'
       options:
-      - A) Normal login
-      - B) Successful brute force or password spraying
-      - C) Certificate renewal
-      - D) Clock skew
-      answer: B
-    - question: 'Deduplication of alerts primarily addresses:'
+      - A) A service account retrying its stored credentials
+      - B) An expired certificate
+      - C) Brute force that found a working password
+      - D) A time zone mismatch
+      answer: C
+    - question: 'One misconfigured rule raises five identical alerts for the same event in an hour. Deduplication exists to protect:'
       options:
-      - A) Detection accuracy
-      - B) Analyst workload from repeated identical alerts
-      - C) Log retention
-      - D) Parsing errors
-      answer: B
-    - question: 'Alert severity should reflect:'
+      - A) Time lost re-triaging repeats
+      - B) The accuracy of the detection logic
+      - C) The retention of the raw logs
+      - D) The parsing of the source fields
+      answer: A
+    - question: 'Two alerts carry the same event count, but one rests on a weak single-field match and the other on a two-source correlation. Severity should be assigned by:'
       options:
-      - A) Rule complexity
-      - B) Potential impact and confidence in the detection
-      - C) Event count
-      - D) Source type
-      answer: B
-    - question: 'Time windows in correlation rules must balance:'
+      - A) The order in which the rules were written
+      - B) The length of each rule
+      - C) The source host type
+      - D) Impact and detection confidence
+      answer: D
+    - question: 'A correlation window of five minutes catches every related pair but also joins unrelated coincidences; a window of one hour does the reverse. The window must balance:'
       options:
-      - A) Storage and CPU only
-      - B) Catching related events against accumulating unrelated coincidences
-      - C) Severity and routing
-      - D) Parsing and enrichment
+      - A) Storage cost against licence use
+      - B) Catching related events against accumulating unrelated ones
+      - C) Severity against routing
+      - D) Parsing against enrichment
       answer: B
-    - question: 'An unsustainable alert volume most directly causes:'
+    - question: 'An alert queue far beyond what the analysts can triage most directly produces:'
       options:
-      - A) SIEM outage
-      - B) Analysts triaging superficially and missing real detections
-      - C) Log loss
-      - D) Rule corruption
-      answer: B
+      - A) Loss of the raw events ingested
+      - B) Corruption of the saved rule set
+      - C) Missed real detections
+      - D) Failure of the ingestion pipeline
+      answer: C
 - ordinal: 5
   title: Threat Hunting with SIEM Data
   content_type: reading
@@ -273,16 +356,36 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Formulate a testable hunting hypothesis.
-  - Execute a hunt using available telemetry.
-  - Convert hunt findings into durable detections.
+  - Formulate a hunting hypothesis that the available telemetry can test
+  - Execute a hunt by stacking event frequencies and judging the outliers
+  - Convert a confirmed hunt finding into a durable detection
   topics:
-  - Hypothesis-driven hunting.
-  - Stacking, frequency analysis and outlier detection.
-  - Documenting hunt scope and results.
-  - Operationalising findings as detections.
-  lab: 'Lab: Formulate a hypothesis about unusual parent-child process relationships, hunt for it in provided
-    data, and convert any finding into a Sigma rule.'
+  - Hypothesis-driven hunting and choosing the starting question.
+  - Stacking, frequency analysis and outlier identification.
+  - Documenting hunt scope, queries and results.
+  - Converting confirmed findings into durable detections.
+  lab: >-
+    Lab: On the soc-training range, run one hypothesis-driven hunt over the collected telemetry and judge
+    what it shows. Evidence: the written hypothesis, made before any query; the stacked counts of one event
+    type across v-ws01, v-ws02, v-ws03 and v-ws04 in the SIEM on siem01; the outliers worth a second look;
+    the write-up of one finding as a detection request. Pass: the hypothesis names the activity, population
+    and time frame; the stack is built from real SIEM data; each outlier is judged benign or suspicious with
+    a one-sentence reason; one finding is written up for conversion into a detection.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH as the analyst account, open a terminal and record the start time.
+    - hosts: [jump01]
+      action: Write a hypothesis naming one activity, the population to check and the time frame, and have the instructor confirm the scope.
+    - hosts: [siem01]
+      action: On siem01, build a stack of the chosen event counts across v-ws01, v-ws02, v-ws03 and v-ws04 and record the totals.
+    - hosts: [siem01]
+      action: 'Drill into the outliers on siem01 and record their context: the account, the time and any related fields.'
+    - hosts: [siem01]
+      action: Judge each outlier benign or suspicious, writing a one-sentence reason for every judgement.
+    - hosts: [jump01]
+      action: Write up one finding as a detection request, stating what a rule should match and why it can be tested.
   refs:
   - mitre-attack
   - sigma
@@ -290,41 +393,41 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'A good hunting hypothesis is:'
+    - question: 'Before running any query, a hunter writes down one activity, the population to check and a time frame. This written statement is best described as:'
       options:
-      - A) Broad and open-ended
-      - B) Specific and testable against available data
-      - C) Based on a vendor alert
-      - D) Unrelated to the environment
-      answer: B
-    - question: 'Frequency analysis, or stacking, finds:'
+      - A) A testable hunting hypothesis
+      - B) A documented baseline of normal activity
+      - C) A detection rule in its final deployed form
+      - D) A summary of a vendor threat report
+      answer: A
+    - question: 'Stacking sign-in counts per account across a week shows nine accounts with hundreds of entries and one with four. Stacking exists to surface:'
       options:
-      - A) The most common events
-      - B) Rare outliers that may indicate malicious activity
-      - C) Duplicate logs
-      - D) Parsing errors
-      answer: B
-    - question: 'A hunt that finds nothing is:'
+      - A) The most common accounts, for the baseline
+      - B) Duplicate entries from double logging
+      - C) Rare outliers worth a second look
+      - D) The total volume for the capacity plan
+      answer: C
+    - question: 'A two-day hunt against one hypothesis finds nothing unusual. The correct record of that result is:'
       options:
-      - A) A failure
-      - B) A useful result that bounds where the activity is not present
-      - C) Wasted effort
-      - D) Evidence of compromise
+      - A) A failed hunt, to be deleted
+      - B) A useful negative result
+      - C) Proof the environment is clean
+      - D) An artifact of the query syntax
       answer: B
-    - question: 'Hunt findings should be operationalised by:'
+    - question: 'A hunt confirms unusual scheduled-task creation on one server. The finding becomes durable when the team:'
       options:
-      - A) Emailing the team
-      - B) Creating a tested detection so the finding is caught automatically next time
-      - C) Deleting the data
-      - D) Increasing retention only
-      answer: B
-    - question: 'Documenting hunt scope matters because:'
+      - A) Emails the server team and closes the hunt
+      - B) Notes the finding in the hunt logbook
+      - C) Repeats the same query next quarter
+      - D) Turns it into a tested detection
+      answer: D
+    - question: 'The write-up states which indexes, which time frame and which queries the hunt covered. The purpose of this scope record is to:'
       options:
-      - A) It satisfies audit only
-      - B) It records what was and was not examined, bounding the conclusion
-      - C) It speeds queries
-      - D) It assigns severity
-      answer: B
+      - A) Satisfy the annual audit checklist alone
+      - B) Speed up the queries of the next hunt
+      - C) Bound what the result does and does not cover
+      - D) Assign a severity rating to any finding
+      answer: C
 - ordinal: 6
   title: Metrics and Continuous Improvement
   content_type: reading
@@ -332,16 +435,37 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Define meaningful security monitoring metrics.
-  - Measure detection coverage against a framework.
-  - Drive improvement from incident and near-miss review.
+  - Define monitoring metrics that show coverage and speed without rewarding volume
+  - Measure detection coverage against a technique framework and name the gaps
+  - Review incidents and near misses and turn each into a concrete improvement
   topics:
-  - Detection coverage measurement.
-  - Mean time to detect and respond.
-  - False positive and negative rates.
-  - Feedback loops from incidents.
-  lab: 'Lab: Define five monitoring metrics for a SOC, state how each would be measured from available
-    data, and identify which could be gamed and how you would guard against that.'
+  - Choosing metrics that measure coverage and speed, not raw volume.
+  - Mean time to detect and mean time to respond.
+  - False positive and false negative rates.
+  - Feedback loops from incidents and near misses.
+  lab: >-
+    Lab: On the soc-training range, define a small metric set for the monitoring team and compute one of
+    them from real data. Evidence: five metrics, each with its definition, data source and gaming risk; the
+    elapsed time between a staged activity on v-web01 and its first appearance in the SIEM on siem01; one
+    near miss the instructor describes, with the weakness it showed. Pass: each metric states what it
+    measures and where the data comes from; the gamed form of at least two metrics is named with a guard
+    against it; the measured detection time is recorded with the events that bracket it; one improvement is
+    proposed for the reviewed near miss.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH as the analyst account, open a terminal and record the start time.
+    - hosts: [jump01]
+      action: Draft five monitoring metrics, each with a definition, a data source and how it could be gamed, and have the instructor confirm them.
+    - hosts: [siem01, v-web01]
+      action: After the instructor stages activity on v-web01, query siem01 for when it first appeared and record the elapsed time.
+    - hosts: [siem01]
+      action: On siem01, compute the mean time to detect from the recorded times and record the figure with the events that bracket it.
+    - hosts: [jump01]
+      action: Review the near miss the instructor presents and name the weakness in monitoring that it revealed.
+    - hosts: [jump01]
+      action: Propose one improvement for the reviewed near miss and state which of the five metrics would show the change.
   refs:
   - nist-cswp-29
   - nist-sp-800-61r3
@@ -349,38 +473,38 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Mean time to detect measures the interval between:'
+    - question: 'A staged change made at 10:04 first appears in an alert at 10:31. Mean time to detect measures the interval between:'
       options:
-      - A) Alert and closure
-      - B) Adversary activity occurring and it being detected
+      - A) An alert and its final closure
+      - B) The activity and its detection
       - C) Detection and containment
-      - D) Report and review
+      - D) The report and its review
       answer: B
-    - question: 'Counting alerts closed per analyst is a poor primary metric because it:'
+    - question: 'A team lead rewards whoever closes the most alerts each week. The deeper problem with this metric is that it:'
       options:
-      - A) Is hard to measure
-      - B) Incentivises rapid closure over accurate investigation
-      - C) Requires tooling
-      - D) Changes daily
-      answer: B
-    - question: 'Measuring detection coverage against ATT&CK helps identify:'
+      - A) Cannot be collected from the tooling at all
+      - B) Changes too much from day to day
+      - C) Rewards rapid closure over careful work
+      - D) Needs a separate spreadsheet to track
+      answer: C
+    - question: 'Mapping every deployed detection to the techniques it covers shows the team exactly:'
       options:
-      - A) Licence usage
-      - B) Techniques for which no detection exists
-      - C) Storage growth
-      - D) Analyst workload
-      answer: B
-    - question: 'A near miss should be reviewed because it:'
+      - A) Which techniques no detection would catch
+      - B) How much licence capacity remains unused this year
+      - C) How fast each saved query returns
+      - D) How many alerts each analyst closed
+      answer: A
+    - question: 'A phishing message was reported and blocked before any click. Reviewing this near miss is worthwhile because it:'
       options:
-      - A) Was not an incident
-      - B) Reveals control weaknesses before they cause harm
-      - C) Affects metrics
-      - D) Is required by policy
-      answer: B
-    - question: 'False negative rate is difficult to measure directly because:'
+      - A) Never became an incident in the response tool
+      - B) Does not change any metric
+      - C) Is only required by policy
+      - D) Reveals the weakness before it causes harm
+      answer: D
+    - question: 'False negatives are hard to count directly because:'
       options:
-      - A) It requires more storage
-      - B) Undetected activity is by definition not observed
-      - C) Rules change
-      - D) Analysts vary
-      answer: B
+      - A) Missed activity is by definition not observed
+      - B) Storage grows too quickly to sample
+      - C) Detection rules change too often
+      - D) Analysts differ in their judgement
+      answer: A
