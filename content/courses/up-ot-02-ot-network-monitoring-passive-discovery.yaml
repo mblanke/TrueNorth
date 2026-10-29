@@ -1,0 +1,585 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# TAZ upskilling course C550 - OT Network Monitoring & Passive Discovery.
+# `refs` are keys into content/catalogue/references.yaml.
+course_code: C550
+title: OT Network Monitoring & Passive Discovery
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C549
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Analyst (PR-CDA-001).'
+  - 'NIST CSF 2.0: DE.CM, ID.AM.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Passive Asset Discovery
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Enumerate the industrial assets visible in a mirrored traffic capture without sending any
+    packet to the process network
+  - Classify each observed asset as known, unknown or unexpected against the site asset inventory
+  - Distinguish passive discovery from active scanning by the evidence each leaves on an
+    industrial network
+  topics:
+  - 'Passive discovery: building an asset picture from copies of traffic, not from probes.'
+  - Why active scanning endangers legacy controllers and deterministic process traffic.
+  - 'Asset fingerprints: addresses, MAC vendors, hostnames and industrial protocol behaviours.'
+  - Comparing observed assets with the asset inventory to sort known from unknown.
+  - 'Passive discovery limits: idle assets, serial gateways and one-way links.'
+  lab: >-
+    Lab: On the large-enterprise range, build the observed-asset picture of the OT segment from
+    the traffic ids01 receives, without sending any packet toward the process network. Evidence:
+    each distinct source address seen in the OT copy of the capture with its vendor; the
+    industrial protocol and port each asset speaks; one list of assets missing from the inventory
+    table your instructor supplied. Pass: every observed OT asset is listed with address, vendor
+    and protocol; each asset is marked known, unknown or unexpected with a one-sentence reason;
+    no step sent traffic to the OT segment.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 with the account your instructor assigned, open a terminal and
+        write the start time in your lab notes.
+    - hosts: [jump01, ids01]
+      action: From jump01, open a session to ids01, the passive sensor, and record whether the
+        monitoring interface is receiving the mirrored copies of every zone.
+    - hosts: [ids01]
+      action: On ids01, read the capture records for the OT segment and record each distinct
+        source address with its resolved vendor.
+    - hosts: [ids01]
+      action: On ids01, list the industrial protocols and ports observed per asset and record
+        the controller-side identifiers each exchange reveals.
+    - hosts: [jump01]
+      action: Mark each recorded asset known, unknown or unexpected against the inventory table
+        your instructor supplied, with a one-sentence reason for every unknown.
+  refs:
+  - nist-sp-800-94
+  - nist-sp-800-115
+  - nist-cswp-29
+  source_gaps:
+  - The NIST guide dedicated to industrial control system security is not in the reference
+    library yet; its advice on OT visibility would anchor this module.
+  - Documentation for passive monitoring tools such as a network telemetry framework is not in
+    the reference library yet.
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A water utility wants a current picture of its controller fleet, but an outage
+        last year followed a vulnerability scan. Which approach builds the asset picture without
+        that risk?
+      options:
+      - A) Polling each controller address in sequence for its identification banner
+      - B) Collecting copies of the existing traffic and reading the assets from it
+      - C) Querying the vendor portal for a list of installed models
+      - D) Asking operators to update the inventory during the next shift change
+      answer: B
+    - question: A passive sensor watched the OT zone for a week and never saw the standby pump
+        controller, which only runs during a monthly test. What does this illustrate?
+      options:
+      - A) The sensor is misconfigured and must be reset before the next capture
+      - B) The pump controller has failed and should be replaced at once
+      - C) Passive discovery misses silent assets, so other sources are needed
+      - D) The controller uses a protocol the sensor cannot decode
+      answer: C
+    - question: Which observation from a mirrored capture is the strongest passive evidence that
+        a device is an industrial controller?
+      options:
+      - A) It answers a name lookup with a short hostname
+      - B) Its address falls inside the OT address range
+      - C) It forwards traffic toward the internet boundary
+      - D) It exchanges cyclic register reads on an industrial protocol port
+      answer: D
+    - question: During a passive capture, a workstation in the office zone begins polling a
+        controller that no inventory record explains. How should the analyst classify the pair?
+      options:
+      - A) Unknown, because nothing in the inventory accounts for the conversation
+      - B) Known, because the workstation already appears in the inventory
+      - C) Expected, because controllers accept polls from any zone
+      - D) Irrelevant, because office traffic never reaches the OT zone
+      answer: A
+    - question: An analyst proposes resolving the OT asset gap by sweeping the controller address
+        range with a port scanner during production. What is the strongest objection?
+      options:
+      - A) The sweep would take far too long to finish within one shift
+      - B) Legacy controllers can fault when probed, so passive observation is safer
+      - C) The scanner licence does not cover industrial equipment
+      - D) The sweep results would duplicate the existing inventory
+      answer: B
+- ordinal: 2
+  title: Baseline Normal Industrial Traffic
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Characterise the normal conversation pattern between an HMI and its controllers from a
+    captured sample
+  - Select the baseline attributes that make later anomalies visible in industrial traffic
+  - Record a traffic baseline for one OT zone in a form another analyst can repeat
+  topics:
+  - 'What a traffic baseline records: talkers, pairs, poll cycles and write events.'
+  - Stable poll intervals and scheduled writes as the heartbeat of industrial traffic.
+  - Reading a capture to measure who talks to whom, how often and with which function codes.
+  - Storing the baseline as a written, comparable profile rather than a one-off capture.
+  - Baseline refresh cadence and change notes after commissioning or maintenance.
+  lab: >-
+    Lab: On the large-enterprise range, measure the normal conversation pattern of the OT
+    segment from the copies ids01 receives and write it down as a repeatable baseline profile.
+    Evidence: the talking pairs between the HMI workstations, the engineering workstation and
+    the controllers; the observed poll interval for one pair; the write events seen in the
+    capture window. Pass: every talking pair is listed with its direction; one poll interval is
+    stated in seconds with the readings it came from; the write events are each marked scheduled
+    or unscheduled with a reason; the profile fits on one page another analyst could follow.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01, ids01]
+      action: Log on to jump01, open a session to ids01 and note the capture window your
+        instructor announces for this lab.
+    - hosts: [ids01]
+      action: On ids01, list the OT conversation pairs in the capture window and record each
+        pair with its direction and volume.
+    - hosts: [ids01]
+      action: On ids01, time one repeated request-reply exchange between a workstation and a
+        controller and record its interval in seconds.
+    - hosts: [ids01]
+      action: On ids01, separate write events from read events in the capture and record each
+        write with its source and target.
+    - hosts: [jump01]
+      action: 'Write the baseline profile: pairs, poll interval, write events, and one sentence
+        on what the capture window does not cover.'
+  refs:
+  - nist-sp-800-94
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A food plant's conveyors poll their controllers every two seconds around the
+        clock. Which baseline attribute would first reveal a new program transfer to a
+        controller?
+      options:
+      - A) Total bytes per day across the whole plant network
+      - B) The number of installed controllers in the zone
+      - C) A write event outside the scheduled window
+      - D) The switch port counters on the OT firewall
+      answer: C
+    - question: Two weeks of captures show one HMI that reads three controllers but never
+        writes, while the operators' log says this HMI also issues setpoint changes. What does
+        the gap suggest?
+      options:
+      - A) The capture missed write traffic, so the baseline is incomplete
+      - B) The HMI is faulty and should be removed from service
+      - C) The controllers ignore write commands from that HMI
+      - D) Setpoint changes travel by email rather than the network
+      answer: A
+    - question: What makes a written traffic baseline more useful over a year than a single
+        captured sample kept on one analyst's laptop?
+      options:
+      - A) It hides details from vendors and contractors
+      - B) Other analysts can repeat the profile and compare against it after changes
+      - C) It removes the need to capture traffic again
+      - D) It proves the network has never carried an attack
+      answer: B
+    - question: A maintenance contractor recommissions a controller on Monday and changes its
+        poll cycle. When should the traffic baseline be updated, and why?
+      options:
+      - A) Never, because a baseline must stay fixed to remain a fair comparison
+      - B) Only at the annual review, to keep the workload predictable
+      - C) At the next capture after the change note
+      - D) Only if an alert has already fired on the new cycle
+      answer: C
+    - question: An intern summarises the baseline as 'the network was quiet'. Why does this fail
+        the repeatable-profile standard?
+      options:
+      - A) It omits the sensor model used for the capture
+      - B) It uses fewer words than the profile template requires
+      - C) It describes a feeling rather than measured talkers, intervals and events
+      - D) It records no values another analyst could compare a future capture against
+      answer: D
+- ordinal: 3
+  title: Spotting Rogue Controllers
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Detect a rogue controller from capture evidence that departs from the written traffic
+    baseline
+  - Distinguish a rogue device from a known asset whose record is simply out of date
+  - Rank rogue candidates for containment by their reach across zones and their access to
+    controllers
+  topics:
+  - 'What rogue means on a process network: presence or authority the inventory and baseline do
+    not grant.'
+  - 'Rogue signatures: an unexplained polling master, unscheduled writes, a second address on a
+    controller.'
+  - Separating a rogue device from a stale inventory record or a maintenance laptop.
+  - Using firewall and sensor views to map what a rogue candidate can reach.
+  - Containment choices that leave the process running while the candidate is cut off.
+  lab: >-
+    Lab: On the large-enterprise range, find every device in the capture on ids01 that acts as
+    a polling master or issues writes, and judge each candidate against the baseline profile
+    and the inventory. Evidence: the address and vendor of each polling master the capture
+    shows; each write event with its source and target controller; for every candidate the
+    baseline does not list, the zones it can reach under the firewall policy. Pass: every
+    polling master and write source is marked in-baseline or unexplained with a one-sentence
+    reason; each unexplained candidate names the containment point and what the process keeps
+    doing, or the note states that none was found with the pairs checked.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01, ids01]
+      action: Log on to jump01, open a session to ids01 and load the baseline profile written in
+        the Module 2 lab.
+    - hosts: [ids01]
+      action: On ids01, list every source that acted as a polling master in the capture window
+        and record each with its vendor.
+    - hosts: [ids01]
+      action: On ids01, list every write event in the capture window and record its source and
+        target controller.
+    - hosts: [jump01]
+      action: Mark each master and write source in-baseline or unexplained against the profile
+        and the inventory, with a one-sentence reason.
+    - hosts: [jump01]
+      action: For each unexplained candidate, record the zones the firewall policy lets it
+        reach, propose a containment point and state what the process keeps doing.
+  refs:
+  - mitre-attack
+  - nist-sp-800-207
+  source_gaps:
+  - The ICS-specific attack technique catalogue is not in the reference library yet; only the
+    general adversary behaviour matrix is cited here.
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A capture shows a second device polling a controller outside the poll cycle
+        recorded in the baseline. What makes this device a rogue candidate?
+      options:
+      - A) Its polling has no entry in the baseline or inventory
+      - B) Its traffic arrives on the same VLAN as the controllers
+      - C) It speaks the same protocol version as the engineering workstation
+      - D) It polls more slowly than the HMI workstations do
+      answer: A
+    - question: A device found polling controllers turns out to be last week's commissioning
+        laptop, still connected after the job. How should the analyst classify it, and what
+        follows?
+      options:
+      - A) A rogue controller, and the plant must stop production at once
+      - B) Expected, because contractors need access to do their work
+      - C) Irrelevant, because the device did not change any register
+      - D) Authorised but undocumented, and it must be recorded and removed or sponsored
+      answer: D
+    - question: Which pairing of evidence best supports treating an unknown address on the OT
+        zone as a rogue controller rather than a stale inventory record?
+      options:
+      - A) Absent from the inventory, and seen only once in the capture
+      - B) Absent from the inventory, and it answers polls as a master
+      - C) Inside a range the firewall rules never mention
+      - D) A network card vendor the analysts do not recognise
+      answer: B
+    - question: After a rogue candidate is confirmed, why does the analyst check firewall policy
+        before recommending containment?
+      options:
+      - A) To learn which zones the candidate reaches before choosing the cut point
+      - B) To identify the administrator who owns the firewall record
+      - C) To confirm the firewall already logged the candidate's traffic
+      - D) To justify shutting down the whole OT zone until the review ends
+      answer: A
+    - question: Which containment choice best matches the rule that the process must keep
+        running while a rogue device is cut off?
+      options:
+      - A) Powering off every controller the rogue device polled
+      - B) Blocking all traffic between the office and OT zones
+      - C) Denying the rogue device address at the OT firewall, controller traffic untouched
+      - D) Disconnecting the monitoring mirror until the review ends
+      answer: C
+- ordinal: 4
+  title: Alerting Without Touching the Process
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write passive detection rules that judge mirrored traffic copies instead of polling the
+    process network
+  - Tune alert thresholds against the traffic baseline so alerts stay limited to real departures
+  - Choose a first response to an OT alert that leaves the process network untouched
+  topics:
+  - 'Passive alerting: rules that read copies of traffic rather than the controllers themselves.'
+  - Writing detection rules in a shared rule format from the baseline profile.
+  - Thresholds, known talker pairs and the false positives a single noisy rule produces.
+  - 'Alert fields a responder needs: time, zone, source, target and the baseline rule broken.'
+  - 'First responses that preserve evidence and process: capture, notify, escalate.'
+  lab: >-
+    Lab: On the large-enterprise range, turn the Module 2 baseline profile into passive
+    detection rules on the sensor and test them against the capture window, without sending any
+    packet to the process network. Evidence: each rule written with its condition and threshold;
+    the alerts the rules fired on the capture window with their counts; each alert marked
+    expected or unexpected against the baseline. Pass: every rule reads traffic copies only;
+    every fired alert is judged against the baseline with a one-sentence reason; each unexpected
+    alert names the baseline line it breaks and the escalation it needs.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01, ids01]
+      action: Log on to jump01, open a session to ids01 and record where the sensor loads its
+        detection rules from.
+    - hosts: [ids01]
+      action: On ids01, write one rule for the unexpected write events the Module 2 profile
+        lists, and record its condition and threshold.
+    - hosts: [ids01]
+      action: On ids01, write one rule for any polling master the baseline does not list, and
+        record its condition and threshold.
+    - hosts: [ids01]
+      action: Replay the capture window against the new rules and record each alert with its
+        source, target and count.
+    - hosts: [jump01]
+      action: Judge each alert against the Module 2 profile and mark it expected or unexpected,
+        naming the baseline line any unexpected alert breaks.
+  refs:
+  - sigma
+  - nist-sp-800-94
+  - mitre-attack
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: Why is a detection rule that reads the monitoring mirror preferable on an OT
+        network to one that polls each controller for its status?
+      options:
+      - A) The mirror stores a longer history than the controllers do
+      - B) Controller status registers are encrypted and cannot be read
+      - C) The mirror is cheaper to license than controller access
+      - D) Polling adds traffic to the process network and disturbs the baseline
+      answer: D
+    - question: A new rule fires forty times a shift on poll bursts the baseline already lists
+        as normal. What is the right tuning move?
+      options:
+      - A) Raise every threshold on the sensor until the alerts stop
+      - B) Add the listed talker pairs to the rule's permitted conditions
+      - C) Delete the rule, because frequent alerts are always false positives
+      - D) Forward all forty alerts to the plant operators each shift
+      answer: B
+    - question: Which alert field set gives a responder enough to act without touching the OT
+        network to gather more?
+      options:
+      - A) The sensor name and the rule identifier alone
+      - B) A packet count for the day and the zone name
+      - C) Time, zone, source, target and the baseline line the alert breaks
+      - D) The rule text, the capture file size and the analyst name
+      answer: C
+    - question: An alert shows writes from an unlisted address to a controller during
+        production. Which first response keeps both evidence and the process intact?
+      options:
+      - A) Preserve the capture, notify the supervisor and escalate with the alert fields
+      - B) Power off the controller so the writes stop immediately
+      - C) Log in to the unlisted address and end its polling process
+      - D) Wait for the next capture window before recording anything
+      answer: A
+    - question: The plant manager asks why the new OT rules are allowed to watch the network at
+        all. Which reason states the passive design correctly?
+      options:
+      - A) The rules decrypt controller traffic for deeper inspection
+      - B) They run on a traffic copy, so the process sees nothing new
+      - C) The rules only read traffic the firewall would have blocked anyway
+      - D) They watch the mirror copy, so no packet reaches the controllers
+      answer: D
+- ordinal: 5
+  title: From Findings to Asset Inventory
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Merge a passively discovered asset into the inventory with its evidence, source and
+    confidence
+  - Identify inventory records that the passive evidence contradicts on address, owner or
+    protocol
+  - Plan a reconciliation cycle that keeps the inventory aligned with what the traffic shows
+  topics:
+  - The asset inventory as the reference every monitoring decision is judged against.
+  - 'Inventory fields passive evidence can fill: address, vendor, protocol, owner and zone.'
+  - 'Confidence and evidence: recording where each inventory fact came from.'
+  - Reconciling contradictions between the inventory and the capture without guessing.
+  - A recurring reconciliation cycle tied to commissioning, maintenance and the capture schedule.
+  lab: >-
+    Lab: On the large-enterprise range, reconcile the Module 1 observed-asset picture with the
+    site inventory the instructor supplies and produce corrected inventory entries. Evidence:
+    each observed asset matched to an inventory record or marked unmatched; every contradiction
+    between the capture and the inventory on address, vendor, protocol or owner; updated entries
+    that state the evidence and the confidence for each changed field. Pass: every observed
+    asset is matched or unmatched; every contradiction is recorded with the capture line that
+    shows it; each updated entry names its evidence and a confidence level.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and open the Module 1 observed-asset list alongside the inventory
+        export your instructor supplied.
+    - hosts: [siem01]
+      action: On siem01, query the traffic records for each observed OT address and record the
+        vendor, protocol and zones each address spoke to.
+    - hosts: [jump01]
+      action: Match each observed asset to an inventory record or mark it unmatched, and record
+        the fields the two sources disagree on.
+    - hosts: [siem01]
+      action: On siem01, pull the capture lines behind each disagreement and record the exact
+        values the traffic shows.
+    - hosts: [jump01]
+      action: Write the corrected inventory entries with evidence and confidence, and one
+        sentence on which records the next reconciliation must recheck.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A passive capture shows a controller on an address the inventory assigns to a
+        retired device. What should the analyst record?
+      options:
+      - A) Nothing, because retired devices cannot reappear on the network
+      - B) The address is wrong, so the capture should be discarded
+      - C) A contradiction, recorded with the capture line that shows it
+      - D) A new device, entered into the inventory without further checking
+      answer: C
+    - question: An analyst updates the inventory from a capture. Which field can passive
+        evidence fill with the least guesswork?
+      options:
+      - A) The budget owner and the purchase date
+      - B) The address, vendor and protocol the asset actually speaks
+      - C) The serial number engraved on the enclosure
+      - D) The criticality rating the process owner assigns
+      answer: B
+    - question: Why does every passive inventory update need a confidence level attached to the
+        fields it changes?
+      options:
+      - A) Later analysts must judge how far to trust what the capture suggests
+      - B) Confidence levels are required by the sensor licence
+      - C) Captures repeat themselves, so confidence never changes
+      - D) The inventory accepts only entries written by its owner
+      answer: A
+    - question: >-
+        The reconciliation finds three mismatches: a moved controller, a changed protocol and
+        an owner who left. Which mismatch can passive evidence settle on its own?
+      options:
+      - A) The left owner, by searching the staff directory
+      - B) The moved controller, by asking the maintenance crew
+      - C) The changed protocol, by trusting the inventory record
+      - D) The changed protocol, by reading the capture again
+      answer: D
+    - question: After the first reconciliation pass, the analyst plans the next cycle. What
+        should schedule it?
+      options:
+      - A) Commissioning, maintenance windows and the regular capture schedule
+      - B) Whenever an analyst notices the inventory looks out of date
+      - C) Only after an incident proves the inventory was wrong
+      - D) Once a year, so the workload stays predictable
+      answer: A
+- ordinal: 6
+  title: A Passive Monitoring Shift
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Triage a mixed set of OT alerts using the baseline profile and the reconciled inventory
+  - Sequence the steps from an OT alert to a containment recommendation that never touches the
+    process network
+  - Write an escalation note that states the finding, the evidence and where each fact was
+    observed
+  topics:
+  - 'Running a monitoring shift on an OT network: sensor health, coverage and the alert queue.'
+  - 'Triage order: inventory first, baseline second, judgement third.'
+  - 'Alert classes the earlier modules produced: unknown assets, unscheduled writes and unlisted
+    masters.'
+  - 'The escalation note: finding, evidence with source and time, and the requested decision.'
+  - Feeding the shift's findings back into the baseline and the reconciliation cycle.
+  lab: >-
+    Lab: On the large-enterprise range, work one passive monitoring shift end to end: check
+    sensor coverage, triage the alert queue against the baseline and the inventory, and hand
+    off an escalation note. Evidence: the coverage check result from ids01; each queued alert
+    marked expected, unexpected or needs-inventory-check with its reason; one escalation note
+    naming the finding, the evidence and where each fact was observed. Pass: the coverage check
+    is recorded before triage starts; every alert is marked with a one-sentence reason tied to
+    the baseline or the inventory; the note asks for a decision the Student cannot make alone.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01, ids01]
+      action: Log on to jump01, open the session to ids01 and record whether the monitoring
+        interface still sees every zone, including the OT segment.
+    - hosts: [siem01]
+      action: On siem01, open the alert queue for the OT zone and record how many alerts are
+        waiting.
+    - hosts: [jump01, siem01]
+      action: 'Work the queue in triage order: check each alert against the inventory first and
+        the baseline profile second, and record the mark.'
+    - hosts: [siem01]
+      action: For each alert still unresolved, query the traffic records for its source, target
+        and time, and record what the capture shows.
+    - hosts: [jump01]
+      action: 'Write the escalation note for the highest-priority alert: the finding, the
+        evidence with source and time, and the decision requested from the shift lead.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: >-
+        A shift opens with four alerts: an unknown address, an unscheduled write, a duplicate
+        poll and a coverage gap on one zone. What comes first?
+      options:
+      - A) Confirming the sensor still sees every zone, including the OT segment
+      - B) Escalating the unscheduled write to the plant manager
+      - C) Matching the unknown address against the inventory
+      - D) Silencing the duplicate poll until the next capture
+      answer: A
+    - question: Triage order says inventory first, baseline second, judgement third. Why is the
+        inventory check first?
+      options:
+      - A) The inventory is the newest document on the shift desk
+      - B) The baseline changes whenever the inventory does
+      - C) An unlisted asset follows a different decision path
+      - D) Judgement cannot be delegated to either document
+      answer: C
+    - question: An alert shows an unlisted master polling a controller. The inventory has no
+        record and the baseline has no pair. What is the finding?
+      options:
+      - A) Expected, because masters poll controllers throughout every shift
+      - B) A coverage gap, because the sensor may have missed earlier traffic
+      - C) A stale inventory record that needs no further action
+      - D) An unexplained master that meets the rogue candidate test
+      answer: D
+    - question: Which line belongs in the escalation note, and which one must be rewritten?
+      options:
+      - A) The controller is probably fine, given its age
+      - B) At 10:12 the capture shows writes from an unlisted address
+      - C) Someone should look into this soon, ideally today
+      - D) The analyst believes a contractor caused the writes
+      answer: B
+    - question: The shift ends. Which action closes the loop between this shift and the next
+        capture cycle?
+      options:
+      - A) Archiving the alerts so the queue starts empty
+      - B) Rotating the sensor login credentials before leaving
+      - C) Feeding confirmed departures into the baseline and the reconciliation cycle
+      - D) Deleting the escalation note once the shift lead has read it
+      answer: C
