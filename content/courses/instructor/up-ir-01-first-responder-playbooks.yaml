@@ -1,0 +1,206 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# Instructor pack for content/courses/up-ir-01-first-responder-playbooks.yaml (C531).
+# Keys and expected values live here, never in the Student-facing course file.
+
+course_code: C531
+audience: staff_only
+overview: 'First Responder Playbooks is a three-hour, six-module course on executing the first
+  hour of incident response from a working playbook: severity calls, the first-hour checklist,
+  evidence preservation, containment decisions, communication while containing, and the handover.
+  Each 30-minute module has the same split: 10 minutes teaching, 12 minutes lab on the
+  small-enterprise range, 8 minutes quiz (five items, passed at 70 percent). Individual work
+  throughout: no pairs, no role-play, no team exercises. Say ''Student'' throughout and keep every
+  description defensive and observable. Range passwords appear on the range''s Credentials panel;
+  never read them aloud or write them into shared notes.'
+timings:
+- module: 1
+  minutes: 30
+  plan: '10 teach (severity criteria, escalation triggers and routes, severity versus confidence),
+    12 lab (triage three named observations on the range), 8 quiz and debrief'
+- module: 2
+  minutes: 30
+  plan: '10 teach (the checklist order, recording rule, clock and credential dependencies), 12 lab
+    (run the checklist against ws-01 on the range), 8 quiz and debrief'
+- module: 3
+  minutes: 30
+  plan: '10 teach (what counts as evidence, change-stop, capture deadlines, the evidence log), 12
+    lab (preserve the evidence picture for ws-02 without changing any host), 8 quiz and debrief'
+- module: 4
+  minutes: 30
+  plan: '10 teach (containment options by cost, what isolation breaks, approval lines), 12 lab
+    (least-cost containment recommendation for ws-02), 8 quiz and debrief'
+- module: 5
+  minutes: 30
+  plan: '10 teach (first notification contents, audiences and channels, fact versus guess,
+    cadence), 12 lab (draft and label the first notification for ws-02), 8 quiz and debrief'
+- module: 6
+  minutes: 30
+  plan: '10 teach (handover package, record structure, handover failures), 12 lab (build the
+    handover package on the range), 8 quiz and debrief'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B, M01-O01: A critical asset holding the only finance records is unavailable at peak
+    urgency, so impact and urgency are both high; a possible routine fault (C) is a confidence
+    judgement, not a severity one, and rebuildability (D) does not lower impact. Q2 C, M01-O02:
+    Confirmed malicious file changes meet the immediate-escalation trigger; waiting for a second
+    alert (A) and rebooting (D) delay it, and deleting files (B) destroys evidence. Q3 D, M01-O03:
+    An untested detection has low confidence, so verify before raising severity; naming a server
+    (B) does not raise it, and closing or ignoring (A, C) skips verification. Q4 A, M01-O01:
+    Downgrading to avoid waking the director is under-escalation; it delays the decisions the
+    playbook reserves for high severity. Q5 B, M01-O05: Without a written severity record the
+    second responder re-derives or contradicts the first; the other options describe secondary
+    effects, not the failure the playbook attributes it to.'
+- module: 2
+  notes: 'Q1 C, M02-O01: The checklist fixes record-then-preserve; the order is not the responder''s
+    choice and recording is never optional. Q2 D, M02-O02: A valid entry carries what changed, the
+    host, the time and the source; ''acted strangely'' has none of these. Q3 A, M02-O03: Drift
+    must be recorded and timestamps reconciled before a timeline is trusted; declaring one host
+    authoritative (B) hides the drift instead of recording it. Q4 B, M02-O03: A failed credential
+    is recorded, then the documented fallback account is used; silent skips (C) and retries
+    without recording (A) both break the checklist discipline. Q5 C, M02-O05: Without owners,
+    checklist items are done twice or not at all; the playbook names this as the risk of unowned
+    parallel work.'
+- module: 3
+  notes: 'Q1 D, M03-O02: Restarting before anyone records state breaks the rule against rebooting
+    a compromised host before volatile evidence is captured; the log and copy rules (A, B) are
+    real but not the one this breaks. Q2 A, M03-O02: Running processes and active connections
+    die at power-off, so they carry the shortest capture deadline; policy and OS details survive
+    a reboot, and forwarded events already sit centrally. Q3 C, M03-O01: Events readable for
+    dc-01 but absent for ws-02 point at forwarding: ws-02 sends nothing to the central log
+    store; reimaging (B) would not explain a week of gaps on its own. Q4 D, M03-O04: Analysis
+    runs on a verified copy and the original stays sealed; logging each read (A) does not make
+    analysis on the original acceptable. Q5 A, M03-O05: The evidence log shows who copied each
+    item, when, and from which source; size alone (B) and approvals (D) do not identify the
+    copy.'
+- module: 4
+  notes: 'Q1 C, M04-O01: One affected workstation calls for the least-cost action that stops the
+    harm: isolate that host; disconnecting the whole user network (A) or reimaging everything
+    (D) costs far more than the harm observed. Q2 A, M04-O02: Before a mass isolation the playbook
+    requires a recorded prediction of what breaks: sign-in against dc-01, file shares and name
+    resolution. Q3 B, M04-O03: The user-to-server directory traffic rides the rule connecting the
+    user and server networks; the management rule (A) does not carry user sign-in, and the range
+    does have such a rule (C). Q4 D, M04-O04: A temporary block is lifted only after a recorded
+    containment review and the incident lead''s approval; responder judgement alone (A) is what
+    the review replaces. Q5 A, M04-O05: Every containment action is recorded with its business
+    impact as it is applied; severity updates (B) and queue closure (C) are separate duties.'
+- module: 5
+  notes: 'Q1 B, M05-O03: ''Probably infected'' states an interpretation as fact; the notification
+    rules do not forbid naming a host (C) or being short (D). Q2 D, M05-O02: The audience drowning
+    in calls gets the next update first, with an approved holding line; briefing management (A)
+    before the helpdesk leaves it inventing answers. Q3 C, M05-O04: Cadence means updates go out
+    at the agreed interval even when nothing changed, each carrying the next check time; silence
+    (A) is the failure the no-change update exists to prevent. Q4 A, M05-O03: With no evidence
+    either way, the responder writes that the question is open and names the check that will
+    answer it; a marked guess is not permission to state a guess as fact. Q5 D, M05-O05:
+    Sharing covers the time window and the observable pattern, stripped of internal host names;
+    the full internal record (A) and account names (C) over-disclose.'
+- module: 6
+  notes: 'Q1 A, M06-O01: The handover package is chronology, open actions and containment state;
+    a verbal summary (B) and raw alerts (C) force the next responder to re-derive the first hour.
+    Q2 C, M06-O02: A usable record entry carries a time, what was observed, the host and the
+    source; the other options read as opinion or cross-references that decay. Q3 B, M06-O02:
+    Entries are ordered by recorded time, and same-time entries are kept apart by source; typing
+    order (A) and importance (C) both destroy the chronology. Q4 A, M06-O03: A new responder
+    starts at the open actions and their owners; severity history (B) and contacts (C) matter
+    but do not say what to do next. Q5 C, M06-O05: The first hour is complete when the record
+    lets a new responder act without asking questions; tools run (B) and notifications sent (D)
+    are not the test.'
+lab_setup:
+- module: 1
+  setup: >-
+    Revert the small-enterprise range to its baseline before the module. Confirm jump-box
+    reaches fw-01 over the management network and that the Credentials panel shows the analyst
+    account. Name the three observations to triage aloud or on the board, for example: a file
+    share on dc-01 stops answering during month-end; a single suspicious sign-in on ws-03 with
+    a weak, untested detection; repeated failed sign-ins against dc-01 from one user host.
+    Expected rule name: user-to-srv-ad on fw-01.
+- module: 2
+  setup: >-
+    Revert the range to its baseline. Confirm the analyst account can sign in on jump-box
+    over SSH and that, from jump-box, the network path reaches ws-01 and the shared directory
+    service on dc-01, and that the Credentials panel is visible to Students. Do not correct
+    clock drift if the range happens to show any; the lab records it.
+    Expected: fw-01 rules mgmt-to-all and user-to-srv-ad visible from jump-box; drift of zero is
+    a valid recorded result.
+- module: 3
+  setup: >-
+    Revert the range to its baseline. Confirm ws-02 and dc-01 are reachable from jump-box
+    and that Students can list log destinations without changing any host. Emphasise the
+    change-stop rule: nothing in this lab may write to ws-02 or dc-01. Expected: dc-01 forwards
+    to the central log collector; workstation forwarding depends on the template baseline, so
+    read it off the range before the module rather than assuming it.
+- module: 4
+  setup: >-
+    Revert the range to its baseline. Confirm the fw-01 rule user-to-srv-ad allows the
+    directory, file-share and time services between the user and server networks, and that the
+    analyst account can sign in on ws-01 against dc-01. Nothing is disabled in this lab; the
+    Students only read the rules and predict. Expected services on the rule: 53, 88, 123, 135,
+    389, 445, 464, 636 and the dynamic port range.
+- module: 5
+  setup: >-
+    Revert the range to its baseline. Students need one observable fact each from ws-01 and
+    dc-01, so confirm both are reachable from jump-box and that the Credentials panel is visible.
+    Have the approved holding line for the helpdesk written on the board before the lab starts;
+    drafting it is not part of the exercise.
+- module: 6
+  setup: >-
+    Revert the range to its baseline. Before the lab, disable one fw-01 rule of your choice
+    so the containment state has something real to record, and tell Students a change was made
+    but not which. Name the open actions aloud or on the board, for example: verify ws-02
+    forwarding, check the shared directory on dc-01, confirm the disabled rule. Expected
+    disabled-rule name is whatever you disabled; Students must record it, not guess it.
+common_faults:
+- module: 1
+  fault: Students call severity from the loudest symptom instead of working impact and urgency
+    through the playbook's criteria.
+  remedy: Take one named observation and fill the impact and urgency reasons on the board before
+    the lab, then require both sentences for every severity call.
+- module: 1
+  fault: Students treat a weak alert on an important host as high severity, folding confidence
+    into the severity call.
+  remedy: Separate the two on the board, where confidence gates verification and severity gates
+    priority.
+    Have Students mark which of the three observations they would verify first.
+- module: 2
+  fault: Students act first and write the record afterwards, so the times come from memory.
+  remedy: In the debrief, ask where each recorded time came from; any answer that is not the
+    range or the checklist itself counts as a reconstruction, not a record.
+- module: 2
+  fault: Students treat a failed credential as a blocker and stop the checklist there.
+  remedy: Point at the fallback rule and the instructor-named fallback account; the item is
+    recorded as failed, then the checklist continues.
+- module: 3
+  fault: Students reboot or restart a host mid-lab to 'get a clean state', destroying the volatile
+    picture they are meant to record.
+  remedy: State the change-stop rule before the lab starts and enforce it, so any write to a host
+    fails the lab's Pass criteria.
+- module: 3
+  fault: Students record volatile items without capture deadlines, so preservation has no owner
+    or clock.
+  remedy: Require a deadline on every volatile item in the debrief and ask who holds it.
+- module: 4
+  fault: Students reach for the biggest containment action available, disconnecting whole
+    networks for single-host problems.
+  remedy: Make the cost line explicit in the debrief, asking what the range loses under each
+    option and which option still stops the harm.
+- module: 4
+  fault: Students predict impact after applying a change, or skip the approval line entirely.
+  remedy: Collect the predictions before anyone touches the range and require a role, not a
+    person, on every approval line.
+- module: 5
+  fault: Students write interpretations and guesses into the first notification without labels.
+  remedy: Have Students label every line of their own draft in the debrief; an unlabelled line
+    counts as a claim.
+- module: 5
+  fault: Students go silent when nothing changes, missing the cadence rule.
+  remedy: Show the no-change update format on the board and have each Student write one for their
+    own timeline before the quiz.
+- module: 6
+  fault: Students hand over a chronology with gaps, because entries were only recorded when
+    something dramatic happened.
+  remedy: Check the chronology against the lab start time and each host fact; every gap must be
+    filled with a record entry or an explicit no-observation note.
+- module: 6
+  fault: Students write open actions without owners, leaving the new responder nothing to act on.
+  remedy: Require an owner and a next check on every open action in the handover summary; 'the
+    team' is not an owner.
