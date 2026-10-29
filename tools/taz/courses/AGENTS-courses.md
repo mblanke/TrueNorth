@@ -113,6 +113,10 @@ back. A course drafted before this guide existed is re-done against it.
 - **Upskilling courses (C500 and up, files `up-*.yaml`)** carry no `qsp_code` and no
   catalogue row. Their notes say "Unpublished pending Standards review." and do not need
   the "proposed / not standards-validated" wording.
+- **Keep every module-level `po:` block** (`po: {qsp_code, po_code}`) from the course you are
+  re-doing. The programme tests count which module delivers each objective; the C208 re-do
+  dropped `PO_004`'s binding and `test_developmental_path_binding` failed. Compare the
+  `po:` blocks of the base file with your result before you report.
 - **"Reviewed" is not "technically proven".** Do not describe a lab as proven; no lab has
   run on a real range yet. Keep `readiness: draft`.
 - A lab step may only rely on what the range template already has. If a step needs a
