@@ -1,0 +1,188 @@
+# Instructor pack for C511 Identity Detection Engineering (unsourced draft, not validated by
+# Standards). Staff-only: every answer letter, expected value and fault below is instructor
+# material and must not reach Students.
+course_code: C511
+audience: staff_only
+overview: 'Identity Detection Engineering is an advanced six-hour self-paced course on the SOC
+  Analyst Training Environment (soc-training range) for Students who have completed C508. Each of
+  the six modules runs 60 minutes: 15 teach, 35 lab on the range, 10 quiz, passed at 70 percent.
+  Modules build one hunt chain: telemetry inventory, authentication baselines, spray and brute
+  force hunts, then golden and silver ticket detection, closing with playbooks in TheHive. Keep
+  every description defensive and observable, say ''student'' throughout, and hold all answer keys
+  and expected values in this pack only.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (telemetry sources and forwarding), 35 lab (source inventory on siem01, v-dc01,
+    zeek01, velociraptor01), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (baselines and deviation causes), 35 lab (one-week baseline queries on siem01
+    against the v-dc01 feed), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (spray versus brute force signatures), 35 lab (failure aggregation hunt on
+    siem01 and zeek01), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (forged ticket-granting ticket indicators), 35 lab (cipher and lifetime hunt on
+    siem01, corroboration on velociraptor01), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (missing-request signature and containment), 35 lab (unmatched ticket hunt on
+    siem01, rights check on v-fs01), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (playbook structure and severity), 35 lab (case and playbook run in thehive01
+    from a siem01 hit), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: the domain controller security event log is the only source that records domain
+    sign-ins and their authentication type directly; A corroborates but does not originate, C sees
+    sessions not authentication, D is application-layer. Q2 C: two collectors reading one feed
+    without duplicate suppression make every event arrive twice; A shortens storage without
+    duplicating events, B delays delivery without duplicating it, D affects coverage mapping, not
+    forwarding. Q3 A: the same behaviour observed in two independent sources is the
+    coverage test the module teaches; B, C and D are single-source partial views. Q4 D: endpoint
+    telemetry is the only listed source that names the generating workstation; C governs whether
+    events exist but not where a failure came from. Q5 B: log management practice treats the
+    evidence base itself as the asset; A and C confuse quiet with valueless.'
+- module: 2
+  notes: 'Q1 C: an off-baseline time and unknown source is the definition of a deviation worth
+    investigating, not yet proof of spraying (A jumps to attribution) and not evidence about window
+    length (D). Q2 D: the owner confirmed an expiry cause with a fixed retry pattern; A, B and C
+    assign attack intent the evidence does not support. Q3 A: spraying deliberately stays under
+    per-account thresholds, so only aggregation across accounts exposes it. Q4 B: service accounts
+    form their own account group with their own expected pattern; deleting them (A) removes real
+    evidence, C and D misread scripted success as attack or failure. Q5 C: a scheduled probe gets a
+    standing expected entry keyed to its schedule; paging (A) and escalation (D) ignore the
+    baseline, B is false because scripts do hold credentials.'
+- module: 3
+  notes: 'Q1 A: many accounts with few failures each from one source is the spray signature; B
+    concentrates on one account, C and D invent unrelated causes. Q2 D: hundreds of failures on a
+    single account ending in lockout is brute force by definition; A contradicts the account
+    concentration. Q3 A: spray failures spread across accounts, so one account history shows
+    almost nothing; B, C and D assert mechanics the lockout view does not have. Q4 B: a single
+    source, a single account and a stale-credential explanation is benign by the evidence; A and C
+    fit neither spread pattern, D has no ticket evidence. Q5 C: a known expiry campaign with a
+    matching status code and helpdesk ticket is benign; A and B discard the exculpatory evidence,
+    D introduces forgery nothing supports.'
+- module: 4
+  notes: 'Q1 D: a legacy cipher on an administrator ticket request is the downgrade indicator; A,
+    B and C each describe ordinary events that do not produce a cipher downgrade. Q2 B: a lifetime
+    beyond the domain policy is the implausible-lifetime indicator; A explains drift of minutes,
+    not weeks, C and D ignore the policy limit. Q3 A: a forged ticket replayed on a workstation
+    skips the ticket request on the domain controller, so the missing event pair is the
+    completeness check. Q4 C: endpoint telemetry shows whether the session was interactive and what
+    ran, which decides escalation; A is necessary but not discriminating, B and D do not bear on
+    forgery. Q5 C: allow listing the known scheduled jobs keeps the detection live for everything
+    else; A and D destroy coverage, B floods again.'
+- module: 5
+  notes: 'Q1 B: a service ticket with no ticket request all day is the missing-request signature;
+    A would show the request, C and D are failure patterns, not issued tickets. Q2 A: the
+    signature depends on seeing the absence of a request, which incomplete logging makes
+    indistinguishable from a gap; B, C and D misstate where detection runs. Q3 D: rotating the
+    service account credentials and revoking its tickets invalidates every forged ticket minted
+    from it; A changes nothing, B is the wrong account, C is out of proportion. Q4 A: tickets
+    scoped to one service from one host mean the attacker holds that service account''s credentials
+    only; B and C would show broader scope, D contradicts continued use. Q5 B: a full ticket
+    lifetime with no unmatched tickets is the only listed evidence that forgery has stopped; A and
+    D are volume proxies, C is attestation not evidence.'
+- module: 6
+  notes: 'Q1 C: a trigger defined as failures from one source across many accounts inside one time
+    bin is objective and repeatable; A floods, B is too slow for spraying, D is not a definition.
+    Q2 D: blocking the source stops ongoing harm, which is containment; A restores service, B
+    precedes detection, C follows recovery. Q3 B: service accounts can reach many resources, so a
+    confirmed spray against them rates high; A and C ignore what success would grant, D weighs
+    range size over impact. Q4 D: exporting the matched events with timestamps into the case
+    preserves the evidence outside the live index; A and C capture summaries, B relies on range
+    retention the Student does not control. Q5 C: the case record with each step marked executed or
+    skipped is the reviewable artefact the module requires; A and B are unrecorded, D is gone.'
+lab_setup:
+- module: 1
+  setup: 'Revert the soc-training baseline snapshot. Confirm siem01, velociraptor01, thehive01 and
+    jump01 are reachable and the analyst account works on siem01. Expected: the v-dc01
+    authentication feed is forwarding into siem01, zeek01 holds protocol logs, and v-ws01 checks
+    in to velociraptor01.'
+- module: 2
+  setup: 'Revert the baseline snapshot. Confirm siem01 holds at least one week of authentication
+    events from v-dc01 and that v-ws01 has the finance_user profile with sign-ins across the week.
+    Expected: hourly counts, per-source aggregates and the finance_user pattern are all queryable;
+    at least one scripted service account authenticates on a fixed schedule.'
+- module: 3
+  setup: 'Revert the baseline snapshot. Confirm siem01 and zeek01 are reachable and the v-dc01
+    failure feed is current. Expected: the day''s failure aggregates return a spray-shaped cluster
+    (one source, many accounts, few failures each), a brute-force-shaped cluster (one account,
+    many failures) and one benign cluster, plus lockout events on v-ws02 for the hr_user profile.'
+- module: 4
+  setup: 'Revert the baseline snapshot. Confirm siem01 and velociraptor01 are reachable and the
+    v-dc01 ticket request feed is forwarding. Provide the change list of expected administrator
+    sign-ins on v-ws03 that lab step 3 judges the observed sign-ins against, and the domain
+    ticket-lifetime policy value. Expected: the seeded scenario shows administrator sign-ins on
+    v-ws03, at least one ticket request with a legacy cipher, one over-long ticket lifetime, and
+    the velociraptor01 agent on v-ws03 reporting processes for that window.'
+- module: 5
+  setup: 'Revert the baseline snapshot. Confirm siem01, v-fs01 and v-dc01 are reachable. Expected:
+    the seeded scenario contains at least one service ticket for the v-fs01 file service whose
+    account shows no ticket request that day, the v-fs01 share listing shows which service accounts
+    can reach the engineering share, and v-dc01 audit settings show whether ticket request events
+    are logged.'
+- module: 6
+  setup: 'Revert the baseline snapshot. Confirm siem01 and thehive01 are reachable, the password
+    spray detection exists in siem01, and the Student can open cases in thehive01. Expected: the
+    detection returns at least one hit to export, and a case opened in thehive01 accepts the
+    playbook tasks and the exported events.'
+common_faults:
+- module: 1
+  fault: Students list dashboards instead of sources, and cannot say which events each source
+    actually records.
+  remedy: Make them write the event or record type next to every source before the judgement step;
+    a source without its event types fails the Pass.
+- module: 1
+  fault: The audit settings on v-dc01 are read but not connected to what siem01 receives.
+  remedy: Have them point at one event identifier that exists because of the audit setting they
+    recorded.
+- module: 2
+  fault: Baselines are built only from failures, so normal success patterns are missing and every
+    deviation looks alarming.
+  remedy: Require hourly success and failure counts side by side before any deviation is marked.
+- module: 2
+  fault: Service account traffic is treated as an anomaly rather than its own expected pattern.
+  remedy: Point at the fixed-period account from the lab and ask what its baseline entry should
+    say.
+- module: 3
+  fault: Clusters are labelled spray or brute force from total volume alone, ignoring spread.
+  remedy: Insist the label cite failures per account and distinct accounts per source, as the Pass
+    requires.
+- module: 3
+  fault: Benign clusters (expiry campaigns, stale service credentials) are escalated as attacks.
+  remedy: Make the status-code and helpdesk-ticket check explicit before a label is accepted.
+- module: 4
+  fault: Any over-long ticket lifetime is reported as forgery without checking the domain policy
+    it must exceed.
+  remedy: Have the Student quote the policy value next to the flagged lifetime before the finding
+    counts.
+- module: 4
+  fault: The legacy-cipher indicator is copied without the account and source that the Pass
+    requires, so the finding cannot be corroborated on velociraptor01.
+  remedy: Return the finding for re-recording with account and source before the judgement step.
+- module: 5
+  fault: A logging gap on v-dc01 is read as proof of forgery, or an unmatched ticket is excused as
+    a gap without checking the audit settings.
+  remedy: 'Make step 4 explicit: compare each unmatched ticket against the recorded audit settings
+    before labelling.'
+- module: 5
+  fault: Containment is proposed for the wrong account (domain administrator instead of the
+    targeted service account).
+  remedy: Ask which account's credentials the forged tickets were minted from, then which step
+    invalidates them.
+- module: 6
+  fault: The case is opened but the triggering detection and its query are never linked, so the
+    run cannot be reviewed.
+  remedy: Check the case summary names the detection and query before the playbook tasks are
+    drafted.
+- module: 6
+  fault: Severity is assigned from alarm level rather than the escalation criteria recorded in the
+    lab.
+  remedy: Require the one-sentence justification to quote a criterion from their own notes, as the
+    Pass states.
