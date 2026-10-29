@@ -1,0 +1,165 @@
+# Instructor pack for C513 Packet Analysis Deep Dive (unsourced draft, not validated by Standards).
+course_code: C513
+audience: staff_only
+overview: 'Packet Analysis Deep Dive is a four-hour self-paced course of six 40-minute modules (240 minutes).
+  Each module has the same split: 10 minutes teach, 20 minutes lab on the soc-training range, 10 minutes
+  assessment (quiz and review of the lab note). Every module teaches three objectives, works them on real
+  logs and captures from the range, and ends with a five-item quiz passed at 70 percent. Students work
+  individually; there is no pair or team work. Keep every description defensive and observable, and say
+  ''Student'' throughout.'
+timings:
+- module: 1
+  minutes: 40
+  plan: '10 teach (handshake anatomy on the board), 20 lab (conn.log on zeek01), 10 assessment (quiz and
+    lab note review)'
+- module: 2
+  minutes: 40
+  plan: '10 teach (filter expressions and staged refinement), 20 lab (staged filters on pcap01), 10
+    assessment (quiz and lab note review)'
+- module: 3
+  minutes: 40
+  plan: '10 teach (query structure and unusual resolution), 20 lab (dns.log on zeek01), 10 assessment
+    (quiz and lab note review)'
+- module: 4
+  minutes: 40
+  plan: '10 teach (TLS handshake metadata and SMB operations), 20 lab (smb.log and ssl.log on zeek01),
+    10 assessment (quiz and lab note review)'
+- module: 5
+  minutes: 40
+  plan: '10 teach (segments, gateway and the monitoring mirror), 20 lab (join zeek01, fw01 and pcap01
+    records), 10 assessment (quiz and lab note review)'
+- module: 6
+  minutes: 40
+  plan: '10 teach (timelines and escalation order), 20 lab (full timeline for v-ws02), 10 assessment
+    (quiz and escalation sentence review)'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: a RST to a fresh SYN means nothing is listening on that port; A tests the misconception
+    that the server closed an accepted session, C and D attribute the reset to window size or packet loss
+    instead of the listener. Q2 C: an unadvancing acknowledgement with repeated sequence numbers is a
+    retransmission; A misreads duplicate data as window scaling, B as teardown, D as port renegotiation.
+    Q3 D: conn.log summarises one flow per entry, which is exactly the question; A, B and C each answer a
+    different question (lookups, policy, inventory). Q4 A: SYN then SYN-ACK is the handshake; B, C and D
+    describe ordering that does not open a session. Q5 C: the ephemeral port is the consumer and the well
+    known port the service; A inverts the direction, B invents translation, D confuses a fixed port with
+    encryption.'
+- module: 2
+  notes: 'Q1 A: constraining service as well as address isolates one session; B widens with either/or, C
+    keeps the whole transport layer, D filters the wrong hosts. Q2 C: predicting a filter means knowing
+    each field and how terms combine; A, B and D are habits that neither predict nor explain the match.
+    Q3 B: the note must carry the count after each stage; A, C and D record presentation, tooling or
+    effort, not evidence. Q4 D: an empty result from terms that should match points first at the logical
+    operator; A, B and C are plausible but secondary. Q5 B: saved, reused filters give comparable counts;
+    A, C and D all change the filter between runs.'
+- module: 3
+  notes: 'Q1 D: long machine-like names each followed by a connection is the tunnelling signature; A, B
+    and C describe ordinary high volume with a normal purpose. Q2 A: a short remaining time-to-live marks
+    a cached answer; B is a negative response, C an authority section, D irrelevant to caching. Q3 C: the
+    query log names the host that asked; A, B and D are later or unrelated records. Q4 B: an external zone
+    transfer attempt exposes the internal layout and is escalated; A normalises it, C mistakes a refused
+    attempt for a safe one, D reframes it as performance. Q5 C: rapid rotation of one name across
+    addresses in different networks is fast flux; A is one stable pool, B a stale cache, D mail relays.'
+- module: 4
+  notes: 'Q1 B: the server certificate is visible unencrypted and names the organisation the client
+    reached for; A and C are encrypted or ephemeral, D only resumes sessions. Q2 D: the tree connect entry
+    in smb.log names the share; A, B and C never record share access. Q3 A: an outdated version points at
+    an unmaintained client stack; B, C and D move the fault to the server, firewall or certificate. Q4 C:
+    breadth and order of file operations separate a bulk copy from one document; A and B are identical in
+    both cases, D identifies the host, not the behaviour. Q5 A: record the unknown-issuer session for
+    inspection first; B jumps to blocking before recording, C dismisses on base rates, D is not an analyst
+    action.'
+- module: 5
+  notes: 'Q1 C: the mirror copies traffic in transit, so traffic that never leaves the local segment is
+    absent; A, B and D misstate what the mirror does. Q2 B: the small shift is propagation across the
+    gateway interface; A blames overload, C assumes sequence rewriting that does not happen here, D a
+    clock skew too large to fit. Q3 D: identifiers that persist across the boundary are the reliable join;
+    A and B do not survive the gateway, C is the analyst''s reading time. Q4 A: both capture points see
+    the same addresses with different timestamps; B and D describe hiding or tearing down, C denies what
+    the rule permits. Q5 B: a trace that stops at a boundary is first checked against the coverage of the
+    capture point; A, C and D are possible but later checks.'
+- module: 6
+  notes: 'Q1 A: record both times with sources and note the difference; B invents a midpoint, C discards
+    evidence, D hides the disagreement. Q2 D: regular lookups followed by outside connections is the
+    candidate worth escalating first; A, B and C are ordinary traffic patterns. Q3 C: a cited destination
+    and start time from the connection log verifies fastest; A and B are conclusions or beliefs, D is
+    second-hand. Q4 B: entries linked to their source records make the handover usable; A strips the
+    trail, C merges evidence into conclusions, D orders by discovery, not occurrence. Q5 D: record what
+    the packets show, then request endpoint data to close the gap; A denies involvement, B states a guess
+    as fact, C abandons the question.'
+lab_setup:
+- module: 1
+  setup: 'Range soc-training with the monitoring mirror running. On zeek01, confirm conn.log covers the
+    lab window and holds a workstation-to-file-server session from v-ws01 to v-fs01; expected: a complete
+    SYN, SYN-ACK, ACK handshake, a normal teardown, byte counts in both directions, and at least one
+    reset entry in the window for the comparison step.'
+- module: 2
+  setup: 'Range soc-training with the monitoring mirror running. On pcap01, confirm the full packet
+    capture for the lab window exists and is busy enough to need staged filters; expected packet counts:
+    a large whole-capture count, roughly a tenth after the workstation subnet filter, a smaller count for
+    v-ws01 alone, and a few packets for the single session between v-ws01 and v-fs01.'
+- module: 3
+  setup: 'Range soc-training with the monitoring mirror running. On zeek01, confirm dns.log covers the
+    lab window with ordinary browsing from v-ws01; expected: a high query count overall, a top-ten list
+    dominated by familiar internal and software update names, and at least one unusually long name whose
+    conn.log follow-up can be checked.'
+- module: 4
+  setup: 'Range soc-training with the monitoring mirror running. On zeek01, confirm smb.log and ssl.log
+    cover the lab window; expected: v-ws01 sessions to v-fs01 with a negotiated dialect and the finance
+    or hr share, an ordered file-operation list, and TLS destinations with current versions plus at least
+    one session on an outdated version for the escalation discussion.'
+- module: 5
+  setup: 'Range soc-training with the monitoring mirror running and fw01 rules loaded. Confirm at least
+    one long-lived connection from v-ws01 crosses the gateway to another network; expected: the same UID
+    and addresses in conn.log, matching rule and interface names on fw01, and first and last packet
+    timestamps for the session in the pcap01 mirror capture.'
+- module: 6
+  setup: 'Range soc-training with the monitoring mirror running and the seconion01 console reachable.
+    Confirm v-ws02 shows connections outside its own network in the lab window; expected: a short
+    destination list in conn.log, preceding name lookups, two sessions confirmed in the pcap01 mirror
+    capture, and at least one alert in the seconion01 console covering the same window.'
+common_faults:
+- module: 1
+  fault: Students read every reset as an attack or a fault instead of checking whether a service is listening.
+  remedy: Have them trace one reset back to the originator and responder ports and name the service before
+    classifying it.
+- module: 1
+  fault: The handshake is recorded from memory rather than from the captured sequence numbers.
+  remedy: Require the sequence numbers from conn.log in the note; a remembered handshake has none.
+- module: 2
+  fault: One broad filter is applied once and the intermediate counts are never recorded.
+  remedy: Insist on the count after each stage; the stage counts are the evidence, not the final number.
+- module: 2
+  fault: The final filter string is paraphrased in the note and cannot be rerun.
+  remedy: Compare the note against the exact string entered; make the student copy it character for character.
+- module: 3
+  fault: High query volume alone is called tunnelling.
+  remedy: "Point back to the record: tunnelling is judged from name shape and the connection that follows,
+    not from volume."
+- module: 3
+  fault: Unusual names are listed without their response codes, so refused and answered lookups are merged.
+  remedy: Require name, record type and response code together; the code is what separates answered from
+    refused.
+- module: 4
+  fault: TLS metadata is treated as useless because the session is not decrypted.
+  remedy: Re-read the ssl.log fields aloud; versions and certificate issuers were recorded without any
+    decryption.
+- module: 4
+  fault: SMB file activity is summarised as 'file access' with no order or breadth.
+  remedy: Have the student list the operations in sequence; a bulk copy and one document open look nothing
+    alike written down.
+- module: 5
+  fault: The firewall record and the connection record are treated as two sessions because the timestamps
+    differ slightly.
+  remedy: Join on the identifiers that persist across the gateway first, then align times, and say which
+    identifier was used.
+- module: 5
+  fault: A missing local capture on one segment is read as the session stopping there.
+  remedy: Ask what the capture point on that segment could and could not see before concluding anything
+    about the session.
+- module: 6
+  fault: The timeline mixes interpretations with records, so entries cannot be rerun.
+  remedy: Mark each entry as record or interpretation; every record entry must name the log it came from.
+- module: 6
+  fault: Escalation is chosen by loudness of the alert rather than by the behaviour it evidences.
+  remedy: Have the student cite the single record that justifies the escalation in one sentence; no citation,
+    no escalation.

@@ -1,0 +1,539 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C513
+title: Packet Analysis Deep Dive
+version: '1.0'
+difficulty: foundation
+duration_hours: 4
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites: [C109]
+source:
+  origin: "TAZ upskilling catalogue v1 (2026-10-28)"
+  notes:
+  - "NICE work roles: Cyber Defense Analyst (PR-CDA-001)."
+  - "NIST CSF 2.0: DE.AE, DE.CM."
+  - "Self-paced upskilling, outside DP1/DP2."
+  - "Unpublished pending Standards review."
+modules:
+- ordinal: 1
+  title: TCP Handshake and Flow Anatomy
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Interpret the TCP three-way handshake and teardown exchange in a capture and relate each flag combination to the connection state
+  - Classify retransmissions, duplicate acknowledgements and resets in a flow and judge which of them need escalation
+  - Derive the service and direction of a flow from its ports, sequence numbers and window size
+  topics:
+  - Flags, sequence and acknowledgement numbers, and the three-way handshake.
+  - Connection teardown, half-closed states and reset behaviour.
+  - Retransmissions, duplicate acknowledgements and what each says about the path.
+  - Ports, window scaling and flow direction as evidence of a service.
+  - Zeek conn.log fields that summarise a TCP flow.
+  lab: >-
+    Lab: On the soc-training range, read the Zeek conn.log for one workstation-to-file-server connection
+    and reconstruct its handshake, teardown and retransmission behaviour. Evidence: the UID, duration and
+    byte counts of the connection; the order of the SYN, SYN-ACK and ACK packets with their sequence numbers;
+    every reset entry in the window with originator, responder and service. Pass: the handshake and teardown
+    recorded in order; each reset classified as normal or worth escalation with a one-sentence reason.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, zeek01]
+      action: From jump01, open a shell on zeek01 and list the conn.log files for the lab window, recording the
+        first and last timestamps.
+    - hosts: [zeek01, v-ws01, v-fs01]
+      action: Find the conn.log entry for the session from v-ws01 to v-fs01 and record its UID, duration and byte
+        counts in each direction.
+    - hosts: [zeek01]
+      action: Open the entries for that connection and record the SYN, SYN-ACK and ACK packets in order, with the
+        sequence number each carries.
+    - hosts: [zeek01]
+      action: Search conn.log for entries with a reset in the same window and record each originator, responder
+        and service.
+    - hosts: [zeek01]
+      action: Judge whether the recorded handshake, teardown and reset behaviour is normal for a workstation
+        reaching a file server, and say why.
+  refs:
+  - nist-sp-800-94
+  - mitre-attack
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A capture shows a workstation send a SYN to a file server, receive a RST, and retry twice within
+        one second. What does the reset most likely indicate?
+      options:
+      - A) The server accepted the connection and closed it immediately
+      - B) Nothing is listening on the destination port the workstation chose
+      - C) The workstation's window size is too small for the path
+      - D) The path is dropping acknowledgement packets in both directions
+      answer: B
+    - question: During a long transfer the same sequence number appears three times with the same payload, and
+        the receiver's acknowledgement never advances. What does this pattern show?
+      options:
+      - A) A normal duplicate acknowledgement caused by window scaling
+      - B) A connection teardown where both sides close at once
+      - C) A retransmission because the receiver's acknowledgements are not arriving
+      - D) A service renegotiating its port after an idle timeout
+      answer: C
+    - question: An analyst wants to know which internal host opened the most distinct service connections during
+        one hour on the range. Which record answers this directly?
+      options:
+      - A) The name lookup log, because every connection normally begins with a query
+      - B) The firewall rule base, because it lists every permitted service
+      - C) The endpoint inventory, because it maps addresses to hostnames
+      - D) The connection log, because each entry summarises one flow end to end
+      answer: D
+    - question: Which ordered pair of packets marks the normal beginning of a TCP conversation between two hosts?
+      options:
+      - A) A SYN from the client followed by a SYN-ACK from the server
+      - B) Two SYN packets from the client with different sequence numbers
+      - C) An ACK from the server, then data from the client
+      - D) A RST from the server, then a fresh SYN from the client
+      answer: A
+    - question: A flow's responder port is fixed and well known while the originator port is ephemeral. What does
+        the port pair tell the analyst about the conversation?
+      options:
+      - A) The workstation is offering a file service to the server
+      - B) The firewall is translating the ports in both directions
+      - C) The workstation is consuming the file service the server offers
+      - D) The conversation is encrypted because the responder port is fixed
+      answer: C
+- ordinal: 2
+  title: Display Filters That Scale
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Compose display filters that isolate a conversation, service or host from a large capture without manual scrolling
+  - Predict which packets a compound filter matches before running it, given its protocol, address and field expressions
+  - Refine a filter from broad to specific and record the packet count at each stage for the incident note
+  topics:
+  - Address, protocol and field-based filter expressions.
+  - Compound expressions with logical and comparison operators.
+  - Filtering one conversation out of a busy capture.
+  - Filter profiles and saved filters for repeat investigations.
+  - Recording filter counts as evidence in an incident note.
+  lab: >-
+    Lab: On the soc-training range, reduce a busy full packet capture on pcap01 to one workstation-to-file-server
+    conversation using staged display filters, recording the packet count after each stage. Evidence: the capture's
+    size and time span; the packet count after the subnet filter, the host filter and the service filter; the final
+    filter string exactly as entered. Pass: counts recorded that decrease in defensible steps; a final filter another
+    analyst can rerun unchanged; a one-sentence verdict on whether any stage hid relevant traffic.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, pcap01]
+      action: From jump01, open a shell on pcap01 and locate the full packet capture for the lab window, recording
+        its size and time span.
+    - hosts: [pcap01]
+      action: Count the packets in the capture, then apply a filter for the workstation subnet and record how the
+        count changes.
+    - hosts: [pcap01, v-ws01]
+      action: Narrow the filter to the traffic of v-ws01 alone and record the new count and the first timestamp
+        shown.
+    - hosts: [pcap01, v-fs01]
+      action: Add a service expression so only the session between v-ws01 and v-fs01 remains, and record the packet
+        count.
+    - hosts: [pcap01]
+      action: Write the final filter string exactly as entered so another analyst can rerun the count.
+    - hosts: [pcap01]
+      action: Judge whether the staged filters each cut the volume by defensible steps, or whether one stage hid
+        traffic that mattered, and record the verdict.
+  refs:
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A display filter for one host returns thousands of packets across many services. Which addition
+        isolates just that host's file-sharing session?
+      options:
+      - A) A second expression fixing the service port and the address
+      - B) A logical alternative that accepts either the client or the server address
+      - C) A protocol filter that keeps every packet using the transport layer
+      - D) A negation that removes packets from the monitoring hosts themselves
+      answer: A
+    - question: Before running a compound filter on a large capture, an analyst predicts the result set. Which
+        habit makes that prediction reliable rather than lucky?
+      options:
+      - A) Trusting the capture application to warn about impossible expressions
+      - B) Ordering the terms so the broadest condition comes first
+      - C) Knowing which field each term matches and how the terms combine
+      - D) Keeping every previous filter saved in a profile for reuse
+      answer: C
+    - question: An investigation note must show how a filter narrowed twenty million packets to the five that
+        matter. What belongs in the note?
+      options:
+      - A) The colour rules applied to the capture during analysis
+      - B) The packet count recorded after each staged filter
+      - C) The vendor and version of the capture application
+      - D) The wall-clock time the analyst spent typing each filter
+      answer: B
+    - question: A filter written as protocol equals DNS and address equals the resolver returns nothing, yet name
+        traffic is clearly present. What is the first thing to check?
+      options:
+      - A) That the capture began before the first query was sent
+      - B) That the resolver address is written without its prefix length
+      - C) That the display filter profile was saved before use
+      - D) That the two terms are combined with the intended logical operator
+      answer: D
+    - question: Which practice lets a second analyst rerun yesterday's triage filters on a fresh capture and get
+        comparable counts?
+      options:
+      - A) Typing the filters from memory each time the alert recurs
+      - B) Saving the filter set once and reusing it unchanged
+      - C) Filtering by whatever ports look unusual in the new capture
+      - D) Shortening each filter to a single address term before reuse
+      answer: B
+- ordinal: 3
+  title: DNS Analysis
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Decode the query, response and record types in a DNS exchange read from a capture
+  - Distinguish normal name resolution from tunnelling, fast flux and other lookups that merit escalation
+  - Correlate DNS activity with the connections that follow it to build a timeline for one host
+  topics:
+  - Query and response structure, record types and response codes.
+  - Recursive resolution and where caches answer before the network does.
+  - "Beaconing patterns: regular intervals, high-entropy names and unusual record types."
+  - Zone transfer attempts and other queries that should never succeed externally.
+  - Zeek dns.log fields that tie a lookup to a connection.
+  lab: >-
+    Lab: On zeek01, read the Zeek dns.log for one workstation and decide whether its name resolution is ordinary
+    or includes lookups that merit escalation. Evidence: the total query count for the window; the ten most queried
+    names for v-ws01 with counts; for each unusually long name, the record type and response code; the connection,
+    if any, that followed two of those names. Pass: the records listed exactly as the logs show them; each unusual
+    lookup marked ordinary or escalate with a one-sentence reason.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, zeek01]
+      action: From jump01, open zeek01 and read dns.log for the lab window, recording the total query count and the
+        first timestamp.
+    - hosts: [zeek01, v-ws01]
+      action: Filter dns.log to v-ws01 and record the ten most queried names, each with its count.
+    - hosts: [zeek01]
+      action: Find lookups whose names are unusually long or carry many labels, and record the name, record type
+        and response code for each.
+    - hosts: [zeek01]
+      action: Match two of those names against conn.log and record what connection, if any, followed each lookup.
+    - hosts: [zeek01]
+      action: Judge whether the recorded v-ws01 lookups fit ordinary browsing or include resolution an analyst
+        should escalate, and say which.
+  refs:
+  - nist-sp-800-61r3
+  - mitre-attack
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A workstation issues dozens of DNS queries for long random-looking names in one minute, and a
+        connection follows each answer. What does the pattern suggest?
+      options:
+      - A) A resolver caching answers for a busy internal client
+      - B) An administrator running integrity checks against the zone
+      - C) A mail server retrying delivery to a slow recipient
+      - D) Tunnelling, because data is encoded in the names being resolved
+      answer: D
+    - question: Which observation about a DNS response shows the answer came from a cache rather than from the
+        authoritative server?
+      options:
+      - A) A short time-to-live remaining on the returned record
+      - B) A response code indicating the name does not exist
+      - C) An additional section listing name server addresses
+      - D) A query type the client has never asked before
+      answer: A
+    - question: An analyst must show which internal host queried a suspicious name first. Which record provides
+        the originator directly?
+      options:
+      - A) The firewall session table for the destination port
+      - B) The web transaction log for the referring page
+      - C) The DNS query log entry for that name
+      - D) The address lease history for the client's range
+      answer: C
+    - question: During a review an analyst finds an inbound zone transfer attempt from an address outside the
+        range. How should the analyst treat it?
+      options:
+      - A) Routine maintenance, because name servers sync zones regularly
+      - B) An escalation, because external zone transfers expose the internal layout
+      - C) Harmless, because the response code refused the request
+      - D) A performance issue, because large responses waste bandwidth
+      answer: B
+    - question: A name resolves to one address in the morning and a different address an hour later, and both
+        addresses sit in different networks. Which behaviour does this fit?
+      options:
+      - A) A load balancer publishing one service from one address pool
+      - B) A client retrying after a stale cached answer expired
+      - C) Fast flux, where names rotate quickly across many addresses
+      - D) A mail server sending outbound messages from two relays
+      answer: C
+- ordinal: 4
+  title: SMB and TLS Metadata
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Read the handshake and certificate metadata of a TLS session without decrypting it
+  - Describe what SMB negotiation, tree connects and file operations reveal about a client's activity on a share
+  - Decide from protocol metadata alone whether a session warrants closer inspection and record the basis for the decision
+  topics:
+  - TLS handshake messages, cipher suites and certificate details visible unencrypted.
+  - TLS version choices and what an outdated version says about a client.
+  - SMB dialect negotiation, tree connects and share access patterns.
+  - File operation sequences that distinguish administrative copies from user behaviour.
+  - Zeek smb.log and ssl.log fields used for triage.
+  lab: >-
+    Lab: On zeek01, read the smb.log and ssl.log for the lab window and judge whether the metadata fits routine
+    workstation behaviour or warrants closer inspection. Evidence: for each SMB client, the dialect negotiated
+    and the share reached; the ordered file operations on v-fs01 with the file names; for each TLS destination,
+    the version and certificate issuer. Pass: the metadata recorded exactly as the logs show it; each session
+    marked routine or inspect with a one-sentence basis; any outdated TLS version named with its client.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, zeek01]
+      action: From jump01, open zeek01 and read smb.log for the lab window, recording each client, the dialect
+        negotiated and the share reached.
+    - hosts: [zeek01, v-fs01]
+      action: For the session that touched v-fs01, record the file operations in order and the names of the files
+        opened.
+    - hosts: [zeek01]
+      action: Read ssl.log for the same window and record each destination, the TLS version chosen and the issuer
+        of the certificate.
+    - hosts: [zeek01]
+      action: Find any session still negotiating an outdated TLS version and record the client, the version and
+        the destination.
+    - hosts: [zeek01]
+      action: Judge whether the recorded SMB file activity and TLS metadata fit routine workstation use or
+        warrant closer inspection, and give the basis.
+  refs:
+  - nist-sp-800-52r2
+  - rfc-8446
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: Without decrypting anything, which part of a TLS session still tells the analyst which organisation
+        the client believes it is reaching?
+      options:
+      - A) The application data records after the handshake completes
+      - B) The certificate presented by the server during the handshake
+      - C) The client's ephemeral key exchange material
+      - D) The session ticket the client stores for resumption
+      answer: B
+    - question: A workstation connects to an internal file server, negotiates an SMB dialect and opens a share it
+        has never touched. Which record names that share?
+      options:
+      - A) The endpoint process log for the workstation
+      - B) The address lease table for the server's location
+      - C) The DNS query log entry for the server name
+      - D) The SMB log entry for the tree connect
+      answer: D
+    - question: Two TLS sessions reach the same destination. One negotiates a current version, the other an
+        outdated one. What does the outdated client most directly suggest?
+      options:
+      - A) A client whose software is not maintained to the same standard
+      - B) A server that has disabled support for modern ciphers
+      - C) A firewall stripping the version from the handshake
+      - D) A certificate that expired before the session began
+      answer: A
+    - question: Which SMB observation distinguishes an administrator copying a whole directory from a user opening
+        one document?
+      options:
+      - A) The dialect negotiated during the protocol negotiation
+      - B) The transport port the client connected to
+      - C) The sequence and breadth of file operations on the share
+      - D) The workstation's address as recorded in the session log
+      answer: C
+    - question: An analyst reviewing ssl.log sees a session whose certificate issuer is unknown and whose
+        destination has no internal name resolution. What should the analyst do first?
+      options:
+      - A) Record the destination, issuer and client, and mark the session for inspection
+      - B) Block the destination on the firewall before recording anything
+      - C) Treat the session as routine because most sessions are routine
+      - D) Reissue the certificate from the internal authority and reopen the session
+      answer: A
+- ordinal: 5
+  title: Following a Session Across VLANs
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Trace one conversation across the range VLANs using the capture points on the monitoring mirror
+  - Explain why a session's addresses and identifiers change, persist or disappear at the gateway between networks
+  - Assemble a single timeline for one session from records taken at different network points
+  topics:
+  - Segments, gateways and how traffic moves between the range networks.
+  - "The monitoring mirror: what the SPAN capture sees and omits."
+  - "Identifier changes at a gateway: addresses, timing and sequence continuity."
+  - Joining records from two capture points into one conversation timeline.
+  - Common reasons a session appears to stop at a network boundary.
+  lab: >-
+    Lab: Follow one connection from a workstation on the victim network across the range gateway to its
+    destination, joining records from two capture points and the firewall into one timeline. Evidence: the
+    connection record with UID, start time and destination; the firewall interfaces that carried it; the fields
+    that changed and persisted at the gateway; the first and last packet timestamps in the mirror capture. Pass:
+    one timeline assembled from all three sources; each field change explained; a named identifier for following
+    the session further.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, zeek01]
+      action: From jump01, open zeek01 and find one long-lived connection from v-ws01 that leaves its own network,
+        recording its UID, start time and destination.
+    - hosts: [fw01]
+      action: On fw01, find the rule and interfaces that carried that destination and record the ingress and egress
+        interface names.
+    - hosts: [zeek01, fw01]
+      action: Compare the connection record with the firewall entry and record which fields stayed the same and
+        which changed at the gateway.
+    - hosts: [pcap01]
+      action: On pcap01, locate the packets for the same session in the mirror capture and record the first and
+        last packet timestamps.
+    - hosts: [zeek01, pcap01]
+      action: Judge whether the three records describe one continuous session, and name the identifier that
+        follows it further.
+  refs:
+  - nist-sp-800-94
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A session is visible in the mirror capture on the monitoring network but not in a local capture on
+        the destination server's segment. What explains the difference?
+      options:
+      - A) The mirror capture keeps only encrypted sessions
+      - B) The server's segment drops broadcast traffic by default
+      - C) The mirror copies traffic in transit, so local-only traffic never crosses it
+      - D) The monitoring network holds logs but captures no packets
+      answer: C
+    - question: Following a session across the gateway, the client address stays the same but the server's view of
+        timing shifts slightly. What does the timing shift most likely reflect?
+      options:
+      - A) The client retransmitting because the gateway is overloaded
+      - B) Extra travel time as packets cross the gateway interface
+      - C) The gateway rewriting the session's sequence numbers
+      - D) The server and client using different clock sources
+      answer: B
+    - question: An analyst has connection records from two capture points for one session. Which pairing joins
+        them into a single timeline with the least doubt?
+      options:
+      - A) Matching the packet counts recorded at each point
+      - B) Matching the VLAN tag stored in each record
+      - C) Matching the wall-clock time the analyst opened each log
+      - D) Matching identifiers that persist across the boundary, then aligning times
+      answer: D
+    - question: Traffic from one network reaches another only because the firewall between them permits it. Where
+        does a capture on either side see the same session?
+      options:
+      - A) On both sides, with the same addresses but different timestamps
+      - B) Only on the receiving side, because the gateway hides the source
+      - C) On neither side, because the gateway blocks session capture
+      - D) Only on the sending side, until the session is torn down
+      answer: A
+    - question: A session trace stops exactly at a network boundary even though the client keeps working. Which
+        explanation should the analyst check first?
+      options:
+      - A) The client switched to a name not present in the capture
+      - B) The capture point covers only one side of the boundary
+      - C) The session changed transport protocol mid-connection
+      - D) The gateway expired the session's address translation early
+      answer: B
+- ordinal: 6
+  title: Reconstructing an Incident from Packet Evidence
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Combine connection, name resolution and protocol metadata from several sources into one incident timeline
+  - Prioritise which recorded behaviours an analyst escalates first and justify the order to a reviewer
+  - Produce an incident note whose every claim cites a record a reviewer can rerun from the capture
+  topics:
+  - Selecting a starting point when several logs disagree about timing.
+  - "Order of escalation: which metadata questions are cheap to answer first."
+  - Writing an incident note with reproducible filter strings and record references.
+  - Handing a timeline to a responder without losing the record trail.
+  - Limits of packet evidence and when to ask for endpoint data.
+  lab: >-
+    Lab: Reconstruct one workstation's activity across the whole range into a single incident timeline and decide
+    what to escalate first. Evidence: every connection v-ws02 made outside its own network with destinations and
+    start times; the name lookups and service metadata behind each; packet counts for two sessions confirmed in
+    the mirror capture; any monitoring alert covering the same window. Pass: one timeline assembled from
+    connection, resolution and alert records; each entry traceable to a log a reviewer can rerun; one escalation
+    named with a cited record.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, zeek01]
+      action: From jump01, open zeek01 and build the list of v-ws02's connections outside its own network during
+        the lab window, recording each destination and start time.
+    - hosts: [zeek01]
+      action: For each destination, record which name lookups preceded it and which service metadata the sessions
+        carry.
+    - hosts: [pcap01]
+      action: On pcap01, confirm two of the sessions in the mirror capture and record the packet counts for each.
+    - hosts: [seconion01, dfir-ws01]
+      action: From dfir-ws01, check the seconion01 console for any alert covering the same window and record the
+        alert names.
+    - hosts: [dfir-ws01]
+      action: Judge which single behaviour of v-ws02 to escalate first, and write one sentence citing the record
+        that justifies it.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: Two logs disagree about when a session began by several seconds. What is the soundest first step
+        for the incident timeline?
+      options:
+      - A) Record both times with their sources and note the clock difference
+      - B) Average the two times and use the midpoint throughout
+      - C) Discard the log with the fewer entries as unreliable
+      - D) Start the timeline from the later time to stay conservative
+      answer: A
+    - question: An analyst must decide what to escalate first from a day of captures. Which candidate belongs at
+        the top of the list?
+      options:
+      - A) A retransmission burst on one busy internal transfer
+      - B) A name lookup for a popular software update host
+      - C) A session between two servers on the same segment
+      - D) A workstation whose regular lookups were followed by outside connections
+      answer: D
+    - question: Which line in an incident note can a reviewer verify fastest against the original records?
+      options:
+      - A) The workstation was clearly compromised during the window
+      - B) The analyst believes the activity warrants a response
+      - C) The connection log shows the destination and start time cited
+      - D) Similar incidents have been reported elsewhere in the organisation
+      answer: C
+    - question: Before handing a packet timeline to a responder, what makes the handover usable rather than
+        confusing?
+      options:
+      - A) Removing every filter string to keep the note short
+      - B) Keeping each timeline entry linked to its source record
+      - C) Summarising all evidence into one paragraph of conclusions
+      - D) Ordering entries by when the analyst found them
+      answer: B
+    - question: Packet metadata shows what happened on the wire but not which process did it. What does an analyst
+        do with that gap?
+      options:
+      - A) Conclude the endpoint was not involved, since the packets look normal
+      - B) Report the process name as unknown but state it as fact
+      - C) Escalate nothing, because the wire cannot identify a process
+      - D) Record what the packets show, then request endpoint data
+      answer: D
