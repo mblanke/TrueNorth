@@ -1,0 +1,186 @@
+# Instructor pack for C558 (Intel-Led Detection & Hunt Operations). Student-facing content is the
+# course file; this pack is instructor-only. Key letters below match the course quiz keys exactly.
+
+course_code: C558
+audience: staff_only
+overview: 'Intel-Led Detection & Hunt Operations is an advanced self-paced course of six 50-minute modules
+  (300 minutes, 5 hours) taken by one Student working alone on the SOC training range. The six labs form
+  one continuous hunt thread: a campaign event is chosen on the threat intelligence platform, turned into
+  hypotheses, mapped to range telemetry, executed as a stack-and-trace hunt, converted into a Sigma rule,
+  and handed to the case platform with a coverage statement. Each lab''s recorded evidence is the
+  deliverable; each module ends with a five-item quiz passed at 70 percent.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '15 teach (intelligence cycle, priority intelligence requirements, levels and collection sources),
+    25 lab (survey campaign events on the threat intelligence platform and mark each for behaviour
+    context), 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '15 teach (testable hypotheses, decomposition, scope and stop criteria), 25 lab (write two hunt
+    hypotheses from the chosen event with sources and stop criteria), 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '15 teach (behaviour-to-telemetry mapping, telemetry families, mapping gaps), 25 lab (map the
+    two hypothesised behaviours to range sources and validate against live records), 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '15 teach (stacking, filtering, repeatability, finding classification), 25 lab (execute the
+    stronger hypothesis: stack service and task creation, trace rare accounts, classify findings), 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '15 teach (findings to explicit rule conditions, Sigma format, testing and tuning), 25 lab
+    (write the Sigma rule, test against stored telemetry, tune out benign matches), 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '15 teach (hunt reporting, response handover, coverage and programme metrics), 25 lab (create
+    the case, add observables, write the coverage statement and new requirement), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B, M1-O1: A priority intelligence requirement states what the hunt must decide and directs
+    collection; an inventory (A) is collection without direction, and C and D avoid the question.
+    Q2 D, M1-O2: Multi-year business model, victim selection and payment demands are strategic reporting;
+    tactical is indicator-level (A), operational is campaign-level (C), B is not an intelligence level.
+    Q3 A, M1-O3: Raw indicator feeds age quickly and carry no behaviour a hypothesis can test; they store
+    fine (B), their weakness is unrelated to antivirus coverage (C) and they never replace internal
+    telemetry (D). Q4 C, M1-O3: Sector communities give early sight of techniques peers observed; they
+    supplement rather than replace telemetry (A), guarantee nothing (B) and do not share staff data (D).
+    Q5 A, M1-O1: Leadership''s questions are direction, the first phase of the intelligence cycle; the
+    other options are later-cycle products or inputs.'
+- module: 2
+  notes: 'Q1 B, M2-O1: A hypothesis is testable when its predicted behaviour leaves records telemetry can
+    confirm or refute; universality (A) and unfalsifiability (D) defeat testing, and C is false. Q2 C,
+    M2-O3: Hypothesis-driven scope is one behaviour, a stated window and named sources; open-ended
+    searching (A) and reruns (B) are not hypothesis-driven, and D lets the feed set scope. Q3 D, M2-O2:
+    Decomposition yields expected artefacts per behaviour; the other options are unrelated artefacts of
+    other processes. Q4 A, M2-O3 with assumptions: A negative within stated scope and window is a valid,
+    bounded result; it proves absence forever nowhere (B), does not indict the platforms (C) and needs a
+    stop criterion (D). Q5 B, M2-O5: Unstated assumptions make a negative result impossible to interpret;
+    assumptions neither excuse scope (A) nor replace stop criteria (C), and D is invented.'
+- module: 3
+  notes: 'Q1 C, M3-O1/O2: Clearing event logs is recorded by the logging service''s own audit records on
+    the endpoint; DHCP (A), proxy (B) and port counters (D) sit elsewhere and see none of it. Q2 A,
+    M3-O2: Lateral sign-ins are recorded in domain controller authentication logs; firewall rules (B),
+    screen-lock settings (C) and a client list (D) do not record them. Q3 D, M3-O3: A behaviour no sensor
+    records is a blind spot, not proof of absence (A), not a detection (B) and no reason to discard the
+    hypothesis (C). Q4 B, M3-O5: Zero results from a wrong field name show field names must be validated
+    against the actual schema before hunting; it shows nothing about the behaviour (A) or the schema''s
+    value (C), and the mapping may be correct (D). Q5 C, M3-O5: Opening one raw record proves the mapping
+    matches real data rather than documentation; agent versions (A) and feed currency (B) are unrelated,
+    and one record says nothing about occurrence (D).'
+- module: 4
+  notes: 'Q1 C, M4-O1: Rarity against a uniform estate is what earns attention; rare is not automatically
+    malicious (A), speed is not the point (B) and stacking changes no stored data (D). Q2 A, M4-O2: A
+    mid-hunt source change is recorded and affected queries rerun so counts stay honest; scope discipline
+    is not an excuse to ignore data (B), the hunt has not failed (C) and unbounded expansion has no stop
+    point (D). Q3 D, M4-O3: A single odd session needs enrichment because context decides expected versus
+    intrusion; A excuses it, B overreacts and C destroys evidence. Q4 B, M4-O2: Recorded queries,
+    parameters and windows make a hunt repeatable; local folders (A), renaming (C) and memory (D) do not.
+    Q5 C, M4-O5: A confirmed anomaly beyond the hunt''s purpose stops the hunt and goes to incident
+    response; deletion (A), waiting (B) and dilution (D) are all wrong.'
+- module: 5
+  notes: 'Q1 D, M5-O1: Explicit conditions (temp path, outside change windows) make the rule testable;
+    A to C are suspicion stated as logic. Q2 B, M5-O1 with topics: Sigma is vendor-neutral so the logic
+    ports between platforms; speed (A) and secrecy (C) are not its purpose and it does not remove testing
+    (D). Q3 A, M5-O2: A benign nightly match shows the rule needs tuning before deployment; the job is
+    authorised (B), no rule is perfect (C) and the finding stands (D). Q4 C, M5-O4: Allow-listing the
+    maintenance task''s known account removes the noise and keeps the true match; thresholds (A),
+    deletion (B) and window widening (D) lose the signal or hide it. Q5 B, M5-O5: Owner, purpose and
+    review date make a rule maintainable; cost (A), day-one counts (C) and the inspiring feed (D) do not.'
+- module: 6
+  notes: 'Q1 C, M6-O1: A negative result is usable when it states exactly which sources, hosts and window
+    the search covered; A overclaims, B records nothing and D destroys the method. Q2 D, M6-O2: The
+    handover carries the finding, its supporting records and the observation time; opinion (A),
+    self-assignment (B) and a full archive (C) do not. Q3 B, M6-O3: Honest coverage names what is now
+    detected and what remains a gap; A and D overclaim, C denies measurement. Q4 A, M6-O4: An
+    unanswerable requirement is fed back as a new intelligence requirement plus a telemetry request;
+    rewriting to fit (B), assuming absence (C) and unchanged repetition (D) are wrong. Q5 A, M6-O5:
+    Hypotheses tested and detections deployed show what the programme produced; alert counts (B), vendor
+    counts (C) and storage size (D) measure activity or spend, not outcomes.'
+lab_setup:
+- module: 1
+  setup: 'Revert the range to its baseline snapshot and confirm the Student account can reach jump01 over
+    SSH and from there the threat intelligence platform on misp01 in a browser. Pre-load the misp01
+    campaign event set and note the expected values the Evidence needs: total event count, tags of the
+    three most recent events, and the attribute type counts of the most recent event, so marks can be
+    checked quickly.'
+- module: 2
+  setup: 'Confirm the Module 1 chosen event is still the one loaded and that the Student can reach the
+    SIEM on siem01 from jump01. Check the SIEM index list (endpoint and authentication indices) so the
+    Student''s recorded index names can be verified at a glance.'
+- module: 3
+  setup: 'Confirm from jump01 that the Security Onion console on seconion01 is reachable with the
+    analyst@range.local login and its Zeek logs are populated for the monitored network, and that the
+    SIEM on siem01 holds recent authentication and endpoint process events. Note which indices
+    are present and their event counts; a mapping marked validated must name fields that exist in a live
+    record.'
+- module: 4
+  setup: 'Confirm the endpoint console on velociraptor01 shows all victim workstation agents checking in
+    and that the service and scheduled task creation collection returns results across them. Note the
+    expected client count and the rare accounts the stack should surface, plus the siem01 sign-in counts
+    for each, so the classification marks can be checked.'
+- module: 5
+  setup: 'Confirm the detection rule editor on siem01 is reachable from jump01 and the stored 30-day
+    telemetry still contains both the hunted behaviour and the benign lookalike activity (for example the
+    nightly inventory job). Note the expected match count before tuning so the Student''s recorded change
+    and new count can be verified.'
+- module: 6
+  setup: 'Confirm the case platform on thehive01 is reachable from jump01 and the Student account can
+    create cases. Have the confirmed finding''s observables from Module 4 to hand for checking, and keep
+    the Module 3 mapping and Module 5 rule status available so the coverage statement''s detected,
+    undetected and gap lists can be marked.'
+common_faults:
+- module: 1
+  fault: The Student picks an indicator-only event to start the hunt from because its hashes look
+    actionable.
+  remedy: 'Point back at the Pass line: the starting event must carry behaviour context. Ask what a hash
+    alone lets a hypothesis test.'
+- module: 1
+  fault: Event attributes are described from memory or the title instead of being counted on the event.
+  remedy: Require the attribute type counts to be read off the most recent event; the Evidence line is
+    the record, not a paraphrase.
+- module: 2
+  fault: Hypotheses are written broadly ("find malware") with no single behaviour to confirm or refute.
+  remedy: 'Hold each hypothesis against its Pass line: one actor, one behaviour, one expected artefact.
+    Rewrite until a yes-or-no answer exists.'
+- module: 2
+  fault: Stop criteria and assumptions are left out because the hunt "has not started yet".
+  remedy: Show that a negative result is only interpretable against a written stop criterion; have the
+    Student state what would make them stop.
+- module: 3
+  fault: Mappings are accepted from documentation without opening a live record.
+  remedy: Require the field names in the mapping to come from the opened event in the SIEM or the Zeek
+    logs in the Security Onion console on seconion01; a field not in a live record cannot be marked
+    validated.
+- module: 3
+  fault: Blind spots are marked as validated because a nearby source exists.
+  remedy: Ask which exact sensor records the behaviour; if none does, it is a blind spot and the missing
+    sensor must be named.
+- module: 4
+  fault: Query text and result counts are not recorded, so the hunt cannot be repeated.
+  remedy: Stop the lab at the first unrecorded query; the repeatability objective is failed until every
+    query, window and count is written down.
+- module: 4
+  fault: Every rare stack entry is classified as malicious, or the rare account trace skips the sign-in
+    search.
+  remedy: Hold each rare item to the three marks and require the siem01 sign-in count and hosts for each
+    before a mark is allowed.
+- module: 5
+  fault: The Sigma rule is written with vendor or made-up field names instead of the schema fields
+    validated in Module 3.
+  remedy: 'Point at the Module 3 evidence; the rule''s selection fields must use the same names the live
+    records carried.'
+- module: 5
+  fault: Tuning removes the true match along with the benign one, or conditions are narrowed without
+    recording the change.
+  remedy: Require a new match count after every change and a check that the hunted behaviour still
+    matches; a change that loses it is reverted.
+- module: 6
+  fault: 'The case is created without all of the finding''s observables, or severity is set with no
+    evidence-based justification.'
+  remedy: Compare the case observables against the Module 4 finding line by line; the justification must
+    cite a recorded record, not an impression.
+- module: 6
+  fault: The coverage statement claims the estate is covered, or omits the telemetry gaps.
+  remedy: 'Hold the statement to its three lists: behaviours now detected, behaviours mapped but
+    undetected, and the gaps behind them. Gaps are the honest part.'
