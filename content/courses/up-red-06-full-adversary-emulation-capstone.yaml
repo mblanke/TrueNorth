@@ -1,0 +1,577 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C542
+title: Full Adversary Emulation Capstone
+version: '1.0'
+difficulty: advanced
+duration_hours: 6
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C540
+- C541
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Exploitation Analyst (Adversary Emulation - DCWF) (AN-EXP-001); Cyber Defense
+    Analyst (PR-CDA-001).'
+  - 'NIST CSF 2.0: ID.IM, DE.AE, RS.AN.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Emulation Planning and Ground Rules
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select the scope, authority and rules of engagement for an emulation against a live defence
+  - Map each planned emulation step to a technique and the defensive signal it should produce
+  - Justify the detection scoring scale agreed with the defence before execution starts
+  topics:
+  - Scope, authorisation and rules of engagement for a live emulation.
+  - The emulation plan, its objectives, planned steps and stop conditions.
+  - Mapping planned steps to adversary techniques and expected telemetry.
+  - The detection scoring scale agreed before the run.
+  - Safety controls, evidence handling and the debrief contract.
+  lab: >-
+    Lab: On the red-vs-blue range, open the approved emulation plan from the red operation enclave and
+    record the baseline facts the plan depends on, so the later scoring rounds compare like with like.
+    Evidence: the start time written from jump01; the HTTP response header and service version web01
+    returns for a path that does not exist, the signature the plan's first step depends on; the mail
+    service banner mx01 shows; the VPN service version vpn01 discloses; the list of siem01 indexes
+    present at baseline. Pass: all five items recorded exactly as the range shows
+    them; each planned target paired with its technique and its expected defensive signal; any target
+    without an expected signal flagged for the debrief.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, take control of red-op01 through the RDP gateway and record the
+        start time in the lab notes.
+    - hosts: [red-op01, web01]
+      action: From red-op01, send one request to web01 for a path that does not exist and record the HTTP
+        response header and the service version it discloses.
+    - hosts: [red-op01, mx01]
+      action: From red-op01, connect to mx01's mail service and record the banner it shows before any
+        plan step runs.
+    - hosts: [red-op01, vpn01]
+      action: From red-op01, connect to vpn01's VPN service portal and record the version string it
+        discloses before any sign-in.
+    - hosts: [jump01, siem01]
+      action: From jump01, open the siem01 dashboards and record every index present at this baseline
+        moment.
+    - hosts: [jump01]
+      action: For each target in the plan, write its technique and the defensive signal it should
+        produce, and flag any target for which no signal can be named.
+  refs:
+  - nist-sp-800-115
+  - mitre-attack
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A plan author mentions during a walkthrough that reading a file share "would also be useful".
+        The approved plan does not list it. What bounds the operator's steps?
+      options:
+      - A) The approved plan and its rules of engagement
+      - B) The author's spoken suggestion, which outranks the written plan
+      - C) The range layout, since any reachable host is fair game
+      - D) The operator's judgement at run time
+      answer: A
+    - question: Each planned step is written with the technique it exercises and the defensive signal it
+        should produce. What does this pairing enable?
+      options:
+      - A) A faster attack, because the operator skips reconnaissance
+      - B) A verdict per step, because scoring needs an expected signal
+      - C) A shorter plan, because steps without signals can be dropped
+      - D) Automatic authorisation, because the defence sees every step in advance
+      answer: B
+    - question: Mid-run, a planned step would touch a server outside the agreed network zone. The plan's
+        stop conditions cover exactly this case. What do the stop conditions protect?
+      options:
+      - A) The operator's completion rate for the day
+      - B) The defence's alert statistics for the quarter
+      - C) The agreed boundary the authorisation rests on
+      - D) The plan author's original estimate of duration
+      answer: C
+    - question: The operator prefers one scoring scale and the defence prefers another. Why is the scale
+        agreed before execution rather than during the debrief?
+      options:
+      - A) Because the defence must reconfigure logging around the scale
+      - B) Because the operator must lengthen each step to match the scale
+      - C) Because an agreed scale stops the debrief reopening every score
+      - D) Because the scale determines how many steps the plan may contain
+      answer: C
+    - question: The plan includes failed sign-in attempts against the remote access service. Which record
+        on the defender's side is the expected signal for that step?
+      options:
+      - A) The operator's own operation log entry
+      - B) The plan document's step list
+      - C) The range's asset inventory entry for the remote access gateway
+      - D) Failed sign-in events from vpn01 reaching the central log platform
+      answer: D
+- ordinal: 2
+  title: Execute the Emulation Plan
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Execute the planned steps of an emulation against a live range in the agreed order
+  - Record the time, target and observed outcome of every emulation step in an operation log
+  - Detect which steps left telemetry on the defender's side while the run is still in progress
+  topics:
+  - Working through an emulation plan in order and holding scope.
+  - The operation log, with time, step, target, action taken and outcome.
+  - Observing the footprint each step leaves in defender-owned records.
+  - Signs a defence is reacting mid-run and what to record then.
+  lab: >-
+    Lab: On the red-vs-blue range, execute the first three steps of the approved plan from red-op01 and
+    keep an operation log a scoring round could use without questions.
+    Evidence: the start time from jump01; for the web01 step, the time and status the server
+    returned for a path that does not exist; for the mx01 step, the mail service banner and the time;
+    for the vpn01 step, the time and outcome of the sign-in attempt at the remote access
+    gateway; the steps that produced events in siem01, with counts and times. Pass: every
+    executed step logged with time, target, action and outcome before the next starts; each entry
+    marked seen or not seen in siem01 with the evidence beside it.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, take control of red-op01 through the gateway and record the start time in
+        the operation log.
+    - hosts: [red-op01, web01]
+      action: From red-op01, run plan step 1, one request to web01 for a path that does not exist, and
+        record the exact time and the status returned.
+    - hosts: [red-op01, mx01]
+      action: From red-op01, run plan step 2, one connection to mx01's mail service, and record the banner
+        and the exact time.
+    - hosts: [red-op01, vpn01]
+      action: From red-op01, run plan step 3, an attempted sign-in against the remote access gateway
+        vpn01, and record the exact time and the outcome.
+    - hosts: [jump01, siem01]
+      action: From jump01, search the siem01 indexes for the run window and record which of the three
+        steps produced events, with counts and times.
+    - hosts: [jump01]
+      action: Mark each executed step in the operation log as seen or not seen by the defence, and write
+        one sentence of evidence under each marking.
+  refs:
+  - nist-sp-800-115
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: An operation log entry must let a scoring round reconstruct the step later. Which entry
+        does that?
+      options:
+      - A) "web01 scanned this morning, nothing interesting, more detail later"
+      - B) "10:14:07, web01, nonexistent path requested, server answered 404"
+      - C) "Step 1 done as planned, see plan"
+      - D) "web01, morning, carried out as authorised"
+      answer: B
+    - question: Two account lockouts appear on the target service partway through the plan, which the plan
+        did not anticipate. What does discipline require?
+      options:
+      - A) Continue faster, before the defence correlates the lockout events
+      - B) Pause, record the observation and follow the stop conditions
+      - C) Abandon the run without recording anything
+      - D) Delete the log entries that preceded the lockouts
+      answer: B
+    - question: A planned step completed successfully, but the step's expected event never appears in the
+        central log platform. What has the operator found?
+      options:
+      - A) A step that must be rerun harder
+      - B) Proof that the defence has never watched the range at all
+      - C) A telemetry gap, recorded as a finding for the debrief
+      - D) A reason to move the step out of the plan
+      answer: C
+    - question: Mid-run, the operator sees an unauthorised shortcut that would reach a target faster than
+        the planned route. The shortcut stays outside the approved plan. What is the correct handling?
+      options:
+      - A) Take the shortcut, since the target host was already in scope
+      - B) Take the shortcut but leave it out of the operation log
+      - C) Take the shortcut and ask for approval afterwards
+      - D) Stay on the planned route and mark the shortcut out-of-scope
+      answer: D
+    - question: Why must each step be logged as it happens rather than reconstructed at the end of the
+        run?
+      options:
+      - A) Because exact times let the debrief match steps to defender records
+      - B) Because the log is the operator's only written proof of authorisation
+      - C) Because the defence reads the operator's log during the run
+      - D) Because logs reconstructed from memory run longer than contemporaneous ones
+      answer: A
+- ordinal: 3
+  title: Blue Detection Scoring Rounds
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Score each planned technique as detected, partially detected or not detected against live telemetry
+  - Identify the data source behind each detection score the range produces
+  - Classify why an unscored step went unseen, by telemetry gap or alert gap
+  topics:
+  - The scoring round, comparing the operation log with defender telemetry.
+  - Detected, partially detected and not detected, applying the scale.
+  - Data sources behind detections, from endpoint, network and identity logs.
+  - Telemetry gap versus alert gap, why a step went unseen.
+  lab: >-
+    Lab: On the red-vs-blue range, run a full scoring round from the blue analyst seat: hold the operation
+    log beside the defender's telemetry and give every executed step a score the debrief could defend.
+    Evidence: the run window read from siem01; for each operation-log time, the matching events with
+    index and count; the nids01 alert names and the hosts they name in the window; how quickly and by
+    which alert the vpn01 sign-in step surfaced; the data source that proves one scored step. Pass: every
+    executed step scored on the agreed scale; each score carries one sentence naming the telemetry that
+    justifies it; any step with no telemetry marked with its gap class.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [blue01]
+      action: From jump01, take control of blue01, open the siem01 dashboards and record the exact window
+        the run covered.
+    - hosts: [blue01, siem01]
+      action: From blue01, search siem01 for events at each operation-log time and record the index and
+        event count found for each step.
+    - hosts: [blue01, nids01]
+      action: From blue01, open the nids01 console and record every alert name and the hosts it names
+        within the run window.
+    - hosts: [blue01, vpn01]
+      action: From blue01, search the telemetry for vpn01 and record which alert fired on the failed
+        sign-in attempt and how long after the logged time it appeared.
+    - hosts: [blue01, siem01]
+      action: From blue01, pick one scored step and record the data source, endpoint, network or identity,
+        whose events prove its score.
+    - hosts: [blue01]
+      action: Score every executed step on the agreed scale and write one sentence of telemetry-based
+        reason under each score.
+  refs:
+  - nist-sp-800-94
+  - sigma
+  - mitre-attack
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A step produced no events in any collected source, so the scoring round finds nothing to
+        examine. How is it scored?
+      options:
+      - A) Detected, because the defence stayed silent on purpose
+      - B) Partially detected, because the operator was seen at the gateway first
+      - C) Not detected, because no collected telemetry shows the step at all
+      - D) Excluded, because the scoring scale only covers alerted steps
+      answer: C
+    - question: An alert fired on the step's technique but eleven minutes later and against a broad host
+        group that needed manual digging to notice. What is the fairest score?
+      options:
+      - A) Detected, because an alert exists
+      - B) Not detected, because the operator had moved on
+      - C) Partially detected, because the signal came late amid noise
+      - D) Excluded, because the alert did not name the operator
+      answer: C
+    - question: The distinction between a telemetry gap and an alert gap decides what the debrief asks
+        for. Which statement draws it correctly?
+      options:
+      - A) Telemetry gap means a late alert; alert gap means a repeated alert
+      - B) The two gaps mean the defence failed, so the distinction changes nothing
+      - C) Telemetry gap means the event exists but no rule watched it
+      - D) Telemetry gap means uncollected data; alert gap means an unalerted event
+      answer: D
+    - question: A failed sign-in step was scored detected, and the proof is sign-in failure records holding
+        the account and source. Which kind of source proved it?
+      options:
+      - A) Identity logs, because they carry the account and the authentication outcome
+      - B) Network flow logs, because the connection crossed a boundary
+      - C) Endpoint process logs, because the failing service runs as a process
+      - D) Asset inventory, because the service is listed there
+      answer: A
+    - question: A failed sign-in step ran once against the remote access gateway vpn01, at a logged time.
+        Why does that step usually score detected?
+      options:
+      - A) Because failed sign-ins are always blocked at the gateway
+      - B) Because an alert names vpn01 at the logged time and target
+      - C) Because the operator logged the step honestly in the operation log
+      - D) Because the plan predicted the gateway would be touched
+      answer: B
+- ordinal: 4
+  title: Debrief and Gap Analysis
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Sequence a structured debrief from the operation log through to agreed detection scores
+  - Enumerate the detection gaps a debrief exposes and classify each by its cause
+  - Prioritise the gaps by the risk of the technique each one left unseen
+  topics:
+  - Running the debrief, operator log and defender scores into one timeline.
+  - The operator's and the defender's records, what each round corrects.
+  - Classifying gaps, no telemetry, unalerted telemetry and noisy alerts.
+  - Ranking gaps by technique risk and the value of the asset exposed.
+  - The debrief record, decisions, owners and recorded dissent.
+  lab: >-
+    Lab: On the red-vs-blue range, build the debrief record for the scored run, so every gap
+    carries a cause class and a risk rank, not an impression. Evidence: the run window from
+    siem01; a merged timeline placing each operation-log step beside the siem01 events at that time;
+    every nids01 alert in the window marked matched to a step or unmatched; whether exch01 and db01
+    shipped events in the window, and which one is silent; a cause class and reason for every gap.
+    Pass: the merged timeline complete for every executed step; each gap labelled no telemetry, unalerted
+    telemetry or noisy alert with one sentence of reason; the gaps ranked by risk with the top gap and
+    reason recorded.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [blue01]
+      action: From jump01, take control of blue01, open the siem01 dashboards beside the operation log
+        and record the run window being rebuilt.
+    - hosts: [blue01, siem01]
+      action: From blue01, build the merged timeline in siem01, placing each operation-log time beside the
+        events found there, and record the pairing per step.
+    - hosts: [blue01, nids01]
+      action: From blue01, list every nids01 alert in the window and mark each one as matched to an
+        operation-log step or unmatched.
+    - hosts: [blue01, exch01, db01]
+      action: From blue01, check whether exch01 and db01 shipped any events into siem01 in the window and
+        record which one is silent.
+    - hosts: [blue01]
+      action: Classify every gap found as no telemetry, unalerted telemetry or noisy alert, with one
+        sentence of reason per gap.
+    - hosts: [blue01]
+      action: Rank the classified gaps by the risk of the technique each one left unseen, and record the
+        top gap with its reason.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-92
+  - mitre-attack
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: What does the merged timeline give the debrief that the operation log and the scores
+        separately do not?
+      options:
+      - A) A longer record of the run
+      - B) A substitute for the defender's own alert console
+      - C) Proof that the operator's logged times were wrong in every case
+      - D) Each step beside the defender records that saw or missed it
+      answer: D
+    - question: In the merged timeline, a step's events sit in the central log platform, but no rule
+        fired on them and nobody noticed during the run. How is the gap classified?
+      options:
+      - A) No telemetry, because nothing reached the defender's console or indexes
+      - B) Noisy alert, because the console had too much data
+      - C) Not a gap, because the events are retained
+      - D) Unalerted telemetry, because the data exists but nothing watched it
+      answer: D
+    - question: A network detection rule fires hundreds of times a day on ordinary traffic, and the
+        run's two events were buried among them. What gap does the debrief record?
+      options:
+      - A) A noisy-alert gap, fixed by tuning rather than by new logging
+      - B) A telemetry gap, fixed by collecting more sources
+      - C) An unalerted-telemetry gap, fixed by writing a new rule from nothing
+      - D) No gap, because the rule fired as designed
+      answer: A
+    - question: The debrief found three gaps, namely password guessing against the internet-facing remote
+        access service, an internal enumeration step, and a single touch of an internet-facing web
+        server. Which ranks first?
+      options:
+      - A) The web server touch, because web servers hold the most data
+      - B) Remote access password guessing, because it is the internet-facing entry point
+      - C) The internal enumeration, because it touched the most hosts
+      - D) The first gap in the timeline, because order sets priority
+      answer: B
+    - question: The operator's log and the siem01 records disagree by four minutes on when a step happened.
+        How should the debrief settle it?
+      options:
+      - A) The operator's log wins, because the operator ran the step
+      - B) The siem01 record wins, because the defence owns the timeline
+      - C) A third source, such as the sensor timestamp, settles the offset
+      - D) The records stand as written, with the disagreement noted as dissent
+      answer: C
+- ordinal: 5
+  title: Improvement Roadmap Handoff
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Convert each ranked gap into a detection or logging improvement with a named owner
+  - State the acceptance test that proves each proposed improvement works
+  - Sequence the roadmap so the highest-risk gaps close first
+  topics:
+  - From gap to improvement, detection rules, logging sources and tuning.
+  - Acceptance tests, replaying a technique to prove the improvement fires.
+  - Effort, dependencies and sequencing a roadmap.
+  - Handoff, what the defender needs in order to run each improvement.
+  lab: >-
+    Lab: On the red-vs-blue range, turn the ranked gap list into an improvement roadmap the defence can
+    run without the operator, one improvement per gap with an owner and an acceptance test.
+    Evidence: the ranked gap list from the debrief record; for the top gap, whether its index
+    holds events today; for the second gap, which nids01 rule would carry the improvement; whether
+    endpoint events from ws01 arrive in siem01; for every gap, the change, the owner role and the
+    acceptance test.
+    Pass: every gap has an improvement with a change, an owner role and an acceptance test; the roadmap
+    orders the highest-risk gap first; the first item's acceptance test states the technique it
+    replays and the alert it expects.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [blue01]
+      action: From jump01, take control of blue01, open the debrief record and copy the ranked gap list
+        into the roadmap worksheet.
+    - hosts: [blue01, siem01]
+      action: From blue01, check in siem01 whether the index involved in the top gap holds events today
+        and record the result.
+    - hosts: [blue01, nids01]
+      action: From blue01, open the nids01 ruleset and record which existing rule would carry the
+        improvement for the second gap.
+    - hosts: [blue01, ws01, siem01]
+      action: From blue01, check whether endpoint events from ws01 arrive in siem01 and record the finding.
+    - hosts: [blue01]
+      action: For every gap, write the improvement as the change, the owner role and the acceptance test
+        that would prove it works.
+    - hosts: [blue01]
+      action: Sequence the roadmap by risk and record the order, with the reason the first item goes first.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: An acceptance test for a proposed detection improvement must prove the improvement works.
+        Which test statement does that?
+      options:
+      - A) Replays the technique, requires the new alert, stays quiet on benign traffic
+      - B) Runs the rule against a week of traffic and counts all alerts
+      - C) Replays the technique and requires any console entry at all
+      - D) Checks that the rule parses and deploys without errors
+      answer: A
+    - question: The debrief classified a gap as no telemetry, because a source was never collected. What
+        kind of improvement closes it?
+      options:
+      - A) Tuning the existing noisy detection rule to fire less often than before
+      - B) Collecting the missing source, then writing the rule on top of it
+      - C) Replaying the technique more slowly and quietly
+      - D) Moving the technique out of the plan for now
+      answer: B
+    - question: A roadmap item names a change and an acceptance test but no owner. What happens to it?
+      options:
+      - A) It defaults to the operator, who knows the technique best
+      - B) It stays on the roadmap until the next emulation runs
+      - C) Nobody runs the acceptance test, so the gap stays open
+      - D) The defence assigns owners automatically from the asset inventory
+      answer: C
+    - question: The roadmap holds four improvements of similar effort, covering gaps of different risk.
+        How should it be sequenced?
+      options:
+      - A) By effort alone, cheapest first, so the defence sees quick wins
+      - B) In the order the gaps appeared in the timeline
+      - C) By whichever improvement the defence already knows how to build
+      - D) Highest-risk gap first, with cheap items bundled alongside
+      answer: D
+    - question: What must the handoff record contain for the defence to run an improvement without the
+        operator present?
+      options:
+      - A) The cause, change, owner role and acceptance test
+      - B) The operator's raw operation log, unedited
+      - C) The full scoring scale together with the debrief's recorded dissent
+      - D) The plan document and the authorisation paperwork
+      answer: A
+- ordinal: 6
+  title: Capstone Emulation Exercise
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Execute a short emulation against the live range end to end without breaking scope
+  - Score every executed step in a structured round and defend each score with telemetry
+  - Produce the debrief and improvement roadmap as one handoff package
+  topics:
+  - The full cycle in one run, plan, execute, score, debrief and roadmap.
+  - Holding scope and the operation log under time pressure.
+  - Scoring a run the Student executed, against one's own record.
+  - The handoff package, timeline, scores, gaps and roadmap.
+  lab: >-
+    Lab: On the red-vs-blue range, run the full cycle in one sitting, execute the short approved
+    plan, score it, build the debrief and leave the handoff package. Evidence: the start time from
+    jump01 with plan, scoring scale and debrief template at hand; each executed step logged with time
+    and outcome: the web01, mx01 and vpn01 steps; a score per executed step from
+    siem01 and nids01; the merged timeline with each gap's cause class; the top gap's improvement with
+    its acceptance test; the handoff package's storage location. Pass: no step outside the plan
+    executed; every step logged before the next starts; every step scored with telemetry beside it; the
+    package contains the plan header, operation log, scores, gap analysis and roadmap.
+  lab_range:
+    template: red-vs-blue
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, write the start time, and confirm the approved plan, the scoring scale and
+        the debrief template are at hand before touching the range.
+    - hosts: [red-op01, web01, mx01]
+      action: From red-op01, execute the plan's web01 and mx01 steps in order, logging each exact time and
+        outcome before moving on.
+    - hosts: [red-op01, vpn01]
+      action: From red-op01, execute the plan's sign-in step against the remote access gateway vpn01 and
+        log the exact time and outcome.
+    - hosts: [blue01, siem01, nids01]
+      action: From blue01, run the scoring round across siem01 and nids01 and record a score with its
+        telemetry for every executed step.
+    - hosts: [blue01]
+      action: From blue01, merge the operation log and the scores into one timeline and record each gap
+        with its cause class.
+    - hosts: [blue01]
+      action: Rank the gaps by risk and write the top gap's improvement with its acceptance test.
+    - hosts: [jump01]
+      action: Assemble the handoff package with the plan header, the operation log, the scores, the gap
+        analysis and the roadmap, and record its storage location.
+  refs:
+  - nist-sp-800-115
+  - nist-sp-800-61r3
+  - mitre-attack
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: The capstone runs plan, execute, score, debrief and roadmap in a single session. What does
+        the single session test that separate sessions would not?
+      options:
+      - A) Whether the Student can memorise the plan without notes
+      - B) Whether scope, logging and judgement hold under time pressure
+      - C) Whether the range reverts cleanly between modules
+      - D) Whether the defence can score the whole run without the operator
+      answer: B
+    - question: Mid-run, the remote access gateway vpn01 raises an alert on the plan's sign-in step, well
+        inside scope. What does the cycle require?
+      options:
+      - A) Stop the run, because the defence has caught the operator
+      - B) Continue the planned steps and record the alert time
+      - C) Skip the remaining steps and go straight to the debrief
+      - D) Rerun the sign-in step until the alert stops firing
+      answer: B
+    - question: At handoff, what makes the package complete rather than a pile of notes?
+      options:
+      - A) The operation log alone, since every score derives from it
+      - B) The scores alone, since the defence needs nothing but the verdicts
+      - C) The roadmap alone, since the gaps are already closed by it
+      - D) The plan header, log, scores, gap analysis and roadmap together
+      answer: D
+    - question: One step scored not detected, and the gap is classified as no telemetry. Which roadmap
+        item follows?
+      options:
+      - A) Tune the nearest noisy rule and move on
+      - B) Replay the step outside the approved plan until something fires
+      - C) Add the missing source, then build and test the rule
+      - D) Lower the technique's risk rating so the gap closes itself
+      answer: C
+    - question: In the debrief, which line carries the most weight when defending one score?
+      options:
+      - A) The step's position in the plan, showing it ran where intended
+      - B) The operator's impression of how loud the step felt
+      - C) The step's logged time, telemetry that saw it and the score
+      - D) The number of alerts the whole run produced
+      answer: C
