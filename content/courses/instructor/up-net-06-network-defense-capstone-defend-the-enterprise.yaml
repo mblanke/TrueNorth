@@ -1,0 +1,204 @@
+# Instructor pack for C518 Network Defense Capstone — Defend the Enterprise. Staff only.
+course_code: C518
+audience: staff_only
+overview: 'Network Defense Capstone — Defend the Enterprise is an advanced, lab-first course of six 60-minute
+  modules (360 minutes, 6 hours) on the large-enterprise range. The modules run as one continuous response:
+  baseline the enterprise, detect the intrusion chain, contain it without breaking the business, eradicate and
+  verify, run the after-action review, and convert the findings into architecture fixes. Each module teaches
+  three objectives, works one lab whose evidence the Student hands in, and ends with a five-item quiz passed at
+  70 percent. Every answer letter below is the course key; each note says why the keyed option is right and what
+  each distractor tests. Keep every description defensive and observable, and address the Student throughout.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (zones, forest trusts, monitoring tooling, baseline concept), 35 lab (record the network shape
+    and normal behaviour), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (intrusion chain stages, correlation, benign lookalikes), 35 lab (reconstruct the chain under
+    apt-nation-state), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (containment options, blast radius, keeping observability), 35 lab (contain with lowest blast
+    radius), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (eradication ordering, reimage versus clean, reset order), 35 lab (eradicate and verify with
+    targeted queries), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (timeline, intervals, root cause versus symptom), 35 lab (build the after-action record), 10
+    quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (finding to fix, segmentation, prioritising by risk and effort), 35 lab (write the architecture
+    changes), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 A (deviation from policy), M1-O1: The rule set is real but the written policy does not mention it, so
+    the baseline records a deviation from policy for later judgement rather than calling it either normal or
+    hostile. B mistakes the mismatch for a coverage gap, which the module reserves for zones and hosts that
+    produce no telemetry; C would normalise an unapproved route; D jumps to an intrusion with no chain
+    evidence. Q2 C (normal trust path), M1-O2: A two-way forest trust is a designed authentication path, so it
+    belongs in the identity baseline. A mistakes telemetry scope for trust; B invents a firewall crossing; D
+    labels designed access an intrusion stage. Q3 D (coverage gap), M1-O3: No telemetry means activity could
+    leave no collected record — exactly what a coverage gap records. A and C infer safety from silence; B drops
+    the zone from scope without a decision. Q4 B (reference volume), M1-O2: Baseline counts give the comparison
+    that makes abnormal sign-in patterns stand out. A, C and D each claim the baseline proves something it does
+    not measure. Q5 A (detection and scoping), M1-O3: Knowing what each source observes tells the analyst what a
+    detection can show and how far an incident can be scoped. B, C and D attach the mapping to decisions it does
+    not inform.'
+- module: 2
+  notes: 'Q1 C (correlate first), M2-O2: Time-plus-host correlation tests whether the web alerts and the sign-in
+    belong to one chain before any action. A is containment, which belongs to the next module; B picks a source
+    by preference; D dismisses a candidate link without checking. Q2 A (hidden behind a lookalike), M2-O2: The
+    baseline proves the pattern is normal, which is precisely why an adversary could hide inside it; the analyst
+    must still examine the context. B, C and D assert things a baseline cannot prove. Q3 D (chain toward
+    persistence), M2-O1: Failed attempts, a success and new scheduled tasks read as credential guessing, entry
+    and persistence on one host. A normalises the sequence; B and C deny the evidence. Q4 D (misordering), M2-O2:
+    Unsynchronised clocks break event ordering, so the chain could point the wrong way at the entry host. A, B
+    and C describe side effects that do not reach the analysis itself. Q5 B (evidence and goal), M2-O1 and M2-O3:
+    The note must hold the links between the account and each new host plus the adversary goal the access serves.
+    A is administrative, C is containment, D closes the anomaly without explaining it.'
+- module: 3
+  notes: 'Q1 A (workstation first), M3-O1 and M3-O2: The workstation is low-criticality, so isolating it is cheap;
+    the file server finance depends on gets a controlled window. B ignores criticality; C punishes a whole zone;
+    D leaves hosts infected. Q2 D (outage beyond the intrusion), M3-O1: Disabling an account without knowing which
+    processes authenticate with it can stop services nobody connected to the incident. A invents cached
+    credentials; B and C minimise a real blast-radius failure. Q3 C (adjust scope first), M3-O3: Narrowing the
+    rule so it still covers the chain but not the monitoring feed keeps both containment and observability. B
+    abandons containment; A and D each throw away visibility. Q4 A (record action, effect, failure sign), M3-O3:
+    Acting on partial evidence is defensible when the decision, its expected effect and the failure sign are
+    recorded for review. B waits; C over-responds; D destroys the record. Q5 C (observable while working), M3-O2:
+    Sinkholing keeps the traffic visible at a controlled point and the workstations in service. A overclaims;
+    B is an investigation goal, not containment; D is incidental.'
+- module: 4
+  notes: 'Q1 D (residual access), M4-O3: In-place cleaning only reaches what was looked for, so the intrusion''s
+    access can survive where nobody checked. A, B and C are procedural fictions. Q2 B (capture evidence first),
+    M4-O1: Cleaning and credential resets destroy the artefacts the after-action review needs, so evidence
+    capture precedes them. A defers the loss; C overstates SIEM coverage; D inverts the order. Q3 C (privileged
+    first), M4-O2: Privileged accounts first, then service accounts, then standard users, because higher
+    privilege re-opens more paths. A and B invert the order; D assumes one reset invalidates all access. Q4 D
+    (absence is not verification), M4-O3: A quiet day shows nothing was detected; a targeted check shows the
+    chain''s access is gone. A, B and C each accept silence as proof. Q5 A (repeatable check), M4-O3: A
+    verification result counts when the query text, hosts and time window are recorded so the check can be
+    repeated. B files a picture without the method; C is an assertion; D measures the past, not the present.'
+- module: 5
+  notes: 'Q1 B (first malicious event to first alert), M5-O2: The detection interval runs from the first malicious
+    event to the first alert; A is the containment interval; C and D are case milestones. Q2 A (routing lacked an
+    owner), M5-O3: The rule fired, so detection worked and delivery failed — an unowned, unchecked alert route.
+    B contradicts the firing; C invents a detection failure; D mistakes a crowded queue for an unowned one. Q3 C (missing rule review process), M5-O3:
+    A root cause names a missing control or process — no review process existed to remove unused broad allows.
+    A and B blame tooling or people; D restates the symptom. Q4 B (decisions quicker than detection), M5-O2:
+    Comparing intervals shows the team decided faster than the tooling detected — it says nothing about tool
+    quality. A is impossible by definition; C overreads; D denies a valid comparison. Q5 D (specific, testable
+    action), M5-O3: Adding a monitored source for the OT zone and testing its alert path names the control, the
+    zone and the test. A and B are vague; C delegates without specifying.'
+- module: 6
+  notes: 'Q1 C (segment the server zone), M6-O2: The finding is about lateral reach, so the direct fix is
+    segmentation that admits only named sources. A detects rather than removes; B trains; D scans. Q2 D (restrict
+    administration paths across the trust), M6-O2: A narrowed allow inside one zone cannot cover a forest trust;
+    the fix must also restrict the administration paths that cross it. A, B and C name boundaries the finding
+    does not touch. Q3 A (rule edit first), M6-O3: Both fixes cut the same path, so the one at far less effort
+    wins the first slot while the re-architecture is planned. B and C absolutise; D wastes the effort argument.
+    Q4 D (chain fails to reach removed paths), M6-O2: A segmentation change is verified when the replayed chain
+    no longer reaches the paths it removed. A proves the monitoring fix, not the segmentation; B proves paperwork;
+    C repeats the silence error from module 4. Q5 B (detection catches the retested chain), M6-O2 and M6-O3: A
+    new source earns its place when a detection on it catches the exercise chain on retest — value shown against
+    the old chain. A, C and D prove operation, cost and inventory, not detection value.'
+lab_setup:
+- module: 1
+  setup: 'Revert the large-enterprise range to its clean baseline and confirm no exercise is loaded. From jump01,
+    verify the Student can reach fw01 and dc01, and reach siem01 over SSH (port 22; the fw01 mgmt-to-all rule
+    allows only 22, 3389, 5985 and 5986 from the management zone, so the siem01 dashboards open on siem01, not
+    from jump01). Pre-open the fw01 rule view and confirm the OpenSearch dashboards are served on siem01.
+    Expected values: two forests, corp.truenorth.local and subsidiary.truenorth.local, with a two-way trust
+    between them; monitoring-segment hosts siem01 (OpenSearch), ids01 (Suricata), edr01 (Velociraptor), soar01
+    (TheHive/Cortex) and tip01 (MISP); the OT zone sends the SIEM no telemetry. A deliberate coverage gap is the
+    finding to hand in.'
+- module: 2
+  setup: 'Load and start the apt-nation-state exercise on the large-enterprise range and confirm the inject
+    timeline is running before the lab window opens. From jump01, verify siem01, ids01, syslog01 and edr01 all
+    show the exercise window. Confirm ntp01 time sync so Student clock comparisons behave. Values the Student
+    should find: authentication anomalies on dc01, network alerts on ids01 in the same window, and matching
+    events across siem01, syslog01 and edr01 for the affected hosts. The scenario injects no benign lookalike;
+    confirm routine baseline telemetry (scheduled jobs, service sign-ins) is visible in siem01 alongside the
+    exercise window so the Student can judge one routine event as benign lookalike or chain stage.'
+- module: 3
+  setup: 'Keep the apt-nation-state exercise running with the chain from module 2 visible in siem01. Pre-stage
+    the service records on fs01 and sql01 so each affected host maps to its dependent business services. Confirm the fw01
+    candidate rules exist but are NOT applied, and that siem01 keeps receiving from every zone. Expected values:
+    fs01 carries services finance depends on; the affected workstation ws06 carries none; sql01 holds the database
+    data the chain staged; the ready containment rule
+    would also cut the monitoring feed for three zones, which is the blast-radius trap of the module.'
+- module: 4
+  setup: 'Continue from module 3 with the containment applied. Confirm edr01 shows the evidence already collected
+    per host, dc01 answers account queries, and ws06 is reachable from jump01. Have clean images ready for ws06
+    and the credential reset list staged (privileged, service, standard). Values the Student should find: the
+    chain''s accounts on dc01, the chain''s indicators queryable in siem01 for ws06, fs01 and sql01, and zero
+    results for those indicators after the recovery step so the verification record has a real result.'
+- module: 5
+  setup: 'Continue from module 4 with the soar01 case holding the response history. Confirm the case shows the
+    case start time, the first alert time and every response event with timestamps, and that siem01 can replay
+    the same window. Pre-load tip01 with the chain''s indicators marked as known-before-exercise or not, so the
+    Student''s tip01 check has a definite answer. The intervals the Student should compute: detection from the
+    first intrusion event to the first alert, containment from the alert to the first action, both from recorded
+    timeline entries. The final judgement: the Student marks one finding as most likely to let the chain recur if
+    its fix is delayed, with a one-sentence reason drawn from the timeline.'
+- module: 6
+  setup: 'Continue from module 5 with the soar01 findings list populated. Confirm fw01 shows the current rules
+    along the chain''s paths, dc01 and dc03 both answer, and the corp.truenorth.local to subsidiary.truenorth.local
+    trust is visible. Stage a test exercise slot for the chain replay. Values the Student should find: the broad
+    allow rules on the chain''s paths with their positions, the cross-forest administration paths, and — in the
+    replay — the chain failing to reach the segmented paths while the new monitoring source catches it.'
+common_faults:
+- module: 1
+  fault: Students record the firewall and trust state from memory or the course text instead of reading the fw01
+    and dc01 interfaces.
+  remedy: 'Require every baseline item to carry the dashboard or query it came from; walk one boundary and one
+    trust lookup live before the lab starts.'
+- module: 1
+  fault: Students treat a zone with no alerts as safe, or mark empty telemetry as out of scope.
+  remedy: 'Point at the coverage-gap definition: no telemetry means no collected record, not no activity; the OT
+    zone example is the finding to hand in, not a line to skip.'
+- module: 2
+  fault: Students line up alerts by severity or by source instead of by time, so the chain reads backwards.
+  remedy: 'Insist every event carries a normalised timestamp before ordering; have them show the field and time
+    window linking each consecutive pair.'
+- module: 2
+  fault: Students accept the benign lookalike as an intrusion stage, or dismiss every routine event without
+    examining it.
+  remedy: 'For each candidate event ask two questions: does it share the chain''s fields and window, and does the
+    baseline explain it? Both answers go in the record.'
+- module: 3
+  fault: Students isolate everything at once, stopping finance and engineering services with the chain.
+  remedy: 'Make the blast-radius table the first lab deliverable: every candidate action with the services it
+    interrupts, before any action is taken on fw01.'
+- module: 3
+  fault: Students apply the ready containment rule unmodified, cutting the monitoring feed for three zones.
+  remedy: 'Have them check rule 4 against the siem01 source list first; the correct move is narrowing the scope
+    so containment and observability both survive.'
+- module: 4
+  fault: Students clean or reset before confirming the evidence capture, destroying the after-action material.
+  remedy: 'Gate the lab: step 2 cannot be signed off until step 1 lists what edr01 holds for every host.'
+- module: 4
+  fault: Students report eradication verified because no alerts fired.
+  remedy: 'Require the exact siem01 query text, hosts and time window with the recorded result for each host;
+    an empty result with a named query is verification, silence is not.'
+- module: 5
+  fault: Students write the timeline from recollection, with entries that carry no time or no source.
+  remedy: 'Every entry needs event, host, time and source from siem01 or soar01; reject any line missing one of
+    the four.'
+- module: 5
+  fault: Findings blame people or tools — "the analyst was slow", "the SIEM missed it" — instead of naming
+    controls.
+  remedy: 'Test each finding with the question "which process or control would have prevented this?"; rewrite
+    person-blaming findings into control findings before they go into soar01.'
+- module: 6
+  fault: Students write fixes as goals — "improve segmentation" — with no zone, boundary or control named.
+  remedy: 'Each finding must pair with one change that names its zone or control and states what the chain can
+    no longer do; the fw01 change must be written in rule order with its position.'
+- module: 6
+  fault: Students prioritise by whichever fix sounds largest, or accept lateral paths without recording why.
+  remedy: 'Force the two-column justification (risk reduced, effort) for the ordering, and a written reason for
+    every accepted path; check both against the review findings before the lab closes.'
