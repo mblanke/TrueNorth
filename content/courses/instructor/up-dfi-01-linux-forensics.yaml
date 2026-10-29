@@ -1,0 +1,180 @@
+course_code: C525
+audience: staff_only
+overview: 'Linux Forensics (C525) is an intermediate, self-paced course of six 40-minute modules (240 minutes,
+  4 hours). Every module runs on the jump-box of the small-enterprise range and has the same split: 10
+  minutes of reading, 20 minutes of lab, 10 minutes of quiz, passed at 70 percent. Each module teaches
+  three objectives through one lab brief, and the labs build one continuous investigation: inode
+  timelines, then authentication logs, then a persistence hunt, then a memory image, then one merged
+  chronology, then the packaged handoff. Students hand in the lab notes from each module and the
+  package directory the module 6 lab produces.'
+timings:
+- module: 1
+  minutes: 40
+  plan: '10 reading (inode timestamps and relatime), 20 lab (stat fields, permission change, backdating
+    test, /var/log timeline), 10 quiz'
+- module: 2
+  minutes: 40
+  plan: '10 reading (log sources and rotation), 20 lab (last, journal failed-password count, journal
+    retention window, lastlog), 10 quiz'
+- module: 3
+  minutes: 40
+  plan: '10 reading (cron, timers, startup files, authorized_keys), 20 lab (five-location enumeration
+    and delta against the baseline), 10 quiz'
+- module: 4
+  minutes: 40
+  plan: '10 reading (volatile data and order of acquisition), 20 lab (hash the image, Volatility 3
+    process list and shell history), 10 quiz'
+- module: 5
+  minutes: 40
+  plan: '10 reading (time zones and normalisation), 20 lab (merge log entries and file times into one
+    chronology and mark the earliest supporting entry), 10 quiz'
+- module: 6
+  minutes: 40
+  plan: '10 reading (finding notes, manifests, reproduction), 20 lab (package extracts, hash them,
+    write the methods record and one finding note), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: Change later than Modify with unchanged contents means metadata changed after the last
+    write; nobody read the file (not A), and journal replay or clock drift would move other fields too.
+    Q2 C: relatime updates the access time only when it is older than the change or modification time
+    or more than a day old; every-read (A) is strict atime, never (B) is noatime. Q3 A: ext4 records
+    creation as the Birth field; Modify shows the last content write, Change the last metadata change.
+    Q4 D: touch -d can set Modify but cannot set Change to a past value, so Change still shows the
+    moment of tampering; Access (A) only shows a later read and the inode number (C) does not change.
+    Q5 C: any mount or read can update the very timestamps under examination, so the image is mounted
+    read-only; compression (A) and sort speed (B) are not evidence concerns.'
+- module: 2
+  notes: 'Q1 D: a month spans several weekly rotations, so the live log plus its rotated, compressed
+    files is the complete set; wtmp (B) holds sessions, not attempts, and lastlog (C) one date per
+    account. Q2 A: last reads wtmp; btmp records failed sign-ins, lastlog the most recent per account,
+    and the kernel ring buffer is not a session store. Q3 B: a copy on a separate server survives
+    deletion or edits made on the compromised host itself; disk space (A) and parser schema (D) are
+    operational concerns. Q4 C: a failure burst followed by an acceptance from one address is the
+    pattern of guessed credentials and warrants review; it is neither routine noise nor kernel
+    compromise. Q5 A: lastlog answers, per account, the time of the most recent sign-in; wtmp holds
+    the whole session history instead.'
+- module: 3
+  notes: 'Q1 C: resuming after a reboot with no sign-in is the definition of persistence; escalation
+    (A) raises rights, lateral movement (B) crosses hosts, collection (D) takes data. Q2 D: systemd
+    timer units are the other recurring scheduler on a modern distribution; resolv.conf, motd and the
+    kernel ring buffer are not schedulers. Q3 B: a job running out of world-writable temporary storage,
+    added long after provisioning, is unusual and needs review; it is not proof of exfiltration. Q4 A:
+    the authorized_keys file lists the public keys that grant passwordless sign-in to the account.
+    Q5 B: a defensible hunt enumerates every scheduled and startup location and compares each item
+    against a baseline; deleting on sight (A) destroys evidence and file names (D) are trivially
+    chosen by an attacker.'
+- module: 4
+  notes: 'Q1 A: RAM contents vanish at power-off, which is why memory is acquired first in the order of
+    acquisition; admissibility (B) and image size (C) do not drive the ordering. Q2 B: the hash lets
+    another analyst confirm the image is byte for byte unchanged since capture; it neither compresses
+    nor encrypts. Q3 D: the shell history plugin recovers the command lines a shell held in memory;
+    network, partition and file listings do not show typed commands. Q4 C: live capture alters some of
+    the memory it captures, so the tool and method are recorded; it is done on a running host precisely
+    because shutting down destroys the data. Q5 B: a process entry recovered from memory corroborates
+    execution even when the file on disk is gone; image size (A) and swap identity (C) say nothing
+    about what ran.'
+- module: 5
+  notes: 'Q1 D: when two sources describe one action, both values are normalised to one time zone before
+    comparing; the 02:10 against 22:10 gap is a zone offset, not corruption. Q2 C: the chronology links
+    entries across sources into one sequence, which separate lists cannot show. Q3 A: the earliest
+    supporting entry bounds when the activity began and so frames the scope; it does not name the
+    adversary or carry the highest severity. Q4 B: a chronology of timestamps shows order, times and
+    names, but never intent. Q5 D: the record keeps both original values plus the normalised values and
+    the rule used, so a reviewer can retrace the conversion; averaging (C) is not a conversion.'
+- module: 6
+  notes: 'Q1 A: the record shows a sign-in, not who made it, so ''intruder'' is interpretation; the time
+    and key reference are observed values. Q2 D: a manifest records name, hash, size and capture time
+    for each file; priority labels and opinions are not chain-of-custody data. Q3 C: a matching digest
+    shows the artefact is byte for byte what the first analyst recorded; it says nothing about malware,
+    completeness or timestamp accuracy. Q4 B: command, tool version and input file are what an
+    independent analyst needs to reach the same output; a screenshot without its command is not. Q5 A:
+    ''state actor'' claims far more than one timed sign-in supports, so it is cut or re-labelled; the
+    other three lines are recorded observations.'
+lab_setup:
+- module: 1
+  setup: 'Revert the small-enterprise range to its baseline. Confirm jump-box is reachable over SSH with
+    the analyst account. Record the baseline values the lab expects: the system date and time zone, the
+    four stat fields of a fresh copy of the hosts file, and the ten most recently modified files under
+    /var/log, so Evidence can be marked.'
+- module: 2
+  setup: 'Revert the range to its baseline. Add the analyst account to the adm and systemd-journal
+    groups on jump-box so the journal is readable, then confirm the account can run journalctl for the
+    authentication unit''s events. Record the baseline session list, the failed-password count and the
+    date of the oldest sign-in record the journal holds, so Evidence can be marked.'
+- module: 3
+  setup: 'Revert the range to its baseline. On jump-box, export the provisioning record of expected
+    items: the analyst crontab, the files under /etc/cron.d and the periodic directories, the systemd
+    timer list, and the startup files and authorized_keys entries in the analyst home. Keep this
+    baseline list for the delta step. For the final step, accept any one additional persistence
+    location outside those five that the enumeration did not cover -- for example a systemd service
+    unit, /etc/rc.local or a PAM hook -- with a one-sentence reason it is usable.'
+- module: 4
+  setup: 'Revert the range to its baseline. Place the memory image captured earlier from jump-box at
+    the agreed path in the analyst home and note its pre-computed SHA-256 digest for marking. Place
+    the instructor-supplied Volatility 3 package beside it, record its version, and record the
+    expected process list and recovered history lines.'
+- module: 5
+  setup: 'Revert the range to its baseline and confirm the adm and systemd-journal group memberships
+    from module 2 are still in place on jump-box. Record the baseline sign-in entries, the stat values
+    of the session record file and the shell history file, and the host''s time zone.'
+- module: 6
+  setup: 'Revert the range to its baseline and confirm the analyst account can read /var/log. Record
+    the expected extracts (the ten most recently modified files under /var/log and the latest session
+    records) and confirm the hash utility available on jump-box, so the manifest can be marked.'
+common_faults:
+- module: 1
+  fault: Students read the Change time as "when the file was edited" and record it as the content write.
+  remedy: Have them run the module's permission-change step again and watch which field moves while the
+    contents do not; Change tracks metadata, Modify tracks contents.
+- module: 1
+  fault: The backdating test is recorded as successful tampering because Modify moved.
+  remedy: 'Point at the Change field in the same stat output: it still shows the moment the touch command
+    ran, which is the finding.'
+- module: 2
+  fault: The journal search runs without the adm or systemd-journal membership and returns an empty
+    set, which the Student records as no failed sign-ins.
+  remedy: Have them confirm the group memberships from the setup step first, then rerun journalctl
+    and compare the count with the baseline recorded for marking.
+- module: 2
+  fault: Every failed password record is marked needs-review, so the finding list loses its
+    distinction between noise and a burst.
+  remedy: 'Have them apply the module''s test before marking: isolated failures are routine, while a
+    burst from one source address followed by an acceptance needs review, with the reason written out.'
+- module: 3
+  fault: Every cron entry that looks administrative is marked expected on the strength of its file name
+    or comment.
+  remedy: 'Insist on the delta against the provisioning baseline: an item absent from the baseline is
+    needs-review whatever its name says.'
+- module: 3
+  fault: The hunt stops at cron and the systemd timers and startup files are never enumerated.
+  remedy: Walk the five locations in order (user crontabs, /etc/cron.d, periodic directories, timers,
+    startup files and authorized_keys) and check the Evidence list has all five before marking.
+- module: 4
+  fault: The image hash is recorded from the instructor's notes instead of computed on the host, so a
+    wrong-path digest goes unchallenged.
+  remedy: Have them compute the digest themselves and compare before any analysis; a mismatch means the
+    wrong file, not a bad tool.
+- module: 4
+  fault: The Volatility 3 run is not reproducible because the tool version and the exact arguments
+    were never written down.
+  remedy: Check the methods line in the notes before marking the process list; a run without its
+    version and arguments is repeated from scratch, which the retest form then requires.
+- module: 5
+  fault: Log entries and file times are merged straight from their raw sources without normalising the
+    time zones, producing a chronology that runs backwards.
+  remedy: 'Make the time-zone step first: record each source''s zone, normalise to the host''s zone, then
+    sort; an out-of-order chronology is the symptom.'
+- module: 5
+  fault: The three sign-in entries and the stat values are paraphrased from memory instead of copied
+    exactly, so the chronology cannot be checked against its sources.
+  remedy: Require the source values to appear in the notes verbatim, with their original time zones,
+    before the merge step; a chronology whose inputs cannot be rechecked is returned for re-recording.
+- module: 6
+  fault: Finding notes state conclusions ("the account was compromised") with no source artefact named.
+  remedy: Have them mark every sentence observation or interpretation and require a source artefact for
+    each observation; unmarked sentences are rewritten.
+- module: 6
+  fault: The manifest is hashed before the last file is written, so one digest in the package no longer
+    matches the file it names.
+  remedy: Make hashing the final action before handoff and have them rerun the hash command once more;
+    any digest that differs means the manifest is regenerated, not the file.
