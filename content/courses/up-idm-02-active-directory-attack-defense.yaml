@@ -1,0 +1,566 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C508
+title: Active Directory Attack and Defence
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C507
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Analyst (PR-CDA-001), Systems Security Analyst.'
+  - 'NIST CSF 2.0: PR.AA, DE.CM, ID.RA.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Domain Identity Foundations
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the domain objects and privileged groups that make a domain controller the highest-value identity target
+  - Map how nested group membership and local administrator rights combine into a privilege path across hosts
+  - Classify accounts in a described inventory as domain, service or local and name what each can reach
+  topics:
+  - Domains, forests, domain controllers and the identity data they hold.
+  - Security groups, nesting and how inherited membership accumulates privilege.
+  - Service accounts, service principal names and why they hold long-lived rights.
+  - Local administrator groups and privileged sign-in sessions on workstations.
+  - Why almost every privilege path in a domain ends at a domain controller.
+  lab: >-
+    Lab: On the red-team range, build an inventory of the target domain's identity surface: its privileged
+    groups, the accounts inside them and where those accounts hold administrative rights. Evidence: the count
+    of users, groups and computers the graph reports for the domain; the names of the three most privileged
+    groups and the number of accounts in each; for two workstations, the members of their local Administrators
+    groups. Pass: all three items recorded as the range shows them; each local administrator account marked
+    "domain" or "local" with a one-sentence reason; one sentence naming the account to protect first and why.
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [a-kali01]
+      action: Log on to a-kali01 over SSH, open the graph tool already installed there and start a read-only
+        collection against the target domain.
+    - hosts: [a-kali01]
+      action: Wait for the collection to finish and record how many users, groups and computers the graph reports
+        for the domain.
+    - hosts: [a-kali01]
+      action: List the privileged security groups the graph ranks highest and record each group name with its
+        member count.
+    - hosts: [a-kali01, t-ws01]
+      action: For t-ws01 and t-ws02, read the local Administrators group membership from the graph and record each
+        member with its domain or local origin.
+    - hosts: [a-kali01]
+      action: Name the one account whose compromise would give the widest reach, with one sentence of reason drawn
+        from the graph.
+  refs:
+  - nist-sp-800-63-4
+  - mitre-attack
+  source_gaps:
+  - Microsoft's Active Directory security and tiered administration guidance is not in the reference library.
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: 'A contractor asks why the domain controller is treated as the most valuable host in the network.
+        The best reason is that it:'
+      options:
+      - A) Holds the directory that decides identity and access for the domain
+      - B) Stores the largest file shares on the network
+      - C) Publishes the organisation's external website
+      - D) Runs the newest operating system build
+      answer: A
+    - question: A new account is added to a group that is itself nested inside a privileged group. What access
+        does the account gain?
+      options:
+      - A) None until an administrator signs in again
+      - B) The rights of the outer privileged group through inheritance
+      - C) Only the rights of the inner group it joined
+      - D) Read-only rights in the directory
+      answer: B
+    - question: 'A hospital runs a backup application under a domain account that holds rights on every server.
+        This account is best described as a:'
+      options:
+      - A) Local account
+      - B) Standard workstation account
+      - C) Guest account
+      - D) Service account with broad reach
+      answer: D
+    - question: 'On a developer workstation, an account is listed in the local Administrators group but not in
+        any domain group. Its rights are:'
+      options:
+      - A) Equal to Domain Admins across the domain
+      - B) Limited to that one workstation
+      - C) Valid on every domain-joined host
+      - D) Suspended until reviewed
+      answer: B
+    - question: 'An analyst traces three separate privilege paths in a graph of the domain. All of them end at
+        the same place. That place is most likely the:'
+      options:
+      - A) Guest Wi-Fi network
+      - B) External website
+      - C) Domain controller
+      - D) Database server
+      answer: C
+- ordinal: 2
+  title: AD recon with graph tooling
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Enumerate the identity relationships of a domain by collecting and querying its graph representation
+  - Select the graph queries that reveal kerberoastable accounts, delegation settings and privileged sessions
+  - Rank the attack paths a graph exposes by reach, privilege gained and effort required
+  topics:
+  - 'Attack path analysis: nodes, edges and shortest paths to privilege.'
+  - Collecting directory data safely with read-only graph tooling.
+  - Queries that expose kerberoastable accounts and delegation settings.
+  - 'Session placement: where privileged accounts hold active sign-ins.'
+  - Ranking findings by reach, privilege gained and remediation effort.
+  lab: >-
+    Lab: On the red-team range, enumerate the target domain with graph tooling and rank the attack paths it
+    exposes from one standard account to domain administration. Evidence: the number of kerberoastable accounts
+    reported; the delegation settings found and the hosts they apply to; the shortest path from a standard
+    account to the Domain Admins group, listed hop by hop; a ranking of the two most serious paths with a
+    one-sentence reason each. Pass: every listed item recorded; each ranked path marked "high", "medium" or
+    "low" risk with a reason; one mitigation named for the highest-ranked path.
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [a-kali01]
+      action: Log on to a-kali01, open the graph tool and confirm the earlier collection of the target domain
+        is complete.
+    - hosts: [a-kali01, t-dc01]
+      action: Query the graph for accounts holding service principal names against t-dc01's directory and record
+        how many kerberoastable accounts the domain holds.
+    - hosts: [a-kali01]
+      action: Query the graph for delegation settings and record each account or host that holds them.
+    - hosts: [a-kali01]
+      action: Query the graph for active sessions of privileged accounts and record which workstations hold them.
+    - hosts: [a-kali01]
+      action: Trace the shortest path from a standard account to the Domain Admins group and record each hop in
+        order.
+    - hosts: [a-kali01]
+      action: Rank the two most serious paths high, medium or low risk with one sentence of reason and name one
+        mitigation for the highest.
+  refs:
+  - mitre-attack
+  - nist-sp-800-115
+  source_gaps:
+  - A dedicated Active Directory attack path reference is not in the reference library; teach from the
+    adversary-behaviour knowledge base.
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'A security team wants a single view of every route from a standard account to domain
+        administration. The tool category that builds this view is:'
+      options:
+      - A) A packet broker
+      - B) A vulnerability scanner
+      - C) A graph tool for attack path analysis
+      - D) A configuration database of hosts and their routes
+      answer: C
+    - question: 'Before pointing collection tooling at a production domain, the property the collector must
+        have is:'
+      options:
+      - A) Read-only access that changes nothing in the directory
+      - B) A domain administrator password reused on every workstation
+      - C) Write access to add test accounts
+      - D) A copy of the database schema
+      answer: A
+    - question: 'A graph shows a path: standard account, membership of a nested group, then a privileged session
+        on a workstation, then Domain Admins. Which single control breaks the path most directly?'
+      options:
+      - A) Encrypting all network traffic
+      - B) Removing privileged sign-ins from ordinary workstations
+      - C) Adding a second firewall
+      - D) Lengthening password expiry intervals for the whole domain
+      answer: B
+    - question: 'Two attack paths both end at Domain Admins: one needs four hops and a weak service password,
+        the other needs one hop and a delegated host. The path to rank highest is the one that:'
+      options:
+      - A) Appears first in alphabetical order of host names
+      - B) Involves the largest number of computers
+      - C) Was found by the newest query
+      - D) Reaches full privilege with the least effort
+      answer: D
+    - question: A graph query returns a service account whose password has not been changed since the domain
+        was created. Why does this account widen the attack surface?
+      options:
+      - A) Its name appears in every log file
+      - B) It blocks other accounts from signing in
+      - C) A long-lived password gives an attacker more offline time
+      - D) It cannot be disabled, locked out or removed from the directory
+      answer: C
+- ordinal: 3
+  title: Kerberoasting and delegation abuse
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain why requesting a Kerberos service ticket exposes a service account's password material to offline work
+  - Distinguish unconstrained, constrained and resource-based delegation by classifying each setting in a domain report
+  - Identify the directory settings that make an account kerberoastable or expose it through pre-authentication gaps
+  topics:
+  - 'The Kerberos exchange: ticket granting, service tickets and pre-authentication.'
+  - 'Kerberoasting as an exposure: service tickets, long-lived passwords and offline work.'
+  - AS-REP roastable accounts and the pre-authentication setting that causes them.
+  - Unconstrained, constrained and resource-based delegation, and the trust each grants.
+  - 'Reducing the exposure: managed service accounts, long passwords and minimal delegation.'
+  lab: >-
+    Lab: On the red-team range, find which accounts and delegation settings expose the target domain to
+    Kerberos abuse, and judge how each should be fixed. Evidence: the service accounts holding service
+    principal names, with their password ages; any account that does not require Kerberos pre-authentication;
+    every delegation setting recorded with the account or host it belongs to; one service ticket request
+    recorded with the evidence it leaves in the domain logs. Pass: all four items recorded; each finding
+    marked "exploitable" or "acceptable" with a one-sentence reason; one configuration change proposed per
+    exploitable finding.
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [a-kali01]
+      action: Log on to a-kali01 and query the graph for service accounts holding service principal names.
+    - hosts: [a-kali01, t-dc01]
+      action: Read each account's password age from the t-dc01 directory query results and record the oldest
+        password first.
+    - hosts: [a-kali01]
+      action: List accounts that do not require Kerberos pre-authentication and record why the setting exposes
+        them.
+    - hosts: [a-kali01, t-dc01]
+      action: Request one service ticket for a listed service account and record the directory event the request
+        generates on t-dc01.
+    - hosts: [a-kali01]
+      action: Record every delegation setting in the domain with the account or host each one belongs to.
+    - hosts: [a-kali01]
+      action: Mark each finding exploitable or acceptable with one sentence of reason and propose one
+        configuration change per exploitable finding.
+  refs:
+  - mitre-attack
+  - nist-sp-800-115
+  source_gaps:
+  - Microsoft's guidance on managed service accounts and delegation models is not in the reference library.
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'A service account holds a service principal name and a password no one has changed in two years.
+        The direct consequence of this combination is that:'
+      options:
+      - A) The account cannot be locked out by failed sign-ins
+      - B) The account signs in only from one workstation
+      - C) The password expires automatically
+      - D) Anyone with a ticket can test the password offline
+      answer: D
+    - question: An account is flagged because its directory entry does not require Kerberos pre-authentication.
+        Which attack path does the flag enable?
+      options:
+      - A) Password spraying across many accounts over the network
+      - B) Silent modification of group membership
+      - C) Offline work against that account's ticket material
+      - D) Relay of an SMB session
+      answer: C
+    - question: 'A domain review finds unconstrained delegation configured on an application server. The core
+        risk is that the server:'
+      options:
+      - A) Accepts forwarded credentials from any connecting account
+      - B) Encrypts its own local database
+      - C) Signs in without a password
+      - D) Holds an exposed copy of the organisation's external website
+      answer: A
+    - question: Which change most reduces the Kerberoasting exposure of a legacy service account that cannot
+        be moved?
+      options:
+      - A) Renaming the account
+      - B) Moving the account to a quieter organisational unit away from users
+      - C) Granting the account interactive sign-in rights
+      - D) Setting a long random password that no one types by hand
+      answer: D
+    - question: 'An auditor asks which delegation form grants the least standing trust. Compared with
+        unconstrained delegation, resource-based delegation is safer because:'
+      options:
+      - A) It hides the delegation setting from the directory entirely
+      - B) Only the named resource decides which accounts may act
+      - C) It disables Kerberos entirely
+      - D) It expires at every reboot
+      answer: B
+- ordinal: 4
+  title: Tiered administration and local admin hygiene
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design a tiered administration model that separates Tier 0 accounts from workstation and server administration
+  - Audit local administrator membership across described workstations and identify accounts that break the model
+  - Select the controls that stop privileged credentials from lingering on lower-tier hosts
+  topics:
+  - 'The tier model: what Tier 0, Tier 1 and Tier 2 each administer.'
+  - Restricting which hosts a privileged account may sign in to.
+  - 'Local administrator hygiene: removing standing rights and granting elevation just in time.'
+  - 'Credential safeguards: separating browsing from administration and protecting stored credentials.'
+  - Auditing group membership and privileged sign-in patterns on a schedule.
+  lab: >-
+    Lab: On the red-team range, audit the target domain against a tiered administration model and name the
+    changes that would enforce it. Evidence: the members of the domain's most privileged groups; the local
+    Administrators membership of two workstations; any privileged account recorded as signing in to a
+    workstation; a proposed tier assignment for every administrative account found. Pass: every administrative
+    account assigned to a tier; each workstation finding marked "breaks the model" or "complies" with a
+    one-sentence reason; one sign-in restriction stated per tier.
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [a-kali01]
+      action: Log on to a-kali01 and query the graph for the membership of the domain's most privileged groups.
+    - hosts: [a-kali01, t-ws01]
+      action: From the graph, read the local Administrators membership of t-ws01 and t-ws02 and record each
+        member.
+    - hosts: [a-kali01]
+      action: Query the graph for privileged accounts with sessions on workstations and record each account and
+        host pair.
+    - hosts: [t-ws01]
+      action: On t-ws01, list the local Administrators group directly on the host and record whether it matches
+        the graph.
+    - hosts: [a-kali01]
+      action: Assign every administrative account found to Tier 0, Tier 1 or Tier 2 and record the reasoning.
+    - hosts: [a-kali01]
+      action: Mark each workstation finding complies or breaks the model and state one sign-in restriction for
+        each tier.
+  refs:
+  - nist-sp-800-207
+  - cis-benchmarks
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'A hospital''s helpdesk administrators currently use one account for tickets, browsing and domain
+        administration. The tiered model''s main correction is to:'
+      options:
+      - A) Give the helpdesk two shared accounts
+      - B) Separate daily work from administration
+      - C) Disable all helpdesk accounts at night and weekends
+      - D) Move the helpdesk into the database tier
+      answer: B
+    - question: A workstation review finds a Tier 0 account signed in to a developer workstation. Why does the
+        tier model forbid this?
+      options:
+      - A) Workstations cannot log such sign-ins
+      - B) Developer software is incompatible with administrative accounts on the host
+      - C) The account will lock out from failed sign-ins
+      - D) A compromise of the workstation exposes the highest-value credentials
+      answer: D
+    - question: Which change best removes standing local administrator rights from a fleet of workstations?
+      options:
+      - A) Granting elevation just in time for approved tasks
+      - B) Resetting all local passwords weekly
+      - C) Adding every technician to Domain Admins permanently
+      - D) Rebuilding each workstation every quarter
+      answer: A
+    - question: 'A monthly audit compares local Administrators membership against an approved list on each
+        workstation. An account not on the list appears. This is best classified as:'
+      options:
+      - A) A false positive to suppress
+      - B) Normal drift to ignore
+      - C) A licensing error in the asset inventory
+      - D) An unauthorised privilege grant
+      answer: D
+    - question: 'Tier 0 holds domain controllers and their administrators. A certificate authority that issues
+        domain authentication certificates also belongs there because:'
+      options:
+      - A) Compromise of it lets accounts be trusted across the domain
+      - B) It runs the same operating system build as the domain controllers
+      - C) It shares a rack with the domain controllers
+      - D) Its logs are large
+      answer: A
+- ordinal: 5
+  title: Detecting AD abuse in event logs
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the security event identifiers that record authentication and directory service activity on a domain controller
+  - Triage a set of domain controller events as expected activity or as indicators of Kerberos abuse
+  - Write a detection rule statement that captures an anomalous authentication pattern from logged events
+  topics:
+  - 'Windows event logs on a domain controller: channels, identifiers and retention.'
+  - 'Authentication events: successful and failed sign-ins, ticket requests and explicit credentials.'
+  - Baselines for ticket request volume and the patterns that break them.
+  - Writing detection rules as statements of condition, threshold and exception.
+  - 'From detection to containment: what an analyst passes to response.'
+  lab: >-
+    Lab: On the red-team range, review the domain controller's security event log and separate the domain's
+    routine authentication traffic from the signs of Kerberos abuse. Evidence: the five most frequent security
+    event identifiers in the log; the count of service ticket requests for one service account and the hosts
+    that requested them; one event chosen as an indicator of abuse and one chosen as routine, each with the
+    field values that decided it; a one-line detection rule statement for the abusive pattern. Pass: both
+    classifications marked with field values; the rule statement names its condition, threshold and exception;
+    no routine event is marked as abuse without a stated reason.
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [t-dc01]
+      action: Log on to t-dc01, open the security event log and record the five most frequent security event
+        identifiers.
+    - hosts: [t-dc01]
+      action: Filter ticket service requests for one service account and record the count and the requesting
+        hosts.
+    - hosts: [t-dc01, t-ws01]
+      action: Compare ticket request volume from t-ws01 with the log's baseline and record whether it sits inside
+        normal variation.
+    - hosts: [t-dc01]
+      action: Select one event as an indicator of abuse and one as routine, and record the field values that
+        decided each.
+    - hosts: [t-dc01]
+      action: Write a one-line detection rule statement for the abusive pattern naming its condition, threshold
+        and exception.
+    - hosts: [t-dc01]
+      action: State what the abusive pattern means for the domain and name the first containment step an analyst
+        should propose.
+  refs:
+  - nist-sp-800-92
+  - sigma
+  source_gaps:
+  - A vendor-neutral catalogue of Windows security event identifiers is not in the reference library.
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'An analyst wants every service ticket request in a domain controller''s security log. The most
+        direct source is:'
+      options:
+      - A) The domain controller's security event log
+      - B) The firewall's connection records for the domain
+      - C) The web server's access log
+      - D) The database audit trail
+      answer: A
+    - question: 'A service account normally receives two ticket requests per hour from two application servers.
+        The log shows forty requests in one hour from one workstation. This pattern is best read as:'
+      options:
+      - A) A clock synchronisation issue between the two application servers
+      - B) An anomalous request burst worth investigating
+      - C) Proof the account was deleted
+      - D) Routine load balancing
+      answer: B
+    - question: A detection rule statement must state a condition, a threshold and an exception. Which line
+        does all three?
+      options:
+      - A) Flag ticket activity that looks unusual
+      - B) Review authentication logs on a schedule
+      - C) Alert whenever the domain's security event log grows large overnight
+      - D) Alert on ten hourly requests from one account, scanner excepted
+      answer: D
+    - question: 'Failed sign-ins against one account rise sharply overnight, then one sign-in succeeds from an
+        unfamiliar workstation. The correlation that matters most is:'
+      options:
+      - A) The total log volume for the day
+      - B) The failure burst followed by a success from that host
+      - C) The name of the domain
+      - D) The number of accounts that have signed in on the workstation
+      answer: B
+    - question: 'An analyst confirms a real Kerberos abuse indicator on a domain controller. The handoff to
+        response should lead with:'
+      options:
+      - A) The affected account, the requesting host and the times observed
+      - B) A recommendation to reinstall the domain controller from clean media
+      - C) The analyst's opinion of the likely attacker
+      - D) A request to delete the service account
+      answer: A
+- ordinal: 6
+  title: Attack Path Management and Review
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Re-scan a domain after remediation and verify which attack paths each change actually closed
+  - Prioritise remaining attack paths by likelihood, privilege gained and the cost of the fix
+  - Write a review report that states each finding, its evidence and its proposed control
+  topics:
+  - 'Re-scanning after change: comparing a fresh graph with the recorded baseline.'
+  - 'Verified versus assumed remediation: why a control must be tested.'
+  - Prioritising residual paths by likelihood, impact and remediation cost.
+  - 'The review report: finding, evidence, control and owner.'
+  - Scheduling review so that privilege creep is caught early.
+  lab: >-
+    Lab: On the red-team range, re-scan the target domain after a round of fixes, decide which attack paths
+    remain and write the findings up for review. Evidence: the graph counts that differ from the recorded
+    baseline; each earlier finding marked closed or open with the graph evidence that decides it; the two open
+    paths ranked by likelihood and privilege gained; a one-paragraph review report stating each open finding,
+    its evidence and its proposed control. Pass: every earlier finding marked closed or open with evidence;
+    both open paths ranked with a reason; the report states a control and an owner for each open finding.
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [a-kali01]
+      action: Log on to a-kali01, refresh the domain collection and record the new user, group and session
+        counts.
+    - hosts: [a-kali01]
+      action: Compare each count with the baseline recorded in the earlier modules and record every difference.
+    - hosts: [a-kali01, t-dc01]
+      action: Re-run the t-dc01 queries for kerberoastable accounts and delegation settings and mark each
+        earlier finding closed or open.
+    - hosts: [a-kali01]
+      action: Re-trace the shortest path to Domain Admins and record the hop count and whether it changed
+        from the baseline.
+    - hosts: [a-kali01]
+      action: Rank the two open paths by likelihood and privilege gained, with one sentence of reason each.
+    - hosts: [a-kali01]
+      action: 'Write the review report: for each open finding state its evidence, its proposed control and its
+        owner.'
+  refs:
+  - nist-sp-800-30r1
+  - mitre-attack
+  source_gaps:
+  - A published standard dedicated to attack path management is not in the reference library.
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'A change record says two kerberoastable accounts were removed and a service password was
+        replaced. The only evidence that the path is closed is:'
+      options:
+      - A) A fresh scan that no longer shows the accounts or the path
+      - B) The change record's approval signature from the accountable service owner
+      - C) An email from the service owner
+      - D) The number of tickets closed that month
+      answer: A
+    - question: 'After remediation, one path remains: it needs a weak service password and two hops to Domain
+        Admins. Why does it still deserve priority?'
+      options:
+      - A) It has been open the longest
+      - B) It involves the oldest servers that are still running in the domain
+      - C) It was found by the newest tool
+      - D) It still reaches full domain privilege with modest effort
+      answer: D
+    - question: 'A quarterly review compares the current graph with the baseline from the previous quarter. The
+        review exists mainly to catch:'
+      options:
+      - A) Accounts with expired passwords in the directory
+      - B) Privilege creep that reopened a closed path
+      - C) Printer configuration drift
+      - D) The cost of software licences
+      answer: B
+    - question: Which review finding is written in a form a reviewer can mark without opinion?
+      options:
+      - 'A) Path via one service account; evidence: graph result; control: replace it'
+      - B) The domain feels safer than last quarter
+      - C) Kerberos ticket activity in the domain should be monitored far more closely
+      - D) Several paths were considered and reviewed
+      answer: A
+    - question: 'Six months after a course of fixes, an old path reappears in the graph with a new account. The
+        most likely cause is:'
+      options:
+      - A) The graph tool was updated
+      - B) The domain controller was rebooted during the maintenance window
+      - C) A change process that granted standing privilege again
+      - D) A firewall rule that expired
+      answer: C
