@@ -1,0 +1,547 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# C529 - Ransomware Incident Forensics - draft course content.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C529
+title: Ransomware Incident Forensics
+version: '1.0'
+difficulty: advanced
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C526
+- C212
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Forensics Analyst (IN-FOR-002), Cyber Defense Incident
+    Responder (PR-CIR-001); framework mappings live in the crosswalk, not here.'
+  - 'NIST CSF 2.0: RS.AN, RS.MI and RC.RP; framework mappings live in the crosswalk, not here.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Ransomware Kill Chain Anatomy
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Sequence the stages of a ransomware incident from initial access through encryption to extortion demand
+  - Identify the artefacts each stage leaves in logs, file metadata and network records
+  - Distinguish ransomware pre-encryption activity from an ordinary malware infection on one host
+  topics:
+  - 'The stages of a ransomware incident: initial access, staging, defence inhibition, encryption and extortion.'
+  - 'Pre-encryption staging: reconnaissance, credential theft, lateral movement and persistence on workstations.'
+  - 'Defence inhibition: tool tampering and the deletion of volume shadow copies before encryption begins.'
+  - 'The encryption stage: ransom notes, changed file extensions and the extortion demand.'
+  - 'Artefact sources: event logs, file metadata, name-resolution records and firewall records for each stage.'
+  lab: >-
+    Lab: Replay the ransomware-lite exercise on the small-enterprise range and sort each collected
+    event into its kill-chain stage. Evidence: for each event, its time, the host or record it came
+    from and the stage assigned; the count of events per stage; the artefact that marks the transition
+    into encryption, with its time. Pass: every collected event is assigned to exactly one stage; each
+    assignment carries a one-sentence reason drawn from a record; the transition artefact is named
+    with its time.
+  lab_range:
+    template: small-enterprise
+    scenario: ransomware-lite
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open the exercise timeline for the ransomware-lite run and record its start time.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, read the name-resolution records on dc-01 for the run window and record each query to the exercise's external domain with its time.
+    - hosts: [fw-01]
+      action: List the connection records on fw-01 for the run window and record each outbound connection the workstations made.
+    - hosts: [jump-box]
+      action: Read the instructor-supplied endpoint export for the affected workstation and record each process creation and file change with its time.
+    - hosts: [jump-box]
+      action: Mark each collected event with its kill-chain stage, count the events per stage, and name the record that marks the transition into encryption with its time.
+  refs:
+  - mitre-attack
+  - nist-sp-800-83r1
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: An analyst reconstructs a ransomware incident and places credential theft and lateral movement
+        before the first file changes. Which stage has the incident reached?
+      options:
+      - A) Initial access by phishing
+      - B) Pre-encryption staging
+      - C) Defence inhibition
+      - D) The extortion demand
+      answer: B
+    - question: Volume shadow copies are gone and the event logs on the workstation end abruptly an hour before
+        any file changes. Which stage do these artefacts mark?
+      options:
+      - A) Initial access
+      - B) Lateral movement
+      - C) Defence inhibition
+      - D) Extortion
+      answer: C
+    - question: A workstation shows phished mail, a new scheduled task and credentials reused from a neighbouring
+        host before any file changes. Why is this more than an ordinary malware infection?
+      options:
+      - A) The staging behaviour shows movement toward many hosts, not one
+      - B) Ordinary malware stops at the first host it lands on
+      - C) The mail proves the recipient opened an unsafe attachment
+      - D) Scheduled tasks always mean encryption is imminent
+      answer: A
+    - question: Ransom notes appear in every folder, file names end in a new extension, and the encryption process
+        has finished. Where does the evidence place the incident?
+      options:
+      - A) Reconnaissance
+      - B) Credential theft
+      - C) Lateral movement
+      - D) The encryption stage
+      answer: D
+    - question: Encryption is complete, a payment demand names a 72-hour deadline, and a leak site lists stolen
+        data. Which stage has the incident now entered?
+      options:
+      - A) Defence inhibition
+      - B) Extortion
+      - C) Initial access
+      - D) Pre-encryption staging
+      answer: B
+- ordinal: 2
+  title: Initial Access Forensics
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Classify the likely access route of a ransomware incident from mail, endpoint and network records
+  - Trace one phished workstation through mail delivery, name resolution and process creation records
+  - Select the records that prove or exclude each candidate access route
+  topics:
+  - 'Common access routes for ransomware: phishing, exposed remote access and supplier compromise.'
+  - 'Mail evidence: the sender address, the delivery time and the message a phished recipient opened.'
+  - 'Endpoint follow-through: process creation and file change records after the phished message.'
+  - 'Network follow-through: name resolution and firewall records that show where the workstation connected.'
+  - Correlating record times, including clock offset between sources.
+  lab: >-
+    Lab: On the small-enterprise range, work out how the ransomware-lite incident reached ws-01 by
+    following the trail through mail, name resolution, firewall and endpoint records. Evidence: the mail record's sender, subject and
+    delivery time; each name-resolution query from ws-01 with its time; any inbound remote-access
+    attempt fw-01 shows; the first process creations after delivery; each candidate access route
+    marked proven, excluded or unsupported with the record that decides it. Pass: every candidate
+    route carries a mark and a deciding record; the route the evidence supports is named; no record
+    is claimed from a source the lab did not check.
+  lab_range:
+    template: small-enterprise
+    scenario: ransomware-lite
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the start time of the ransomware-lite run from the exercise timeline.
+    - hosts: [jump-box]
+      action: Read the instructor-supplied mail record for ws-01 and record the sender, subject and delivery time.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, read the name-resolution records on dc-01 for the run window and record each query from ws-01 with its time.
+    - hosts: [fw-01]
+      action: List the inbound connection records on fw-01 for the run window and record any remote-access attempt that reached the user network.
+    - hosts: [jump-box]
+      action: Read the endpoint export for ws-01 and record the first process creations after the mail delivery time.
+    - hosts: [jump-box]
+      action: Mark each candidate access route proven, excluded or unsupported, with the record that decides it, and name the route the evidence supports.
+  refs:
+  - nist-sp-800-86
+  - nist-sp-800-92
+  - mitre-attack
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A small firm is encrypted after outsiders used an internet-exposed remote access service with a
+        password an employee reused elsewhere. Which access route does the evidence support?
+      options:
+      - A) Phishing mail with an unsafe attachment
+      - B) A supplier's software update channel
+      - C) Exposed remote access with a reused password
+      - D) Physical access to an unattended workstation
+      answer: C
+    - question: A mail record shows the message 'Payroll update' delivered to a workstation at 09:12, and process
+        creation on that workstation begins at 09:14. What does the mail record establish?
+      options:
+      - A) The delivery time of the phished message
+      - B) The time the recipient opened the message
+      - C) The time encryption started on the host
+      - D) The sender's full intent
+      answer: A
+    - question: After the phished message, the workstation queries an external name several times and then connects
+        to its address. Which records together show this follow-through?
+      options:
+      - A) Mail delivery records on their own
+      - B) File metadata from the file server
+      - C) Backup job records
+      - D) Name resolution and firewall records
+      answer: D
+    - question: A candidate access route is phishing, but the mail gateway record shows no message to the recipient
+        in the week before encryption. What does this record do to that route?
+      options:
+      - A) It proves the route happened by other means
+      - B) It weakens the route but does not exclude it alone
+      - C) It confirms the route beyond doubt
+      - D) It has no bearing on the route
+      answer: B
+    - question: Mail records place a message at 09:12 and the endpoint's process log places the first process at
+        09:09, minutes before delivery. What must be checked before calling the times contradictory?
+      options:
+      - A) The clock offset between the two record sources
+      - B) The length of the message subject line
+      - C) The recipient's mailbox quota
+      - D) The file server's disk space
+      answer: A
+- ordinal: 3
+  title: Encryption Timeline and Recovery Options
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Reconstruct the order of encryption activity from file metadata and ransom note times
+  - Detect timeline tampering such as altered file times and cleared event logs
+  - Select the recovery options the backup and shadow-copy state supports
+  topics:
+  - Ordering encryption from file modification times and ransom note creation times.
+  - 'Timestomping: altered file times and how they distort a timeline.'
+  - Cleared logs and other tampering artefacts an analyst must notice.
+  - 'Recovery options: offline backups, shadow copies, published decryptors and key recovery.'
+  - Matching each recovery option to the evidence that proves it is usable.
+  source_gaps:
+  - A ransomware-specific recovery decision guide is not in the reference library; recovery content is
+    taught from the forensic and malware-handling guides listed.
+  lab: >-
+    Lab: On the small-enterprise range, reconstruct when encryption ran on ws-02 and decide which
+    recovery options the backup state supports. Evidence: the ordered encryption timeline with each file time used; any file time marked
+    as altered with the reason; the shadow-copy count and times; the backup record's date, location and
+    completion; each recovery option marked usable, unusable or unknown with its deciding record.
+    Pass: the timeline orders at least the first and last encrypted file times; any altered time is
+    flagged with a reason; every recovery option carries a mark and a record.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the start time in the lab notes.
+    - hosts: [jump-box]
+      action: Read the instructor-supplied file listing for ws-02 and record the modification times of the first and last encrypted files.
+    - hosts: [jump-box]
+      action: Read the instructor-supplied shadow-copy state for ws-02 and record how many copies remain and their creation times.
+    - hosts: [jump-box]
+      action: Read the instructor-supplied backup record and record the most recent backup date, its location and whether it completed.
+    - hosts: [jump-box]
+      action: Write the ordered encryption timeline from the recorded times and mark any time that looks altered with a reason.
+    - hosts: [jump-box]
+      action: Mark each recovery option usable, unusable or unknown, with the record that decides it.
+  refs:
+  - nist-sp-800-86
+  - nist-sp-800-83r1
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A thousand files show modification times inside six minutes, and the first ransom note carries a
+        time four minutes after the earliest file. What does the analyst build from this?
+      options:
+      - A) A list of recipients who opened the notes
+      - B) A count of unchanged files
+      - C) A measure of backup speed
+      - D) An ordered encryption timeline
+      answer: D
+    - question: One document's modification time predates the operating system's install date, yet its content
+        mentions the ransom note. What does this suggest?
+      options:
+      - A) The document was copied from an older system
+      - B) Its file times were altered to mislead the timeline
+      - C) The backup system restamped it
+      - D) The clock drifted by a few minutes
+      answer: B
+    - question: The workstation's security event log holds nothing between two dates that other records prove the
+        host was active. Which tampering artefact does this suggest?
+      options:
+      - A) A failed hard drive
+      - B) An ordinary log rotation
+      - C) A cleared event log
+      - D) A power outage
+      answer: C
+    - question: Shadow copies were deleted before encryption began, but the organisation keeps offline backups
+        taken nightly before the incident. Which recovery option does the state support?
+      options:
+      - A) Restore from the offline backups
+      - B) Restore a deleted shadow copy on the host
+      - C) Wait for a published decryptor to appear
+      - D) Pay the demand to obtain a key
+      answer: A
+    - question: A restore candidate is proposed, but the only record of it is a backup job entry with no location
+        and no confirmation it completed. How should the analyst treat this option?
+      options:
+      - A) Usable, because a job entry implies completion
+      - B) Usable, because backups are assumed until proven absent
+      - C) Unusable, because job entries never describe real backups
+      - D) Unknown, until a record proves where the backup is and that it completed
+      answer: D
+- ordinal: 4
+  title: Extortion Considerations
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish single, double and triple extortion models from the pressure a demand applies
+  - Select and order the response decisions an extortion demand requires
+  - Classify the notification duties that arise when personal data is exposed
+  topics:
+  - 'Extortion models: single encryption, double extortion with data theft, and triple extortion with harassment.'
+  - Reading a demand and a leak-site threat for the claim they make about stolen data.
+  - 'The payment decision: continuity, alternatives, sanctions screening and its limits.'
+  - Law enforcement engagement and reporting an extortion demand.
+  - Breach notification duties when exposed personal data is involved.
+  source_gaps:
+  - Dedicated guidance on extortion payment decisions and sanctions screening is not in the reference
+    library; the module teaches these from the incident response and threat information guides listed.
+  lab: >-
+    Lab: On the small-enterprise range, test the data-theft claim in an instructor-supplied ransom
+    demand against the outbound records the range holds. Evidence: every fw-01 outbound record for
+    the run window with its destination and service, each marked completed or blocked; each
+    name-resolution query to the exercise's external domain with its time; the demand's claim about
+    stolen data marked support, contradict or unsure with the record that decides; an ordered list
+    of the response decisions the demand requires. Pass: every outbound record carries its
+    destination and a completed-or-blocked mark; the claim carries a mark and a deciding record;
+    the response decisions are ordered with a one-line reason each; no decision is listed without
+    a reason.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the start time in the lab notes.
+    - hosts: [jump-box]
+      action: Read the instructor-supplied ransom demand and record its deadline and its claim about stolen data.
+    - hosts: [fw-01]
+      action: List the outbound records on fw-01 for the run window and record each destination, its service and whether it completed or was blocked.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, read the name-resolution records on dc-01 for the run window and record each query to the exercise's external domain with its time.
+    - hosts: [jump-box]
+      action: Mark the demand's data-theft claim support, contradict or unsure, and name the record that decides the mark.
+    - hosts: [jump-box]
+      action: Order the response decisions the demand requires, from immediate containment through notification, with a one-line reason for each.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A demand threatens both to keep files encrypted and to publish stolen customer records unless
+        payment arrives. Which extortion model is the attacker running?
+      options:
+      - A) Double extortion
+      - B) Single extortion
+      - C) Triple extortion
+      - D) No extortion model at all
+      answer: A
+    - question: A leak site lists the firm's name with a countdown, but the sample files shown all come from a
+        public website. What should the analyst conclude about the leak claim?
+      options:
+      - A) The claim is proven by the countdown alone
+      - B) The claim is proven because samples exist
+      - C) The claim must be true if the site names the firm
+      - D) The claim is unproven until the samples match internal data
+      answer: D
+    - question: Before any payment is considered, the firm must check whether the group behind the demand sits on
+        a sanctions list. Which part of the payment decision is this?
+      options:
+      - A) A continuity assessment
+      - B) A sanctions screening step
+      - C) A notification duty
+      - D) A technical recovery option
+      answer: B
+    - question: The firm receives a demand and has not yet contacted anyone outside the response team. Which step
+        belongs early in the response to the demand?
+      options:
+      - A) Announcing the incident on the firm's website
+      - B) Paying quickly to stop the countdown
+      - C) Engaging law enforcement and reporting the demand
+      - D) Deleting the leak-site page
+      answer: C
+    - question: The encrypted servers also held customer personal data, and the leak site shows samples of it.
+        Which duty arises from the exposure of that data?
+      options:
+      - A) Breach notification to the required parties
+      - B) Re-encrypting the exposed files
+      - C) Closing the recipient's mail account
+      - D) Publishing the full samples
+      answer: A
+- ordinal: 5
+  title: Rebuild vs Restore Decisions
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Choose rebuild or restore for each host class and justify the choice from the incident evidence
+  - Identify the persistence risks a restored host can carry after a ransomware incident
+  - Design the validation a host must pass before it returns to service
+  topics:
+  - 'Rebuild versus restore: cost, speed and trust for each class of host.'
+  - 'Persistence risks: a compromised image, dormant accounts and leftover tasks on a restored host.'
+  - 'Trust in a restore point: offline, immutable and predating the intrusion.'
+  - 'Validation before return to service: accounts, patch state and monitoring.'
+  - Hardening the rebuilt estate against the case's access route.
+  lab: >-
+    Lab: On the small-enterprise range, decide for each host in the instructor's incident summary
+    whether to rebuild or restore, and say what each decision rests on. Evidence: the host inventory read from the range with each
+    host's role; the incident summary's stage assignments per host; the backup inventory's restore
+    points with dates and locations; a rebuild-or-restore choice per host with the evidence behind it;
+    one threatening artefact each restored host could carry; two validation checks per host. Pass:
+    every host carries a decision with evidence; every restored host names one persistence risk;
+    every host lists two validation checks before return.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the range host inventory with each host's role.
+    - hosts: [jump-box]
+      action: Read the instructor's incident summary and record which hosts each stage of the incident touched.
+    - hosts: [jump-box]
+      action: Read the instructor's backup inventory and record each restore point with its date and location.
+    - hosts: [jump-box]
+      action: Choose rebuild or restore for each host, writing down the evidence the choice rests on.
+    - hosts: [jump-box]
+      action: Name one threatening artefact each restored host could carry and two validation checks it must pass before return.
+  refs:
+  - nist-sp-800-83r1
+  - nist-sp-800-193
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A domain controller was encrypted three days after the intrusion began, and the most recent image
+        is a week old and was taken from the running system. What is the safer choice?
+      options:
+      - A) Restore the week-old image, because it predates the encryption of the controller
+      - B) Restore the image and change no accounts
+      - C) Rebuild the controller and restore only data from verified sources
+      - D) Rebuild and skip validation to save time
+      answer: C
+    - question: A file server was restored from a verified image, yet weeks later the same scheduled task
+        reappears and reaches outward again. What does this show about the restore?
+      options:
+      - A) The image was verified correctly, so the task's return must be unrelated to the restore
+      - B) The restored host carried persistence the verification missed
+      - C) The scheduled task came from a routine software update on the file server
+      - D) The restore point was too recent to matter
+      answer: B
+    - question: 'Two restore points exist: one on the encrypted host itself, one offline and written before the
+        first intrusion record. Which point can be trusted, and why?'
+      options:
+      - A) The host copy, because it is the most recent
+      - B) The host copy, because encryption proves nothing
+      - C) The offline copy, because an offline location is always the safest choice whatever the dates
+      - D) The offline copy, because it predates the intrusion and was unreachable
+      answer: D
+    - question: A rebuilt workstation is ready to return to service. Which validation pair proves it is fit
+        before it rejoins the network?
+      options:
+      - A) Account review and patch state confirmed against the baseline
+      - B) A single successful sign-in by the administrator of the domain
+      - C) One successful reply to a ping from the monitoring server
+      - D) Antivirus runs once without finding anything
+      answer: A
+    - question: The case's evidence shows the intrusion began with a phished message. Which hardening measure for
+        the rebuilt estate addresses the access route directly?
+      options:
+      - A) A faster backup cycle
+      - B) A second firewall at the edge
+      - C) Mail filtering and awareness training against phishing
+      - D) A longer password policy for servers
+      answer: C
+- ordinal: 6
+  title: Incident Reconstruction and Responder Handoff
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Assemble host, network and backup evidence into one ordered incident timeline
+  - Write a responder handoff that separates recorded observation from inference
+  - Rank recovery and rebuild recommendations by the evidence supporting them
+  topics:
+  - Merging host, network and backup records into one incident timeline.
+  - 'Observation versus inference: the record, its time and its source.'
+  - Ranking recommendations by evidence strength, impact and confidence.
+  - 'Handoff order: scope first, then the timeline, then the recommendations.'
+  lab: >-
+    Lab: On the small-enterprise range, merge the collected records into one timeline and write the
+    handoff a responder can act on.
+    Evidence: the merged timeline with each entry's record, time and source; each entry marked
+    observation or inference; the handoff with scope, the named access route with its strongest
+    record, and recommendations ranked by supporting evidence. Pass: the timeline merges records
+    from at least three sources without duplicate entries; observation and inference are marked
+    separately; the recommendations are ranked and each names its evidence.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the start time in the lab notes.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, read the name-resolution records on dc-01 for the run window and record each query with its time.
+    - hosts: [fw-01]
+      action: Read the connection records on fw-01 for the run window and record each inbound and outbound connection with its time.
+    - hosts: [jump-box]
+      action: Read the instructor-supplied endpoint export for ws-02 and record each process creation and file change with its time.
+    - hosts: [jump-box]
+      action: Merge the collected records into one timeline and mark each entry observation or inference, with its record, time and source.
+    - hosts: [jump-box]
+      action: Write the handoff with the scope first, then the timeline, then the recommendations ranked by supporting evidence.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-86
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: Records arrive from mail, name resolution, firewall and endpoint sources, each with its own clock.
+        What does the analyst build first from them?
+      options:
+      - A) A recovery budget for the storage the rebuild will need
+      - B) A list of hosts to repurchase with estimated prices
+      - C) A press statement for the communications team
+      - D) One ordered timeline across the sources
+      answer: D
+    - question: A draft handoff reads 'the intruder moved sideways at 09:14' with no record named. What must the
+        line become to separate observation from inference?
+      options:
+      - A) The record, its time and its source, with the inference marked as inference
+      - B) A stronger adjective describing the intruder's behaviour, kept in the same handoff line
+      - C) The intruder's name and affiliation
+      - D) The ransom demand attached in full
+      answer: A
+    - question: 'Three recommendations exist: rebuild a controller with strong evidence, restore a workstation with
+        weak evidence, and buy new storage that no record mentions. Which ranks first?'
+      options:
+      - A) The storage purchase, because budget comes first
+      - B) The rebuild with strong supporting evidence
+      - C) The restore with weak evidence, because it is fastest
+      - D) All three at once, in no particular order
+      answer: B
+    - question: A handoff draft opens with three pages of raw log extracts before it says what the incident
+        touched. What should lead the handoff instead?
+      options:
+      - A) The full raw log extracts, unchanged, with the times as recorded
+      - B) The recovery invoice for the incident so far
+      - C) A list of tools that were used
+      - D) The scope of the incident, stated first
+      answer: D
+    - question: The final handoff must let a responder start work without reading the raw records. Which element
+        names the single strongest record for the access route?
+      options:
+      - A) The full timeline with every event
+      - B) The backup inventory in full
+      - C) The access route named with its strongest record
+      - D) A copy of the demand letter
+      answer: C
