@@ -1,0 +1,566 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C514
+title: Firewall & Segmentation Engineering
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C201
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Infrastructure Support Specialist.'
+  - 'NIST CSF 2.0: PR.PS, PR.IR.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Zone Models and Trust Levels
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design trust zones for a medium enterprise network and place each host in the zone matching its trust level
+  - Name the zone pair and direction each firewall rule connects and what traffic it allows
+  - Judge a host's placement against the trust the host actually needs on the network
+  topics:
+  - Trust zones and trust levels, and what crossing a zone boundary means for traffic.
+  - The demilitarised zone as the place for hosts outside parties reach.
+  - Placing a host by the trust it needs, not by the room it sits in.
+  - Reading a rule set as the zone model written down, one rule per zone pair.
+  lab: >-
+    Lab: On the medium-enterprise range, rebuild the zone model from the rule set on fw01 and judge
+    where each host sits. Evidence: every zone pair the rule list connects, in rule order with each
+    rule's direction and ports; the zone each of dc01, fs01, web01, mail01, ws01 and siem01 sits in;
+    the rule and zone pair that carry one allowed connection from web01 to dc01; one sentence on why
+    web01 and mail01 share a zone and one on what would change if web01 moved to the servers zone.
+    Pass: the zone pairs listed in order; every host placed with the rule that shows it; the tested
+    connection recorded with its zone pair; both placement judgements written.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 with the analyst account the instructor assigned, open a terminal and
+        note the start time.
+    - hosts: [siem01, fw01]
+      action: From siem01, read the rule list on fw01 and record every zone pair a rule connects, in
+        order, with each rule's direction and port list.
+    - hosts: [siem01]
+      action: Place each of dc01, fs01, web01, mail01, ws01 and siem01 in its zone, and record the
+        rule that shows each placement.
+    - hosts: [web01, dc01]
+      action: From web01, resolve a name against dc01 and record the zone pair and rule that carry
+        the connection.
+    - hosts: [siem01]
+      action: Write one sentence on why web01 and mail01 share a zone, and one on what would change
+        if web01 moved into the servers zone.
+  refs:
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A network holds staff workstations, servers only staff reach, and hosts people
+        outside the company contact. Which host belongs in the most restricted zone?
+      options:
+      - A) The mail host that outside mail systems deliver staff post to
+      - B) A workstation in the open-plan office
+      - C) The file server holding department shares
+      - D) The name server every internal host queries
+      answer: A
+    - question: Two hosts hold data of the same sensitivity, but outside parties reach one and only
+        staff reach the other. What separates them?
+      options:
+      - A) The operating system build each one runs, tracked by the patch team
+      - B) The zone each sits in, set by who reaches the host
+      - C) The disk encryption each one applies to its stored data
+      - D) The volume and detail of the logging each one produces
+      answer: B
+    - question: A contractor laptop must reach one internal web service and nothing else, and it holds
+        no company data. Where does it belong in a zone model?
+      options:
+      - A) In the corporate zone, because the laptop belongs to a trusted supplier
+      - B) In the servers zone, so it sits beside the service it uses
+      - C) In its own restricted zone with one rule naming only that service
+      - D) Outside the firewall, because contractors work from their own networks
+      answer: C
+    - question: Which statement about traffic crossing a zone boundary is right?
+      options:
+      - A) Zone boundaries filter traffic only at the edge to the internet
+      - B) Hosts in different zones share trust once they sign in to the same domain
+      - C) A zone boundary applies only to traffic arriving from outside the company
+      - D) Traffic crosses a boundary only where a rule names the zone pair and its ports
+      answer: D
+    - question: The mail host and the web host both serve people outside the network. Why do they
+        share a zone?
+      options:
+      - A) Because both run on the same hardware platform
+      - B) Because both hold the same volume of data
+      - C) Because both carry the same trust level, reached by outsiders and trusted little inside
+      - D) Because both need the same patch schedule
+      answer: C
+- ordinal: 2
+  title: Rule Base Hygiene
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Read a firewall rule set in order and identify the rules that are shadowed, redundant or over-broad
+  - Confirm the default deny that ends the rule base decides every connection no rule names
+  - Propose a rule base clean-up that narrows every over-broad rule and records an owner and review date for the rest
+  topics:
+  - Rule order, first-match evaluation and the default deny that decides everything unmatched.
+  - Shadowed rules, redundant rules and over-broad allows, and how each one arises.
+  - Reading a rule set against a written policy to find access the policy never asked for.
+  - 'Rule records: owner, business justification, review date and the change log entry.'
+  lab: >-
+    Lab: On the medium-enterprise range, read the rule set on fw01 and judge each rule against this
+    policy: workstations reach the domain controller dc01 and the file server fs01 for sign-in, name
+    resolution and file shares, and the demilitarised zone reaches dc01 for name resolution and
+    directory services only. Evidence: every fw01 rule in order with source, destination and ports;
+    each rule marked in policy, over-broad or shadowed with a one-sentence reason; the default action
+    for unmatched traffic; the result of one test connection from ws01 to fs01. Pass: all rules listed
+    in order; every rule marked with a reason; one narrowing change proposed for each over-broad rule;
+    the default action and the test result recorded exactly as the range shows them.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 with the analyst account the instructor assigned, open a terminal and
+        note the start time.
+    - hosts: [siem01, fw01]
+      action: From siem01, open the rule list on fw01 and record each rule in order with its source
+        zone, destination zone and port list.
+    - hosts: [siem01, fw01]
+      action: Record the default action fw01 applies to traffic no rule matches, and name the zones
+        whose traffic that default decides.
+    - hosts: [ws01, fs01]
+      action: From ws01, open the file share on fs01 and record whether it connects and which rule
+        allows it.
+    - hosts: [siem01]
+      action: Mark each rule in policy, over-broad or shadowed with one sentence of reason, and propose
+        one narrowing change for every over-broad rule.
+  refs:
+  - nist-sp-800-41r1
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A rule set allows every port from corporate to the servers zone in line two, and a
+        later rule blocks remote desktop to the file server. What does that later rule ever match?
+      options:
+      - A) All remote desktop traffic, because blocking rules are checked first
+      - B) Nothing, because the earlier allow already matched and decided that traffic
+      - C) Only traffic from outside corporate, which the earlier rule does not name
+      - D) The traffic the earlier rule logs but has not decided
+      answer: B
+    - question: Two rules grant the same zone pair the same ports, and only the first is ever matched.
+        What is the second rule?
+      options:
+      - A) Over-broad, because it grants more than the policy names
+      - B) Shadowed, because the default deny covers its traffic already
+      - C) An emergency exception that is still awaiting its scheduled review
+      - D) Redundant, because the first rule already decides that traffic
+      answer: D
+    - question: A written policy lets workstations sign in to the domain, resolve names and open file
+        shares, but the rule that grants it lists no ports at all. What is wrong?
+      options:
+      - 'A) The allow is over-broad: it admits every service, not only the three the policy names'
+      - B) The rule is shadowed, because the default deny already covers those services
+      - 'C) Nothing is wrong: a rule without ports is narrower than a rule that lists them'
+      - 'D) The policy is wrong: domain sign-in cannot be written as three named services'
+      answer: A
+    - question: A firewall holds 300 rules and nobody can say why 40 of them exist. Which practice
+        would have prevented this?
+      options:
+      - A) Exporting the rule base to a spreadsheet twice a year
+      - B) Raising the default deny to the top of the rule set
+      - C) Blocking all inbound traffic until every rule is justified
+      - D) Recording an owner, a justification and a review date on every rule
+      answer: D
+    - question: A server in the servers zone sends traffic to a workstation in the corporate zone,
+        and no rule names that zone pair. What happens to the traffic?
+      options:
+      - A) The traffic is allowed, because servers zone members trust each other
+      - B) The traffic is held until an administrator writes the missing rule
+      - C) The traffic is refused by the default deny that ends the rule set
+      - D) The traffic is allowed only on ports an earlier rule already lists
+      answer: C
+- ordinal: 3
+  title: Stateful and Proxy Inspection
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish stateful packet inspection from proxy inspection by what each one reads and where the connection ends
+  - Trace one permitted connection through the state table on fw01 and record the reply traffic the state entry admits
+  - Select stateful or proxy inspection for a named service and justify the choice by what each can inspect
+  topics:
+  - State tables and connection state, and why replies need no rule of their own.
+  - 'Proxy inspection: the proxy terminates the client connection and re-origins a second one.'
+  - What a proxy reads that a stateful filter cannot, and the cost of reading it.
+  - Encryption ends payload inspection at either placement, whatever the rule says.
+  - 'Matching the inspection style to the service: default deny at the boundary, a proxy for one protocol.'
+  lab: >-
+    Lab: On the medium-enterprise range, show how the stateful rules on fw01 decide the dmz-to-servers
+    path and where inspection stops. Evidence: the rule that carries dmz-to-servers traffic with its
+    source, destination and port list; the result of one allowed name-resolution connection from web01
+    to dc01; the exact failure when web01 attempts a file share on fs01; the state entry for the
+    allowed session with the reply direction it admits. Pass: the rule recorded with its ports; the
+    allowed connection and the refusal both recorded exactly as the range shows them; the state entry
+    shows replies admitted without a second rule; one service named where a proxy would add visibility
+    and one where encryption ends it.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 with the analyst account the instructor assigned and note the start
+        time.
+    - hosts: [siem01, fw01]
+      action: From siem01, read the rule that carries dmz-to-servers traffic on fw01 and record its
+        source, destination and port list.
+    - hosts: [web01, dc01]
+      action: From web01, resolve a name against dc01 and record that the connection succeeds under
+        that rule.
+    - hosts: [web01, fs01]
+      action: From web01, attempt a file-share connection to fs01 and record the exact refusal the
+        range returns.
+    - hosts: [siem01, fw01]
+      action: On fw01, open the state table, find the allowed session and record the reply direction
+        the state entry admits without a rule.
+    - hosts: [siem01]
+      action: Name one dmz-to-servers service a proxy could inspect that the stateful rule cannot, and
+        one where encryption ends payload inspection in either placement.
+  refs:
+  - nist-sp-800-41r1
+  - nist-sp-800-94
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A workstation behind a stateful firewall sends a request to a web server outside the
+        network. What admits the server's reply?
+      options:
+      - A) A mirrored allow rule the administrator wrote for the return path
+      - B) The proxy that re-originated the request toward the server
+      - C) The default deny, because replies carry no rule of their own
+      - D) The connection's state entry, which admits replies to a session it tracks
+      answer: D
+    - question: An organisation must read the commands inside an application protocol before they
+        reach the server. Which inspection fits?
+      options:
+      - A) Stateful packet inspection, because it tracks every packet of the session
+      - B) A proxy that terminates the connection and reads the application data
+      - C) A state table entry with a long timeout for that protocol
+      - D) A logging rule that records the session's addresses and ports
+      answer: B
+    - question: A stateful rule allows corporate to reach the mail server on the mail submission port
+        only. What can a workstation do that this rule permits?
+      options:
+      - A) Send mail to the mail server and receive its reply on the same session
+      - B) Open a second session to the mail server on any port it chooses
+      - C) Reach every dmz service, because the session is now trusted
+      - D) Keep the session open after the state entry expires
+      answer: A
+    - question: A proxy sits in front of an internal application whose traffic is encrypted end to end
+        with the server. What does the proxy see?
+      options:
+      - A) The full application data, because the proxy terminates the first connection
+      - B) The decrypted content, provided the state table keeps the session alive
+      - C) Addresses, ports and session timing, but not the encrypted payload
+      - D) Nothing, because encrypted sessions bypass proxies by design
+      answer: C
+    - question: A firewall team chooses an inspection style for a file-transfer service whose protocol
+        must not carry commands. Which choice and reason is right?
+      options:
+      - A) Stateful, because a state table blocks anything the rule does not list
+      - B) Proxy, because only terminating the connection exposes the protocol's content
+      - C) Stateful, because file transfer carries no commands worth reading
+      - D) Proxy, because a proxy is faster for bulk transfer than stateful filtering
+      answer: B
+- ordinal: 4
+  title: Writing and Testing Rule Changes Safely
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a firewall change request that states the business need, the exact rule, the expiry and the rollback step
+  - Test a new rule from both sides and record the traffic it permits and the traffic it still refuses
+  - Sequence a change so the rule base still ends in the default deny if the change is rolled back
+  topics:
+  - 'The change request: business need, exact rule, owner, expiry date and rollback.'
+  - 'Proving a rule with tests from both sides: the permit and its neighbours.'
+  - Rule match logs, and confirming real traffic before any rule is widened.
+  - Change windows, authorisation and the emergency exception to the process.
+  - 'Rollback: removing the rule and confirming the rule base matches the baseline.'
+  lab: >-
+    Lab: On the medium-enterprise range, replace the over-broad corporate-to-servers allow with a
+    narrow file-share rule safely: write the change request, apply the replacement on fw01, test it
+    from ws01 and roll it back. Evidence: the change request with need, rule, expiry and rollback; the
+    rule list as it reads after the change, with the narrow rule in the broad allow's place; the
+    file-share test from ws01 to fs01 and one service the narrow rule does not name, refused by the
+    default deny; the rule match log lines for both tests; the rule list after rollback. Pass: the
+    request states need, rule, expiry and rollback; the permit and the refusal are both recorded; the
+    log shows which rule decided each test; the rule list matches the baseline after rollback.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01, fw01]
+      action: From siem01, record the rules on fw01 that carry corporate-to-servers traffic, in order,
+        with their ports.
+    - hosts: [siem01]
+      action: Write the change request that replaces the broad corporate-to-servers allow with
+        file-share traffic from corporate to fs01 only, with the business need, the exact rule, an
+        expiry date and the rollback step.
+    - hosts: [siem01, fw01]
+      action: On fw01, replace the broad corporate-to-servers allow with the rule the request defines
+        and record the rule list as it now reads.
+    - hosts: [ws01, fs01]
+      action: From ws01, open the file share on fs01 and record the result, then attempt a service the
+        narrow rule does not name and record the refusal.
+    - hosts: [siem01, fw01]
+      action: Read the rule match log on fw01 and record which rule decided each of the two test
+        connections.
+    - hosts: [siem01, fw01]
+      action: Apply the rollback step from the request and record that the rule list matches the
+        baseline again.
+  refs:
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A change request says only to open the file-share port from corporate to the new file
+        server. Which missing part matters most before the rule is applied?
+      options:
+      - A) The firewall model, because rules are written differently per vendor
+      - B) The rule number in the list that the new rule will replace, so the change is precise
+      - C) The business need and expiry, so the allow can be reviewed and removed
+      - D) The interface names, so the rule displays correctly in the console
+      answer: C
+    - question: A narrow rule is added above a broad one, and the tester runs only the connection the
+        narrow rule permits. What does the test not show?
+      options:
+      - A) Whether the broad rule still catches the traffic the narrow rule refuses
+      - B) Whether the narrow rule sits above the broad one in the list
+      - C) Whether the state table admits the replies to the permitted session
+      - D) Whether the rule match log records the permitted connection
+      answer: A
+    - question: A temporary rule opened for a migration is still in place eight months later, and
+        nobody remembers asking for it. Which change practice failed?
+      options:
+      - A) The rule match log was not exported to the SIEM
+      - B) The rule was not tested from both sides before it was applied
+      - C) The default deny was not moved to the top of the rule set
+      - D) The rule carried no expiry date, so no review ever came due
+      answer: D
+    - question: After a rule change, which test order best proves the change did what was asked and
+        nothing more?
+      options:
+      - A) Apply the change, widen any refused service that looks legitimate, then test again
+      - B) Prove the refused service is refused, the permitted one works, then the neighbours decide their traffic
+      - C) Test the permitted service first and stop, because the request covers only that
+      - D) Restart the firewall, test every rule in the list, then compare with the design
+      answer: B
+    - question: A rule change is applied and the file-share test fails. The rollback step is
+        documented. What is the next action?
+      options:
+      - A) Roll back, record the failure in the change record, and retest from the design
+      - B) Leave the change in place and wait for staff to report other breakage
+      - C) Widen the new rule until the file share works, then record the width
+      - D) Delete the broad allow as well, so the failure cannot repeat
+      answer: A
+- ordinal: 5
+  title: Segmentation Failure Modes
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the lateral paths a segmentation design leaves open and name the failure each open path enables
+  - Verify segmentation on the range with test connections and record which rule decides each one
+  - Select detections that reveal traffic a zone model should never carry
+  topics:
+  - 'Flat networks and flat rules: one compromised workstation reaches every zone.'
+  - Over-broad exceptions and the temporary rule that never expires.
+  - 'Trust decay: a host that moves zone while its rules stay behind.'
+  - Verifying segmentation with test connections, rule match logs and flow records.
+  - 'Detecting the failure: alerts for traffic the zone model never allows.'
+  lab: >-
+    Lab: On the medium-enterprise range, verify that the demilitarised zone reaches the servers zone
+    only for name resolution and directory services, and judge each tested path. Evidence: the exact
+    refusal when web01 attempts a file share on fs01; the successful name resolution from web01 to
+    dc01; the SMTP result from ws01 to mail01 under the corporate-to-dmz rule; the rule that decided
+    each of the three tests. Pass: all three tests recorded exactly as the range shows them; each path
+    marked contained or open beyond need with a one-sentence reason; the failure mode named that an
+    over-broad version of the same rule would create.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 with the analyst account the instructor assigned and note the start
+        time.
+    - hosts: [web01, fs01]
+      action: From web01, attempt a file-share connection to fs01 and record the exact refusal, because
+        the dmz-to-servers rule names name resolution and directory ports only.
+    - hosts: [web01, dc01]
+      action: From web01, resolve a name against dc01 and record that the same rule carries it.
+    - hosts: [ws01, mail01]
+      action: From ws01, connect to the SMTP service on mail01 and record the greeting the service
+        returns under the corporate-to-dmz rule.
+    - hosts: [siem01, fw01]
+      action: On fw01, read the rule match log and record which rule decided each of the three tests.
+    - hosts: [siem01]
+      action: Mark each tested path contained or open beyond need with one sentence of reason, and name
+        the failure mode an over-broad version of the same rule creates.
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A workstation in the corporate zone is compromised, and the rule base allows corporate
+        to reach every port of the servers zone. What does segmentation fail to do here?
+      options:
+      - 'A) Nothing: the workstation is already inside the trusted boundary'
+      - B) Contain the workstation, because its zone can reach every server service
+      - C) Encrypt the workstation's traffic on the way to the server zone
+      - D) Log the workstation's traffic, because the allow has no logging set
+      answer: B
+    - question: A server moves from the demilitarised zone to the servers zone, and its old rules stay
+        in the rule base untouched. What is this failure?
+      options:
+      - 'A) Shadowing: the old rules can never match traffic again'
+      - 'B) Redundancy: two rules now grant the same access twice'
+      - 'C) Default deny: the moved host''s traffic is refused until new rules exist'
+      - 'D) Trust decay: the host keeps access its new zone never asked for'
+      answer: D
+    - question: Which test best verifies that the demilitarised zone cannot open file shares on the
+        servers zone?
+      options:
+      - A) Read the rule base and confirm the dmz-to-servers rule has a port list
+      - B) Confirm the default deny exists at the end of the rule set
+      - C) Attempt a file-share connection from a dmz host to a server and record the refusal
+      - D) Search the SIEM for past file-share traffic between the two zones
+      answer: C
+    - question: A detection should reveal that one workstation is probing every server in the servers
+        zone. Which signal fits?
+      options:
+      - A) One workstation opening connections to many servers on ports the rules never name
+      - B) One workstation holding a single long session to its file server
+      - C) A rise in log volume from the management zone to the SIEM
+      - D) The default deny refusing a workstation's name-resolution requests
+      answer: A
+    - question: An emergency rule allowed corporate to reach one database during an incident, and the
+        incident closed three weeks ago. The rule is still open. Which failure is this?
+      options:
+      - A) A shadowed rule, because the incident traffic no longer exists
+      - B) An over-broad exception whose expiry nobody enforced
+      - C) Trust decay, because the database has since moved zone
+      - D) A logging gap, because the rule's matches were never reviewed
+      answer: B
+- ordinal: 6
+  title: Firewall Change Under Fire
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select the containment change that cuts an incident's path while the business service keeps working
+  - Apply an emergency change, verify it with test connections and record the evidence the incident record needs
+  - Decide when an emergency change is held, narrowed or rolled back and record who authorised each step
+  topics:
+  - 'An incident on the range: reading the firewall evidence before writing the change.'
+  - 'Containment at the boundary: cutting one host''s path without closing the whole zone.'
+  - 'The emergency change record: scope, authoriser, expiry and rollback, written before applying.'
+  - Verifying containment with the same tests that proved the design, and recording the results.
+  - 'Standing down: roll back, restore the baseline and fold the lesson into the rule base.'
+  lab: >-
+    Lab: On the medium-enterprise range, contain a suspected compromise of web01 by cutting its
+    directory access to dc01 while name resolution and the mail service keep working, then decide how
+    the change stands down. Evidence: the baseline test results from web01 and mail01 to dc01 before
+    the change; the emergency change record with scope, authoriser, expiry and rollback; the rule order
+    after applying it; the results after: web01's directory connection refused, web01's name resolution
+    working, mail01's directory connection working. Pass: the change record is complete before the rule
+    is applied; the containment cut only the named path; the mail service verified working; a
+    standing-down decision recorded with its reason and authoriser.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01, fw01]
+      action: From siem01, record the baseline, the rules carrying dmz-to-servers traffic on fw01 and
+        one test connection from web01 to dc01 for each port the rule allows.
+    - hosts: [web01, dc01]
+      action: From web01, record that name resolution and the directory connection to dc01 both succeed
+        under the baseline.
+    - hosts: [siem01]
+      action: Write the emergency change record for the dmz host web01, which may reach dc01 for name resolution
+        only while the investigation runs, with the authoriser, the expiry and the rollback step named.
+    - hosts: [siem01, fw01]
+      action: On fw01, apply the change above the dmz-to-servers rule and record the rule order as it
+        now reads.
+    - hosts: [web01, mail01, dc01]
+      action: From web01, record the directory connection refused and name resolution working; from
+        mail01, record the directory connection still working.
+    - hosts: [siem01]
+      action: Decide whether the change is held, narrowed or rolled back as the investigation closes,
+        and record the decision, its reason and its authoriser.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: An incident shows one dmz host sending unexpected traffic toward the servers zone.
+        Which containment change cuts the path with the least business damage?
+      options:
+      - A) A rule naming that host and refusing it the paths the investigation questions
+      - B) Removing the dmz-to-servers rule so the whole zone is cut at once
+      - C) Moving the default deny to the top of the rule set until the incident closes, cutting every zone
+      - D) Widening the logging rules so every packet of the path is recorded twice
+      answer: A
+    - question: Before an emergency rule is applied during an incident, what must the change record
+        already contain?
+      options:
+      - A) The vendor's recommendation for the rule's placement in the list
+      - B) The estimate of how long the investigation is expected to run
+      - C) The scope, authoriser, expiry and rollback step the change will follow
+      - D) The full rule base exported into the incident record as the state before the change
+      answer: C
+    - question: Containment is applied and the mail service stops authenticating. The investigation
+        still needs the path cut. What is the right next step?
+      options:
+      - A) Roll the change back fully and rely on detection instead of containment
+      - B) Narrow the change so the mail host keeps its directory access while the cut path stays closed
+      - C) Leave the outage in place, because containment always costs a service
+      - D) Widen the change to every dmz host so the failure is shared evenly
+      answer: B
+    - question: The investigation closes and the emergency rule is no longer needed. What completes
+        the change?
+      options:
+      - A) Lowering the rule's priority so it matches only unusual traffic
+      - B) Renaming the rule so its purpose is clear in the rule base
+      - C) Leaving the rule logged but unused, in case the incident returns
+      - D) Rolling the rule back, confirming the baseline tests pass and closing the record
+      answer: D
+    - question: After standing down, the team must keep the same failure from returning. Which action
+        changes the rule base durably?
+      options:
+      - A) Sending the incident report to every firewall administrator
+      - B) Adding the emergency rule's text to the runbook cover page
+      - C) Scheduling one review meeting for the following quarter
+      - D) Folding the incident's lesson into the rule base as named, reviewed rules
+      answer: D
