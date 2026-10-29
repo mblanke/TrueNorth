@@ -1,0 +1,226 @@
+# DRAFT - instructor pack for C211 Lab: Simulated Incident Exercise. Not yet reviewed; readiness
+# stays draft until the range checks and an SME review land. Keys below are the course's answer
+# letters; each note says why the keyed option is right and what each distractor tests. Key lab
+# notes to the module objectives, not to learner pages, which TAZ does not write.
+course_code: C211
+audience: staff_only
+overview: >-
+  C211 is an intermediate lab course for Students who have taken C206 Incident Response Foundations
+  and C204 Security Monitoring. Six 60-minute modules run one simulated ransomware incident end to
+  end on the small-enterprise range with the ransomware-lite scenario: Students survey the range and
+  design the exercise, facilitate a play window, execute containment and evidence capture,
+  communicate under pressure, run the hot wash and convert findings into an improvement plan. Each
+  module's lab builds on the records the previous module's lab produced, and the quiz closes the
+  module. Students hand in the exercise design, the observation log, the containment record, three
+  status updates with a briefing note, the findings list and the improvement plan.
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (objectives, scope, inject design), 35 lab (range survey and exercise design on
+    jump-box), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (facilitation and observation discipline), 35 lab (facilitated play window on the
+    ransomware-lite timeline), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (containment versus evidence preservation), 35 lab (volatile capture, fw-01 deny
+    rule, reachability test), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (status updates, cadence, routing by sensitivity), 35 lab (communication log,
+    fact-line record, status updates, briefing note), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (hot wash structure, artefact labelling), 35 lab (hot wash on the module logs),
+    10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (finding to action, ranking, re-exercise verification), 35 lab (improvement plan
+    and re-exercise design), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (each objective names one observable behaviour plus the evidence that shows it), M1-O01:
+    A offers scenario colour, a named ransomware variant and an attacker profile, which adds realism but
+    gives an evaluator nothing to observe; C substitutes a senior manager''s ownership for an observable
+    behaviour; D offers a fixed written script, which prescribes events instead of defining evidence.
+    Q2 A (scope to the hosts, networks and time window the objectives need), M1-O02: B inflates scope to
+    every host the range can build for a realism the objective does not need; C widens scope to the whole
+    enterprise network on the false claim that containment always spreads; D abandons fixed scope, so
+    observers have nothing constant to mark against. Q3 C (the inject announces which host is compromised
+    and how, so the decision the objectives needed evidence of is never exercised), M1-O03: A misreads the
+    fault as timing and calls the minute-two inject too late; B appeals to realism, which is not what
+    makes the inject faulty; D treats the fault as one of response time rather than of the removed
+    decision. Q4 A (criteria fixed before play give every observer the same standard to mark against),
+    M1-O01: B produces participant feedback rather than a marking standard; C records outcomes after
+    play, too late to shape any observation; D lists response logistics, which say nothing about how an
+    objective is judged. Q5 D (an exercise shows performance on the designed objectives and nothing
+    more), M1-O01: A and B treat a pass mark or an observer as proof about the network rather than about
+    participant performance; C names a different limitation, since exercises cover more than technical
+    controls but still evidence only what the objectives were designed to capture.'
+- module: 2
+  notes: 'Q1 D (the facilitator asks what evidence the isolation decision rests on and records it,
+    staying neutral while the team decides), M2-O01: A answers for the team to hold the pace, crossing
+    into solving; B answers no to engineer a mistake, which directs the decision just the same; C halts
+    the inject timeline for an open-ended internal debate. Q2 B (individual evaluation suppressed the
+    candour the exercise needs), M2-O02: A blames inject timing, which the stem never mentions; C blames
+    scenario realism, which does not touch candour; D blames log-keeping, a recording fault rather than a
+    speaking one. Q3 C (the next scheduled inject forces the stalled decision without the facilitator
+    solving it), M2-O01: A closes the exercise with objectives unmet; B hands the team the remaining
+    answers; D stretches the window an unplanned hour instead of letting the timeline work. Q4 A (a
+    timestamped line naming the host and what was seen is the evidence an evaluator can mark), M2-O03:
+    B and C record impressions with no time, host or criterion; D states what should have happened rather
+    than what was seen. Q5 C (configuring the firewall for the team crosses the line between facilitating
+    play and solving the scenario), M2-O01: A and B name facilitator duties this moment does not involve;
+    D names a duty being neglected, but the line crossed is the solving one.'
+- module: 3
+  notes: 'Q1 B (capture the volatile state first, then contain at the firewall), M3-O02: A powers the
+    workstation off and loses memory with it; C contains first and destroys the state a capture would
+    have recorded; D defers both actions and lets the scenario keep changing the state. Q2 D (the running
+    processes and open connections held in memory), M3-O02: A names the disk, which a power cut preserves;
+    B names the firewall rule set, which the power cut does not touch; C names the domain accounts, which
+    live on the controller. Q3 A (tooling never run before the incident fails on first use and delays the
+    response): B inverts the warning and expects incident pressure to improve tooling; C and D deny that
+    tooling readiness affects the response or the evidence it collects. Q4 D (so responder actions stay
+    distinguishable from adversary activity in the record): A defers the record to an audit audience after
+    the fact; B claims the range logging already attributes responder actions; C treats the record as a
+    brake on the response. Q5 B (skipping the capture is defensible when the ongoing harm of the spread
+    outweighs the evidence value and the decision is recorded), M3-O03: A allows no trade-off at any
+    price; C makes the judgement depend on tooling convenience rather than on harm; D hands the trade-off
+    to an evaluator''s live approval instead of the responder''s recorded justification.'
+- module: 4
+  notes: 'Q1 C (the update states more certainty than its fact lines carry, so decisions rest on a wrong
+    basis), M4-O01: A names a cadence fault, and nothing in the stem ties the update to the cadence; B
+    names a detail-level fault, while this update shares a conclusion rather than detail; D names an
+    omission, but the fault committed is the false claim of a handled incident, not a missing section.
+    Q2 A (updates on a fixed cadence, so stakeholders stop interrupting for information), M4-O02: B
+    rewards the loudest stakeholder; C and D make the cadence depend on mood or severity rather than
+    the clock. Q3 D (the verified facts only, on the need-to-know basis the sensitivity requires),
+    M4-O03: A hands an outside audience partial facts and speculation; B shares what is unverified; C
+    releases nothing when the verified facts may leave the room. Q4 B (the conflict is surfaced
+    explicitly and reconciled before any decision relies on the count), M4-O01: A invents a middle
+    figure neither team verified; C adopts the lower count without settling which count is true; D
+    defers the number to the debrief while the response still needs one now. Q5 C (it states what is
+    contained, what is not and what remains undecided), M4-O01: A and B assert outcomes nobody has
+    verified; D is a raw log, not a summary an executive can act on.'
+- module: 5
+  notes: 'Q1 A (recollection fades and the hot wash loses the detail the findings need), M5-O01: B is the
+    delay''s own justification, not the module''s prediction; C and D deny that recollection carries any
+    of the evidence. Q2 D (it marks an impression instead of an observation against a criterion), M5-O02:
+    A is a tone complaint; B invents a timing rule the standard does not have; C confuses marking with
+    naming individuals. Q3 B (mark every exercise artefact as simulated in the report), M5-O03: A helps
+    recollection but does not label artefacts; C destroys evidence on the range; D restricts the report
+    without labelling anything. Q4 A (successful practices are named so they are preserved and reused),
+    M5-O01: B and D treat praise as a morale device; C files it where the next exercise will not find it.
+    Q5 C (keep the discussion on process, information flow and decision quality), M5-O02: A and B turn
+    the hot wash into the individual review it exists to avoid; D relitigates the scenario instead of the
+    response.'
+- module: 6
+  notes: 'Q1 D (an owned action with a target date and a verification method), M6-O01: A has no owner,
+    date or verification; B and C record discussion and agreement, nothing an owner can act on. Q2 C
+    (the encryption gap, because it removes the larger risk for the same effort), M6-O02: A and D rank
+    by anything but risk; B treats cost as the deciding axis the module rejects. Q3 B (observation of
+    the changed behaviour in a later exercise), M6-O03: A adds a signature but still no evidence; C and
+    D add ceremony to the ticket, not proof the behaviour changed. Q4 D (a systemic issue the earlier
+    actions did not address), M6-O03: A and B explain the report away; C inverts the finding. Q5 A
+    (ownership and tracking, the stage where most plans lapse), M6-O01: B, C and D blame earlier stages
+    that the six-week-old report already passed.'
+lab_setup:
+- module: 1
+  setup: 'Revert the small-enterprise range to its baseline and confirm every node answers: jump-box
+    10.0.1.10, dc-01 10.0.2.10, ws-01 10.0.3.10, ws-02 10.0.3.11, ws-03 10.0.3.12, fw-01 10.0.1.1.
+    fw-01 should hold only the baseline rules user-to-srv-ad and mgmt-to-all. Expected: Students list
+    the six addresses with the role observed at each, matched to the template''s node ids, plus the
+    two rule names and the three networks user, srv and mgmt. Do not start the scenario in this
+    module''s survey phase.'
+- module: 2
+  setup: 'Revert the range, then start the ransomware-lite scenario at its standard timeline: 00:05
+    the email phish (Payroll update, target group users), 00:15 the simulated execution artefact
+    (fake-dropper) on ws-02, 00:25 the DNS spike to bad.example at about 50 queries per second.
+    Confirm before the window that the execution artefact lands on ws-02, the workstation the module
+    3 containment validator targets, and that Students observe the deliveries from jump-box; no
+    workstation exposes a Student login. Expected: Students record the three delivery times, the
+    target group the phish named, and the fake-dropper artefact delivered to ws-02. Do not pause the
+    scenario to coach mid-window.'
+- module: 3
+  setup: 'Revert the range to baseline and confirm ws-02 can reach dc-01 on port 445 before the module
+    starts, so the containment test has a measurable before-state. Confirm the fw-01 appliance config
+    login from the range''s Credentials panel works from jump-box over the management network, and
+    stage the response toolkit Students use from jump-box to collect process and connection state
+    from ws-02 and to run the port 445 test on ws-02 itself, so the connection originates at the
+    workstation. The toolkit authenticates to ws-02 with the generated local Administrator credential
+    from the range''s Credentials panel; the credential is instructor-held and no workstation exposes
+    a Student login. Expected: pre-change process and connection
+    state recorded from ws-02, a named fw-01 deny rule between ws-02 and the server network with its
+    position in the rule set, and one failed ws-02 to dc-01 port 445 test after containment. The
+    ransomware-lite scenario is not running; ws-02 is a clean Windows 11 host and Students execute
+    the response as a containment drill.'
+- module: 4
+  setup: 'Re-stage module 3''s containment: the fw-01 deny rule isolating ws-02 in place, ws-01 still
+    reaching dc-01 on port 445 as the unaffected control, and the module 3 response toolkit still staged
+    so the ws-01 connection test originates at the workstation. Expected: the fw-01 containment state recorded as fact
+    lines, one ws-01 to dc-01 port 445 connection test as a fact line, status update one drafted inside ten
+    minutes of the module start and two further updates on the fixed cadence. Briefing note at the
+    end separates fact-with-source from interpretation.'
+- module: 5
+  setup: 'Collect the observation, inject, containment and communication logs from modules 2 to 4 and
+    stage them on jump-box for the hot wash. Stage the module 3 response toolkit so Students can list
+    the fake-dropper artefact on ws-02 from jump-box. Expected artefacts: the fake-dropper artefact on ws-02
+    and the bad.example query records in the range log. Make explicit before the module that no real
+    incident exists on the range, and that every artefact must be labelled simulated in the findings
+    report.'
+- module: 6
+  setup: 'Bring the marked findings list from module 5 and revert the range to baseline, so the top
+    action''s verification observation is measurable against an unmodified range. Expected: every
+    finding converted to an action with owner, target date and verification method, one sentence of
+    ranking reason per action, and the re-exercise objective with the criterion its observer will
+    mark.'
+common_faults:
+- module: 1
+  fault: Objectives name no evidence, so nothing in the exercise can prove them ('practise response').
+  remedy: 'Make each objective state one observable behaviour and the record that shows it; reject any
+    objective a checker could not mark from the lab evidence alone.'
+- module: 1
+  fault: Injects are designed for atmosphere, not to force a decision an objective needs.
+  remedy: 'Have Students mark each inject as serving an objective or cut, with the reason; keep only
+    injects that force evidence.'
+- module: 2
+  fault: The facilitator pauses the scenario to coach a stalled team off the record.
+  remedy: 'Unblock with a neutral question or the next scheduled inject and move on; note the stall in
+    the observation log instead, since it is itself a finding.'
+- module: 2
+  fault: Observations are written as conclusions ('the team responded well') with no time or host.
+  remedy: 'Require each log line to carry a time, a host or inject, and what was seen; conclusions wait
+    for the hot wash.'
+- module: 3
+  fault: Containment runs first and the volatile evidence is captured from the isolated host afterwards.
+  remedy: 'Enforce the order in the lab: state on ws-02 recorded, then the fw-01 rule, then the
+    reachability test. Ask what the first command would have destroyed.'
+- module: 3
+  fault: The deny rule is added but never tested, so the containment record has no proof it worked.
+  remedy: 'The lab requires the ws-02 to dc-01 port 445 test result recorded after the rule; no pass without
+    the failed connection line.'
+- module: 4
+  fault: Status updates state guesses as facts ('the malware is contained') before anyone checked.
+  remedy: 'Have Students mark every line fact-with-source or interpretation; anything unverified goes in
+    the undecided section with what would settle it.'
+- module: 4
+  fault: Updates go out whenever someone asks, and the cadence collapses.
+  remedy: 'Fix the cadence at module start and hold it even when there is nothing new; the update says
+    no change since the last one.'
+- module: 5
+  fault: Observations are marked against impressions or general feeling rather than the design criteria.
+  remedy: 'Bring the module 1 criteria into the room and require the observation line that justifies
+    each mark.'
+- module: 5
+  fault: Scenario artefacts, such as the fake-dropper or the bad.example lookups, reach the findings
+    report unlabelled.
+  remedy: 'Every artefact is listed first and marked simulated; nothing leaves the room unmarked.'
+- module: 6
+  fault: Actions are written without an owner or a target date, so nothing can lapse visibly.
+  remedy: 'Reject any action line missing owner, date or verification method at the review, before
+    ranking starts.'
+- module: 6
+  fault: Improvements are declared verified because the ticket closed and the owner agreed.
+  remedy: 'Point at the module objective: verification means observing the changed behaviour in a later
+    exercise; ask what the re-exercise re-tests.'

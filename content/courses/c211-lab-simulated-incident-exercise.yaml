@@ -6,9 +6,10 @@ course_code: C211
 title: 'Lab: Simulated Incident Exercise'
 version: '1.0'
 difficulty: intermediate
-duration_hours: 100
+duration_hours: 6
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
@@ -34,57 +35,96 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Design an incident exercise with defined objectives.
-  - Construct a realistic scenario and injects.
-  - Define measurable evaluation criteria.
+  - Write exercise objectives that each name one observable behaviour and the evidence that shows it
+  - Scope an exercise to the hosts, networks and time window the stated objectives actually need
+  - Design a timed inject sequence in which each inject forces a decision an objective needs evidence of
   topics:
-  - Objective setting and scope.
-  - Scenario construction and realism.
-  - Inject design and timing.
-  - Evaluation criteria and observation.
-  lab: 'Lab: Design a full exercise for a ransomware scenario including objectives, five timed injects
-    and the observable behaviours that will be evaluated.'
+  - What an incident exercise is and what one exercise can and cannot prove.
+  - Objective setting as observable behaviour, supporting evidence and a measurable success condition.
+  - Scope, scenario selection and the range the exercise will run on.
+  - Inject design as timing, decision points and the order a scenario unfolds in.
+  - Evaluation criteria written before play, so every observer marks against the same standard.
+  lab: >-
+    Lab: On the small-enterprise range, survey the hosts, networks and firewall rules the ransomware-lite
+    scenario touches, then draft an exercise design for it. Evidence: the address and observed role of every
+    host recorded from the range, each matched to its node id in the range template; each fw-01 rule that
+    allows traffic between two range networks, with its
+    source and destination; two exercise objectives; five timed injects, each with its clock time and the
+    decision it forces. Pass: each objective names an observable behaviour an evaluator can watch for on this
+    range; each inject serves a stated objective or is marked as cut with a reason; the design states the hosts
+    and the time window the objectives need.
+  lab_range:
+    template: small-enterprise
+    scenario: ransomware-lite
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the exercise design start time.
+    - hosts: [jump-box, fw-01, dc-01, ws-01, ws-02, ws-03]
+      action: From jump-box, confirm which nodes answer on the management, server and user networks and
+        record each address with its observed role, matched to its node id in the range template.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, open the rule set on fw-01 and record each rule that allows traffic between two
+        range networks, with its source and destination.
+    - hosts: [jump-box]
+      action: Draft two exercise objectives that each name one observable behaviour an evaluator can watch
+        for on this range, and record them.
+    - hosts: [jump-box]
+      action: Design five timed injects for the ransomware-lite scenario and record each with its clock time
+        and the decision it forces.
+    - hosts: [jump-box]
+      action: Mark each inject as serving a stated objective or as cut from scope, and write one sentence of
+        reason for each mark.
   refs:
   - nist-sp-800-61r3
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'Exercise objectives should be defined:'
+    - question: >-
+        A design team writes the objective 'the response team will discuss containment during a ransomware
+        incident'. An evaluator cannot mark this objective because it lacks:
       options:
-      - A) After the exercise
-      - B) Before design, so the scenario tests what matters
-      - C) By participants
-      - D) By the tool
+      - A) A named ransomware variant and a detailed attacker profile
+      - B) An observable behaviour and the evidence that shows it
+      - C) A senior manager willing to own the objective
+      - D) A written scenario with a fixed script
       answer: B
-    - question: 'An inject should be designed to:'
+    - question: >-
+        An exercise objective needs evidence that a workstation was isolated within fifteen minutes, and
+        nothing else. Which scope fits?
       options:
-      - A) Confuse participants
-      - B) Introduce information that forces a decision
-      - C) Fill time
-      - D) Test typing speed
-      answer: B
-    - question: 'Excessive scenario realism can be counterproductive when it:'
+      - A) One workstation, one firewall and a sixty-minute window
+      - B) Every host the range can build, to make the exercise realistic
+      - C) The whole enterprise network, because containment always spreads
+      - D) No fixed scope, so observers can follow whatever happens
+      answer: A
+    - question: >-
+        An exercise inject announces, at minute two, exactly which host is compromised and how. Which design
+        fault does this inject carry?
       options:
-      - A) Engages participants
-      - B) Consumes preparation effort without testing the objectives
-      - C) Improves evaluation
-      - D) Shortens the exercise
-      answer: B
-    - question: 'Evaluation criteria must be:'
+      - A) It arrives too late for any containment decision
+      - B) It is unrealistic for a small-enterprise scenario
+      - C) It removes the decision the objectives needed evidence of
+      - D) It gives participants too little time to respond
+      answer: C
+    - question: >-
+        Before play begins, an exercise designer writes how each objective will be judged. This work
+        produces:
       options:
-      - A) Subjective
-      - B) Observable during the exercise
-      - C) Secret from evaluators
-      - D) Financial
-      answer: B
-    - question: 'An exercise without defined objectives typically produces:'
+      - A) Evaluation criteria the observers mark against during play
+      - B) A satisfaction survey the participants fill in afterwards
+      - C) A post-exercise report of lessons already learned
+      - D) A list of the tools the responders must install
+      answer: A
+    - question: >-
+        Management asks whether one passed exercise proves the enterprise network is now secure. Which
+        answer is correct?
       options:
-      - A) Better learning
-      - B) An entertaining session with no actionable improvement
-      - C) Faster response
-      - D) Clear metrics
-      answer: B
+      - A) Yes, if every participant passed every objective
+      - B) Yes, if an independent evaluator observed the play
+      - C) No, because exercises measure only technical controls
+      - D) No; an exercise shows performance on the designed objectives and nothing more
+      answer: D
 - ordinal: 2
   title: Conducting the Exercise
   content_type: reading
@@ -92,57 +132,91 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Facilitate an exercise while maintaining pace and focus.
-  - Manage participant dynamics and psychological safety.
-  - Capture observations without disrupting play.
+  - Deliver injects on schedule while holding the pace the designed objectives need
+  - Maintain a climate in which responders admit mistakes and unknowns without fear of individual blame
+  - Capture observations contemporaneously, each tied to the criterion and the clock time it happened at
   topics:
-  - Facilitation technique.
-  - Pace, escalation and time management.
-  - Psychological safety and blame avoidance.
-  - Observation capture.
-  lab: 'Lab: Facilitate the designed exercise with a small group, deliver injects on schedule, and capture
-    structured observations against your evaluation criteria.'
+  - The facilitator role in pace, focus and neutrality while play is running.
+  - Delivering injects on schedule and unblocking a stalled team without solving for it.
+  - Psychological safety and why individual scoring suppresses the candour an exercise needs.
+  - The observation log holding the criterion, the clock time and what was seen.
+  - Keeping facilitation, observation and solving the scenario in separate hands.
+  lab: >-
+    Lab: Facilitate one play window of the ransomware-lite scenario on the small-enterprise range and keep
+    the observation log the debrief will rely on. Evidence: the clock time each inject was delivered and the
+    target group or workstation the inject named; the artefact the execution inject delivered to the targeted
+    workstation and the clock time of the delivery; every observation recorded with its criterion, clock time
+    and host; the question or inject used to restart one stall. Pass: each inject was recorded at its
+    designed time or its slip was noted; every observation names a criterion from the design; no entry solves
+    the scenario for the participants.
+  lab_range:
+    template: small-enterprise
+    scenario: ransomware-lite
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open the observation log and record the exercise start time.
+    - hosts: [jump-box]
+      action: At the first inject, record the clock time the phishing message is announced and the target
+        group the scenario names for it.
+    - hosts: [jump-box]
+      action: After the simulated execution inject, record the artefact it delivered to the targeted
+        workstation and the clock time of the delivery.
+    - hosts: [jump-box]
+      action: Record each observation with the criterion it belongs to, the clock time and the host it was
+        seen on.
+    - hosts: [jump-box]
+      action: Note one moment where play stalled and record the question or inject that restarted it without
+        solving the scenario.
   refs:
   - nist-sp-800-61r3
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'A facilitator''s primary role during an exercise is to:'
+    - question: >-
+        Two minutes into a ransomware exercise the response team asks the facilitator whether isolating the
+        file server is the right move. What should the facilitator do?
       options:
-      - A) Solve the scenario
-      - B) Maintain pace and surface decisions without leading participants
-      - C) Score individuals
-      - D) Record attendance
-      answer: B
-    - question: 'Psychological safety in an exercise matters because participants must:'
+      - A) Say yes, to keep the exercise moving at pace
+      - B) Say no, so the team makes a mistake to learn from
+      - C) Pause the inject window until the team agrees internally
+      - D) Ask what evidence the decision rests on and record it
+      answer: D
+    - question: >-
+        A responder stays silent about a step they skipped because managers in the room are scoring
+        individuals. Which facilitation failure does this show?
       options:
-      - A) Enjoy themselves
-      - B) Feel able to make and admit mistakes honestly
-      - C) Compete
-      - D) Be evaluated individually
+      - A) The injects ran late, leaving the team short of time to respond
+      - B) Individual evaluation suppressed the candour the exercise needs
+      - C) The scenario was written too realistically
+      - D) The observation log was kept incompletely
       answer: B
-    - question: 'If participants stall, the facilitator should:'
+    - question: >-
+        Play stalls at minute twenty because the team believes it has already finished. Which facilitator
+        action best serves the objectives?
       options:
-      - A) Provide the answer
-      - B) Introduce an inject or question that unblocks without solving it
-      - C) End the exercise
-      - D) Reduce the scope
-      answer: B
-    - question: 'Observations should be recorded:'
+      - A) Declare the exercise closed ahead of schedule
+      - B) Give the team the remaining answers directly
+      - C) Deliver the next inject and let it force the stalled decision
+      - D) Extend the exercise by an unplanned hour to avoid the stalled decision
+      answer: C
+    - question: >-
+        Which observation line can an evaluator mark against a design criterion during play?
       options:
-      - A) From memory afterwards
-      - B) Contemporaneously against defined criteria
-      - C) By participants
-      - D) Only if notable
-      answer: B
-    - question: 'Evaluating individuals rather than the process tends to:'
+      - A) The 14:32 line for ws-01 showing no containment attempt within ten minutes
+      - B) The team seemed confused for a long while
+      - C) Everyone tried hard throughout the session
+      - D) Containment should certainly have been faster
+      answer: A
+    - question: >-
+        A facilitator spends the inject window configuring the firewall for the team. Which part of the role
+        does this cross?
       options:
-      - A) Improve honesty
-      - B) Suppress candid disclosure of failures
-      - C) Speed the exercise
-      - D) Improve metrics
-      answer: B
+      - A) Keeping up the pace of play that the exercise design promised
+      - B) Delivering injects on their schedule
+      - C) The line between facilitating play and solving the scenario
+      - D) Capturing observations against the criteria
+      answer: C
 - ordinal: 3
   title: Technical Response Execution
   content_type: reading
@@ -150,16 +224,42 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Execute technical containment in a controlled environment.
-  - Collect evidence while responding under time pressure.
-  - Balance speed against evidence preservation.
+  - Execute containment on a compromised workstation while the scenario keeps running
+  - Capture volatile evidence before containment changes the state it would record
+  - Justify each response decision as a trade-off between speed and evidence preservation
   topics:
-  - Containment execution.
-  - Evidence collection under pressure.
-  - Tooling readiness.
-  - Decision trade-offs in real time.
-  lab: 'Lab: In the lab environment, execute containment against a simulated compromise while preserving
-    volatile evidence, and record the order of your actions with justification.'
+  - Containing at the firewall versus powering a compromised host off.
+  - The order of volatility and what each capture preserves or loses.
+  - Evidence collection while the scenario keeps running.
+  - Tooling readiness tested before the incident rather than during it.
+  - Recording responder actions so they stay distinguishable from adversary activity.
+  lab: >-
+    Lab: On the small-enterprise range, treat workstation ws-02 as the clean drill host, capture volatile
+    evidence from it, contain it at fw-01 and justify the order of the actions taken. Evidence: the running processes and open
+    network connections collected from ws-02 before any change; the name and position in the rule set of the
+    deny rule added at fw-01; the result of one port 445 connection test from ws-02 to dc-01 after
+    containment; the ordered action list with one sentence of justification each. Pass: volatile state was
+    captured before containment changed it; the port 445 test shows ws-02 no longer reaching the server
+    network; every action taken is recorded and attributable to the responder.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the start time and the tools the response will rely on.
+    - hosts: [jump-box, ws-02]
+      action: From jump-box, collect the running processes and open network connections from ws-02 with the
+        response toolkit the instructor supplies, and record this baseline volatile state before any change
+        is made.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, open the management interface on fw-01, add a deny rule that blocks ws-02 from
+        the server network and record the rule name and its position in the rule set.
+    - hosts: [jump-box, ws-02, dc-01]
+      action: Use the response toolkit from jump-box to run one port 445 connection test on ws-02 towards
+        dc-01, so the connection originates at ws-02, and record whether it fails after the containment
+        rule.
+    - hosts: [jump-box]
+      action: Record the actions in the order they were taken with one sentence of justification for each,
+        noting what evidence each step preserved or lost.
   refs:
   - nist-sp-800-61r3
   - nist-sp-800-86
@@ -167,40 +267,49 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Under time pressure, the order of actions should be guided by:'
+    - question: >-
+        A responder must preserve volatile state and stop ransomware spreading from a workstation at the
+        same time. Which ordering follows the standard rule?
       options:
-      - A) Convenience
-      - B) Volatility of evidence and severity of ongoing harm
-      - C) Tool availability
-      - D) Team preference
+      - A) Power the workstation off first, so nothing else can change
+      - B) Capture the volatile state first, then contain at the firewall
+      - C) Contain first, because ransomware damage outweighs any evidence
+      - D) Wait for the scenario to pause before either action
       answer: B
-    - question: 'Isolating a host at the network level rather than powering it off preserves:'
+    - question: >-
+        The team powers a compromised workstation off instead of isolating it at the firewall. Which
+        response evidence is lost?
       options:
-      - A) Disk evidence only
-      - B) Volatile memory and running state
-      - C) Nothing additional
-      - D) Log files
-      answer: B
-    - question: 'Tooling that is not tested before an incident typically:'
+      - A) The contents of the workstation's disk, which a power cut preserves
+      - B) The rule set held on the firewall
+      - C) The domain accounts on the controller
+      - D) The running processes and open connections in memory
+      answer: D
+    - question: >-
+        A response team meets its first live incident with scripts it has never run before. Which outcome
+        does the module warn about?
       options:
-      - A) Works better under pressure
-      - B) Fails or delays response when first used in anger
-      - C) Requires no access
-      - D) Improves evidence
-      answer: B
-    - question: 'Documenting actions during response is essential because:'
+      - A) The untested tooling delays the response when it fails on first use
+      - B) The tooling works better under incident pressure
+      - C) Untested tooling preserves a better evidence record
+      - D) Tool choice has no effect on the evidence collected
+      answer: A
+    - question: >-
+        Why does a responder record every action taken during containment, as it is taken?
       options:
-      - A) It satisfies audit
-      - B) Responders' own actions must be distinguishable from the attacker's
-      - C) It slows response
-      - D) It replaces logging
-      answer: B
-    - question: 'Choosing speed over evidence preservation is defensible when:'
+      - A) To satisfy the audit team after closure
+      - B) To replace the logging the range already carries out
+      - C) To slow the response down to a reviewable pace
+      - D) So responder actions stay distinguishable from adversary activity
+      answer: D
+    - question: >-
+        A team skips a memory capture to contain a spreading encryption event faster and records the
+        decision. When is this defensible?
       options:
-      - A) Always
-      - B) Ongoing harm outweighs the investigative value, and the decision is recorded
-      - C) Never
-      - D) The tool is slow
+      - A) Never; evidence preservation always outranks containment
+      - B) When ongoing harm outweighs the evidence value and the decision is recorded
+      - C) Whenever the capture tooling is slow to deploy
+      - D) Only when an evaluator approves it during play
       answer: B
 - ordinal: 4
   title: Communication Under Pressure
@@ -209,57 +318,97 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Provide clear status updates during a live incident.
-  - Coordinate across teams and external parties.
-  - Manage information flow and confidentiality.
+  - Write a status update that separates what is known, what was done and what is undecided
+  - Deliver updates on a fixed cadence so stakeholders are not interrupting the response for information
+  - Route incident information by sensitivity so each audience receives what its role needs
   topics:
-  - Status update structure and cadence.
-  - Cross-team coordination.
-  - External and regulatory communication.
-  - Information handling during response.
-  lab: 'Lab: During the exercise, produce three timed status updates at defined intervals and a briefing
-    note for an executive stakeholder, then review them for clarity and accuracy.'
+  - The status update with current understanding, actions taken, next steps and open decisions.
+  - Cadence as fixed intervals that keep stakeholders from interrupting responders.
+  - Coordinating across the response team, IT owners and external parties.
+  - Information handling by need-to-know, sensitivity and what each audience may receive.
+  - Stating uncertainty honestly without overstating confidence.
+  lab: >-
+    Lab: From the facts the range shows, produce timed status updates and one executive briefing note during
+    the exercise window. Evidence: the fact lines recorded from fw-01 and from a port 445 connection test
+    from the unaffected workstation ws-01 to dc-01; three status updates, each stating current understanding, actions taken, next
+    steps and open decisions; the briefing note with every line marked as fact with its source or as
+    interpretation. Pass: each update was produced at its planned interval; no update states more certainty
+    than its fact lines carry; every briefing line marked interpretation is rewritten or flagged before the
+    note is handed over.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, record the start time and open the incident communication log.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, read the containment state on fw-01 as fact lines naming which hosts the deny
+        rules cover and which networks still pass traffic.
+    - hosts: [jump-box, ws-01, dc-01]
+      action: Use the response toolkit from jump-box to run a port 445 connection test on ws-01 towards
+        dc-01, so it originates at the workstation, and record the result as a fact line with the clock
+        time.
+    - hosts: [jump-box]
+      action: Write status update one from the fact lines, stating current understanding, actions taken,
+        next steps and open decisions, and record it.
+    - hosts: [jump-box]
+      action: At the second planned interval, write status update two in the same form, carrying forward
+        what changed since update one, and record it.
+    - hosts: [jump-box]
+      action: At the third planned interval, write status update three in the same form, noting each open
+        decision now settled or still open, and record it.
+    - hosts: [jump-box]
+      action: Mark each line of the draft executive briefing as fact with its source or as interpretation,
+        and rewrite any line that states a guess.
   refs:
   - nist-sp-800-61r3
   quiz:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'A status update during an incident should include:'
+    - question: >-
+        A status update says the incident is fully handled while two workstations are still isolated and
+        unverified. Which fault does this commit?
       options:
-      - A) Only good news
-      - B) Current understanding, actions taken, next steps and open decisions
-      - C) Technical logs
-      - D) Attribution
-      answer: B
-    - question: 'Regular update cadence is valuable because it:'
+      - A) It arrives too early in the reporting cadence
+      - B) It shares too much technical detail with executives
+      - C) It overstates certainty, so decisions rest on a wrong basis
+      - D) It omits the open decisions from the update
+      answer: C
+    - question: >-
+        Responders keep stopping work to answer calls from managers asking for progress. Which established
+        practice removes this?
       options:
-      - A) Fills time
-      - B) Prevents stakeholders interrupting responders for information
-      - C) Improves detection
-      - D) Reduces documentation
-      answer: B
-    - question: 'Incident information should be shared:'
+      - A) A fixed update cadence the stakeholders can rely on
+      - B) A longer scenario timeline with more injects
+      - C) Silence towards everyone until the incident closes
+      - D) Answering each caller with the full technical logs the response holds
+      answer: A
+    - question: >-
+        A reporter asks about an ongoing incident, and the responder holds verified facts, partial facts and
+        speculation. What may be shared?
       options:
-      - A) Broadly to maximise help
-      - B) On a need-to-know basis appropriate to the sensitivity
-      - C) Publicly
-      - D) Only after closure
-      answer: B
-    - question: 'Conflicting information between teams should be:'
+      - A) Everything, to maximise the outside help offered
+      - B) Only the speculation, to avoid committing publicly
+      - C) Nothing at all, until the incident is closed
+      - D) The verified facts only, on the need-to-know basis the sensitivity requires
+      answer: D
+    - question: >-
+        Two teams report different counts of encrypted files. What should happen before any decision relies
+        on the number?
       options:
-      - A) Resolved silently
-      - B) Surfaced explicitly and reconciled before decisions rely on it
-      - C) Averaged
-      - D) Ignored
+      - A) The two counts are averaged to a middle figure
+      - B) The conflict is surfaced explicitly and reconciled
+      - C) The lower count is used, to stay on the safe side
+      - D) The decision waits until the post-exercise debrief
       answer: B
-    - question: 'Overstating certainty in an update risks:'
+    - question: >-
+        Which line belongs in a status update written at minute thirty of an incident?
       options:
-      - A) Faster decisions
-      - B) Decisions being made on an incorrect basis
-      - C) Better morale
-      - D) Less documentation
-      answer: B
+      - A) The adversary is certainly a known ransomware group
+      - B) Everything will be fully restored by tonight
+      - C) Contained so far is one workstation isolated, while dc-01 remains undecided
+      - D) A verbatim copy of the raw firewall log
+      answer: C
 - ordinal: 5
   title: Evaluation and Debrief
   content_type: reading
@@ -267,57 +416,91 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Conduct a structured hot wash immediately after the exercise.
-  - Evaluate performance against the defined criteria.
-  - Separate exercise artefacts from real findings.
+  - Run a structured hot wash immediately after play while recollection is fresh
+  - Score each observation against the criteria fixed at design, citing the observation that supports it
+  - Separate exercise artefacts from real findings before the report leaves the room
   topics:
-  - Hot wash structure and timing.
-  - Evaluation against criteria.
-  - Participant feedback capture.
-  - Distinguishing exercise from reality.
-  lab: 'Lab: Run a hot wash immediately after the exercise, capture what went well and what did not against
-    your criteria, and produce a draft findings list.'
+  - The hot wash in structure, timing and holding it while recollection is fresh.
+  - Marking observations against the design criteria rather than general impressions.
+  - Recording what went well, with the evidence that shows it is worth keeping.
+  - Exercise artefacts versus real findings, and why the label matters.
+  - The draft findings list an evaluator hands to improvement planning.
+  lab: >-
+    Lab: Run the hot wash on the logs the earlier modules produced and separate exercise artefacts from real
+    findings. Evidence: each observation marked met or not met against its design criterion, with the line
+    that justifies the mark; the list of artefacts the ransomware-lite scenario left on ws-02 and in the
+    range log; the real
+    findings, each with the criterion it failed; one practice that went well with the evidence that shows it
+    is worth preserving. Pass: every observation was marked against a criterion rather than an impression; no
+    exercise artefact appears in the findings list unmarked; the findings list is handed on in draft form for
+    improvement planning.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open the observation and inject logs from the earlier modules and
+        record the hot wash start time.
+    - hosts: [jump-box]
+      action: Mark each observation met or not met against its design criterion, and record the observation
+        line that justifies each mark.
+    - hosts: [jump-box, ws-02]
+      action: From jump-box, use the response toolkit to list the dropper artefact the scenario delivered to
+        ws-02 and the bad.example query records in the range log, and record each as exercise material.
+    - hosts: [jump-box]
+      action: Separate the real findings from the exercise artefacts and record each real finding with the
+        criterion it failed.
+    - hosts: [jump-box]
+      action: Record one practice that went well and the evidence that shows it is worth preserving and
+        spreading.
   refs:
   - nist-sp-800-61r3
   quiz:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'A hot wash should be held:'
+    - question: >-
+        An organisation schedules its debrief five days after the exercise so everyone can calm down first.
+        What does the module predict?
       options:
-      - A) A week later
-      - B) Immediately after the exercise while recollection is fresh
-      - C) Before the exercise
-      - D) Only if problems occurred
-      answer: B
-    - question: 'Evaluation should be made against:'
+      - A) Recollection fades and the hot wash loses the detail the findings need
+      - B) Calmer participants mark more honestly, so the delay helps
+      - C) Findings improve because the written logs replace memory
+      - D) The delay changes nothing an evaluator could observe
+      answer: A
+    - question: >-
+        An evaluator writes that the team generally responded well. Why does this fail the marking
+        standard?
       options:
-      - A) General impressions
-      - B) The criteria defined during design
-      - C) Participant seniority
-      - D) Time taken alone
-      answer: B
-    - question: 'Exercise findings must be clearly marked as such because:'
+      - A) It praises the team far too strongly
+      - B) It was written after the hot wash had closed
+      - C) It names no individual responder by account
+      - D) It marks an impression instead of an observation against a criterion
+      answer: D
+    - question: >-
+        Six months later, an analyst reading the report treats the staged encryption of ws-03 as a live
+        incident. Which debrief step prevents this?
       options:
-      - A) They are less important
-      - B) Simulated artefacts must never be mistaken for real incidents later
-      - C) They are confidential
-      - D) They expire
+      - A) Holding the hot wash within the hour
+      - B) Marking every exercise artefact as simulated in the report
+      - C) Deleting every scenario artefact from the range before the exercise closes
+      - D) Restricting the report to the instructors alone
       answer: B
-    - question: 'Capturing what went well is important because it:'
+    - question: >-
+        Why does a debrief record what went well, together with the evidence for it?
       options:
-      - A) Improves morale only
-      - B) Identifies practices worth preserving and spreading
-      - C) Balances the report
-      - D) Satisfies participants
-      answer: B
-    - question: 'A hot wash should focus on:'
+      - A) Successful practices are named so they are preserved and reused
+      - B) Praise keeps participants content for the next exercise
+      - C) Good news belongs in the executive summary only
+      - D) A balanced report conceals which of the design criteria were actually missed
+      answer: A
+    - question: >-
+        A hot wash turns into a review of one responder's tool choices. Where should the discussion stay?
       options:
-      - A) Individual performance
-      - B) Process, information flow and decision quality
-      - C) Tool selection
-      - D) Scenario realism
-      answer: B
+      - A) On the tool vendor's published documentation
+      - B) On that responder's individual score
+      - C) On process, information flow and decision quality
+      - D) On how realistic the scenario turned out
+      answer: C
 - ordinal: 6
   title: Improvement Planning
   content_type: reading
@@ -325,16 +508,41 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Convert exercise findings into owned improvement actions.
-  - Prioritise improvements by risk reduction.
-  - Verify that improvements were effective.
+  - Convert each exercise finding into an owned action with a target date and a verification method
+  - Rank improvement actions by the risk they remove relative to the effort they cost
+  - Verify an improvement by observing the changed behaviour in a later exercise, not by reading the ticket
   topics:
-  - Finding to action conversion.
-  - Prioritisation and sequencing.
-  - Ownership and tracking.
-  - Verification through re-exercise.
-  lab: 'Lab: Convert your exercise findings into a prioritised improvement plan with named owners, target
-    dates and the verification method for each action.'
+  - Converting a finding into an action with an owner, target date and verification method.
+  - Prioritising actions by risk reduction relative to the effort they cost.
+  - Tracking ownership so actions do not lapse after the report is filed.
+  - Recurring findings as evidence of a systemic gap earlier actions missed.
+  - The re-exercise observing the changed behaviour an accepted action owes.
+  lab: >-
+    Lab: Convert the hot wash findings into a prioritised improvement plan and design the re-exercise that
+    will verify it. Evidence: each finding converted into an action with its owner, target date and
+    verification method; the actions ranked by risk reduction relative to effort, with one sentence of
+    reason for the order; the range observation that would show the top action working; the objective and
+    criterion the verification re-exercise re-tests. Pass: every action names an owner and a target date;
+    the ranking states why each action sits where it does; the re-exercise re-tests the objective the top
+    action came from.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open the draft findings list and record the improvement planning
+        start time.
+    - hosts: [jump-box]
+      action: Convert each finding into an action and record the owner, the target date and the verification
+        method beside it.
+    - hosts: [jump-box]
+      action: Rank the actions by risk reduction relative to effort and record one sentence of reason for
+        the order.
+    - hosts: [fw-01, ws-01]
+      action: State the range observation that would show the top action working, such as a fw-01 rule or a
+        changed result from ws-01, and record it.
+    - hosts: [jump-box]
+      action: Design the verification re-exercise and record the objective it re-tests and the criterion the
+        observer will mark.
   refs:
   - nist-sp-800-61r3
   - nist-cswp-29
@@ -342,38 +550,48 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'An improvement action should always specify:'
+    - question: >-
+        A finding says that containment was slow. Which conversion can an owner act on and a tracker
+        verify?
       options:
-      - A) The finding only
-      - B) Owner, target date and how completion will be verified
-      - C) The cost
-      - D) The exercise date
-      answer: B
-    - question: 'Prioritisation of improvements should be based on:'
+      - A) Containment should be faster next time
+      - B) Containment was discussed at the hot wash
+      - C) Everyone agrees containment matters
+      - D) Isolation drill, owned by the response lead and verified by re-exercise
+      answer: D
+    - question: >-
+        Two actions cost about the same: one closes the gap that let encryption spread; one tidies a
+        report template. Which ranks first?
       options:
-      - A) Ease of implementation
-      - B) Expected risk reduction relative to effort
-      - C) Order discovered
-      - D) Participant preference
-      answer: B
-    - question: 'The most reliable verification that a process improvement worked is:'
+      - A) The template, because small actions always rank first
+      - B) Either action, because cost alone decides the order
+      - C) The encryption gap, because it removes the larger risk for equal effort
+      - D) The template, because reports are audited each year
+      answer: C
+    - question: >-
+        An improvement action is marked complete because its ticket is closed and the owner confirms it.
+        What is missing?
       options:
-      - A) Documentation update
-      - B) Re-exercising and observing the improved behaviour
-      - C) Owner confirmation
-      - D) Ticket closure
+      - A) A second owner to countersign the closure
+      - B) Observation of the changed behaviour in a later exercise
+      - C) A longer target date for the work
+      - D) An executive sign-off on the ticket
       answer: B
-    - question: 'Improvement plans commonly fail because:'
+    - question: >-
+        The same containment delay appears in three consecutive exercise reports. What does the
+        recurrence indicate?
       options:
-      - A) They are too detailed
-      - B) Actions lack ownership and are not tracked to completion
-      - C) Exercises are unrealistic
-      - D) Findings are too few
-      answer: B
-    - question: 'A finding that recurs across multiple exercises indicates:'
+      - A) The scenario has been written to repeat itself too closely between exercises
+      - B) The evaluators are marking inconsistently
+      - C) The exercises are working as designed
+      - D) A systemic issue the earlier actions did not address
+      answer: D
+    - question: >-
+        Six weeks after the report, two of five actions have no recorded owner. What has the plan already
+        failed at?
       options:
-      - A) Good consistency
-      - B) A systemic issue that previous actions did not address
-      - C) Poor scenario design
-      - D) Evaluator error
-      answer: B
+      - A) Ownership and tracking, the stage where most plans lapse
+      - B) The realism of the scenario the exercise used to test the response
+      - C) The hot wash structure
+      - D) Risk ranking
+      answer: A
