@@ -1,0 +1,196 @@
+# C401 - Professional Ethics & Legal Frameworks - STAFF ONLY. Not for Students.
+# Instructor pack for content/courses/c401-professional-ethics-legal-frameworks.yaml.
+# scripts/load_content.py never loads this directory, and the ingester refuses
+# audience staff_only, so this material can never reach a Student.
+
+course_code: C401
+audience: staff_only
+overview: 'Professional Ethics & Legal Frameworks is a lab course for first-year cyber-operator Students:
+  six 60-minute modules on the medium-enterprise range, each split 15 minutes teach, 35 minutes lab, 10
+  minutes quiz, passed at 70 percent. The modules build from the capability/authorisation/permission
+  distinction through authorisation records, personal data and coordinated disclosure to governance
+  oversight and decisions under pressure; every lab is defensive and observational on that one range, so
+  nothing in them attacks or modifies range systems. Each week Students hand in their lab evidence, the
+  recorded test results, mappings, classifications and drafted memos, disclosure records and escalations,
+  plus the quiz.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (three objectives, the capability/authorisation/permission triple on the board), 35 lab
+    (connectivity tests from ws01 judged against the memo, 25 in pairs, 10 debrief), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (unauthorised access and modification, authorisation as scope, currency and written
+    evidence), 35 lab (map fw01 access paths to authorisation records, 25 in pairs, 10 debrief), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (personal data, purpose limitation, minimisation), 35 lab (classify person-identifying
+    fields in real siem01 records, 25 in pairs, 10 debrief), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (coordinated disclosure stages and timelines), 35 lab (capture service banners, draft the
+    disclosure record, 25 in pairs, 10 debrief), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (authorisation structures, records, independent review), 35 lab (trace one management-network
+    privilege to its rule and its audit record, 25 in pairs, 10 debrief), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (pressure, pre-agreed authority, the four-part escalation), 35 lab (one time-pressured
+    suspected compromise of ws01, 25 in pairs, 10 debrief), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (a capability without an authorisation), M01-O01: The shared account works, so the technician
+    holds a capability; nothing authorises reading payroll with it. A is the trap: technical success is not
+    permission. C overstates by merging ethics with law; D confuses non-disclosure with permissibility.
+    Q2 C (the affected third parties), M01-O02: The duty-of-care test weighs everyone the interruption
+    reaches, including customers outside the client. A and B are too narrow; D mistakes the service owner
+    for the harmed party. Q3 A (declare before accepting), M01-O03: Declaration lets the decision-maker
+    manage the conflict instead of discovering it later. B hides the conflict, C trusts an objectivity the
+    conflict removes, D discloses too late to change the decision. Q4 D (stop and escalate to the
+    authoriser), M01-O03: The obligation runs to the person who authorised the work. A and B weigh
+    convenience against scope; C records without alerting anyone who can act. Q5 B (knowledge is not
+    permission), M01-O01: How widely a capability is known says nothing about permission to use it. A, C
+    and D each assert a rule the module never states.'
+- module: 2
+  notes: 'Q1 C (the scope of the granted authorisation), M02-O01: Lawfulness turns on what the contract
+    authorises, not on whether the credentials worked (A), the route the access took (B) or the value of
+    the data (D). Q2 A (enrolment is the lawful basis), M02-O02: The identical scan differs only in the
+    authorisation behind it. B and C deny that authorisation matters; D invents a publication test. Q3 B
+    (the same access rules decide), M02-O03: Dual-use tooling changes nothing about the offence; the statute
+    asks whether the access was authorised. A invents a status rule, C invents vendor liability, D invents
+    impunity. Q4 D (which jurisdictions'' law can reach the conduct), M02-O01: Jurisdiction is resolved
+    first, before any packet is sent. A, B and C are real details that never decide reach. Q5 C (the signed
+    authorisation record), M02-O02: Scope, currency and a signature in one document resolve the dispute. A
+    and B are recollections or records made after the fact; D records billing, not permission.'
+- module: 3
+  notes: 'Q1 D (data minimisation), M03-O02: Full keystroke capture collects far beyond the stated malware
+    purpose. A, B and C name security properties of the records, not limits on what may be collected.
+    Q2 B (purpose limitation), M03-O02: Reuse for performance management falls outside the stated collection
+    purpose. A misreads minimisation as a size rule, C checks the wrong clock, D names a notice duty the
+    reuse question does not turn on. Q3 C (file-share access for the staff who handle sensitive data), M03-O03:
+    The scope matches the stated need and excludes everything else. A and B exceed it; D abandons the need
+    entirely. Q4 A (personal data), M03-O01: The record ties network activity to one named machine and so
+    to one person. B invents a full-name requirement, C and D deny a linkage the metadata carries. Q5 B
+    (breach liability outliving the purpose), M03-O03: Retained personal data stays a liability long after
+    the investigations close. A, C and D weigh cost or convenience, not liability.'
+- module: 4
+  notes: 'Q1 B (the users), M04-O01: The window exists so that a fix can exist before detail is public. A,
+    C and D weigh the parties'' interests against the users'' need for a fix. Q2 D (escalate through a
+    coordinating body), M04-O03: A coordinating body restarts progress without arming attackers. A hands
+    attackers the detail, B and C abandon the users. Q3 A (attackers reproducing the flaw), M04-O01: Pre-fix
+    publication hands a working recipe to everyone holding unpatched systems. B, C and D name harms the
+    publication does not cause or trivial ones. Q4 C (research intent is not authorisation), M04-O03:
+    Testing a system the researcher does not own needs the owner''s permission; intent changes neither the
+    access nor its lawfulness. A and B confuse justification with permission, D invents a data-change test.
+    Q5 A (version and trigger conditions, no working exploit), M04-O02: That line lets the vendor reproduce
+    and fix without arming attackers. B is public pressure, C is too vague to act on, D is the detail
+    publication waits to avoid.'
+- module: 5
+  notes: 'Q1 C (the authorising decision-maker), M05-O01: The signed order places accountability with
+    whoever authorised the operation; the operator answers for execution within it. A shifts everything
+    downward, B and D name roles that assure or supply, not authorise. Q2 B (demonstrating lawful conduct
+    later), M05-O02: Records exist so independent reviewers can show the operation stayed lawful and within
+    scope. A, C and D assign clerical or deterrent purposes the module never claims. Q3 D (collection wider
+    than the stated aim), M05-O03: The proportionality test asks whether the collection is no more intrusive
+    than the aim requires. A and C assert facts the case does not establish, B turns proportionality into a
+    prohibition. Q4 A (assurance outside the team''s judgement), M05-O01: Independent review adds assurance
+    that does not depend on the operating team marking its own work. B and C are speed and ceremony, D
+    removes a safeguard. Q5 B (the firewall decision records from the operation window), M05-O02: The decision
+    records show what actually flowed while the operation ran, which is the conduct a reviewer must
+    reconstruct; every other record states or retells rather than shows. A states permission, not conduct;
+    C is the operator''s self-report written after the fact; D describes the tooling, not its use.'
+- module: 6
+  notes: 'Q1 A (normalisation of deviance), M06-O01: Each skipped check succeeded, so the deviation became
+    the normal way of working. B invents a recorded acceptance, C and D name practices the pattern replaces.
+    Q2 C (urgency raises the pressure to exceed scope), M06-O01: The unreachable authority is exactly when
+    pre-agreed emergency powers matter. A and B dissolve the limits, D moves accountability without deciding
+    anything. Q3 B (the timed fact with one recommendation), M06-O03: It names the account, the action and
+    the single decision to take. A and D state worry without evidence, C buries the specifics in
+    generalities. Q4 D (decline, escalate and record), M06-O02: The speaking-up route exists for precisely
+    this instruction. A and B comply with an unlawful order, C declines without alerting anyone who can act
+    and without creating a record. Q5 B (fast, lawful containment), M06-O02: Deciding the limits before the
+    incident removes improvisation under pressure. A, C and D treat the standing authority as a way around
+    recording, accountability or review.'
+lab_setup:
+- module: 1
+  setup: Provision the medium-enterprise range and confirm ws01 can reach dc01 and fs01, that web01 and
+    mail01 answer from the corporate network, and that the fw01 corp-to-servers and corp-to-dmz rules are
+    in place. Write the authorisation memo Students will use; it names dc01 and fs01 as in scope, web01 as
+    not covered, mail01 as outside scope, and states the permitted test window.
+- module: 2
+  setup: Provision the medium-enterprise range. Assemble the authorisation record pack (the memo, the
+    change ticket that scheduled it and the fw01 rule export). Leave one access path deliberately without a
+    covering record (the mail service) so the mapping exercise has a finding.
+- module: 3
+  setup: Provision the medium-enterprise range and confirm the logging pipeline ships workstation and
+    firewall records to siem01, with enough records retained for the lab hour. Distribute the card stating
+    the security purpose the collection serves (detecting intrusion attempts against servers). Verify the
+    analyst account logs on.
+- module: 4
+  setup: Provision the medium-enterprise range and confirm the web service on web01 and the mail service on
+    mail01 both present version detail in their banners. Confirm ws01 reaches both through the fw01
+    corp-to-dmz rule, and note the values Students should find (the rule is corp-to-dmz allowing ports 80,
+    443, 25, 587, 143 and 993, so web01 answers on 80 and 443 and mail01 on 25, 587, 143 and 993). Print the
+    blank disclosure record template with its five sections (vendor contact route, reproduction conditions,
+    fix timeline, escalation path, publication conditions).
+- module: 5
+  setup: Provision the medium-enterprise range and confirm the fw01 mgmt-to-all rule and the rule shipping
+    firewall decisions to siem01 are both present, and that fw01 records arrive in siem01 during the lab
+    hour. Print the blank accountability-trail worksheet (rule, decision record, operator identity, verdict).
+- module: 6
+  setup: Provision the medium-enterprise range. Inject the ws01 alert so it appears in siem01 shortly after
+    the lab starts. Write the authorisation memo for the exercise; containment inside the corporate network
+    is pre-authorised, any action reaching beyond it needs new authority. Print the escalation note format
+    (concern, evidence, risk, decision requested) and a stopwatch or visible clock.
+common_faults:
+- module: 1
+  fault: Students treat a working account or connection as permission, marking every reachable service
+    'inside scope'.
+  remedy: Drill the triple (capability, authorisation, ethical permission) on the shared payroll account
+    before the lab, then have Students answer the three questions separately for each tested service.
+- module: 1
+  fault: The duty-of-care test is applied only to the client, and third parties who rely on shared services
+    go unlisted.
+  remedy: Put the shared-service interruption on the board and build the affected-party list with the class
+    before Students run their own tests.
+- module: 2
+  fault: Students read successful credentials or a reachable port as authorisation.
+  remedy: Run the contractor file-share case first and ask 'which document decides this?', pointing at
+    scope, currency and written evidence.
+- module: 2
+  fault: Students treat possession of a dual-use tool as the offence, or as a defence.
+  remedy: Contrast the daily diagnostic tool with the offence elements; ask what the statute requires
+    (authorised access), not what the tool is.
+- module: 3
+  fault: Students classify technical fields (addresses, ports, hostnames) as not personal data.
+  remedy: Use the firewall-record example and ask two questions in order; can the record be tied to one
+    named machine, and can that machine be tied to one person?
+- module: 3
+  fault: Students answer minimisation with 'collect nothing', abandoning the security purpose.
+  remedy: Restate the purpose card and ask what that purpose needs; proportionality, not abolition.
+- module: 4
+  fault: Students read the 90-day window as the vendor's property, or publish the moment the vendor stalls.
+  remedy: Walk the users-need-a-fix rationale first, then the unresponsive-vendor escalation path, in that
+    order.
+- module: 4
+  fault: Draft reports include working exploit detail 'to be convincing'.
+  remedy: Compare the three report lines side by side; insist on reproduction conditions and trigger
+    circumstances without attack code.
+- module: 5
+  fault: Students name the operator as solely accountable for an authorised operation.
+  remedy: Use the signed-order structure and ask two questions separately; who decided, and who executed?
+- module: 5
+  fault: Students judge the accountability trail complete because records exist, without asking what each
+    record proves.
+  remedy: For each collected record ask 'what does this prove?'; the trail is complete only if it shows who
+    authorised the privilege and what was decided, not merely that traffic flowed.
+- module: 6
+  fault: Students treat urgency as suspending authorisation, recommending the fastest action whatever the
+    memo allows.
+  remedy: Run the midnight example and ask what changes when the emergency powers were agreed a month
+    earlier; urgency raises pressure, it does not create authority.
+- module: 6
+  fault: Escalations state conclusions ('looks compromised, act now') with no timestamps or cited records.
+  remedy: Have Students rewrite one line of their own escalation into the four-part form, marking each line
+    as fact with a timestamp or as interpretation.
