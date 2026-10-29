@@ -1,0 +1,198 @@
+course_code: C539
+audience: staff_only
+overview: 'C2 Infrastructure & Operational Security is an advanced self-paced course of six 50-minute
+  modules (300 minutes, 5 hours) on the red-team range. Each module follows the same split: 10 minutes
+  of reading, 25 minutes of range lab, 15 minutes of quiz and review. Every module teaches three
+  objectives, works one inventory-style lab on the red-team template, and ends with a five-item quiz
+  passed at 70 percent. The course is defensive in framing: the Student inventories, traces and judges
+  infrastructure that already exists on the range, and never builds payloads or tradecraft.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 reading, 25 lab (component inventory on a-teamserver, a-redir01, a-redir02, a-payload, fw01),
+    15 quiz and review'
+- module: 2
+  minutes: 50
+  plan: '10 reading, 25 lab (redirected-path trace through a-redir01 and a-redir02 to a-teamserver,
+    plus fw01 rule review and certificate check), 15 quiz and review'
+- module: 3
+  minutes: 50
+  plan: '10 reading, 25 lab (zone records on t-dc01 and transfer test on t-dns01, staging review on
+    a-payload and a-teamserver, fw01 rule check), 15 quiz and review'
+- module: 4
+  minutes: 50
+  plan: '10 reading, 25 lab (profile settings on a-teamserver, two-minute capture from a-kali01, header
+    comparison on a-redir01), 15 quiz and review'
+- module: 5
+  minutes: 50
+  plan: '10 reading, 25 lab (blue-side logs on t-web01, t-dns01, t-dc01 and fw01, paired to the actions
+    that produced them), 15 quiz and review'
+- module: 6
+  minutes: 50
+  plan: '10 reading, 25 lab (burn-exposure catalogue across a-teamserver, a-redir01, a-redir02, a-payload
+    and fw01, then rotation order), 15 quiz and review'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (team server), M01-O01: The team server holds the listener operator consoles connect to;
+    the redirector only relays (not A) and staging only serves files (not C). Q2 D, M01-O02: Direct
+    reachability from target VLANs would let a defender pivot from a compromised target host straight to
+    operator tooling; speed (C) and licensing (B) are not security reasons. Q3 A (staging host), M01-O01:
+    A staging host serves files to a narrow set of fetchers; a redirector relays live channel traffic,
+    not file retrieval. Q4 C (attacker_infra), M01-O03: On the red-team template both redirectors sit in
+    attacker_infra (10.70.3.0/24); target_db and target_corp are target networks. Q5 B, M01-O02: One host
+    doing both staging and channel work ties the two roles to one address, so burning one burns both; A,
+    C and D all describe good separation.'
+- module: 2
+  notes: 'Q1 C, M02-O01: The whole point of a redirector is that target-facing connections terminate on
+    the redirector address, so the team server address never appears on target networks; double
+    encryption (A) and throughput (D) are not the benefit. Q2 A, M02-O05: Defenders still see redirected
+    traffic, but connection logs name the redirector, not the team server; flow records do not vanish
+    (B). Q3 D (a-redir02), M02-O01: a-redir02 is the DNS redirector on the template; t-dns01 is the
+    target''s own resolver and a-redir01 is the HTTPS one. Q4 B, M02-O02: Only redirectors should be
+    reachable from target segments; a direct route to the team server segment undoes the separation the
+    design exists for. Q5 C, M02-O01: The certificate subject and issuing authority describe the service
+    the channel imitates; credentials and hardware details are not channel properties.'
+- module: 3
+  notes: 'Q1 A (address record), M03-O01: The A record maps a name to the serving address; MX is mail,
+    TXT is annotations, NS is delegation. Q2 C, M03-O02: A new registration that a few hosts resolved
+    once and never again is the classic shape analysts flag; registration length (A) and the registrar
+    (B) are weak signals on their own. Q3 D (a-payload), M03-O03: a-payload is the staging host;
+    t-web01 and t-fs01 are target servers and a-redir01 is a relay. Q4 B, M03-O01: A successful zone
+    transfer hands out the whole zone map to any host that asks, which is why defenders close it; the
+    finding is the misconfiguration, not the record count. Q5 A, M03-O02: Passive DNS surfaces address
+    reuse, so a domain that lands on an address with history stands out; scheduled renewals and routine
+    changes leave no such trace.'
+- module: 4
+  notes: 'Q1 D, M04-O01: A fixed interval with no jitter produces a metronome pattern that flow records
+    expose by simple interval matching; jitter exists precisely to break this. Q2 B (HTTPS), M04-O02:
+    HTTPS imitating a common browser blends with web traffic; DNS, SMB and ICMP each have distinctive
+    shapes an analyst can separate. Q3 C, M04-O01: Jitter spreads callbacks across a distribution, so a
+    defender can no longer match one exact interval and must hunt on looser shapes. Q4 A (user agent),
+    M04-O01: The declared user agent is what the redirector claims to serve and what appears in logs;
+    intervals and keys are not logged as application identity. Q5 D, M04-O03: Defaults match published
+    signatures and known shapes, so they are the first thing defenders test for; nothing in the other
+    options follows from using defaults.'
+- module: 5
+  notes: 'Q1 B (resolver query log), M05-O01: Name resolution is logged before any connection follows,
+    so the resolver log sees the lookup first; web and authentication logs only record later steps.
+    Q2 A, M05-O02: A test from a target workstation puts the infrastructure URL straight into the
+    target''s own web access log, attributed to a target host; redirectors not logging (B) is wrong and
+    irrelevant. Q3 D, M05-O02: 1440 connections a day is one every minute, the signature of an automated
+    channel; backups and patch cycles are not that regular per-connection. Q4 C, M05-O04: Resolver and
+    firewall flow records are independent sources that cover the same interval, which is what
+    corroboration requires; a roster and a calendar are not telemetry. Q5 B, M05-O03: The plan must
+    assume every connection is logged and reviewed, because on a monitored range it is; A denies
+    observability, and D moves testing onto target hosts, which is worse.'
+- module: 6
+  notes: 'Q1 C (burned), M06-O01: When defenders sinkhole the domain, the name no longer reaches the
+    redirector, which is the definition of burned infrastructure; redundancy (D) means a spare exists,
+    which this does not. Q2 D, M06-O03: A published rule naming the team server address is exposure of
+    core infrastructure and demands emergency rotation; scheduled reviews and expiring certificates are
+    planned work. Q3 A, M06-O02: Bring the replacement up and test it while the old redirector still
+    serves, then retire it; rebuilding everything at once (B) drops every channel, and reusing a burned
+    domain (C) imports the burn. Q4 B, M06-O04: Spreading across providers and ranges means a single
+    takedown or block removes one channel, not all of them; cost (A) and profiling (C) are backwards.
+    Q5 C, M06-O05: A dated inventory of every domain, address and host, with its final state, is what an
+    after-action review can audit; personal notes and screenshots are incomplete and invoices miss the
+    infrastructure state.'
+lab_setup:
+- module: 1
+  setup: 'Revert the red-team range to its baseline and confirm a-kali01, a-teamserver, a-redir01,
+    a-redir02, a-payload and fw01 are reachable from the Student workstation. Values Students should
+    find: the cobalt_strike_sim and sliver services with their listening ports on a-teamserver; the
+    nginx_redirect and socat listeners on a-redir01 and the DNS listener on a-redir02; the nginx and
+    python_http_server services and the staged file directories on a-payload; the fw01 rules connecting
+    attacker_infra (10.70.3.0/24) to the target VLANs.'
+- module: 2
+  setup: 'Same baseline as module 1; additionally confirm a-kali01 can reach the HTTPS listener on
+    a-redir01. Values Students should find: the backend address and port in the a-redir01 web
+    configuration (the a-teamserver listener); the zones and upstream resolver configured on a-redir02;
+    the listener addresses and ports on a-teamserver; the fw01 rules permitting traffic into attacker_infra;
+    the certificate subject and issuer the a-redir01 HTTPS listener presents during a handshake.'
+- module: 3
+  setup: 'Revert the range to baseline and confirm a-kali01 can reach t-dc01 and t-dns01 and that
+    a-payload serves its staged directories. Values Students should find: the records t-dc01 holds for
+    the targetcorp.local zone as the domain''s AD DNS; that the external DNS server t-dns01 permits a
+    zone transfer, and which zone and records it exposes; the directories exposed by the nginx and
+    python_http_server services and the staged files under them on a-payload; any profile on
+    a-teamserver that references a staging host; the fw01 rules that would allow target networks to
+    reach a-payload.'
+- module: 4
+  setup: 'Revert the range to baseline and confirm a-kali01 can reach both the a-teamserver listeners
+    and a-redir01, and that packet capture tooling is installed on a-kali01. Values Students should find:
+    the sleep interval, jitter and transport protocol of each listener profile on a-teamserver; the
+    profile whose traffic traverses a-redir01 and its backend listener; the observed callback interval in
+    a two-minute capture from a-kali01; the HTTP headers forwarded by a-redir01 set against the profile''s
+    declared user agent.'
+- module: 5
+  setup: 'Revert the range to baseline and generate a short window of realistic activity first (a few
+    external source requests against t-web01, resolver queries on t-dns01, logged firewall traffic, one
+    off-range authentication attempt on t-dc01), so the blue-side logs have entries to read. Values
+    Students should find: the access log lines on t-web01 whose source lies outside target networks; the
+    resolver entries on t-dns01 naming external domains; the fw01 rules that log attacker_infra traffic
+    and their counts; the t-dc01 authentication event with a non-target source address.'
+- module: 6
+  setup: 'Revert the range to baseline and confirm every attacker_infra host is reachable. Values
+    Students should find: the listener list on a-teamserver with the redirector each depends on; the
+    access logs, service configurations and certificates held on a-redir01 and a-redir02; the fw01 rules
+    naming a-redir01; the staged content on a-payload and the listeners and profiles that reference it.
+    No replacement hosts are provisioned: the rotation order is drafted on paper from the catalogue the
+    Student records.'
+common_faults:
+- module: 1
+  fault: Students record service names but not listening ports, or treat the staging host as part of the
+    target network because it serves files.
+  remedy: 'Have them re-run the inventory with a two-column table (component, exposure) and ask of every
+    row "which VLAN is this in, and who can reach it?" before the quiz.'
+- module: 1
+  fault: The placement judgement becomes generic praise ("correctly placed") with no reason tied to the
+    recorded evidence.
+  remedy: 'Require each one-sentence judgement to cite one recorded item, such as a port or a fw01 rule,
+    before it counts as a pass.'
+- module: 2
+  fault: Students read the redirector configuration but stop before confirming which listener the backend
+    address belongs to, so the trace has a gap in the middle.
+  remedy: 'Make them draw the three-hop path (target to redirector to team server) with an address and
+    port written on every arrow before the judgement step.'
+- module: 2
+  fault: The fw01 rule review records rules but never flags a direct route into the team server segment.
+  remedy: 'Point at the recorded rules and ask "which of these terminates on a redirector, and which
+    terminates on a-teamserver itself?"'
+- module: 3
+  fault: Students treat the successful zone transfer as trivia rather than as the module''s central
+    finding.
+  remedy: 'Re-run the transfer with them and ask what a defender loses when the whole zone map is
+    enumerable, then tie that to the passive DNS topic.'
+- module: 3
+  fault: The staged path is recorded as a single host, missing which components reference the staged
+    content.
+  remedy: 'Ask them to name the fetcher for one staged file and trace it through the recorded profile and
+    fw01 rules before moving on.'
+- module: 4
+  fault: Students copy the configured sleep interval from the profile and skip the capture, so the
+    observed and configured timings are never compared.
+  remedy: 'Insist on the two-minute capture before the judgement step; the pass item is the comparison,
+    not the configuration read.'
+- module: 4
+  fault: The channel is classified from the profile name alone, with no evidence quoted from the capture.
+  remedy: 'Require the one-sentence classification to cite something observed, such as the port or
+    protocol seen in the capture.'
+- module: 5
+  fault: Students read one log source and generalise about "what blue sees" from it alone.
+  remedy: 'Send them back to the remaining sources; the module''s point is corroboration across resolver,
+    web, endpoint and firewall logs.'
+- module: 5
+  fault: Recorded log lines are listed without the infrastructure action that produced them, so the
+    mapping objective is never exercised.
+  remedy: 'Enforce the two-column pairing (log line, producing action) before the ranking step; unpaired
+    lines fail the pass criteria.'
+- module: 6
+  fault: The rotation order is drafted from memory of the modules instead of from the recorded catalogue,
+    so it omits the certificates or the fw01 rules.
+  remedy: 'Check the draft against their own four recorded items; every component they recorded must
+    appear in the order.'
+- module: 6
+  fault: Emergency and planned rotation are distinguished by frequency ("often" versus "rarely") instead
+    of by trigger.
+  remedy: 'Ask for the trigger word in each definition: exposure demands emergency rotation, schedule
+    demands planned rotation.'
