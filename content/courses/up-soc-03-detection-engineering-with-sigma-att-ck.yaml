@@ -1,0 +1,563 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C521
+title: Detection Engineering with Sigma & ATT&CK
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C519
+- C210
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Analyst (PR-CDA-001)'
+  - 'NIST CSF 2.0: DE.AE, DE.CM, ID.IM'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: From ATT&CK technique to detection idea
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Translate an ATT&CK technique description into the telemetry a detection of it would need
+  - Judge whether a log source on the range can actually evidence a stated technique's behaviour
+  - Write a detection idea statement that names the behaviour, the data source and the expected event
+  topics:
+  - 'The ATT&CK matrix: tactics as goals, techniques and sub-techniques as observable behaviours.'
+  - Data sources and data components that ATT&CK lists for each technique.
+  - 'Feasibility first: a detection is only as good as the telemetry behind it.'
+  - Writing a detection idea statement before any rule is written.
+  - Where technique descriptions and real log records disagree.
+  lab: >-
+    Lab: On the soc-training range, turn one credential-access technique from ATT&CK into a
+    detection idea and test its telemetry assumptions against what the range actually logs.
+    Evidence: the technique description rewritten in your own words; the audit subcategories
+    enabled on v-ws01; the OpenSearch indices on siem01 that hold Windows process and logon
+    events; a one-sentence detection idea with each required data source marked present or
+    absent. Pass: all four items recorded; the detection idea names behaviour, data source and
+    event; every data source marked present is backed by a query result captured in the lab notes.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open the lab notes and write down one credential-access technique
+        from ATT&CK together with the data sources ATT&CK lists for it.
+    - hosts: [v-ws01]
+      action: On v-ws01, open the local security policy and record which audit subcategories for
+        process creation and account logon are enabled.
+    - hosts: [siem01]
+      action: On siem01, query the OpenSearch indices and record whether process-creation and
+        logon events from v-ws01 arrived in the last hour.
+    - hosts: [siem01, v-dc01]
+      action: Compare the data sources the technique needs with the events siem01 and v-dc01
+        actually provide, and record each needed source as present or absent.
+    - hosts: [jump01]
+      action: 'Judge feasibility: write a one-sentence detection idea and state whether the range
+        telemetry is sufficient, partly sufficient or insufficient for it.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A detection engineer wants to detect a technique whose ATT&CK page lists process
+        creation as its data source. Which range source most directly provides it?
+      options:
+      - A) Zeek connection logs on zeek01
+      - B) Sysmon process events from v-ws01 forwarded to siem01
+      - C) Firewall session totals on fw01
+      - D) Packet captures on pcap01
+      answer: B
+    - question: A Student finds that a technique needs script-block logging, but the range endpoints
+        do not record it. What is the honest next step?
+      options:
+      - A) Write the rule anyway and hope the events appear
+      - B) Lower the rule quality settings until something matches
+      - C) Record the telemetry gap and mark the detection idea infeasible on this range
+      - D) Rename the technique in the coverage map
+      answer: C
+    - question: 'In ATT&CK, a tactic describes the adversary''s goal and a technique describes:'
+      options:
+      - A) The malware family that the adversary used to deliver it
+      - B) The threat group that typically uses it
+      - C) The severity rating of its alerts
+      - D) How the goal is achieved in observable behaviour
+      answer: D
+    - question: 'A detection idea statement is written before the rule because it:'
+      options:
+      - A) States the behaviour, data source and event claimed
+      - B) Satisfies the SIEM licence and storage requirements
+      - C) Speeds up the sigma converter
+      - D) Replaces the need for testing
+      answer: A
+    - question: 'Two techniques look similar in ATT&CK, but one needs network traffic records and the
+        other needs endpoint process records. This difference is captured by:'
+      options:
+      - A) The tactic column
+      - B) The data sources listed for each technique
+      - C) The rule status field
+      - D) The heatmap colour
+      answer: B
+- ordinal: 2
+  title: Sigma rules end to end
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a Sigma rule whose selection and condition match one specific logged behaviour
+  - Classify the parts of a Sigma rule as metadata, logsource, detection logic or output fields
+  - Convert a rule to the SIEM query language and verify it matches the events expected
+  topics:
+  - 'Sigma rule anatomy: title, identifiers, status, description, logsource, detection and fields.'
+  - Logsource categories, products and services, and how a converter maps them to a backend.
+  - 'Selections: keywords, field selectors and value modifiers such as contains and endswith.'
+  - Conditions that combine selections without widening the match beyond the intended behaviour.
+  - Rule metadata that documents false positives, status and references for later review.
+  lab: >-
+    Lab: On the soc-training range, write a Sigma rule for failed interactive logons on the domain
+    controller and prove it against events the range really produced. Evidence: the time of each
+    test logon generated on v-dc01; the exact field names and values the corresponding events
+    carry in OpenSearch on siem01; the rule text; the converted query; the match count. Pass: the
+    rule's logsource and selection name the fields the events actually carry; the converted query
+    returns the test events and nothing unrelated; the Student states whether the selection is too
+    narrow, too broad or exact, and names one field to add or loosen.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and open the Sigma specification and the converter notes for the
+        OpenSearch backend.
+    - hosts: [v-dc01]
+      action: On v-dc01, produce a few failed interactive logons with a test account and record the
+        exact time of each.
+    - hosts: [siem01]
+      action: On siem01, find those failed-logon events in OpenSearch and record the exact field
+        names and values the events carry.
+    - hosts: [siem01]
+      action: Write a Sigma rule whose logsource and selection match those fields, then convert it
+        to the backend query language.
+    - hosts: [siem01]
+      action: Run the converted query and record how many events it matches and which recorded test
+        events it misses.
+    - hosts: [jump01]
+      action: 'Judge the rule: state whether the selection is too narrow, too broad or exact, and
+        name one field you would add or loosen.'
+  refs:
+  - sigma
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A Sigma rule fires on far more than the behaviour it names. Which part most likely
+        needs tightening?
+      options:
+      - A) The detection selection and condition
+      - B) The rule title
+      - C) The status field
+      - D) The author tag
+      answer: A
+    - question: 'In a Sigma rule, the pair that tells the converter which backend pipeline applies is:'
+      options:
+      - A) title and id
+      - B) the detection block together with its condition
+      - C) category and product in the logsource
+      - D) tags and references
+      answer: C
+    - question: A selection must match values that appear only at the end of a field value, such as
+        a file extension. Which modifier fits?
+      options:
+      - A) startswith
+      - B) re
+      - C) contains
+      - D) endswith
+      answer: D
+    - question: An analyst converts a rule and the backend rejects the field names. What does this
+        most likely show?
+      options:
+      - A) The Sigma specification has changed
+      - B) The rule's field names do not match the log source's schema
+      - C) The converter licence has expired
+      - D) The SIEM index is read-only
+      answer: B
+    - question: A rule's condition combines two selections with and, and it never fires although each
+        selection matches alone. What should the Student check first?
+      options:
+      - A) Whether the title is under sixty characters
+      - B) Whether the SIEM licence covers the scheduled searches the rule needs
+      - C) Whether one event can satisfy both selections at once
+      - D) Whether the rule has enough tags
+      answer: C
+- ordinal: 3
+  title: Testing detections with atomic tests
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  source_gaps:
+  - Atomic Red Team's test library is not in the reference catalogue yet; testing practice
+    follows NIST SP 800-115 until it is added.
+  objectives:
+  - Run a documented atomic test for one technique and observe its effects on the range
+  - Verify whether a Sigma rule fires on the telemetry a controlled test produces
+  - Record test results so another engineer can repeat the test and the verdict
+  topics:
+  - 'Atomic testing: one technique, one controlled run, one expected observation.'
+  - Choosing a test that matches the technique variant the rule claims to detect.
+  - 'Baseline before test: separating a test''s events from ordinary background events.'
+  - 'Verdicts: true positive, false negative and the rule defects each implies.'
+  - Recording tests as repeatable evidence rather than one-off anecdotes.
+  lab: >-
+    Lab: On the soc-training range, exercise the module 2 logon rule with a controlled positive
+    test and a negative test, and record an honest verdict for each. Evidence: the baseline match
+    count before any test; the time of the positive run on v-dc01; the matching events on siem01;
+    the negative run's result; a verdict line for each run. Pass: the positive test makes the rule
+    fire and the firing event is captured; the negative test does not fire and the Student records
+    why it should not; each verdict states true positive or false negative and names the rule
+    defect it implies.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [siem01]
+      action: 'Record a baseline: the number of matching events the rule returns on siem01 in the
+        hour before any test.'
+    - hosts: [v-dc01]
+      action: 'Run the positive test on v-dc01: produce failed logons matching the rule''s selection
+        and record the exact times.'
+    - hosts: [siem01]
+      action: Confirm on siem01 that the rule fired, capture the matching events and compare the
+        count with the baseline.
+    - hosts: [v-dc01]
+      action: 'Run the negative test on v-dc01: produce successful logons that the rule must not
+        match, and record the times.'
+    - hosts: [siem01]
+      action: Check on siem01 whether any negative-run events matched the rule, and record the
+        count.
+    - hosts: [jump01]
+      action: 'Judge both runs: write a verdict of true positive or false negative for the positive
+        test and a verdict for the negative test, and name the rule defect each implies.'
+  refs:
+  - nist-sp-800-115
+  - sigma
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'A controlled test produces exactly the behaviour a rule names, but the rule stays
+        silent. This result is:'
+      options:
+      - A) A true positive
+      - B) A false positive
+      - C) Baseline noise
+      - D) A false negative that points to a rule defect
+      answer: D
+    - question: 'Before running an atomic test, the Student records the rule''s normal match count.
+        The purpose is to:'
+      options:
+      - A) Separate the test's events from background events
+      - B) Speed up the SIEM index
+      - C) Prove that the rule title is accurate to the behaviour
+      - D) Reduce licence consumption
+      answer: A
+    - question: An atomic test claims to cover a technique, but the rule detects only a different
+        variant of it. What is the honest conclusion?
+      options:
+      - A) The rule covers every variant of the technique it names
+      - B) The claim holds for the variant, not the technique
+      - C) The test framework is broken
+      - D) The technique is undetectable
+      answer: B
+    - question: A Student runs an atomic test twice and the rule fires only once. What is the first
+        thing to compare?
+      options:
+      - A) The rule's author tags between runs
+      - B) The heatmap row for the technique on the coverage map
+      - C) The field values of the firing and silent events
+      - D) The SIEM version notes
+      answer: C
+    - question: Why record an atomic test as a repeatable procedure rather than a one-off anecdote?
+      options:
+      - A) The SIEM rejects any result that has no written test procedure
+      - B) Anecdotes cannot mention hosts
+      - C) Repeatable tests take less time
+      - D) So another engineer can reproduce the run and the verdict
+      answer: D
+- ordinal: 4
+  title: Coverage mapping and heatmaps
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Build a coverage map that separates techniques detected, partially detected and undetected
+  - Read an ATT&CK heatmap and state what a colour honestly claims about detection coverage
+  - Expose the gaps a coverage map hides by testing claims against recorded telemetry
+  topics:
+  - 'Coverage maps: rows, columns and what each marked cell may honestly claim.'
+  - Heatmaps as communication, and the limits of the colour scale.
+  - 'Partial coverage: a rule that fires on one variant does not cover the technique.'
+  - 'Priority gaps: choosing undetected techniques by likelihood and impact.'
+  - 'Keeping the map honest: linking each claim to a passing test and its date.'
+  lab: >-
+    Lab: On the soc-training range, build a coverage map for the detections the range actually
+    holds, and date every claim. Evidence: the list of Sigma rules loaded on siem01 and each
+    rule's intended behaviour; a fresh passing run of one recorded test on v-ws01; for each rule,
+    the technique it claims, the variant its test covered and the date of the last passing test;
+    the finished coverage map. Pass: every claimed technique is marked tested, partially tested
+    or untested with a date; the Student names the largest gap; the Student states whether the
+    map's colours would mislead a reader who trusts them.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [siem01]
+      action: List on siem01 the Sigma rules the range currently loads, and record each rule's
+        intended behaviour.
+    - hosts: [v-ws01]
+      action: Run the recorded test for one rule once more on v-ws01 and confirm on siem01 that it
+        still fires.
+    - hosts: [siem01]
+      action: For each rule, record the technique it claims, the variant its test covered and the
+        date of the last passing test.
+    - hosts: [jump01]
+      action: 'Draw the coverage map: mark each claimed technique as tested, partially tested or
+        untested, and date every claim.'
+    - hosts: [jump01]
+      action: 'Judge the map: name the largest gap and state whether the map''s colours would mislead
+        a reader who trusts them.'
+  refs:
+  - mitre-attack
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'A heatmap cell is coloured as detected although only one variant of the technique
+        has a passing test. The honest colour is:'
+      options:
+      - A) Partially detected
+      - B) Fully detected
+      - C) Undetected
+      - D) Out of scope
+      answer: A
+    - question: 'A manager reads a heatmap and assumes green means every variant is covered. The map''s
+        missing element is:'
+      options:
+      - A) A brighter colour scale
+      - B) A link from each claim to its passing test and date
+      - C) More techniques per row
+      - D) A second heatmap for the cloud
+      answer: B
+    - question: 'Two undetected techniques compete for the next work cycle: one commonly used with
+        high impact, one rare with low impact. Coverage work should start with:'
+      options:
+      - A) The one with the longer name
+      - B) The rare, low-impact one
+      - C) Either, chosen by alphabetical order
+      - D) The common, high-impact one
+      answer: D
+    - question: A coverage map lists a technique as detected because a rule exists, but no test was
+        ever run. What does the map actually claim?
+      options:
+      - A) A rule exists; nothing is proven about its firing
+      - B) The technique is fully covered
+      - C) The rule was tested last quarter
+      - D) The technique needs no telemetry
+      answer: A
+    - question: 'During review, a rule''s only passing test is found to be from six months ago and the
+        log source changed since. The coverage claim should be:'
+      options:
+      - A) Kept unchanged, because the rule still loads in the SIEM
+      - B) Upgraded to fully covered
+      - C) Demoted to untested until a fresh test passes
+      - D) Deleted from the map entirely
+      answer: C
+- ordinal: 5
+  title: Peer review of detections
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Review another engineer's Sigma rule against the behaviour its description claims
+  - Justify accept, change or reject decisions with specific, checkable findings
+  - Improve a rule's documentation so reviewers and responders can act on it
+  topics:
+  - 'What a detection review checks: behaviour match, condition logic, false positives, documentation.'
+  - Review verdicts that name the defect, not the reviewer's taste.
+  - 'Common rule defects: over-broad selections, missing field validation, undocumented false positives.'
+  - 'Reviewing the test, not only the rule: does the evidence support the claim?'
+  - Feedback that another engineer can act on without a meeting.
+  lab: >-
+    Lab: On the soc-training range, review the module 2 logon rule as its reviewer of record and
+    deliver findings the author can act on alone. Evidence: the checklist verdict for each review
+    point; the over-broad or under-broad selections found, with the events that prove them on
+    siem01; a rewritten description and false-positive note; an accept, change or reject decision
+    with reasons. Pass: every checklist point has a verdict and a reason; each finding cites a
+    rule line or a captured event; the decision follows from the findings rather than from
+    preference.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Open the review checklist on jump01 and record the rule's claimed behaviour in one
+        sentence before reading its logic.
+    - hosts: [siem01]
+      action: Run the rule's converted query on siem01 against the recorded test window and compare
+        the matches with the claim.
+    - hosts: [siem01]
+      action: Deliberately widen the window and record any unrelated events the selection also
+        matches.
+    - hosts: [jump01]
+      action: Grade each checklist point, and for every defect name the rule line and the event
+        that proves it.
+    - hosts: [jump01]
+      action: Rewrite the description and false-positive note so a responder can act on the rule
+        without asking the author.
+    - hosts: [jump01]
+      action: Decide accept, change or reject, and state the one change that would most improve the
+        rule.
+  refs:
+  - sigma
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'A review finds a rule whose selection matches every process instead of the named
+        behaviour. The finding should say:'
+      options:
+      - A) The rule feels wrong
+      - B) The author was careless
+      - C) Selection matches all process events; add the intended field condition
+      - D) Rewrite everything in a new tool
+      answer: C
+    - question: 'A reviewer dislikes the rule''s title, but the detection logic is sound. Under the
+        house verdict set, the finding is:'
+      options:
+      - A) Reject the rule
+      - B) A critical defect
+      - C) A false positive claim
+      - D) A documentation change, not a logic defect
+      answer: D
+    - question: 'The strongest evidence a reviewer can cite for an over-broad selection is:'
+      options:
+      - A) An event the rule matched that the behaviour excludes
+      - B) A senior colleague's opinion about the rule's quality
+      - C) The number of tags on the rule
+      - D) The converter's warning count
+      answer: A
+    - question: A rule is logically correct, but its only test never ran against the current log
+        source. What should the reviewer insist on before approval?
+      options:
+      - A) Approval, because the logic reads well and the rule loads cleanly
+      - B) A fresh test on the current source before approval
+      - C) Silence, since testing happens elsewhere
+      - D) Renaming the rule instead
+      answer: B
+    - question: 'Feedback on a rule says only ''condition is bad''. To be actionable it must instead:'
+      options:
+      - A) Name the line, the defect and the events that prove it
+      - B) State only that the rule has failed its review cycle this time
+      - C) Suggest that the author starts over from scratch
+      - D) Add more adjectives to the finding
+      answer: A
+- ordinal: 6
+  title: 'Capstone: One Technique, End to End'
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Take one ATT&CK technique through detection idea, rule, atomic test and coverage claim on the range
+  - Defend each artefact in the chain with the evidence recorded at the earlier steps
+  - State honestly where the detection chain is proven and where it is only claimed
+  topics:
+  - 'The detection chain: technique, telemetry, rule, test, verdict, coverage claim.'
+  - Handoffs between steps where honesty is usually lost.
+  - Minimum evidence a coverage claim needs before anyone may trust it.
+  - Retiring or demoting detections whose evidence has expired.
+  - Practising the whole chain on one technique under time pressure.
+  lab: >-
+    Lab: On the soc-training range, carry one technique the range does not yet cover through the
+    whole chain in one sitting and mark the result on the coverage map. Evidence: the detection
+    idea naming behaviour, data source and event; the time of the behaviour produced on v-ws01;
+    the Sigma rule and its converted query on siem01; the match count and one captured event; the
+    negative run's result; the updated coverage map entry. Pass: the rule fires on the positive
+    run and stays silent on the negative run; the coverage entry reads tested, partially tested or
+    untested with a date; the Student states what evidence a reviewer would still need.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Choose one technique the range does not yet cover and write its detection idea,
+        naming behaviour, data source and event.
+    - hosts: [v-ws01]
+      action: Produce the chosen behaviour once on v-ws01 and record the exact time.
+    - hosts: [siem01]
+      action: Confirm on siem01 that the events arrive, then write and convert a Sigma rule that
+        selects them.
+    - hosts: [siem01]
+      action: Run the rule, record the match count and capture one matching event.
+    - hosts: [v-ws01]
+      action: Run a variant the rule must not match on v-ws01, then check on siem01 that the rule
+        stays silent.
+    - hosts: [jump01]
+      action: 'Judge the chain: mark the technique tested, partially tested or untested on the
+        coverage map, and state what evidence a reviewer would still need.'
+  refs:
+  - mitre-attack
+  - sigma
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'In the detection chain, the step that turns a passing test into a claim others may
+        trust is:'
+      options:
+      - A) The rule title
+      - B) The recorded verdict linked to the coverage map
+      - C) The converter output
+      - D) The heatmap legend
+      answer: B
+    - question: A rule passes its atomic test, but the coverage map is never updated. What is lost?
+      options:
+      - A) The rule's author tag
+      - B) The SIEM storage quota
+      - C) The link that lets others trust the technique's coverage
+      - D) The converter's field mapping
+      answer: C
+    - question: 'The most common place a detection chain loses honesty is:'
+      options:
+      - A) A coverage claim written wider than the tested variant
+      - B) A title longer than the sixty characters the style allows
+      - C) A heatmap drawn in the wrong colour order
+      - D) A test run on the wrong weekday
+      answer: A
+    - question: 'A detection''s evidence expired two quarters ago and its log source has since changed.
+        The honest action is:'
+      options:
+      - A) Leave the claim, it may still hold
+      - B) Recolour the heatmap from memory of the old result
+      - C) Widen the claim to be safe
+      - D) Demote the claim until a fresh test passes
+      answer: D
+    - question: 'A reviewer asks what proves the new rule. The strongest answer names:'
+      options:
+      - A) The rule's popularity in the community
+      - B) The author's confidence
+      - C) The test window, the captured event and the verdict date
+      - D) The number of tags attached to the rule file in the repository
+      answer: C

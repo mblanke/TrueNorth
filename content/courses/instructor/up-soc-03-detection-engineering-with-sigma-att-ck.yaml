@@ -1,0 +1,163 @@
+# Instructor pack for C521 - Detection Engineering with Sigma & ATT&CK. Staff only.
+course_code: C521
+audience: staff_only
+overview: 'Detection Engineering with Sigma & ATT&CK is an individual, self-paced course of six
+  50-minute modules (300 minutes, 5 hours) on the soc-training range. Each module follows the same
+  shape: about 10 minutes reading the technique or rule material, 30 minutes working alone in the
+  lab on the range, and 10 minutes for the five-item quiz passed at 70 percent. The Student turns
+  one ATT&CK technique into a written detection idea, a Sigma rule, an atomic test with a positive
+  and a negative run, and an honest coverage-map entry, then reviews the result as its reviewer of
+  record. Modules 2 and 6 reuse the same logon behaviour, so the lab notes carry forward; keep the
+  recorded times from module 2 available to the Student in modules 3 and 5. Say ''Student''
+  throughout; every exercise is defensive and individual, with no pair or team work.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 technique reading, 30 lab (choose the technique, audit the range telemetry, write the
+    detection idea), 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '10 rule-anatomy reading, 30 lab (generate test logons on v-dc01, write and convert the
+    rule on siem01), 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '10 test-method reading, 30 lab (baseline, positive run, negative run, verdicts), 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '10 coverage reading, 30 lab (inventory rules, fresh test run, draw and date the map), 10
+    quiz'
+- module: 5
+  minutes: 50
+  plan: '10 review-checklist reading, 30 lab (review the module 2 rule, widen the window, rewrite
+    the description, decide), 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '5 chain briefing, 35 lab (one new technique through idea, rule, test and coverage entry),
+    10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (Sysmon process events forwarded to siem01), M01-O01: the technique''s listed data
+    source is process creation; zeek01 and pcap01 see network traffic only and fw01 sees sessions,
+    not process starts. Q2 C, M01-O02: an honest gap record beats a rule nobody can feed; A and B
+    build rules without telemetry and D hides the gap in the map. Q3 D, M01-O01: a technique is the
+    how of an observable behaviour; the malware family (A) and the actor (B) are attribution, and
+    severity (C) belongs to the alert, not the matrix. Q4 A, M01-O03: the statement fixes what is
+    claimed so the later test can check it; B and C are tooling concerns and D removes testing. Q5
+    B, M01-O01: ATT&CK''s data-source field records exactly this difference; the tactic column
+    (A) records the goal, not the evidence.'
+- module: 2
+  notes: 'Q1 A (selection and condition), M02-O01: over-matching is a detection-logic fault;
+    title, status and tags are metadata that cannot widen a match. Q2 C, M02-O02: the logsource
+    block drives backend mapping; title and id (A) and tags (D) are metadata, and detection (B) is
+    evaluated after mapping. Q3 D (endswith), M02-O03: endswith anchors the tail; startswith (A)
+    anchors the head, contains (C) is too loose, and re (B) is heavier than the need. Q4 B,
+    M02-O03: field names must match the source schema the backend queries; the specification (A)
+    and the licence (C) did not change, and a read-only index (D) would fail later, at search time.
+    Q5 C, M02-O01: an and-condition needs both selections true of one event; the failure is logic,
+    not the title length (A), the licence (B) or the tag count (D).'
+- module: 3
+  notes: 'Q1 D (false negative), M03-O02: the behaviour occurred and the rule stayed silent, which
+    points at the selection, the condition or the field mapping. Q2 A, M03-O03: the baseline
+    separates the test''s own events from background events so the verdict means something; speed
+    (B), the title (C) and licensing (D) are unrelated. Q3 B, M03-O01: coverage is proven only for
+    the variant tested; a passing variant does not cover the technique (A), and neither a broken
+    framework (C) nor undetectability (D) follows. Q4 C, M03-O02: the firing and silent events
+    differ in field values, and that difference is the defect; tags (A), the heatmap row (B) and
+    version notes (D) do not explain one run firing and one not. Q5 D, M03-O03: repeatability is
+    what makes the verdict evidence; the SIEM does not reject unwritten results (A), and B and C
+    confuse the record with its cost.'
+- module: 4
+  notes: 'Q1 A (partially detected), M04-O01: one tested variant is partial by definition; fully
+    detected (B) overstates, undetected (C) understates, and out of scope (D) dodges the claim. Q2
+    B, M04-O02: a heatmap colour carries no evidence without a link to the passing test and its
+    date; a brighter scale (A) is still unevidenced. Q3 D, M04-O04: priority follows likelihood
+    and impact, so the common, high-impact technique goes first; name length (A) and alphabetical
+    order (C) are not risk criteria. Q4 A, M04-O03: the map can only claim that a rule exists;
+    existence is not proof of firing, so B overstates and C invents a test that never ran. Q5 C,
+    M04-O05: a stale test against a changed source is an untested claim until a fresh test passes;
+    keeping it (A) or upgrading it (B) launders expired evidence.'
+- module: 5
+  notes: 'Q1 C, M05-O01: the finding names the defect (the selection matches all process events)
+    and the fix (the intended field condition); A and B judge the person, not the rule, and D
+    changes tools without addressing the defect. Q2 D, M05-O02: the logic is sound, so the finding
+    is a documentation change; reject (A) and critical defect (B) misgrade a title complaint, and
+    C names the wrong category. Q3 A, M05-O03: a captured event outside the claimed behaviour is
+    checkable evidence; opinions (B), tag counts (C) and warning counts (D) prove nothing about
+    breadth. Q4 B, M05-O04: honest review covers the test, so a fresh run against the current
+    source precedes approval; readable logic (A) is not evidence and silence (C) is not review. Q5
+    A, M05-O03: actionable feedback names the line, the defect and the proving events; B, C and D
+    all leave the author guessing what to change.'
+- module: 6
+  notes: 'Q1 B, M06-O01: the recorded verdict, linked to the coverage map, is what turns a private
+    test into a claim others may rely on; title (A) and converter output (C) carry no verdict. Q2
+    C, M06-O02: without the map entry the passing test stays invisible, so nobody can trust the
+    technique''s coverage; the tag (A), quota (B) and mapping (D) are unaffected. Q3 A, M06-O03:
+    the chain usually breaks where a claim is written wider than the tested variant; title length
+    (B), colour order (C) and weekday (D) are cosmetic. Q4 D, M06-O04: expired evidence means the
+    claim is demoted until a fresh test passes; leaving (A), recolouring from memory (B) or
+    widening (C) all inflate coverage. Q5 C, M06-O03: the test window, one captured event and the
+    verdict date are the minimum evidence; popularity (A) and confidence (B) are not evidence.'
+lab_setup:
+- module: 1
+  setup: Confirm the soc-training range is provisioned and that v-ws01 forwards Windows events to
+    siem01. Pre-load one ATT&CK technique page in the lab notes; the Student picks their own
+    credential-access example.
+- module: 2
+  setup: Verify the Sigma converter on siem01 targets the OpenSearch backend and that the Student's
+    account can write rules. Provide a test account on v-dc01 that is permitted to fail logons.
+- module: 3
+  setup: Ensure the module 2 rule is loaded and scheduled on siem01. Provide the recorded module 2
+    test times in the lab notes so the Student can reuse them as the positive case.
+- module: 4
+  setup: Load the range's current rule set on siem01 and clear any stale test data. Have a blank
+    coverage-map grid (technique rows, status and date columns) ready in the lab notes.
+- module: 5
+  setup: Provide the review checklist with its verdict set (accept, change, reject) and reopen the
+    module 2 rule text. The Student reviews their own module 2 rule as reviewer of record.
+- module: 6
+  setup: Reserve a technique the range does not cover and confirm the Student's role may generate
+    its behaviour on v-ws01. Keep the module 4 coverage map open for the final entry.
+common_faults:
+- module: 1
+  fault: The Student picks a technique whose data sources the range cannot feed, then writes the
+    rule anyway.
+  remedy: Point back to the feasibility step; the lab's deliverable is the honest present-or-absent
+    marking, not a rule.
+- module: 1
+  fault: The detection idea names a tool ('a Sigma rule for X') instead of behaviour, data source
+    and event.
+  remedy: Make them rewrite it naming the three required parts before the lab is signed off.
+- module: 2
+  fault: The rule's logsource or field names are guessed from another environment's schema.
+  remedy: Send them back to the step that records the exact field names and values from the real
+    events on siem01.
+- module: 2
+  fault: The converted query is never run, so the match count is assumed.
+  remedy: Require the recorded count from the converted query before the judgement step.
+- module: 3
+  fault: The negative run is skipped or its result is recorded as 'fine' without a count.
+  remedy: Insist on the recorded count for both runs; a negative result with no count is not
+    evidence.
+- module: 3
+  fault: The verdict line names the outcome but not the rule defect it implies.
+  remedy: Have them append the suspected selection, condition or mapping fault to each verdict.
+- module: 4
+  fault: Techniques with rules but no passing tests are marked as covered.
+  remedy: Ask for the date and the test behind each mark; no date means untested.
+- module: 4
+  fault: The map is drawn once and never dated, so it decays silently.
+  remedy: Require a date on every claim; an undated claim fails the pass items.
+- module: 5
+  fault: Review findings are adjectives ('unclear', 'weak') with no line or event cited.
+  remedy: Reject any finding that does not cite a rule line or a captured event.
+- module: 5
+  fault: The Student declines to reject or change their own earlier rule.
+  remedy: Reframe the exercise as reviewer of record; the decision must follow from the findings,
+    not from protecting the author.
+- module: 6
+  fault: The chain is run out of order and the coverage entry is written before the negative run.
+  remedy: Walk the steps in order; the map entry is the last deliverable, after the silence check.
+- module: 6
+  fault: The final entry claims tested although only the positive run passed.
+  remedy: Require the negative run's recorded count before tested may be claimed; otherwise
+    partially tested.
