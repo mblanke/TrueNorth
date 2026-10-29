@@ -1,0 +1,200 @@
+# C301 - Advanced Threat Hunting - instructor pack (staff only).
+# Companion to content/courses/c301-advanced-threat-hunting.yaml: timings, answer-key notes,
+# range lab setup and common faults. Never imported as learner content.
+# The answer letters below are the course's keys; the notes say why the keyed option is right
+# and what each distractor tests, keyed to the module's objectives (M0n-O0m).
+
+course_code: C301
+audience: staff_only
+overview: 'Advanced Threat Hunting is a six-module course of 60-minute sessions for analysts who already run
+  detections and want to search for what their detections miss. Each module follows the same split: about 15
+  minutes of teaching on the module objectives, 35 minutes of lab on the soc-training range, and a 10-minute
+  five-item quiz passed at 70 percent. Modules 1 to 5 each run one range lab against the incident-response-drill
+  scenario data; module 6 uses the range as a reference environment for programme design. Say ''Student''
+  throughout and keep every objective observable.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (hunting versus triage and response; falsifiable hypotheses; scope and decision points),
+    35 lab (telemetry survey on the range and a drafted hunt plan), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (matching sources to hypotheses; frequency analysis, stacking and clustering; analytic
+    limits), 35 lab (frequency analysis over process events on the range), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (persistence mechanisms; authentication paths; the administrative baseline), 35 lab
+    (persistence and lateral movement hunt on the range), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (metadata when payloads are encrypted; beacons and fingerprints; cloud control plane),
+    35 lab (encrypted-traffic metadata hunt on the range), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (detection authoring from hunt output; rerunnable hunt records; visibility gaps), 35 lab
+    (author and validate a detection from a confirmed finding on the range), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (programme structure and cadence; hypothesis prioritisation; honest metrics), 35 lab
+    (twelve-month programme design against the range inventory), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 A (hunting), M01-O01: The work is a proactive search for activity no alert covered; triage (not B)
+    begins from an alert and response (not C) needs a confirmed compromise. Q2 A (falsifiable hypothesis),
+    M01-O02: The statement names a technique, a population and a settling result; it cannot prove presence
+    (not B), and breadth (not C) and a missing source (not D) weaken it. Q3 B (data-driven), M01-O02: The
+    anomalies come from exploring the data itself, not from a stated adversary hypothesis (not A), an alert
+    (not C) or a confirmed incident (not D). Q4 D (coverage as outcome), M01-O03: Recording what was searched
+    is the success criterion paying off; the script proves nothing about evasion (not A), and success in this
+    programme is defined without requiring an incident (not B). Q5 C (detections and visibility), M01-O03:
+    Queries run, data volume and hours (A, B, D) measure effort, not capability.'
+- module: 2
+  notes: 'Q1 B (rarity filters, never convicts), M02-O03: Rarity earns context, not a verdict; rarity is not
+    equivalence with malice (not A), and expected software is not automatically benign either (not C) or a
+    reason to invalidate the analysis (not D). Q2 A (homogeneous population), M02-O02: Low expected variation
+    makes outliers meaningful; volume (not B) is not what stacking needs, and empty stacks (not C) or
+    declared safety (not D) are wrong. Q3 B (anomaly against established normal), M02-O03: A baseline makes
+    deviation sayable; it does not make off-hours sign-ins adversarial (not A) or logs complete (not C), and
+    raw counts never identify compromised accounts (not D). Q4 A (absence without visibility), M02-O01: A
+    source blind to the technique cannot support a negative conclusion; the technique is detectable in
+    principle (not B), and the failure is the data source, not a missing hypothesis (not C) or telemetry
+    choice in general (not D). Q5 C (behaviours worth examining), M02-O02: Clustering reduces volume to
+    distinct behaviours; it proves nothing about malice (not A), does not change retention (not B) and does
+    not rate severity (not D).'
+- module: 3
+  notes: 'Q1 B (contrast), M03-O01: The comparison against every peer is what makes the single-host mechanism
+    stand out; one-host-at-a-time review (not A) is what the fleet comparison replaces, and the mechanism is
+    suspicious, not confirmed malicious (not C) or ignorable (not D). Q2 D (context first), M03-O02: Breadth
+    suggests automated lateral movement or credential misuse and demands immediate context; neither theft
+    (not A) nor log corruption (not B) is defensible before context, and tickets-per-host (not C) is not the
+    binding constraint. Q3 B (matches the baseline), M03-O02: The pattern is expected administration from the
+    jump host during a change window; administrators can perform lateral movement (not A), and neither
+    recording (not C) nor the server count (not D) drives the decision. Q4 A (new service from a temporary
+    directory on untouched hosts), M03-O03: Unfamiliar execution plus unfamiliar destinations is the
+    discriminator; the remaining options are exactly the expected baseline. Q5 C (movement path), M03-O02:
+    Authentication followed by service creation on each host traces credential use into remote execution; it
+    proves no objective (not A), contradicts a patch server pattern (not B) and is not closeable as
+    administrative (not D).'
+- module: 4
+  notes: 'Q1 A (destination metadata), M04-O01: Timing, volume, certificates and fingerprints survive
+    encryption; decryption exemptions (not B) change collection, payload signatures (not C) and endpoint
+    hashes alone (not D) abandon the network view. Q2 A (behavioural beacon), M04-O01: A near-constant
+    interval with small uniform volume is the signal; encryption itself implies nothing (not B), and neither
+    host age (not C) nor a policy breach (not D) proves compromise. Q3 C (priority raised despite unreadable
+    payload), M04-O02: Fresh self-signed certificate plus an estate-unique fingerprint raises priority;
+    identical volumes do not equalise the two (not A), uniqueness is suspicion, not exculpation (not B), and
+    certificate metadata stays readable after encryption (not D). Q4 D (control plane change plus indicator),
+    M04-O03: Both the privileged identity creation and the logging change warrant a hunt; the logging change
+    is possible for principals (not A), not a billing matter (not B) and not plausibly maintenance (not C).
+    Q5 B (control plane as attack surface), M04-O03: Configuration changes are themselves evidence; the
+    remaining options deny cloud logging (not A), hunting (not C) or identity overlap (not D).'
+- module: 5
+  notes: 'Q1 A (detection plus validation), M05-O01: A detection validated against normal task creation makes
+    the finding durable; deletion without a record (not B), a raw-event share (not C) and waiting on a vendor
+    (not D) all lose the finding. Q2 B (benign validation), M05-O01: Firing on every build agent is the
+    signature of a skipped benign-case check; the logic direction (not A), a new hunt (not C) and blanket
+    escalation (not D) do not address it. Q3 D (coverage gained), M05-O02: The record states what was
+    searched, which prevents blind repetition and documents coverage; nothing-worth-recording (not A),
+    budget justification (not B) and audit housekeeping (not C) all miss the operational reason. Q4 C
+    (scheduled analytic with an owner), M05-O02: Stable, repeatable hunts graduate into owned scheduled
+    analytics; perpetual manual reassignment (not A), retirement (not B) and post-incident exports (not D)
+    discard the repeatable work. Q5 A (recorded visibility gap), M05-O03: The gap and the missing telemetry
+    are the output; avoidance advice (not B) documents nothing, training requests (not C) and irrelevance
+    findings (not D) leave the gap open.'
+- module: 6
+  notes: 'Q1 A (absence and coverage), M06-O03: Incident counts penalise hunts that correctly establish
+    absence and close gaps; ease of counting (not B), reporting cadence (not C) and ownership of detections
+    (not D) do not touch the bias. Q2 C (relevant and newly visible), M06-O02: Prioritisation ranks
+    relevance to the organisation against current visibility; damage in an unserved sector (not A) and
+    existing coverage (not B) rank lower, and preference is not a criterion (not D). Q3 B (displaced by
+    alert work), M06-O01: Without dedicated time the alert queue wins by default; efficiency (not A), more
+    findings (not C) and metric-free operation (not D) do not follow. Q4 A (what current detections miss),
+    M06-O03: The hunt demonstrates gaps in coverage that detection engineering closes; alert retirement
+    (not B), preference (not C) and telemetry sufficiency (not D) are not the finding. Q5 C (coverage
+    metrics), M06-O03: Detections produced, gaps closed and coverage gained measure capability; hours and
+    queries (not A), raw incident counts (not B) and data volume (not D) measure activity.'
+lab_setup:
+- module: 1
+  setup: 'Revert the soc-training range to a clean baseline; do not run the incident-response-drill scenario for
+    this module. Confirm jump01, siem01, velociraptor01 and seconion01 are reachable from the analyst accounts
+    and that the SIEM index list, the Velociraptor client count and the Security Onion views load. Expected
+    values: four usable console logins and a client count in the low twenties; record the actuals before class.'
+- module: 2
+  setup: 'Revert the soc-training range, then run the incident-response-drill scenario and let its process event
+    data land in the SIEM before class. Confirm siem01 shows process execution events and velociraptor01 shows
+    the originating hosts as clients. Expected values: a four-digit process event count on siem01 and at least
+    three parent-child pairs whose rarity the class can rank; record the actual top and bottom pairs.'
+- module: 3
+  setup: 'Revert the soc-training range, then run the incident-response-drill scenario so the staged
+    authentication and scheduled-task activity exists. Confirm siem01 authentication events and velociraptor01
+    client artefact browsing both work from jump01. Expected values: at least one account authenticating to
+    multiple victim hosts and at least one persistence mechanism present on a single host only; record which
+    host and which account before class.'
+- module: 4
+  setup: 'Revert the soc-training range, then run the incident-response-drill scenario so the beaconing traffic
+    exists in the Zeek and PCAP records. Confirm seconion01 network views, zeek01 log browsing, pcap01
+    capture retrieval and misp01 search are all reachable from jump01. Expected values: one external
+    destination with a near-constant interval and its certificate details retrievable from pcap01; record the
+    interval and destination before class.'
+- module: 5
+  setup: Revert the soc-training range, then run the incident-response-drill scenario and confirm the confirmed
+    finding from module 3 still returns matching events on siem01. Confirm TheHive on thehive01 accepts a test
+    case from the analyst account and that a window of quiet-range (pre-scenario) telemetry is still
+    queryable for the benign-case check. Record the matching event count before class.
+- module: 6
+  setup: 'Revert the soc-training range to a clean baseline; no scenario needed. Confirm siem01 index browsing,
+    misp01 search and thehive01 case view are reachable from jump01 so the telemetry inventory can be
+    observed directly. Expected values: a complete index list on siem01 and at least two MISP entries whose
+    behaviours the range telemetry could confirm; record both before class.'
+common_faults:
+- module: 1
+  fault: Students draft hypotheses that cannot fail, such as 'find suspicious activity', and treat any result
+    as success.
+  remedy: Have each Student read the hypothesis aloud and answer 'what observation would disprove this?' before
+    the plan is accepted; reject any hypothesis with no answer.
+- module: 1
+  fault: The telemetry survey stops at the first console that loads, so the plan cites sources the range never
+    verified.
+  remedy: Require the survey to name an item recorded from each of siem01, velociraptor01 and seconion01 before
+    the plan step is attempted.
+- module: 2
+  fault: Students read the rarest list as a suspect list and skip the context step entirely.
+  remedy: Debrief the three classifications first and ask for the reason sentence that cites the counts; a
+    classification without a cited count does not pass.
+- module: 2
+  fault: The frequency query groups on the wrong field, so the 'rarest pairs' are artefacts of the grouping.
+  remedy: Have Students state the grouped fields and the event count before ranking, and compare two Students'
+    counts against each other to expose grouping differences.
+- module: 3
+  fault: Every authentication outlier is called lateral movement, including the change-window administration.
+  remedy: Require the reconciliation step against the jump host pattern before classification, and ask which
+    findings a defender would expect to see every month.
+- module: 3
+  fault: The single-host persistence mechanism is dismissed because only one host shows it.
+  remedy: Point back to the module 2 lesson on fleet contrast; one host out of a homogeneous fleet is exactly
+    what the comparison exists to surface.
+- module: 4
+  fault: Students conclude nothing can be learned from traffic whose payloads are encrypted.
+  remedy: Start the debrief from the recorded tops and the interval evidence; make the Students name three
+    things they learned about the destination without reading a payload.
+- module: 4
+  fault: The beacon judgement is asserted ('it looks regular') without the stated interval.
+  remedy: Require the interval and the count of observations behind it in the pass item; an interval with no
+    numbers does not pass.
+- module: 5
+  fault: The detection is validated only against the finding, never against the expected-activity window.
+  remedy: Show the build-agent false positive from quiz question 2 and require the benign-window result to be
+    recorded before the hunt record is written.
+- module: 5
+  fault: The hunt record lists findings but not queries or sources, so it cannot be rerun.
+  remedy: Swap records between Students and have each try to state the rerun query from the record alone;
+    failures show exactly what the record is missing.
+- module: 6
+  fault: Hypotheses are prioritised by perceived severity with no reference to the organisation or to
+    visibility.
+  remedy: Require each hypothesis to name its data source on the range and its relevance statement; a
+    hypothesis no source on the inventory can answer is parked.
+- module: 6
+  fault: Metrics default to activity counts such as queries run or hours spent.
+  remedy: Ask the class to rate each proposed metric with 'would this number look the same in a quarter where
+    the programme did its job badly?' and keep only the metrics that survive.
