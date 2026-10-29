@@ -10,6 +10,7 @@ duration_hours: 100
 provenance: unsourced
 status: draft
 is_published: false
+readiness: draft
 qsp_code: TEMP67
 source:
   origin: authored 2026-08-19 to the pattern of the recovered IoT Security Foundations draft
@@ -30,16 +31,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Design account and subscription structure for security isolation.
-  - Manage security consistently across multiple providers.
-  - Assess the trade-offs of multi-cloud adoption.
+  - Separate a cloud estate into accounts or subscriptions so that one compromise cannot reach every environment
+  - Map each guardrail in a landing zone to the management level that enforces it
+  - Select the estate design that better limits the blast radius of a stolen administrator credential
   topics:
-  - Account structure and blast radius.
-  - Landing zones and guardrails at scale.
-  - Multi-cloud consistency challenges.
-  - Provider concentration and portability.
-  lab: 'Lab: Design a multi-account structure for an organisation with four business units and three environments,
-    defining the guardrails applied at each level and the blast radius of each boundary.'
+  - Account and subscription boundaries as the unit of blast radius.
+  - Landing zones, organisation-level guardrails and what account administrators can still change.
+  - Multi-cloud estates where identity, logging and policy models differ by provider.
+  - Provider concentration, dependency inventories and a considered exit position.
+  lab: >-
+    Lab: On the cloud-security range, inventory the simulated AWS estate on localstack01 and the simulated
+    Azure estate on azure-mock01, and judge which resources and permissions one flat account would expose.
+    Evidence: each storage bucket on localstack01 with whether an anonymous read reaches its contents; each
+    IAM identity on localstack01 with the permissions attached to it; each key vault on azure-mock01 with how
+    widely its access policy is granted. Pass: all three inventories recorded exactly as the range shows them;
+    each finding marked "single boundary" or "shared across boundaries" with a one-sentence reason; one account
+    or subscription split proposed that contains the widest finding.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and record the start time in the lab notes.
+    - hosts: [jump01, localstack01]
+      action: From jump01, list the storage buckets on localstack01 and record each bucket name with whether
+        an anonymous read reaches its contents.
+    - hosts: [jump01, localstack01]
+      action: From jump01, list the IAM identities on localstack01 and record each identity name with the
+        permissions attached to it.
+    - hosts: [jump01, azure-mock01]
+      action: From jump01, connect to the key vault service on azure-mock01 and record each vault with how
+        widely its access policy is granted.
+    - hosts: [jump01]
+      action: Mark each finding "single boundary" or "shared across boundaries" with one sentence of reason,
+        and propose one account split that contains the widest finding.
   refs:
   - nist-sp-800-145
   - nist-sp-800-207
@@ -48,40 +72,45 @@ modules:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'The primary security benefit of separate cloud accounts is:'
+    - question: A startup runs production and development in one cloud account, and an administrator credential
+        is stolen. What does the account structure alone decide?
       options:
-      - A) Cost allocation
-      - B) A hard boundary limiting blast radius and permission scope
-      - C) Faster networking
-      - D) Simpler billing
+      - A) Whether the credential still works once the password is rotated
+      - B) The blast radius, since every environment shares one boundary
+      - C) Whether the provider accepts liability for the theft
+      - D) How quickly the network recovers
       answer: B
-    - question: 'Multi-cloud adoption increases security complexity mainly because:'
+    - question: A security team blocks unencrypted storage with a rule applied at the organisation level of
+        a landing zone. What can one account administrator do about it?
       options:
-      - A) More bandwidth is needed
-      - B) Security models, identity and telemetry differ between providers
-      - C) Costs rise
-      - D) Latency increases
-      answer: B
-    - question: 'A landing zone provides:'
+      - A) Recreate the resource to bypass the rule
+      - B) Disable the rule for that account only
+      - C) Nothing, because the guardrail is enforced above the account
+      - D) Amend the rule during a change window approved by the provider
+      answer: C
+    - question: A bank runs identical workloads on two providers and finds that identity, logging and policy
+        models differ. Which task becomes hardest to keep consistent?
       options:
-      - A) A network segment
-      - B) A pre-configured, guardrailed foundation for new workloads
-      - C) A backup region
-      - D) A billing account
-      answer: B
-    - question: 'Provider concentration risk is mitigated by:'
+      - A) Detection and response across both estates
+      - B) Renewing the two contracts
+      - C) Choosing a region for each workload
+      - D) Encrypting data in each estate
+      answer: A
+    - question: A regulator asks a software firm how it would leave its main cloud provider. Which answer
+        shows concentration risk is actually managed?
       options:
-      - A) Using one provider well
-      - B) Understanding dependencies and having a considered exit position
-      - C) Multi-cloud always
-      - D) Longer contracts
-      answer: B
-    - question: 'Guardrails applied at the organisation level rather than per account:'
+      - A) The contract carries a penalty clause
+      - B) Every workload was duplicated last year
+      - C) The provider holds three certifications
+      - D) An inventory of dependencies and a tested exit position
+      answer: D
+    - question: A new team needs an environment that meets the security baseline on its first day. Which
+        property of a landing zone delivers this?
       options:
-      - A) Are easier to bypass
-      - B) Cannot be overridden by individual account administrators
-      - C) Reduce visibility
-      - D) Increase cost
+      - A) A shared administrator account
+      - B) A pre-configured foundation with guardrails already inherited
+      - C) A checklist completed by hand
+      - D) A network segment of its own
       answer: B
 - ordinal: 2
   title: Cloud Identity at Scale
@@ -90,16 +119,38 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Design federated identity across cloud estates.
-  - Detect and remediate permission sprawl.
-  - Implement privileged access for cloud administration.
+  - Design federated identity for a multi-cloud estate so that joiners, movers and leavers deprovision in one place
+  - Trace each path from a low-privilege cloud identity to administrative access and rank the paths by length
+  - Replace standing administrative privilege with just-in-time elevation and state what each change removes
   topics:
-  - Federated cloud identity design.
-  - Permission analysis and least privilege at scale.
-  - Privilege escalation paths in cloud IAM.
-  - Just-in-time cloud administration.
-  lab: 'Lab: Analyse a cloud estate''s IAM for privilege escalation paths, identify every path from a
-    low-privilege identity to administrative access, and remediate the two shortest.'
+  - Federated cloud identity, one lifecycle for joiners, movers and leavers.
+  - Permission analysis at scale and least privilege for cloud identities.
+  - Escalation paths through policies that identities may change or roles they may pass.
+  - Just-in-time elevation, approval, expiry and the removal of standing privilege.
+  lab: >-
+    Lab: On the cloud-security range, find which cloud identities could raise their own permissions and rank
+    each route by how short it is. Evidence: each identity on localstack01 with the permissions attached to it;
+    the permission that would let a low-privilege identity change its own or another identity's permissions;
+    the result of listing directory objects on azure-mock01 without signing in. Pass: every identity recorded
+    exactly as the range shows it; each route marked "escalates" or "does not" with a one-sentence reason; the
+    routes ranked shortest first; one change proposed for every route marked "escalates".
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and record the start time in the lab notes.
+    - hosts: [jump01, localstack01]
+      action: From jump01, list the IAM identities on localstack01 and record each identity name with the
+        permissions attached to it.
+    - hosts: [jump01, localstack01]
+      action: For the least privileged identity on localstack01, record which attached permission would let
+        it change its own or another identity's permissions.
+    - hosts: [jump01, azure-mock01]
+      action: From jump01, try to list directory objects on azure-mock01 without signing in and record what
+        the service returns.
+    - hosts: [jump01]
+      action: Rank the recorded routes shortest first, mark each "escalates" or "does not" with one sentence
+        of reason, and propose one change for every route that escalates.
   refs:
   - nist-sp-800-63-4
   - nist-sp-800-207
@@ -107,41 +158,46 @@ modules:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'A cloud privilege escalation path often exists where an identity can:'
+    - question: A deployment identity in a cloud estate can attach any permission to itself, and an attacker
+        compromises it. What does that attachment create?
       options:
-      - A) Read logs
-      - B) Modify policies or assume a more privileged role
-      - C) List resources
-      - D) Create tags
-      answer: B
-    - question: 'Permission sprawl in cloud environments arises because:'
+      - A) A gap in the audit log
+      - B) Slower deployment pipelines until the pipeline is reconfigured by hand
+      - C) Better workload resilience
+      - D) An escalation path from that identity to administration
+      answer: D
+    - question: An engineer received temporary administrative rights for a migration in March, and in
+        September the rights remain. Which process failure is this?
       options:
-      - A) Providers grant defaults
-      - B) Permissions are granted for tasks and rarely removed afterwards
-      - C) Policies expire
-      - D) Identities are deleted
+      - A) A broken federation trust
+      - B) Permissions granted for a task and never removed
+      - C) Correct just-in-time elevation
+      - D) Use of a break-glass account
       answer: B
-    - question: 'Federating cloud access to a central identity provider improves:'
+    - question: Five cloud accounts each hold local users with separate passwords and separate multi-factor
+        settings. What does federating them to one identity provider change?
       options:
-      - A) Latency
-      - B) Consistent lifecycle, MFA enforcement and deprovisioning
-      - C) Cost
-      - D) Availability
-      answer: B
-    - question: 'The ability to pass a role to a service is dangerous when:'
+      - A) One place enforces lifecycle, authentication strength and deprovisioning
+      - B) The providers stop charging per user
+      - C) Each account keeps its own password policy and its own lifecycle processes
+      - D) The networks route faster between clouds
+      answer: A
+    - question: A cloud service accepts whichever role the caller passes, and a read-only identity may choose
+        the role. Why does this combination matter?
       options:
-      - A) The role is read-only
-      - B) A less privileged identity can pass a more privileged role to a service it controls
-      - C) Logging is enabled
-      - D) The service is managed
+      - A) The service logs the wrong caller
+      - B) The read-only identity gains a high-privilege role through the service
+      - C) The role expires before the work finishes
+      - D) The service bills the wrong account
       answer: B
-    - question: 'Just-in-time cloud administration reduces risk by:'
+    - question: Administrators hold permanent cloud administration rights that they use about one hour a
+        month. Which control fits this situation best?
       options:
-      - A) Removing audit
-      - B) Eliminating standing administrative privilege
-      - C) Simplifying policy
-      - D) Reducing cost
-      answer: B
+      - A) Just-in-time elevation with approval and an expiry time
+      - B) Longer passwords on the administrator accounts
+      - C) One shared administrator account for the team
+      - D) An annual attestation of the rights
+      answer: A
 - ordinal: 3
   title: Infrastructure as Code Security
   content_type: reading
@@ -149,16 +205,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Secure infrastructure defined as code.
-  - Implement policy as code in the pipeline.
-  - Manage state and secrets in automated provisioning.
+  - Read an infrastructure definition and name the configuration a pre-deployment policy gate must block
+  - Protect the state file and the pipeline variables that carry credentials in automated provisioning
+  - Explain how infrastructure as code makes configuration reviewable, repeatable and auditable
   topics:
-  - Infrastructure as code patterns.
-  - Policy as code and pre-deployment gates.
-  - State file protection.
-  - Secrets in provisioning pipelines.
-  lab: 'Lab: Add policy-as-code checks to an infrastructure pipeline that block three specific misconfigurations,
-    and demonstrate both a blocked and an allowed deployment.'
+  - Infrastructure as code patterns and the review they make possible.
+  - Policy as code and pre-deployment gates that stop misconfiguration before it exists.
+  - State files as a map of the environment and a place sensitive values collect.
+  - Secrets in provisioning pipelines, version control history and drift.
+  lab: >-
+    Lab: On the cloud-security range, find what the provisioning pipeline exposes before any deployment runs
+    and judge each exposure against a policy gate. Evidence: whether the state file on terraform01 is readable
+    without authentication and which resource addresses it lists; each value in the configuration files beside
+    it that authenticates to a cloud service; whether the repository on gitlab01 is reachable without signing
+    in. Pass: all three findings recorded exactly as the range shows them; each marked "gate blocks this" or
+    "would pass" with a one-sentence reason; one pre-deployment check proposed for each finding a gate would
+    block.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and record the start time in the lab notes.
+    - hosts: [jump01, terraform01]
+      action: From jump01, reach the state file on terraform01 without signing in and record whether it is
+        readable and which resource addresses it lists.
+    - hosts: [terraform01]
+      action: Read the variable files beside the infrastructure configuration on terraform01 and record each
+        value that authenticates to a cloud service.
+    - hosts: [jump01, gitlab01]
+      action: From jump01, open the project on gitlab01 without signing in and record whether it is reachable
+        and which pipeline variables its configuration references.
+    - hosts: [jump01]
+      action: Mark each finding "gate blocks this" or "would pass" with one sentence of reason, and propose
+        one pre-deployment check for every finding a gate would block.
   refs:
   - nist-sp-800-218
   - nist-sp-800-190
@@ -167,41 +246,46 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Policy as code is most valuable when enforced:'
+    - question: A pipeline can check an infrastructure template before deployment or review the result
+        afterwards. Where does a policy-as-code gate give the most value?
       options:
-      - A) After deployment
-      - B) Before deployment, blocking the misconfiguration from ever existing
-      - C) During audit
-      - D) At renewal
+      - A) After deployment, once the resources exist and carry production data
+      - B) Before deployment, so the misconfiguration never exists
+      - C) During the yearly audit only
+      - D) At contract renewal with the provider
       answer: B
-    - question: 'Infrastructure state files require protection because they:'
+    - question: A state file describing a production estate is readable by the whole delivery team. Why does
+        this matter beyond convenience?
       options:
-      - A) Are large
-      - B) Frequently contain sensitive values and a full map of the environment
-      - C) Change often
-      - D) Are text based
-      answer: B
-    - question: 'Hardcoding secrets in infrastructure code is dangerous because:'
+      - A) The file grows larger every day and costs more to store
+      - B) The file changes too often to read
+      - C) The file hides the network design
+      - D) It maps the environment and may carry sensitive values
+      answer: D
+    - question: A database password was written directly into an infrastructure template and committed, and
+        the line is now deleted. Why is deleting the file not enough?
       options:
-      - A) It slows deployment
-      - B) The secret persists in version control history and is widely readable
-      - C) It breaks idempotency
-      - D) It requires encryption
-      answer: B
-    - question: 'Infrastructure as code improves security posture primarily by making configuration:'
+      - A) The value remains in the version control history
+      - B) The deployment pipeline stops working
+      - C) The template can no longer be planned
+      - D) The database refuses new connections
+      answer: A
+    - question: Two administrators configure the same environment by hand on different days and get different
+        results. Which property of infrastructure as code closes this gap?
       options:
-      - A) Faster to deploy
-      - B) Reviewable, repeatable and auditable
-      - C) Cheaper
-      - D) Provider agnostic
+      - A) The provider bills less for automation
+      - B) One reviewable, repeatable definition of the environment
+      - C) The provider chooses the settings instead
+      - D) Each run invents its own configuration
       answer: B
-    - question: 'Drift between code and deployed reality should be:'
+    - question: A manual hotfix changed a deployed resource last night, and the code still shows the old
+        setting. What is this state called and what should follow?
       options:
-      - A) Expected and ignored
-      - B) Detected and reconciled, since the code otherwise misrepresents the environment
-      - C) Resolved by redeploying always
-      - D) Documented only
-      answer: B
+      - A) Idempotency, which should be celebrated
+      - B) A state file, which should be deleted
+      - C) Drift, which should be detected and reconciled
+      - D) A baseline, which should be widened
+      answer: C
 - ordinal: 4
   title: Cloud Workload Protection
   content_type: reading
@@ -209,16 +293,47 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Secure containerised and serverless workloads at scale.
-  - Implement runtime protection appropriate to the platform.
-  - Manage the workload supply chain.
+  - Apply admission control so the cluster schedules only approved images and rejects privileged workloads
+  - Classify runtime events that show a containerised workload acting outside its declared purpose
+  - Reduce the workload supply chain surface by signing images and restricting registry access
   topics:
-  - Container orchestration security.
-  - Runtime detection for cloud workloads.
-  - Image supply chain and admission control.
-  - Serverless attack surface.
-  lab: 'Lab: Configure admission control to reject unsigned or vulnerable container images, then demonstrate
-    rejection and document the exception process for legitimate cases.'
+  - Admission control at scheduling and the policies it can enforce.
+  - Runtime detection for workloads whose images passed every build-time check.
+  - Privileged containers, host namespaces and the orchestration control plane.
+  - The image supply chain, signing, registry access and serverless execution roles.
+  lab: >-
+    Lab: On the cloud-security range, apply admission control to the k3s cluster, decide which pods a policy
+    of signed images and no privileged containers rejects, and document the exception process. Evidence: each
+    pod with its node, image and whether its container runs privileged or mounts host namespaces; whether the
+    image catalogue on registry01 answers an unauthenticated client; the runtime events falco01 has recorded;
+    the control plane's response when a non-compliant pod is scheduled under the applied policy. Pass: the
+    pod, registry and runtime checks recorded exactly as the range shows them; each pod marked "admitted" or
+    "rejected" with a one-sentence reason; the rejection demonstrated; an exception process written naming the
+    approver, the checks and the expiry.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and record the start time in the lab notes.
+    - hosts: [jump01, k3s-master]
+      action: From jump01, list the pods across the k3s cluster through k3s-master and record each pod with
+        its node and its image.
+    - hosts: [k3s-master]
+      action: For each recorded pod, read its security settings through k3s-master and record whether the
+        container runs privileged or mounts host namespaces.
+    - hosts: [jump01, registry01]
+      action: From jump01, ask the image catalogue on registry01 for its list without signing in and record
+        what it returns.
+    - hosts: [falco01]
+      action: Read the runtime events falco01 has recorded for the cluster and record each event that shows a
+        container acting outside its image's purpose.
+    - hosts: [k3s-master]
+      action: Through k3s-master, apply an admission policy that requires signed images and forbids
+        privileged containers, then attempt to schedule one non-compliant pod from the recorded list and
+        record the control plane's response.
+    - hosts: [jump01]
+      action: Mark each pod "admitted" or "rejected" with one sentence of reason, name the control that
+        enforces each rule, and write the exception process for a legitimate unsigned or privileged image.
   refs:
   - nist-sp-800-190
   - nist-sp-800-218
@@ -226,41 +341,46 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Admission control in an orchestrator enforces policy:'
+    - question: A cluster team can check a workload image when it is scheduled or inspect it once it is
+        already running. What does admission control choose?
       options:
-      - A) After workloads run
-      - B) At the point workloads are scheduled, preventing non-compliant deployment
-      - C) During image build
-      - D) At registry push only
-      answer: B
-    - question: 'Runtime protection for containers is necessary because:'
+      - A) Checking after the workload finishes
+      - B) Checking only when images are built
+      - C) Checking at scheduling, before a non-compliant workload starts
+      - D) Checking only on the registry server after the image has been stored
+      answer: C
+    - question: Build-time scanning found no weakness in an image, yet the running container begins fetching
+        instructions from an outside server. Which capability sees this?
       options:
-      - A) Images are always vulnerable
-      - B) Build-time scanning cannot detect compromise or misuse during execution
-      - C) Orchestrators lack logging
-      - D) Containers are long-lived
+      - A) The image scanner run again
+      - B) Runtime detection during execution
+      - C) The billing report
+      - D) The registry's storage quota for the current billing month
       answer: B
-    - question: 'An orchestrator''s control plane is a critical asset because it:'
+    - question: A contractor asks why the orchestration control plane needs stricter access rules than any
+        single workload. What is the reason?
       options:
-      - A) Stores application data
-      - B) Can schedule arbitrary workloads across the entire cluster
-      - C) Handles networking only
-      - D) Manages billing
-      answer: B
-    - question: 'Serverless functions reduce some attack surface but retain risk from:'
+      - A) It stores the application's customer data
+      - B) It handles network routing only
+      - C) It manages the provider's billing
+      - D) It can schedule arbitrary workloads across the whole cluster
+      answer: D
+    - question: A serverless platform patches its own machines, yet the security team still lists the
+        function as carrying risk. Where does the remaining risk sit?
       options:
-      - A) Kernel patching
-      - B) Over-permissioned execution roles and vulnerable dependencies
-      - C) Physical access
-      - D) Host firewalls
-      answer: B
-    - question: 'Signing container images provides:'
+      - A) In over-permissioned execution roles and vulnerable dependencies
+      - B) In unpatched physical hosts
+      - C) In the provider's staff accounts
+      - D) In the absence of host firewalls
+      answer: A
+    - question: Any employee laptop may push images to the cluster's registry. Which control best assures a
+        cluster that an image came from the build system?
       options:
-      - A) Encryption of layers
-      - B) Assurance of origin and integrity before execution
-      - C) Vulnerability scanning
-      - D) Smaller images
-      answer: B
+      - A) Storing the images twice
+      - B) Encrypting the image layers
+      - C) Verifying an image signature before execution
+      - D) Scanning the image for vulnerabilities
+      answer: C
 - ordinal: 5
   title: Cloud Incident Response
   content_type: reading
@@ -268,16 +388,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Adapt incident response for cloud environments.
-  - Acquire evidence from cloud services.
-  - Contain incidents affecting cloud control planes.
+  - Order containment steps for a compromised cloud administrative identity so evidence survives each action
+  - Acquire cloud evidence from provider logs and snapshots instead of live disks
+  - Plan the review that re-establishes trust in a control plane after a compromise window
   topics:
-  - Cloud-specific response considerations.
-  - Evidence acquisition in cloud.
-  - Control plane compromise response.
-  - Provider engagement.
-  lab: 'Lab: Produce a cloud incident response playbook for a compromised administrative identity, covering
-    containment, evidence acquisition and the recovery of trust in the control plane.'
+  - Containment in cloud, sessions and tokens that outlive a password change.
+  - Evidence acquisition from provider logs, snapshots and application programming interfaces.
+  - Ephemeral resources that may be destroyed before collection.
+  - Control plane compromise, persistence review and provider engagement.
+  lab: >-
+    Lab: On the cloud-security range, trace what the management logs record about administrative change and
+    write the containment order for a compromised administrative identity. Evidence: the log feeds arriving at
+    cloud-siem01 with the newest timestamp in each; each identity the provider logs on localstack01 show
+    changing a resource or a permission; the administrative actions the search on cloud-siem01 returns after
+    the last known-good checkpoint. Pass: the feed and log checks recorded exactly as the range shows them;
+    a containment order written that names the first action, the evidence preserved before it and the check
+    that confirms no residual access.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and record the start time in the lab notes.
+    - hosts: [jump01, cloud-siem01]
+      action: From jump01, open the search interface on cloud-siem01 and record which log feeds are arriving
+        and the newest timestamp in each.
+    - hosts: [jump01, localstack01]
+      action: On localstack01, read the management event logs and record each identity they show changing a
+        resource or a permission.
+    - hosts: [cloud-siem01]
+      action: Search cloud-siem01 for events after the last known-good checkpoint and record each
+        administrative action with its identity and time.
+    - hosts: [jump01]
+      action: Write the containment order for a compromised administrative identity, naming the first action,
+        the evidence preserved before it and the check that confirms no residual access.
   refs:
   - nist-sp-800-61r3
   - nist-sp-800-86
@@ -286,41 +429,46 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'Responding to a compromised cloud administrative identity must include:'
+    - question: An administrative cloud identity is compromised and still holds active sessions. Which
+        response step is essential and most often missed?
       options:
-      - A) Password reset only
-      - B) Revoking active sessions and tokens, not just changing credentials
-      - C) Instance restart
-      - D) Network isolation only
-      answer: B
-    - question: 'Evidence acquisition in cloud differs because:'
+      - A) Revoking active sessions and tokens, not only resetting the password
+      - B) Restarting the affected instances
+      - C) Isolating one network segment
+      - D) Waiting for the next scheduled password expiry to remove the attacker
+      answer: A
+    - question: An investigator must preserve the state of a cloud virtual machine for analysis. Which
+        acquisition method fits the environment?
       options:
-      - A) Disks are unavailable
-      - B) Snapshots and API-based collection replace physical acquisition, and logs may be provider held
-      - C) Nothing is logged
-      - D) Encryption prevents it
-      answer: B
-    - question: 'Ephemeral cloud resources complicate investigation because they:'
+      - A) Shipping the physical disk of each machine to a forensic laboratory
+      - B) Rebooting the machine into a scanner
+      - C) Copying the screen while it runs
+      - D) A provider snapshot taken through the service interface
+      answer: D
+    - question: A suspicious virtual machine in a cloud estate terminates itself one hour after starting.
+        Which investigation risk does this behaviour create?
       options:
-      - A) Are encrypted
-      - B) May be destroyed before evidence is collected
-      - C) Cannot be snapshotted
-      - D) Lack identity
+      - A) The machine is encrypted beyond recovery
+      - B) Evidence may be destroyed before it is collected
+      - C) The machine cannot be identified by name
+      - D) The provider deletes the account
       answer: B
-    - question: 'Provider engagement during a cloud incident is needed when:'
+    - question: The only record of an action under investigation sits in logs the cloud provider holds. When
+        must the response team engage the provider?
       options:
-      - A) Always immediately
-      - B) Evidence or capability lies within the provider's responsibility boundary
-      - C) Never
-      - D) After closure
-      answer: B
-    - question: 'Re-establishing trust after control plane compromise requires:'
+      - A) Never, providers never share evidence
+      - B) Only after the case is closed
+      - C) When evidence sits inside the provider's responsibility boundary
+      - D) Immediately in every incident, whatever the source
+      answer: C
+    - question: An attacker held control plane access for six days before anyone detected it. What must the
+        recovery review cover before trust is restored?
       options:
-      - A) Rebuilding instances only
-      - B) Reviewing all identities, policies and persistence created during the compromise window
-      - C) Rotating one key
-      - D) Provider confirmation
-      answer: B
+      - A) Rebuilding the application instances only
+      - B) Rotating one encryption key
+      - C) A written confirmation from the provider
+      - D) Every identity, policy and resource created during the compromise window
+      answer: D
 - ordinal: 6
   title: Cloud Governance and Assurance
   content_type: reading
@@ -328,16 +476,44 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Establish continuous compliance in a dynamic environment.
-  - Assure cloud security to third parties.
-  - Balance central control with delivery velocity.
+  - Distinguish controls that generate audit evidence automatically from those needing manual attestation
+  - Map the findings in a posture report to the responsibility boundary the customer owns
+  - Set governance that constrains cloud delivery without driving teams to shadow deployments
   topics:
-  - Continuous compliance monitoring.
-  - Evidence generation for assurance.
-  - Shared responsibility in audit.
-  - Control versus velocity.
-  lab: 'Lab: Design a continuous compliance capability that produces audit evidence automatically, and
-    identify which controls still require manual attestation and why.'
+  - Continuous compliance monitoring for an estate that changes faster than audits.
+  - Assurance evidence generated by the platform against evidence collected by hand.
+  - Shared responsibility in audit and the provider certification's limits.
+  - Governance guardrails that hold without pushing teams to shadow deployments.
+  lab: >-
+    Lab: On the cloud-security range, design the estate's continuous compliance capability, using a posture
+    assessment as its first input. Evidence: the count of posture findings by severity from the assessment on
+    prowler01; three findings a provider certification would not cover; whether each finding's configuration
+    area produces change events the SIEM on cloud-siem01 records; a written capability design naming what is
+    assessed, what triggers reassessment and where each evidence type lands. Pass: the assessment counts
+    recorded exactly as the range shows them; each finding assigned to "evidence generated automatically" or
+    "needs manual attestation" with a one-sentence reason; the design collects automatically where change
+    events are searchable and attests the rest manually; one finding's responsibility boundary stated in the
+    Student's own words.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and record the start time in the lab notes.
+    - hosts: [jump01, prowler01]
+      action: From jump01, run the posture assessment on prowler01 against the simulated estate and record
+        the count of findings at each severity.
+    - hosts: [prowler01]
+      action: Open the assessment report on prowler01 and record three findings that a provider certification
+        would not cover.
+    - hosts: [jump01, cloud-siem01]
+      action: On cloud-siem01, record for each of the three findings whether its configuration area produces
+        change events the search interface returns.
+    - hosts: [jump01]
+      action: Draft the continuous compliance design in the lab notes, naming which assessments run on a
+        schedule, which change events trigger reassessment, and where each evidence type lands.
+    - hosts: [jump01]
+      action: Assign each finding to "evidence generated automatically" or "needs manual attestation" with one
+        sentence of reason, and state one finding's responsibility boundary in plain words.
   refs:
   - nist-sp-800-37r2
   - nist-cswp-29
@@ -346,38 +522,43 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Continuous compliance is necessary in cloud because:'
+    - question: A cloud estate changes hundreds of times a week and is assessed once a year. Why does the
+        point-in-time assessment fall short?
       options:
-      - A) Auditors demand it
-      - B) The environment changes faster than periodic assessment can track
-      - C) It is cheaper
-      - D) Providers require it
-      answer: B
-    - question: 'Automatically generated audit evidence is preferable because it is:'
+      - A) Auditors decline to attend more often
+      - B) The assessment report is too long for the committee to read in full
+      - C) Providers refuse yearly assessments
+      - D) The environment changes faster than the assessment cycle tracks
+      answer: D
+    - question: One team exports audit evidence by hand each quarter; another generates it from the platform
+        as configuration changes. Which claim favours the second team?
       options:
-      - A) Shorter
-      - B) Current, consistent and not dependent on manual collection
-      - C) Provider supplied
-      - D) Less detailed
-      answer: B
-    - question: 'In a shared responsibility audit, the customer must evidence:'
+      - A) The generated evidence stays current and consistent
+      - B) The generated evidence is always shorter
+      - C) Hand-collected evidence reaches more systems
+      - D) Hand-collected evidence needs no tooling
+      answer: A
+    - question: An auditor asks a customer running a managed database service for evidence. Which controls
+        must the customer show?
       options:
-      - A) The provider's controls
-      - B) The controls within their own responsibility boundary
-      - C) Nothing
-      - D) Physical security
-      answer: B
-    - question: 'Excessive central control over cloud delivery typically results in:'
+      - A) The physical security of the provider's halls
+      - B) The provider's internal staff screening
+      - C) The controls inside its own responsibility boundary
+      - D) Nothing, the service contract already covers everything the customer uses
+      answer: C
+    - question: A platform team now requires committee approval for every new cloud resource, and six months
+        later unapproved deployments appear outside governance. What happened?
       options:
-      - A) Better security
-      - B) Teams circumventing governance through shadow deployments
-      - C) Faster delivery
-      - D) Lower cost
+      - A) The approval committee worked too quickly
+      - B) Excessive central control drove teams to shadow deployments
+      - C) The provider raised its prices
+      - D) The teams ran out of cloud budget
       answer: B
-    - question: 'Relying solely on a provider''s compliance certification is insufficient because it:'
+    - question: A firm cites its provider's security certification as proof that its own storage buckets are
+        private. Why does the certification not show this?
       options:
-      - A) Is untrustworthy
-      - B) Covers the provider's responsibilities, not the customer's configuration
-      - C) Expires quickly
-      - D) Is not audited
-      answer: B
+      - A) It covers the provider's controls, not the customer's configuration
+      - B) Certifications are never audited by anyone
+      - C) The certification expired the week before
+      - D) Storage is excluded from every certification
+      answer: A
