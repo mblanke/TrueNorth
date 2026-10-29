@@ -321,7 +321,7 @@ modules:
         workstation clients are checking in.
     - hosts: [velociraptor01, v-ws01]
       action: From velociraptor01, collect service and scheduled task creation events across the victim
-        workstations and record the total result count.
+        workstations, including v-ws01, and record the total result count.
     - hosts: [velociraptor01]
       action: Stack the collected results by the account that created each item and record every account
         that appears exactly once.

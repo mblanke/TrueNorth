@@ -47,16 +47,17 @@ modules:
     steps:
     - hosts: [jump01]
       action: >-
-        Log on to the jump host over SSH, open a terminal and connect onward to the Zeek sensor,
-        then write the start time in the lab notes.
+        Log on to the jump host (jump01) over SSH, open a terminal and connect onward to the Zeek
+        sensor (zeek01), then write the start time in the lab notes.
     - hosts: [zeek01]
       action: >-
-        On the Zeek sensor, identify the monitor interface that receives the mirrored traffic and
-        record its state and its packet counters.
+        On the Zeek sensor (zeek01), identify the monitor interface that receives the mirrored
+        traffic and record its state and its packet counters.
     - hosts: [v-ws01, v-web01, zeek01]
       action: >-
-        From the designated workstation, request one page from the internal web server, then find
-        that exchange in the sensor's view and record both endpoints and the byte counts.
+        From the designated workstation (v-ws01), request one page from the internal web server
+        (v-web01), then find that exchange in the sensor's view and record both endpoints and the
+        byte counts.
     - hosts: [zeek01]
       action: >-
         List the logs the sensor has written in the monitoring window and record which protocols
@@ -145,16 +146,16 @@ modules:
     steps:
     - hosts: [jump01]
       action: >-
-        Log on to the jump host over SSH and connect onward to the Zeek sensor, then write the
-        start time in the lab notes.
+        Log on to the jump host (jump01) over SSH and connect onward to the Zeek sensor (zeek01),
+        then write the start time in the lab notes.
     - hosts: [zeek01]
       action: >-
-        Confirm the sensor is running, then list the logs written in the current monitoring window
-        and record the protocols they cover.
+        Confirm the sensor (zeek01) is running, then list the logs written in the current monitoring
+        window and record the protocols they cover.
     - hosts: [v-ws01, v-web01]
       action: >-
-        From the designated workstation, request one page from the internal web server and record
-        the request time in the lab notes.
+        From the designated workstation (v-ws01), request one page from the internal web server
+        (v-web01) and record the request time in the lab notes.
     - hosts: [zeek01]
       action: >-
         Find the connection record for that exchange in the connection log and record its endpoints,
@@ -249,8 +250,8 @@ modules:
     steps:
     - hosts: [jump01, seconion01]
       action: >-
-        Log on to the jump host, open the SOC console in the browser from there and sign in with
-        the analyst account the instructor assigned.
+        Log on to the jump host (jump01), open the SOC console (seconion01) in the browser from
+        there and sign in with the analyst account the instructor assigned.
     - hosts: [seconion01]
       action: >-
         Open the Suricata alerts view for the current monitoring window and record the total count
@@ -351,8 +352,8 @@ modules:
     steps:
     - hosts: [jump01, seconion01]
       action: >-
-        Log on to the jump host and connect to the sensor host with the sensor account the
-        instructor assigned, then open the console.
+        Log on to the jump host (jump01) and connect to the sensor host (seconion01) with the sensor
+        account the instructor assigned, then open the console.
     - hosts: [seconion01]
       action: >-
         Open the local rules file the instructor points to and add one signature whose header binds
@@ -363,8 +364,8 @@ modules:
         then reload the ruleset and record the result.
     - hosts: [v-ws01, v-web01]
       action: >-
-        From the designated workstation, run the benign action first and record the alert count the
-        new signature produces for it.
+        From the designated workstation (v-ws01), run the benign action first against the internal
+        web server (v-web01) and record the alert count the new signature produces for it.
     - hosts: [v-ws01, v-web01]
       action: >-
         Run the matching action next and confirm the signature alerts exactly once; record the
@@ -455,8 +456,8 @@ modules:
     steps:
     - hosts: [jump01, seconion01]
       action: >-
-        Log on through the jump host, open the SOC console and find the noisy signature the
-        instructor names.
+        Log on through the jump host (jump01), open the SOC console (seconion01) and find the noisy
+        signature the instructor names.
     - hosts: [seconion01]
       action: >-
         Record the signature's alert count for the current monitoring window as the baseline.
@@ -556,15 +557,16 @@ modules:
     steps:
     - hosts: [jump01, seconion01]
       action: >-
-        Log on through the jump host and open the SOC console for the drill monitoring window.
+        Log on through the jump host (jump01) and open the SOC console (seconion01) for the drill
+        monitoring window.
     - hosts: [seconion01]
       action: >-
         Pick one Suricata alert from the drill and record its signature identifier, message text
         and endpoints.
     - hosts: [zeek01]
       action: >-
-        On the Zeek sensor, find the connection record for the same endpoints and time, and record
-        its service, duration and byte counts.
+        On the Zeek sensor (zeek01), find the connection record for the same endpoints and time, and
+        record its service, duration and byte counts.
     - hosts: [seconion01, zeek01]
       action: >-
         Compare the two records and write down where they agree and where the alert alone would

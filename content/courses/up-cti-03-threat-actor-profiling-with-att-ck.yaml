@@ -219,7 +219,7 @@ modules:
     - hosts: [jump-box, fw-01]
       action: From jump-box, list the fw-01 rules that allow traffic from the user network and record the services each rule allows towards the server network.
     - hosts: [ws-02, dc-01]
-      action: From ws-02, sign in to the domain as the standard user and record the services the logon touched, matching them to the fw-01 rules observed.
+      action: From ws-02, sign in to the domain on dc-01 as the standard user and record the services the logon touched, matching them to the fw-01 rules observed.
     - hosts: [jump-box]
       action: Write three recorded facts once as indicators (addresses, ports or names) and once as behaviours that name no fixed address or tool.
     - hosts: [jump-box]

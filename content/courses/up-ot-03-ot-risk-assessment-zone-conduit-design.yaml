@@ -517,7 +517,7 @@ modules:
       action: Log on to web01 and test the database port toward sql01, recording the exact result that proves
         the conduit is live.
     - hosts: [fw01, jump01]
-      action: Write the narrowed rule that replaces the broad DMZ rule, naming source, destination and port
+      action: From jump01, write the narrowed rule for fw01 that replaces the broad DMZ rule, naming source, destination and port
         exactly.
     - hosts: [jump01]
       action: For each high-priority risk in the register, state one design change as a rule difference or

@@ -51,7 +51,8 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 over SSH, open a terminal and record the start time.
     - hosts: [jump01, k3s-master]
-      action: From jump01, list every running pod across the cluster and record each pod name,
+      action: From jump01, list every running pod across the cluster from k3s-master and
+        record each pod name,
         its namespace and the node it runs on.
     - hosts: [jump01, k3s-master]
       action: From jump01, describe the web-app pod and record the node it runs on, whether its
@@ -138,7 +139,8 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 over SSH, open a terminal and record the start time.
     - hosts: [jump01, k3s-master]
-      action: From jump01, list the images every running pod uses and record each image reference
+      action: From jump01, list the images every running pod uses from k3s-master and
+        record each image reference
         exactly as written, noting which end in a mutable tag.
     - hosts: [registry01]
       action: On registry01, scan one image the cluster runs with the registry's vulnerability
@@ -407,7 +409,8 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 over SSH, open a terminal and record the start time.
     - hosts: [jump01, k3s-master]
-      action: From jump01, read the specification of the privileged-debug pod and record every
+      action: From jump01, read the specification of the privileged-debug pod from k3s-master
+        and record every
         setting that connects its container to the host, such as privileged mode, host namespace
         sharing and host mounts.
     - hosts: [jump01, k3s-worker01]

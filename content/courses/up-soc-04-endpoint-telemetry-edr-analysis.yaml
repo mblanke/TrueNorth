@@ -230,8 +230,8 @@ modules:
       action: Create a hunt that runs the process listing artefact against every client and record the artefact name
         and its parameters.
     - hosts: [velociraptor01, v-ws01, v-ws02, v-ws03, v-ws04]
-      action: Launch the hunt against the workstation fleet, wait for it to complete and record how many clients
-        completed and how many failed.
+      action: Launch the hunt against the workstation fleet (v-ws01, v-ws02, v-ws03 and v-ws04), wait for it to
+        complete and record how many clients completed and how many failed.
     - hosts: [velociraptor01]
       action: Read the hunt results and record the process names that appear on more than one workstation with a count
         for each.
@@ -405,8 +405,8 @@ modules:
       action: Log on to jump01 over SSH, open the Velociraptor console on velociraptor01 and wait for the workstation
         clients to show as online before running any hunt.
     - hosts: [velociraptor01, v-ws01, v-ws02, v-ws03, v-ws04]
-      action: Run a hunt across the workstation fleet for script interpreter launches and record each launch with its
-        parent process and command line.
+      action: Run a hunt across the workstation fleet (v-ws01, v-ws02, v-ws03 and v-ws04) for script interpreter
+        launches and record each launch with its parent process and command line.
     - hosts: [velociraptor01, v-ws03]
       action: For workstation v-ws03, collect the file writes and network connections that followed each interpreter
         launch and record them beside the launch.

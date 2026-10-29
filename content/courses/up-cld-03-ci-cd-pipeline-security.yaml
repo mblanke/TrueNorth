@@ -149,7 +149,7 @@ modules:
       action: Search the gitlab01 repository history for committed credentials and record the file, the
         commit and the secret type, without copying any value into the notes.
     - hosts: [jump01]
-      action: For each recorded location, write acceptable or unacceptable against least privilege, and name
+      action: On jump01, for each recorded location, write acceptable or unacceptable against least privilege, and name
         one corrective action per unacceptable location, such as moving a variable into a secret store or
         rotating a key.
   refs:
@@ -238,7 +238,7 @@ modules:
       action: Inspect how the cluster admits images and record whether any signature, digest pinning or scan
         result is verified before a pod starts.
     - hosts: [jump01]
-      action: Judge whether a modified image could reach the cluster without detection, and name the control
+      action: On jump01, judge whether a modified image could reach the cluster without detection, and name the control
         that would close each gap found.
   refs:
   - nist-sp-800-218
@@ -325,7 +325,7 @@ modules:
       action: Compare the build and cluster hosts against a hardening benchmark and record the largest
         deviations that can be verified from the range.
     - hosts: [jump01]
-      action: Rank the three findings with the widest blast radius and write one concrete hardening step for
+      action: On jump01, rank the three findings with the widest blast radius and write one concrete hardening step for
         each, ordered by the risk it reduces.
   refs:
   - nist-sp-800-190

@@ -326,7 +326,7 @@ modules:
     template: medium-enterprise
     steps:
     - hosts: [siem01]
-      action: Write a plan of action and milestones entry for each finding from the previous module,
+      action: On siem01, write a plan of action and milestones entry for each finding from the previous module,
         with weakness, milestone, owner role, resources and status.
     - hosts: [siem01]
       action: Order the entries by risk and record one sentence saying why the first entry is
@@ -418,7 +418,7 @@ modules:
     template: medium-enterprise
     steps:
     - hosts: [siem01]
-      action: Query the SIEM for failed sign-in events against dc01 over the recorded period and
+      action: Query the SIEM (siem01) for failed sign-in events against dc01 over the recorded period and
         record the total count and the source host with the most failures.
     - hosts: [siem01]
       action: Record one other recurring event class the assessment period shows, such as blocked
@@ -509,7 +509,7 @@ modules:
     template: medium-enterprise
     steps:
     - hosts: [siem01]
-      action: Assemble the assessment report from the evidence recorded in the earlier modules, and
+      action: Assemble the assessment report on siem01 from the evidence recorded in the earlier modules, and
         record each conclusion beside the evidence item that supports it.
     - hosts: [siem01, fw01]
       action: Read the fw01 rule set as it now stands and record which over-broad conditions, if any,

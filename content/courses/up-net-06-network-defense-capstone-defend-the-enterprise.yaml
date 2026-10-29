@@ -518,7 +518,7 @@ modules:
       action: From jump01, record the trust and administration paths between dc01 and dc03 that the segmentation
         change must cover.
     - hosts: [siem01, jump01]
-      action: From jump01, record one monitoring fix per changed control — a new source, or a tuned detection
+      action: From jump01, record one siem01 monitoring fix per changed control — a new source, or a tuned detection
         that would catch the old chain.
     - hosts: [jump01]
       action: Order the changes by risk reduced against effort on jump01, mark any accepted lateral paths with a

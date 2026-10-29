@@ -245,7 +245,7 @@ modules:
       action: Check on siem01 whether any negative-run events matched the rule, and record the
         count.
     - hosts: [jump01]
-      action: 'Judge both runs: write a verdict of true positive or false negative for the positive
+      action: 'On jump01, judge both runs: write a verdict of true positive or false negative for the positive
         test and a verdict for the negative test, and name the rule defect each implies.'
   refs:
   - nist-sp-800-115
@@ -331,7 +331,7 @@ modules:
       action: For each rule, record the technique it claims, the variant its test covered and the
         date of the last passing test.
     - hosts: [jump01]
-      action: 'Draw the coverage map: mark each claimed technique as tested, partially tested or
+      action: 'On jump01, draw the coverage map: mark each claimed technique as tested, partially tested or
         untested, and date every claim.'
     - hosts: [jump01]
       action: 'Judge the map: name the largest gap and state whether the map''s colours would mislead
@@ -501,7 +501,7 @@ modules:
     template: soc-training
     steps:
     - hosts: [jump01]
-      action: Choose one technique the range does not yet cover and write its detection idea,
+      action: On jump01, choose one technique the range does not yet cover and write its detection idea,
         naming behaviour, data source and event.
     - hosts: [v-ws01]
       action: Produce the chosen behaviour once on v-ws01 and record the exact time.

@@ -325,7 +325,7 @@ modules:
       action: Log on to siem01 as the analyst account and open the SIEM's search page with the login
         the instructor supplies.
     - hosts: [siem01, ws01, dc01]
-      action: Search the last day's sign-in events and record, for three events, the host, the
+      action: Search the last day's sign-in events and record, for three events, the host (such as ws01 or dc01), the
         account and the authentication package each one names.
     - hosts: [siem01]
       action: Narrow the search to events whose authentication package is NTLM and record how many

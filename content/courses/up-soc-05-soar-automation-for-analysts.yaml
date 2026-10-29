@@ -314,7 +314,7 @@ modules:
       action: Log on to jump01 with the analyst account and open the prepared playbook case in TheHive on
         thehive01.
     - hosts: [thehive01]
-      action: Start the playbook against the prepared alert and record exactly what the approval prompt shows
+      action: Start the playbook on thehive01 against the prepared alert and record exactly what the approval prompt shows
         the approver.
     - hosts: [thehive01]
       action: 'Decline the approval and record what the playbook does instead: the state of the case and
@@ -404,7 +404,7 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 with the analyst account and open the closed case list in TheHive on thehive01.
     - hosts: [thehive01]
-      action: Take the ten closed cases the instructor marks and record each case's creation time, first
+      action: On thehive01, take the ten closed cases the instructor marks and record each case's creation time, first
         analyst action time and closure time.
     - hosts: [thehive01]
       action: Split the ten into cases handled before the enrichment playbook was enabled and after it, and
@@ -491,7 +491,7 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 with the analyst account and open the playbook editor in TheHive on thehive01.
     - hosts: [thehive01]
-      action: 'Configure the playbook: set the trigger to the prepared alert type, run the configured analyser
+      action: 'Configure the playbook on thehive01: set the trigger to the prepared alert type, run the configured analyser
         on each new observable and write the result to the case.'
     - hosts: [thehive01]
       action: Add the approval gate before the containment action and record the guard condition that raises

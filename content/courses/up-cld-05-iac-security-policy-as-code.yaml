@@ -142,7 +142,7 @@ modules:
     - hosts: [gitlab01]
       action: Write a policy rule in the pipeline configuration on gitlab01 that fails when the bucket allows unauthenticated reads.
     - hosts: [gitlab01, terraform01]
-      action: Run the pipeline on the branch and record the policy job output, including the resource the rule fails.
+      action: Run the pipeline on the branch using terraform01 and record the policy job output, including the resource the rule fails.
     - hosts: [localstack01]
       action: Correct the bucket configuration on localstack01 so public access is denied, and commit the change to the branch.
     - hosts: [gitlab01]
@@ -319,7 +319,7 @@ modules:
     - hosts: [terraform01]
       action: Write a call of the new module that reproduces the workload role without the vulnerable attributes and record the inputs used.
     - hosts: [jump01]
-      action: Judge whether the module deserves golden status. Record which guarantees it encodes and which exception path it must still offer.
+      action: On jump01, judge whether the module deserves golden status. Record which guarantees it encodes and which exception path it must still offer.
   refs:
   - nist-sp-800-218
   - nist-sp-800-190
@@ -401,7 +401,7 @@ modules:
     - hosts: [jenkins01]
       action: Inspect the credential store on jenkins01 and record how its entries are protected.
     - hosts: [jump01]
-      action: Match each exposed credential to a storage mechanism that grants the pipeline least privilege, and record the choice.
+      action: On jump01, match each exposed credential to a storage mechanism that grants the pipeline least privilege, and record the choice.
     - hosts: [jump01]
       action: Judge the rotation order for the exposed values, starting with the credential that grants the broadest access, and record it with reasons.
   refs:

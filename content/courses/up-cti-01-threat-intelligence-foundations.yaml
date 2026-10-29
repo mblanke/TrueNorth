@@ -53,8 +53,8 @@ modules:
       action: Log on to jump-box over SSH with the analyst account the instructor assigned and
         record the address and mask on the jump host's own network interface.
     - hosts: [jump-box, fw-01]
-      action: From jump-box, test reachability of each gateway address in the instructor's
-        addressing plan and record which of the three networks answers.
+      action: From jump-box, test reachability of each gateway address on fw-01 in the
+        instructor's addressing plan and record which of the three networks answers.
     - hosts: [jump-box, dc-01]
       action: From jump-box, query the name service on dc-01 for each host name in the
         instructor's host list and record the name and address every query returns.
@@ -144,7 +144,7 @@ modules:
     template: small-enterprise
     steps:
     - hosts: [jump-box]
-      action: Read the rule summary the instructor supplies and record the name, source network,
+      action: At jump-box, read the rule summary the instructor supplies and record the name, source network,
         destination network and permitted ports of the rule that carries user-to-server domain
         traffic.
     - hosts: [jump-box, dc-01]
@@ -237,7 +237,7 @@ modules:
     template: small-enterprise
     steps:
     - hosts: [jump-box]
-      action: Write the requirement as a question a named person can answer this week, which
+      action: At jump-box, write the requirement as a question a named person can answer this week, which
         networks can reach the server network for administration, and record the question with
         its owner and window.
     - hosts: [jump-box, dc-01]
@@ -331,8 +331,8 @@ modules:
     template: small-enterprise
     steps:
     - hosts: [jump-box, fw-01]
-      action: Inventory the network source; from jump-box, test reachability of each gateway
-        address in the addressing plan and record which networks answer through the boundary.
+      action: Inventory the network source; from jump-box, test reachability of each gateway address on fw-01 in the addressing
+        plan and record which networks answer through the boundary.
     - hosts: [jump-box, dc-01]
       action: Inventory the directory source; from jump-box, query the name service on dc-01 for
         the workstation host names and record how many workstations the domain has registered.
@@ -422,7 +422,7 @@ modules:
     template: small-enterprise
     steps:
     - hosts: [jump-box]
-      action: Read the two judgement cards the instructor supplies and record, for each judgement,
+      action: At jump-box, read the two judgement cards the instructor supplies and record, for each judgement,
         the evidence the range would need to show before the claim is believed.
     - hosts: [jump-box, dc-01]
       action: Check the service judgement from jump-box; test the claimed ports on dc-01 and
@@ -516,7 +516,7 @@ modules:
     template: small-enterprise
     steps:
     - hosts: [jump-box]
-      action: Read the three indicator claims the instructor supplies and record, for each claim,
+      action: At jump-box, read the three indicator claims the instructor supplies and record, for each claim,
         what the range would show from the management network if the claim were true.
     - hosts: [jump-box, dc-01]
       action: Validate the service claim from jump-box; test whether dc-01 answers on the claimed

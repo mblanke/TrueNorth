@@ -389,7 +389,7 @@ modules:
       action: Open the siem01 event record for the recovery window and record three confirmed facts with their
         exact times.
     - hosts: [ws01]
-      action: Draft a recovery update for management from the recorded facts, and mark each line as fact or
+      action: Draft a recovery update on ws01 for management from the recorded facts, and mark each line as fact or
         interpretation.
     - hosts: [ws02]
       action: Draft a shorter update for affected users on ws02 and record which technical terms were removed.
@@ -472,7 +472,7 @@ modules:
       action: Extract the recovery timeline from the siem01 record and record each milestone with its actual
         time.
     - hosts: [ws01]
-      action: Compare each actual time with the planned recovery objective and record where the plan was beaten
+      action: On ws01, compare each actual time with the planned recovery objective and record where the plan was beaten
         or missed.
     - hosts: [ws02]
       action: List the decisions taken during recovery on ws02 and record the evidence each decision rested

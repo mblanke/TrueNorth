@@ -489,7 +489,8 @@ modules:
       action: Open the fw01 rule list and record the rule that today allows the corporate zone to reach the servers
         zone.
     - hosts: [ws01, dc01, fs01]
-      action: From ws01, confirm which of sign-in, name lookup and file sharing the workstation genuinely needs, and
+      action: From ws01, confirm which of sign-in and name lookup on dc01 and file sharing on fs01 the
+        workstation genuinely needs, and
         record one business reason for each.
     - hosts: [ws01]
       action: 'Write the pilot''s scope: the first flow to restrict, the success measure that shows the flow still

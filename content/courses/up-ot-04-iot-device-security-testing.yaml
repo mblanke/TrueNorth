@@ -47,7 +47,7 @@ modules:
     template: greyspace-internet
     steps:
     - hosts: [ws01]
-      action: Open the vendor update page for the office router that the instructor names on the greyspace
+      action: On ws01, open the vendor update page for the office router that the instructor names on the greyspace
         internet, and record the package name, its size and the published checksum.
     - hosts: [ws01]
       action: Download the firmware package from the vendor update page and record the saved file name and
@@ -227,7 +227,7 @@ modules:
     template: greyspace-internet
     steps:
     - hosts: [ws01]
-      action: Search the greyspace internet for the office router's hardware documentation and record each
+      action: On ws01, search the greyspace internet for the office router's hardware documentation and record each
         page that covers the board's headers, ports or flash chip.
     - hosts: [ws01]
       action: Read the board and hardware manual pages on ws01 and record each physical entry point the

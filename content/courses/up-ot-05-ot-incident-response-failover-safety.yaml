@@ -545,7 +545,7 @@ modules:
       action: Close the drill, recording the recommissioning gate release and the containment rule reverted
         as the drill directs.
     - hosts: [jump01]
-      action: Write the handover note, giving each decision, its reason and its actor, in the order taken.
+      action: On jump01, write the handover note, giving each decision, its reason and its actor, in the order taken.
   refs:
   - nist-sp-800-61r3
   - nist-cswp-29

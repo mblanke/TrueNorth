@@ -139,8 +139,8 @@ modules:
     template: greyspace-internet
     steps:
     - hosts: [ws01]
-      action: Read the questionnaire the supplier returned and record each claim it makes about patching,
-        administrator rights, screen locking and the domain password policy.
+      action: On ws01, read the questionnaire the supplier returned and record each claim it makes about
+        patching, administrator rights, screen locking and the domain password policy.
     - hosts: [ws01]
       action: On ws01, open the update history and record the date and name of the most recent installed
         update.
@@ -231,7 +231,7 @@ modules:
     template: greyspace-internet
     steps:
     - hosts: [ws01]
-      action: Open the developer site in the greyspace internet, download the sample package your
+      action: On ws01, open the developer site in the greyspace internet, download the sample package your
         instructor names and record its file name.
     - hosts: [ws01]
       action: Open the package's digital-signature details and record the signer name and the certificate
@@ -327,8 +327,8 @@ modules:
       action: For the three most queried domains, record which workstations queried them and the times of the
         first and last query.
     - hosts: [ws01]
-      action: Compare the observed domains with the approved-supplier list your instructor supplied and
-        record every domain with no matching supplier entry.
+      action: On ws01, compare the observed domains with the approved-supplier list your instructor supplied
+        and record every domain with no matching supplier entry.
     - hosts: [edge01]
       action: For one unexplained domain, record every internal host that queried it and the times of its
         first and last queries.

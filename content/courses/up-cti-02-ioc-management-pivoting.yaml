@@ -47,7 +47,7 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01, open the MISP web interface on misp01 and open the events index.
     - hosts: [misp01]
-      action: In the events index, count the indicators by type, then record the confidence score and last-seen
+      action: In the events index on misp01, count the indicators by type, then record the confidence score and last-seen
         date of the three oldest entries.
     - hosts: [misp01]
       action: Find a domain indicator whose last-seen date is older than its decay window and record its event ID,
@@ -135,7 +135,7 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 and open the two campaign events on misp01, recording each suspicious domain.
     - hosts: [misp01]
-      action: From each domain's event, open its WHOIS attributes and record the creation date, registrar,
+      action: From each domain's event on misp01, open its WHOIS attributes and record the creation date, registrar,
         registrant fields and name servers.
     - hosts: [misp01]
       action: List which registrant fields are privacy-redacted in each record and mark them unusable for pivoting.
@@ -314,7 +314,7 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 and open MISP on misp01, then start a new draft event named for the campaign.
     - hosts: [misp01]
-      action: Add one attribute for each campaign indicator in the lab notes, choosing the correct category and
+      action: Add one attribute on misp01 for each campaign indicator in the lab notes, choosing the correct category and
         type for each, and record the list.
     - hosts: [misp01]
       action: Apply the campaign taxonomy tag, set the distribution level and record the reason the chosen
@@ -404,7 +404,7 @@ modules:
       action: Log on to jump01, open Dashboards on siem01 and build the scoped hunt query over the campaign
         indicators with a time window, recording the query.
     - hosts: [siem01]
-      action: Run the query, record the match count by source host and copy two evidence lines.
+      action: Run the query on siem01, record the match count by source host and copy two evidence lines.
     - hosts: [velociraptor01]
       action: On velociraptor01, run a file-hunt artefact across the endpoints for one campaign hash and record
         which endpoint the artefact names.
@@ -495,7 +495,7 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 and open the campaign event on misp01, listing every indicator it now holds.
     - hosts: [misp01]
-      action: Mark each indicator validated or rejected, judging specificity, observed evidence and query syntax,
+      action: Mark each indicator on misp01 validated or rejected, judging specificity, observed evidence and query syntax,
         and record a reason for each mark.
     - hosts: [misp01]
       action: For one domain indicator, record the fields a STIX representation would carry, including value,

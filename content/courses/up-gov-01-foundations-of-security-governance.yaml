@@ -49,7 +49,7 @@ modules:
     - hosts: [jump-box]
       action: Log on to jump-box over SSH, open a terminal and write the start time in your lab notes.
     - hosts: [jump-box, dc-01]
-      action: From jump-box, list the hosts and networks the range contains and record a one-line role for each.
+      action: From jump-box, list the hosts and networks the range contains, including dc-01, and record a one-line role for each.
     - hosts: [jump-box, dc-01]
       action: From jump-box on the management network, test the domain service ports on dc-01 and record which dc-01 services answer.
     - hosts: [jump-box]
@@ -384,7 +384,7 @@ modules:
     - hosts: [jump-box]
       action: Log on to jump-box over SSH, open a terminal and write the start time in your lab notes.
     - hosts: [jump-box, dc-01]
-      action: From jump-box, list every reachable host and record the role each host plays for the enterprise.
+      action: From jump-box, list every reachable host, including dc-01, and record the role each host plays for the enterprise.
     - hosts: [jump-box, dc-01]
       action: From jump-box, test name resolution through dc-01 and record what stops working across the range if dc-01 fails.
     - hosts: [jump-box]

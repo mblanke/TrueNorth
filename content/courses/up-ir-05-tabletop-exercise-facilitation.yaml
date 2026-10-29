@@ -498,7 +498,7 @@ modules:
       action: From jump-box, list the allow rules on fw-01 and record the facts the first inject
         depends on.
     - hosts: [ws-01, dc-01]
-      action: From ws-01, attempt the sign-in the inject describes with the standard account the
+      action: From ws-01, attempt the sign-in to dc-01 that the inject describes with the standard account the
         instructor assigned, and record the exact outcome and time.
     - hosts: [jump-box]
       action: Keep a 20 minute exercise clock, capture each observation with a timestamp and source
