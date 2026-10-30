@@ -110,8 +110,9 @@ back. A course drafted before this guide existed is re-done against it.
   have a wrong or ambiguous key (for example, calling SIGKILL "the one signal" a process
   cannot catch when SIGSTOP is also uncatchable). Re-derive each keyed answer from the
   module text and check that no distractor is also correct.
-- **Upskilling courses (C500 and up, files `up-*.yaml`)** carry no `qsp_code` and no
-  catalogue row. Their notes say "Unpublished pending Standards review." and do not need
+- **Upskilling courses (C500 and up, files `up-*.yaml`)** carry no `qsp_code`. Each
+  needs one row in `content/catalogue/specialist_pathways.csv` (ADR 0018): the ingest
+  refuses a course with no catalogue row. Their notes say "Unpublished pending Standards review." and do not need
   the "proposed / not standards-validated" wording.
 - **Keep every module-level `po:` block** (`po: {qsp_code, po_code}`) from the course you are
   re-doing. The programme tests count which module delivers each objective; the C208 re-do
