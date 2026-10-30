@@ -145,6 +145,10 @@ def load_curriculum(api: Api, rep: Report) -> None:
         "/courses/import-programme", {"file": CONTENT / "catalogue/cyber_operator_programme.csv"}
     )
     rep.line(s, "programme catalogue", d)
+    s, d = api.post_files(
+        "/courses/import-programme", {"file": CONTENT / "catalogue/specialist_pathways.csv"}
+    )
+    rep.line(s, "specialist pathways catalogue", d)
     # Not recursive on purpose: content/courses/instructor/ holds the staff-only instructor
     # packs (answer-key notes, lab setup), which never become learner-visible course
     # content. The ingest also refuses a document marked `audience: staff_only`.

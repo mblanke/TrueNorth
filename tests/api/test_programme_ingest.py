@@ -287,3 +287,63 @@ def test_import_endpoint_rejects_oversize(client):
         files={"file": ("big.csv", b"a" * (MAX_CSV_BYTES + 1), "text/csv")},
     )
     assert resp.status_code == 413
+
+
+# -- the specialist pathways (ADR 0018) -------------------------------------
+
+SPECIALIST = CATALOGUE.parent / "specialist_pathways.csv"
+COURSES = CATALOGUE.parents[1] / "courses"
+
+
+def _specialist_rows() -> list[dict]:
+    with open(SPECIALIST, newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
+def test_specialist_catalogue_has_the_programme_columns():
+    with open(SPECIALIST, newline="", encoding="utf-8") as f:
+        assert next(csv.reader(f)) == EXPECTED_COLUMNS
+
+
+def test_specialist_pathways_are_upskilling_courses_that_lead_to_a_later_dp():
+    rows = _specialist_rows()
+    assert rows
+    programme_codes = {r["course_code"] for r in csv.DictReader(open(CATALOGUE, newline="", encoding="utf-8"))}
+    for r in rows:
+        assert r["programme"].startswith("specialist-"), r["programme"]
+        assert r["dp_order"] in {"3", "4", "5"}, f"{r['course_code']}: a pathway leads to DP 3-5, not {r['dp_order']}"
+        assert r["course_code"] not in programme_codes
+        assert r["provenance"] == "unsourced" and r["status"] == "proposed"
+
+
+def test_each_pathway_leads_to_one_dp():
+    leads: dict[str, set[str]] = {}
+    for r in _specialist_rows():
+        leads.setdefault(r["programme"], set()).add(r["dp_order"])
+    assert all(len(v) == 1 for v in leads.values()), leads
+
+
+def test_every_upskilling_course_file_has_exactly_one_pathway_row_and_the_reverse():
+    codes = [r["course_code"] for r in _specialist_rows()]
+    assert len(codes) == len(set(codes))
+    files = sorted(p.name for p in COURSES.glob("up-*.yaml"))
+    in_files = set()
+    for name in files:
+        for line in (COURSES / name).read_text(encoding="utf-8").splitlines():
+            if line.startswith("course_code:"):
+                in_files.add(line.split(":", 1)[1].strip().strip("'\""))
+                break
+    assert set(codes) == in_files
+
+
+def test_specialist_import_creates_unpublished_courses_and_a_path_per_pathway(db_session):
+    from app.models import LearningPath
+    from app.programme_ingest import generate_programme_paths
+
+    stats = import_programme(db_session, SPECIALIST.read_text(encoding="utf-8"))
+    assert stats["courses_created"] == len(_specialist_rows())
+    assert stats["published"] == 0
+    generate_programme_paths(db_session)
+    names = {p.name for p in db_session.query(LearningPath).all()}
+    for programme, dp in {(r["programme"], r["dp_order"]) for r in _specialist_rows()}:
+        assert f"Programme — {programme} DP{dp}" in names

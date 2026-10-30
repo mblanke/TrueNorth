@@ -259,19 +259,12 @@ def run_arc2(
             "arc2",
             "arc2.qa.check_course: publication, provenance, status, qsp_code, notes, modules, labs, refs, quiz shape, duplicate stems, miscited sources",
         )
-        if upskilling:
-            ledger.not_applicable(
-                "qa.catalogue_identity",
-                "arc2",
-                f"{NA_TAZ}: upskilling courses (C500 and up) are not rows of the DP1/DP2 programme catalogue",
-            )
-        else:
-            out_f += arc2_qa.check_catalogue_identity(manifest, root, api)
-            ledger.ran(
-                "qa.catalogue_identity",
-                "arc2",
-                f"arc2.qa.check_catalogue_identity: {manifest['course']['catalogue_code']!r} is a course in the catalogue",
-            )
+        out_f += arc2_qa.check_catalogue_identity(manifest, root, api)
+        ledger.ran(
+            "qa.catalogue_identity",
+            "arc2",
+            f"arc2.qa.check_catalogue_identity: {manifest['course']['catalogue_code']!r} is a course in the programme or specialist catalogue",
+        )
         scenario_ids = sorted(p.parent.name for p in (out / "05-sensor").glob("*/scenario.yaml"))
         if scenario_ids:
             for sid in scenario_ids:

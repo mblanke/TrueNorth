@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = ROOT / "docs/interfaces/course-content.schema.json"
 COURSE_DIR = ROOT / "content/courses"
 CATALOGUE = ROOT / "content/catalogue/cyber_operator_programme.csv"
+SPECIALIST = ROOT / "content/catalogue/specialist_pathways.csv"
 COURSE_FILES = sorted(COURSE_DIR.glob("*.yaml"))
 
 SCHEMA = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
@@ -120,8 +121,12 @@ def test_file_name_and_title_follow_the_catalogue(path):
     code = doc["course_code"]
     catalogue = _catalogue()
     if _is_upskilling(code):
-        assert code not in catalogue, f"{path.name}: {code} is upskilling but has a catalogue row"
-        assert path.name.startswith(re.sub(r"\s+", "-", code.lower()) + "-") or path.name.startswith("up-"), path.name
+        assert code not in catalogue, f"{path.name}: {code} is upskilling but is in the programme catalogue"
+        with SPECIALIST.open(newline="", encoding="utf-8") as fh:
+            specialist = {r["course_code"]: r["course_title"] for r in csv.DictReader(fh)}
+        assert code in specialist, f"{path.name}: {code} is not in the specialist catalogue"
+        assert path.name.startswith("up-"), path.name
+        assert doc["title"] == specialist[code], f"{path.name}: title {doc['title']!r} != catalogue {specialist[code]!r}"
         return
     assert code in catalogue, f"{path.name}: {code} is not in the catalogue"
     if path.name in NAMING_EXCEPTIONS:
