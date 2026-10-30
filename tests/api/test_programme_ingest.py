@@ -308,7 +308,8 @@ def test_specialist_catalogue_has_the_programme_columns():
 def test_specialist_pathways_are_upskilling_courses_that_lead_to_a_later_dp():
     rows = _specialist_rows()
     assert rows
-    programme_codes = {r["course_code"] for r in csv.DictReader(open(CATALOGUE, newline="", encoding="utf-8"))}
+    with open(CATALOGUE, newline="", encoding="utf-8") as f:
+        programme_codes = {r["course_code"] for r in csv.DictReader(f)}
     for r in rows:
         assert r["programme"].startswith("specialist-"), r["programme"]
         assert r["dp_order"] in {"3", "4", "5"}, f"{r['course_code']}: a pathway leads to DP 3-5, not {r['dp_order']}"
