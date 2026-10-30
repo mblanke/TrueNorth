@@ -15,6 +15,7 @@ import pytest
 from app.models import Course, CourseModule
 from app.programme_ingest import (
     EXPECTED_COLUMNS,
+    OPTIONAL_COLUMNS,
     course_name,
     import_programme,
     parse_programme,
@@ -302,7 +303,9 @@ def _specialist_rows() -> list[dict]:
 
 def test_specialist_catalogue_has_the_programme_columns():
     with open(SPECIALIST, newline="", encoding="utf-8") as f:
-        assert next(csv.reader(f)) == EXPECTED_COLUMNS
+        header = next(csv.reader(f))
+    assert header[: len(EXPECTED_COLUMNS)] == EXPECTED_COLUMNS
+    assert set(header[len(EXPECTED_COLUMNS) :]) <= set(OPTIONAL_COLUMNS)
 
 
 def test_specialist_pathways_are_upskilling_courses_that_lead_to_a_later_dp():
@@ -348,3 +351,48 @@ def test_specialist_import_creates_unpublished_courses_and_a_path_per_pathway(db
     names = {p.name for p in db_session.query(LearningPath).all()}
     for programme, dp in {(r["programme"], r["dp_order"]) for r in _specialist_rows()}:
         assert f"Programme — {programme} DP{dp}" in names
+
+
+# -- leadership and technical streams toward DP 3-5 (ADR 0019) --------------
+
+
+def test_streams_parse_and_drop_what_is_not_a_stream():
+    from app.programme_ingest import _parse_streams
+
+    assert _parse_streams("leadership:3; technical:4") == ["leadership:3", "technical:4"]
+    assert _parse_streams("leadership:3;leadership:3;command:4;technical:9;technical") == ["leadership:3"]
+    assert _parse_streams("") == []
+
+
+def test_every_dp_3_to_5_has_a_leadership_and_a_technical_stream():
+    placed = {s for r in _specialist_rows() for s in (r.get("streams") or "").split(";") if s}
+    assert placed == {f"{s}:{dp}" for s in ("leadership", "technical") for dp in (3, 4, 5)}
+
+
+def test_stream_courses_are_all_catalogue_courses_and_a_course_is_in_one_stream_per_dp():
+    seen: dict[tuple[str, str], str] = {}
+    for r in _specialist_rows():
+        for s in filter(None, (r.get("streams") or "").split(";")):
+            name, dp = s.split(":")
+            other = seen.setdefault((r["course_code"], dp), name)
+            assert other == name, f"{r['course_code']} is on both streams at DP{dp}"
+
+
+def test_import_generates_a_path_per_stream_and_dp_and_tags_the_courses(db_session):
+    import json
+
+    from app.models import LearningPath
+    from app.programme_ingest import generate_programme_paths
+
+    import_programme(db_session, SPECIALIST.read_text(encoding="utf-8"))
+    stats = generate_programme_paths(db_session)
+    assert stats["stream_paths"] == 6
+    names = {p.name for p in db_session.query(LearningPath).all()}
+    for stream in ("Leadership", "Technical"):
+        for dp in (3, 4, 5):
+            assert f"Stream — {stream} DP{dp}" in names
+    on_a_stream = [c for c in db_session.query(Course).all() if "streams" in json.loads(c.course_meta)]
+    assert on_a_stream
+    for c in on_a_stream:
+        assert any(t.startswith("stream:") for t in json.loads(c.tags))
+    assert db_session.query(LearningPath).filter(LearningPath.is_published.is_(True)).count() == 0

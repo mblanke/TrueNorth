@@ -67,6 +67,12 @@ EXPECTED_COLUMNS = [
     "status",
 ]
 
+# Columns a catalogue may add after EXPECTED_COLUMNS. ``streams`` places a course on the
+# leadership or technical route to a developmental period: ``leadership:3;technical:4``
+# (ADR 0019). Absent or blank for the DP1/DP2 programme.
+OPTIONAL_COLUMNS = ["streams"]
+STREAMS = ("leadership", "technical")
+
 
 def _to_int(value: str) -> int:
     try:
@@ -86,6 +92,17 @@ def course_name(course_code: str, course_title: str) -> str:
     if code and title:
         return f"{code} — {title}"
     return code or title
+
+
+def _parse_streams(value: str) -> list[str]:
+    """``leadership:3;technical:4`` -> ``["leadership:3", "technical:4"]``. A malformed or
+    unknown entry is dropped: a stream is a placement, never a reason to refuse a row."""
+    out: list[str] = []
+    for part in (value or "").split(";"):
+        name, _, dp = part.strip().lower().partition(":")
+        if name in STREAMS and dp.isdigit() and 3 <= int(dp) <= 5 and f"{name}:{int(dp)}" not in out:
+            out.append(f"{name}:{int(dp)}")
+    return out
 
 
 def parse_programme(csv_text: str) -> list[dict]:
@@ -120,6 +137,7 @@ def parse_programme(csv_text: str) -> list[dict]:
                 "duration_hours": _to_int(raw.get("duration_hours", 0)),
                 "provenance": (raw.get("provenance") or "unsourced").strip().lower(),
                 "status": (raw.get("status") or "proposed").strip().lower(),
+                "streams": _parse_streams(raw.get("streams") or ""),
             }
         )
     return rows
@@ -174,6 +192,9 @@ def catalogue_tags(meta: dict, delivers=()) -> list[str]:
     institution = str(meta.get("institution") or "").strip().lower()
     if institution:
         tags.append(f"institution:{_INSTITUTION_TAG.get(institution) or _tag_slug(institution)}")
+
+    for stream in sorted({str(x).split(":")[0] for x in meta.get("streams") or []}):
+        tags.append(f"stream:{stream}")
 
     for key, prefix in (("term_code", "term"), ("provenance", "provenance"), ("status", "status")):
         value = _tag_slug(meta.get(key))
@@ -241,6 +262,8 @@ def import_programme(db: Session, csv_text: str, tenant_id: str | None = None) -
             "provenance": row["provenance"],
             "status": row["status"],
         }
+        if row["streams"]:
+            meta["streams"] = row["streams"]
         # Declared prerequisites come from the course file, not this catalogue, so a
         # catalogue re-import must not wipe them.
         if not created:
@@ -288,6 +311,7 @@ def generate_programme_paths(db: Session, tenant_id: str | None = None) -> dict:
     courses = db.query(Course).filter_by(tenant_id=tenant_id).all()
     by_term: dict[str, list[tuple[str, str, Course]]] = {}
     by_programme: dict[tuple[str, int], list[tuple[str, str, Course]]] = {}
+    by_stream: dict[tuple[str, int], list[tuple[str, str, Course]]] = {}
 
     for course in courses:
         try:
@@ -302,8 +326,12 @@ def generate_programme_paths(db: Session, tenant_id: str | None = None) -> dict:
         entry = (code, str(meta.get("term_label") or term), course)
         by_term.setdefault(term, []).append(entry)
         by_programme.setdefault((programme, int(meta.get("dp_order") or 0)), []).append(entry)
+        for placement in meta.get("streams") or []:
+            name, _, dp = str(placement).partition(":")
+            if name in STREAMS and dp.isdigit():
+                by_stream.setdefault((name, int(dp)), []).append(entry)
 
-    stats = {"term_paths": 0, "programme_paths": 0}
+    stats = {"term_paths": 0, "programme_paths": 0, "stream_paths": 0}
 
     for term, entries in sorted(by_term.items()):
         entries.sort(key=lambda e: e[0])
@@ -336,6 +364,22 @@ def generate_programme_paths(db: Session, tenant_id: str | None = None) -> dict:
             tenant_id=tenant_id,
         )
         stats["programme_paths"] += 1
+
+    for (stream, dp_order), entries in sorted(by_stream.items()):
+        entries.sort(key=lambda e: e[0])
+        course_ids = [str(c.id) for _, _, c in entries]
+        _get_or_create_path(
+            db,
+            name=f"Stream — {stream.capitalize()} DP{dp_order}",
+            description=(
+                f"The {stream} route to developmental period {dp_order}: upskilling courses "
+                "placed for testing, not a qualification. Unsourced draft; carries no qualification claim."
+            ),
+            course_ids=course_ids,
+            prereq=_linear_prereq(course_ids),
+            tenant_id=tenant_id,
+        )
+        stats["stream_paths"] += 1
 
     db.commit()
     return stats
