@@ -1,0 +1,165 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C517
+audience: staff_only
+overview: 'Protocol & Service Hardening Clinic is a self-paced range course of six 50-minute modules
+  (300 minutes, 5 hours) on the greyspace-internet range. Each module has the same split: 10 minutes
+  teaching, 30 minutes lab on the range, 10 minutes quiz. Each module teaches three objectives,
+  works one lab on the simulated internet, and ends with a five-item quiz passed at 70 percent.
+  Say ''Student'' throughout, keep every activity individual, and keep every description defensive
+  and observable.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 teach (chain of trust, DS publication), 30 lab (resolver validation walk on ws01 and
+    dc01), 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '10 teach (DoT versus DoH, strict versus opportunistic), 30 lab (cleartext versus TLS
+    lookups and the edge rules), 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '10 teach (SPF mechanisms and dispositions), 30 lab (webmail header reading on ws01),
+    10 quiz'
+- module: 4
+  minutes: 50
+  plan: '10 teach (DKIM fields, alignment, staged DMARC), 30 lab (signature and DMARC records on
+    ws01), 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '10 teach (stratum, offset, ticket tolerance), 30 lab (source chain from ws01 through
+    dc01 to the edge), 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '10 teach (staged removal, measurement before enforcement), 30 lab (edge inventory and
+    path tests), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: a failed signature check means refuse the answer; A and C would forward unverified
+    data and D asks the party under suspicion to fix itself. Q2 C: without a DS at the parent there
+    is no chain to the anchor, so the zone is treated as unsigned; A overstates the effect and B
+    invents a direct path. Q3 A: the DS record carries the child key fingerprint into the parent;
+    RRSIG and DNSKEY live inside the child zone. Q4 D: expired signatures make validation fail even
+    though the keys are current. Q5 B: no authenticated marking for a signed zone means the resolver
+    never validated; the workstation itself is not validating.'
+- module: 2
+  notes: 'Q1 C: DoT keeps DNS on its own port 853, so contents are hidden but the sessions remain
+    visible as DNS; A hides the sessions too well. Q2 D: opportunistic mode falls back to cleartext
+    silently; A and C describe strict behaviour. Q3 A: strict mode pins the resolver certificate
+    identity; the other items are not what strict mode checks. Q4 C: the residual cleartext senders
+    are exactly the exposure; A describes a monitoring loss, not the leak. Q5 B: DoH shares the web
+    port, so DNS sessions blend into browsing; the other options are false properties of DoH.'
+- module: 3
+  notes: 'Q1 A: an unlisted sender against a record ending in -all is a hard fail; B would be ~all,
+    D means no record. Q2 B: SPF evaluates the SMTP envelope address of the current hop, not the
+    visible From identity; forwarding breaks it for this reason. Q3 D: changing -all to ~all is the
+    soft-fail intent; publishing two records is invalid and removing the record abandons the policy.
+    Q4 D: no record means the none disposition; absence is not a pass or a fail. Q5 A: the ten-lookup
+    limit stops evaluation; the other causes are invented.'
+- module: 4
+  notes: 'Q1 D: the signature validates but DMARC alignment fails because d= differs from the From
+    domain; A and C confuse signature validity and record publication with alignment. Q2 B: s= names
+    the selector; d= names the domain and bh= carries the body hash. Q3 C: p=none with aggregate
+    reports is the monitor-first stage; enforcing policies before senders are known breaks mail. Q4
+    A: DMARC needs one aligned authenticated identity; a passing SPF from an unaligned domain is not
+    enough. Q5 D: quarantine means the spam or holding folder; A is a none policy and B is reject.'
+- module: 5
+  notes: 'Q1 B: offset is client clock minus source clock; stratum is the hop count and the other
+    items are different measurements. Q2 C: a shifted domain clock pushes tickets outside their
+    validity window; Kerberos depends on time and does not read or change stored passwords. Q3 A:
+    stratum 1 attaches to a reference clock; each stratum below adds a hop. Q4 D: sign-in breaks
+    first because Kerberos tolerance is minutes; browsing, resolution and printing tolerate skew.
+    Q5 B: the office server is an intermediate stratum below its upstream, neither a reference clock
+    nor a pure client.'
+- module: 6
+  notes: 'Q1 C: measure dependence first, because the staged order is announce, measure, restrict,
+    remove; deleting first breaks unknown users. Q2 B: the cleartext mail retrieval service is the
+    legacy protocol because it sends credentials without encryption while a hardened replacement
+    already exists; A mistakes traffic volume for age, C mistakes an uncommon port for an old
+    protocol and D mistakes a short update history for legacy status. Q3 B: no connections in the
+    measurement window makes it safe to remove first. Q4 A: restricting the path and alerting on
+    use limits exposure while the dependency remains. Q5 C: the failure shows the measurement step
+    missed a dependent batch process.'
+lab_setup:
+- module: 1
+  setup: 'Revert the greyspace-internet range to its baseline build. Confirm edge01, dc01 and ws01
+    answer, that the recursive resolver behind edge01 serves the office, and that one greyspace
+    zone is signed and one is not. Expected: the signed zone''s answers carry the authenticated
+    marking from a validating resolver and the unsigned zone''s answers do not.'
+- module: 2
+  setup: 'Revert the range to baseline. Confirm ws01 reaches the resolver in cleartext and that the
+    resolver''s TLS transport answers on its own port, and note which of the two paths the edge01
+    rules permit off the office network. Expected: the cleartext lookup succeeds and the TLS lookup
+    succeeds only where the edge allows it.'
+- module: 3
+  setup: 'Revert the range to baseline. Confirm ws01 can open the webmail service and that the inbox
+    holds messages from at least three greyspace sending domains with differing SPF records,
+    including one that fails and one whose domain publishes no record. Expected: the SPF result
+    line in each message''s headers matches the record the resolver returns for that domain.'
+- module: 4
+  setup: 'Revert the range to baseline. Confirm the webmail inbox holds at least one DKIM-signed
+    message, at least three messages with visible authentication results, and one message that
+    fails DMARC and was placed outside the inbox. Expected: the resolver returns a DMARC record
+    with a policy and reporting address for at least one sending domain.'
+- module: 5
+  setup: 'Revert the range to baseline. Confirm ws01 and dc01 show their time service status, that
+    dc01 follows an upstream source, and that the edge01 rules control which hosts may reach the
+    simulated internet time service. Kerberos ticket tolerance on the domain is about five minutes,
+    so the measured offset should sit well inside that.'
+- module: 6
+  setup: 'Revert the range to baseline. Confirm the edge01 rules still permit at least one legacy
+    plaintext service path toward the simulated internet alongside its hardened replacement, and
+    that ws01 can test both paths. Expected: the legacy path succeeds and exposes its contents in
+    the clear while the replacement succeeds encrypted.'
+common_faults:
+- module: 1
+  fault: Students read the authenticated marking on one answer and conclude every zone the resolver
+    serves is validated.
+  remedy: Have them query both the signed and the unsigned zone in the same session and record the
+    marking side by side before they judge the resolver.
+- module: 1
+  fault: Students propose signing a zone as the fix for a failed delegation, when the signature
+    exists but the parent record is missing.
+  remedy: Walk the chain of trust from the root down and stop where it breaks, asking at each hop
+    what record that hop must publish.
+- module: 2
+  fault: Students call any encrypted DNS deployment strict because encryption is on.
+  remedy: Point at the observed fallback behaviour in the lab; strict mode fails closed and
+    opportunistic mode does not.
+- module: 2
+  fault: Students treat the residual cleartext senders as a solved problem once laptops are
+    encrypted.
+  remedy: Re-read the edge rules with them and list which senders still leave the network in the
+    clear.
+- module: 3
+  fault: Students grade SPF against the visible From address instead of the envelope sender.
+  remedy: Show the received chain first and have them point at the identity the receiver actually
+    checked before discussing the result.
+- module: 3
+  fault: Students read the none disposition as a failure of the sender's policy.
+  remedy: Ask what record the receiver had to evaluate; the answer is none, so the disposition is
+    none.
+- module: 4
+  fault: Students accept a valid signature as proof the message is DMARC-aligned.
+  remedy: Put the signing domain and the visible From domain side by side and ask whether they
+    match before reading the DMARC result.
+- module: 4
+  fault: Students jump a domain straight from no record to reject.
+  remedy: Ask which legitimate senders the aggregate reports would have found first, and have them
+    write the monitor stage into their plan.
+- module: 5
+  fault: Students report the stratum as the offset or the other way round.
+  remedy: Have them label each field of the status output with what it measures before they answer
+    any question about it.
+- module: 5
+  fault: Students mark the internal chain authenticated because it is internal.
+  remedy: Ask for the evidence of authentication at each hop; nothing in the baseline configuration
+    authenticates the time exchange.
+- module: 6
+  fault: Students block the legacy service in the first stage of their plan.
+  remedy: Make them name the measurement window and its evidence for every blocking change before
+    the plan is accepted.
+- module: 6
+  fault: Students rank a heavily used legacy service as remove first because it is the most
+    exposed.
+  remedy: Have them state the business need next to the exposure for each path and justify the
+    ranking against both columns.

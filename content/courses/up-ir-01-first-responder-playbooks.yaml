@@ -1,0 +1,550 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C531
+title: First Responder Playbooks
+version: '1.0'
+difficulty: foundation
+duration_hours: 3
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C206
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - Drafted for NICE work roles Cyber Defense Incident Responder (PR-CIR-001) and Cyber Defense
+    Analyst (PR-CDA-001); no mapping is asserted here, crosswalk belongs to crosswalk.csv.
+  - Grounded in NIST CSF 2.0 Respond functions RS.MA (Incident Response Management) and RS.CO
+    (Incident Response Communication and Coordination) as topics, not as a mapping.
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Severity and Escalation Triggers
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Classify an incident into a severity level using the playbook's impact and urgency criteria
+  - Select the escalation trigger a first-hour observation meets and name the route it follows
+  - Distinguish severity, which sets response priority, from alert confidence and asset value
+  topics:
+  - Severity levels fixed in advance from impact on the mission and urgency of the harm.
+  - Escalation triggers, escalation routes and the on-call chain for a small enterprise.
+  - Severity versus alert confidence, asset value and data sensitivity in the first hour.
+  - The cost of over-escalation and under-escalation while the incident is still small.
+  - Recording every severity decision so later responders can reuse the reasoning.
+  lab: >-
+    Lab: On the small-enterprise range, triage the three observations the instructor names
+    against the playbook's severity criteria, and record the escalation each one triggers.
+    Evidence: the session start time from jump-box; the severity level and the impact and
+    urgency reasons for each of the three observations; the escalation route named for each;
+    the exact wording of the fw-01 rule that would carry containment traffic if the highest
+    observation were escalated. Pass: all three observations carry a severity level with a
+    one-sentence impact and urgency reason each; each severity call names the escalation
+    trigger it fires; the rule name is recorded exactly as fw-01 shows it.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and write the session start time as the
+        first entry of the triage notes.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, list the rules on fw-01 that connect the networks, and record the exact
+        name of the rule that would carry containment traffic between user hosts and servers.
+    - hosts: [jump-box]
+      action: For each of the three observations the instructor names, write a severity level and
+        one sentence of impact reason and one sentence of urgency reason.
+    - hosts: [jump-box]
+      action: For each severity call, name the escalation trigger it fires and the route the trigger
+        follows, then mark the observation to verify before escalating and why.
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A file server holding the only finance records stops answering during month-end.
+        Which severity call follows the playbook's impact and urgency criteria?
+      options:
+      - A) Low, because no data loss has been confirmed yet
+      - B) High, because a critical asset is unavailable at peak urgency
+      - C) Medium, because the outage may still be a routine fault
+      - D) Low, because the server can be rebuilt from backups
+      answer: B
+    - question: A responder confirms ransomware-style file changes on ws-02 at 09:14. Which action
+        matches the escalation trigger the playbook sets for confirmed malicious file changes?
+      options:
+      - A) Wait for a second independent alert before telling anyone at all
+      - B) Delete the changed files to stop the suspected spread first
+      - C) Escalate to the incident lead now and record the trigger time
+      - D) Reboot ws-02 and continue monitoring for further changes
+      answer: C
+    - question: A weak alert from an untested detection arrives for dc-01 during a quiet first hour.
+        Which judgement is correct before any escalation is made?
+      options:
+      - A) Treat the alert as a false positive and close it at once
+      - B) Raise maximum severity because a server is named in it
+      - C) Ignore the alert until the next responder comes on shift
+      - D) Confidence is low, so verify before raising the severity
+      answer: D
+    - question: During a first-hour triage a responder downgrades a confirmed intrusion to medium
+        severity to avoid waking the director. What does the playbook call this?
+      options:
+      - A) An under-escalation that delays decisions reserved for high severity
+      - B) A documented risk acceptance under the urgency criteria
+      - C) A correct reading of the asset value table
+      - D) A normal wait for the next scheduled check
+      answer: A
+    - question: Two responders work the same incident an hour apart without a shared record. Which
+        first-hour failure does the playbook attribute the confusion to?
+      options:
+      - A) The escalation trigger for the incident fired twice over
+      - B) Severity decisions were never written down for the next responder
+      - C) The second responder had no credential for the range at all
+      - D) Alert confidence was never recorded for the first alert
+      answer: B
+- ordinal: 2
+  title: The First Hour Checklist
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Sequence the first-hour checklist actions from detection through preservation to escalation
+  - Record each checklist item with the time and source a later responder will need
+  - Predict which checklist steps fail when range clocks or assigned credentials are unavailable
+  topics:
+  - The fixed order of first-hour actions, from detect through record, preserve and escalate.
+  - Checklist discipline, writing the time, the source and the decision as each item completes.
+  - Time synchronisation and clock drift as a dependency every later timestamp relies on.
+  - Credential handling for the assigned analyst account on shared hosts during the first hour.
+  - When the checklist bends, parallel actions and the responder who owns each one.
+  lab: >-
+    Lab: On the small-enterprise range, run the first-hour checklist for a suspected intrusion
+    on ws-01, recording every item with its time and its source. Evidence: the time the range
+    shows for the session start on jump-box; the system time each of jump-box, dc-01 and ws-01
+    reports and any drift between them; whether the assigned analyst account on jump-box reaches
+    ws-01 and the shared directory on dc-01; the fw-01 rule names that connect the networks, in
+    checklist order. Pass: every checklist item written with a time and a source; any incomplete
+    item marked with the reason; the clock drift stated in minutes with the two
+    hosts it sits between.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the time the range shows for the session start
+        as the first checklist item.
+    - hosts: [jump-box, dc-01, ws-01]
+      action: Check the system time that jump-box, dc-01 and ws-01 each report, and record any drift
+        observable between them, naming the two hosts it sits between.
+    - hosts: [jump-box, ws-01, dc-01]
+      action: From jump-box with the assigned analyst credential, test the network path to ws-01 and
+        to the shared directory service on dc-01, and record each result with its time and source.
+    - hosts: [fw-01]
+      action: Note the names of the fw-01 rules that connect the user and server networks, recording
+        each rule name in the order the checklist reaches it.
+    - hosts: [jump-box]
+      action: Complete the first-hour checklist for the suspected intrusion on ws-01, writing each
+        item with its time and source, then mark any item that could not be completed and why.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: Midway through the first-hour checklist a responder is unsure whether to preserve
+        first or record first. What does the playbook fix for this?
+      options:
+      - A) Whichever action the responder judges faster at the time
+      - B) Recording is optional if the times exist somewhere else
+      - C) The checklist order, record the time then preserve evidence
+      - D) Nothing, because the order stays the responder's own choice
+      answer: C
+    - question: A responder writes that ws-02 acted strangely today into the incident record. Which
+        replacement entry meets the checklist's recording rule?
+      options:
+      - A) Something changed on a host, with the details to follow
+      - B) The endpoint behaved unusually, and a ticket already exists
+      - C) A colleague also noticed the changes during their own shift
+      - D) Files changed on ws-02, recorded at 09:14 from the monitoring alert
+      answer: D
+    - question: The range's ws-01 clock is eight minutes behind dc-01. Which first-hour checklist
+        conclusion does the playbook require before timestamps are used?
+      options:
+      - A) Clock drift is recorded and timestamps reconciled before any timeline is trusted
+      - B) dc-01 is authoritative, so its time is used without comment
+      - C) The clocks are close enough for any first-hour purpose
+      - D) Timestamps are dropped from the record whenever drift appears
+      answer: A
+    - question: The assigned analyst credential fails to open a session on ws-01 during the first
+        hour. What does the checklist direct the responder to do next?
+      options:
+      - A) Retry the same credential until the lockout clears by itself
+      - B) Record the failed credential, then use the documented fallback account
+      - C) Skip the checklist item silently and continue the first hour
+      - D) Request a fresh range deployment before any other checklist step runs
+      answer: B
+    - question: Three responders work the same first hour without agreed owners. Which checklist
+        risk does the playbook name for this arrangement?
+      options:
+      - A) Evidence ages out faster while several responders work at once
+      - B) The escalation trigger fires twice and wakes management twice over
+      - C) Checklist items are done twice, or not at all, with no owner
+      - D) The range clocks drift further apart while the work continues
+      answer: C
+- ordinal: 3
+  title: Evidence Preservation Basics
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Order the evidence preservation actions that stop change without stopping the investigation
+  - Record volatile data and its capture deadline before any reboot or wipe is considered
+  - Justify a preserve-first or contain-first decision for a given host in the first hour
+  topics:
+  - What counts as evidence in the first hour, volatile data, logs, configurations, sessions.
+  - Change-stop discipline and the rule against rebooting or wiping a compromised host.
+  - Capture deadlines for volatile evidence and the responder who owns each deadline.
+  - Copies, working copies and the rule that keeps the original sealed for later analysis.
+  - The evidence log, who touched each item, when, and why the touch was needed.
+  lab: >-
+    Lab: On the small-enterprise range, preserve the evidence picture for a suspected compromise
+    on ws-02 without changing any host. Evidence: the session start time from jump-box as the
+    first entry of the evidence log; the log destinations on ws-02 and dc-01 and which central
+    log each forwards to; the running sessions and connections on ws-02 that a reboot would
+    destroy; which logs the range keeps centrally and which exist only on the host. Pass: the
+    evidence log has a timestamped entry for every action taken; each volatile item carries
+    a capture deadline; the preserve-first or contain-first recommendation for ws-02 gives two
+    reasons and names the deadline that constrains it.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the session start time as the first entry of
+        the evidence log.
+    - hosts: [ws-02, dc-01]
+      action: List the log destinations on ws-02 and dc-01, and record which central log each host
+        forwards to and which logs exist only on the host itself.
+    - hosts: [ws-02]
+      action: Record the running sessions and network connections on ws-02 that a reboot would
+        destroy, without changing the host, and mark a capture deadline for each.
+    - hosts: [jump-box]
+      action: Write a preserve-first or contain-first recommendation for ws-02 with two reasons,
+        and mark the volatile item whose capture deadline constrains the choice.
+  refs:
+  - nist-sp-800-86
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A responder restarts ws-03 to clear the problem before anyone records the host's
+        state. Which evidence preservation rule did this action break?
+      options:
+      - A) The rule that logs are forwarded before any change is made
+      - B) The rule that copies are verified before analysis begins
+      - C) The rule that evidence items are logged as they are touched
+      - D) Never reboot a compromised host before volatile evidence is captured
+      answer: D
+    - question: Which first-hour evidence on a compromised Windows workstation has the shortest
+        capture deadline under the playbook's volatile list?
+      options:
+      - A) Volatile evidence such as running processes and active connections
+      - B) The operating system version and its installed update level
+      - C) Last week's forwarded events in the central log store
+      - D) The local security policy exported at the last change
+      answer: A
+    - question: The security team can read last week's events for dc-01 but finds nothing for ws-02.
+        What is the most likely evidence preservation gap on the range?
+      options:
+      - A) dc-01 runs a newer operating system than the workstations do
+      - B) ws-02 was reimaged last week and lost its older events entirely
+      - C) ws-02 forwards no logs to the central log store
+      - D) dc-01 simply holds more accounts and therefore more events
+      answer: C
+    - question: An investigator must analyse the only copy of a compromised disk image. Which
+        evidence rule does the playbook apply to this situation?
+      options:
+      - A) Analysis may run on the original if the investigator logs each read
+      - B) The image stays sealed until the incident is formally closed out
+      - C) The image may be analysed only on the host it came from
+      - D) Work on a verified copy, keeping the original sealed
+      answer: D
+    - question: Two responders copied the same log file at different times during the first hour.
+        What must the evidence log show about each copy?
+      options:
+      - A) Who copied the evidence, when, and from which source
+      - B) The file size of each copy and nothing else about it
+      - C) The reason the log file mattered to the investigation
+      - D) The approval the incident lead gave for each copy made
+      answer: A
+- ordinal: 4
+  title: Containment Decisions in the First Hour
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select the containment action with the least operational cost that stops the observed harm
+  - Predict what an isolation or block action breaks on the small-enterprise network first
+  - Decide when partial containment is safer than cutting a whole network off
+  topics:
+  - Containment options in order of cost, from isolating a host to disconnecting the network.
+  - What isolation breaks, from authentication and file shares to name resolution and monitoring.
+  - Firewall rules as a containment tool and the blast radius each rule carries.
+  - Short-term versus permanent containment and the review each one needs before release.
+  - Recording the business impact of every containment action as it is applied.
+  lab: >-
+    Lab: On the small-enterprise range, work out the least-cost containment for a suspected
+    compromise on ws-02 and what it would cost the business. Evidence: the session start time
+    from jump-box; the fw-01 rule that connects the user and server networks and the services
+    it allows; the services from that list that ws-01 depends on for sign-in and file access;
+    who must approve the containment under the playbook. Pass: the recommendation names one
+    containment action with the observed harm it stops; the prediction of what the range would
+    lose is written before any change is made; the approval line names a role, not a person.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the session start time in the containment
+        notes.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, read the fw-01 rule that connects the user and server networks, and
+        record the exact services the rule allows between them.
+    - hosts: [ws-01, dc-01]
+      action: Confirm from ws-01 that sign-in against dc-01 and the shared directory both work while
+        the rule stands, and record each result against the service it proves.
+    - hosts: [jump-box]
+      action: Write the least-cost containment recommendation for the suspected compromise on ws-02,
+        recording what the range would lose and which role must approve it.
+  refs:
+  - nist-sp-800-83r1
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: Malicious file activity is confirmed on one workstation only and nothing else on
+        the network shows it. Which containment action stops the harm at least cost?
+      options:
+      - A) Disconnect the whole user network at the firewall at once
+      - B) Shut the directory service down until the morning comes
+      - C) Isolate the affected workstation from the rest of the network
+      - D) Reimage every workstation during the same working day
+      answer: C
+    - question: A responder proposes isolating every user host at once during month-end. What does
+        the playbook require before the isolation is applied?
+      options:
+      - A) A recorded prediction of the sign-in and file-share impact of the isolation
+      - B) An approval from every employee who will lose access to the network
+      - C) A fresh backup of the file shares on the server network first
+      - D) A waiting period that lets the monitoring alerts settle down
+      answer: A
+    - question: Disabling which fw-01 rule would cut ws-01 off from the directory service that
+        dc-01 provides to the user network?
+      options:
+      - A) The rule that lets management hosts reach any network at all
+      - B) The rule allowing user-network to server-network directory traffic
+      - C) There is no such rule, because the range has only one network
+      - D) Any rule at all, because every rule applies to every host
+      answer: B
+    - question: A temporary block has held for two hours and employees are asking to work normally
+        again. What does the playbook require before the block is lifted?
+      options:
+      - A) Nothing beyond the responder's own judgement at that moment
+      - B) A restart of the range so the hosts return to their baseline
+      - C) A written promise from employees that they noticed nothing unusual
+      - D) A recorded containment review and the incident lead's approval
+      answer: D
+    - question: After applying containment to ws-01, a responder moves straight to the next task
+        without writing anything down. Which first-hour duty was skipped?
+      options:
+      - A) Recording the business impact of the containment action
+      - B) Updating the severity level for the whole incident at once
+      - C) Closing the alert that started the first hour in the queue
+      - D) Booking the follow-up meeting with the affected business team
+      answer: A
+- ordinal: 5
+  title: Communicating while Containing
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a first notification that states only facts, each with a time and a source
+  - Select the audience and channel a given first-hour update needs before any other
+  - Distinguish a fact, an interpretation and a guess in the lines of an incident update
+  topics:
+  - The first notification, what it must contain and what it must not speculate about.
+  - Audiences and channels, from the incident lead to management, helpdesk and affected teams.
+  - Fact, interpretation and guess, labelling each line of an update before it is sent.
+  - Cadence, how often updates go out and the standing no-change update.
+  - Sharing observations with partner organisations without over-disclosing internal detail.
+  lab: >-
+    Lab: On the small-enterprise range, draft and mark up the first communications for a
+    suspected compromise on ws-02. Evidence: the session start time from jump-box; one
+    observable fact each from ws-01 and dc-01 with its exact value, host and time; the name
+    of the fw-01 rule a containment update about the user network would cite; a three-line
+    first notification with every line labelled. Pass: every notification line carries
+    a fact, interpretation or guess label; each fact line shows a time and a source; the
+    guess lines are rewritten as checkable questions rather than claims.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the session start time as the reference time
+        for the notifications.
+    - hosts: [ws-01, dc-01]
+      action: Collect one observable fact each from ws-01 and dc-01, recording the exact value, the
+        host and the time of the observation.
+    - hosts: [fw-01]
+      action: Record the exact name of the fw-01 rule that a containment update about the user
+        network would cite.
+    - hosts: [jump-box]
+      action: Write a three-line first notification for the suspected compromise on ws-02, marking
+        each line as fact, interpretation or guess.
+    - hosts: [jump-box]
+      action: Rewrite each guess line as a checkable question, and record which audience
+        and channel the notification goes to first.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A draft first notification reads that ws-02 is probably infected with ransomware.
+        Which communication rule does this line break?
+      options:
+      - A) The rule that every notification carries an approval line
+      - B) It states an interpretation as if it were an established fact
+      - C) The rule that a host is never named in the first notification
+      - D) The rule that notifications stay short enough for management
+      answer: B
+    - question: The helpdesk is flooded with calls about a locked file share during the first hour.
+        Who receives the next update first under the playbook?
+      options:
+      - A) Management, so they can brief the whole business afterwards
+      - B) The affected teams, because they own the locked share
+      - C) The incident lead, who approves every line that leaves
+      - D) The helpdesk, with an approved holding line it can quote
+      answer: D
+    - question: Nothing about the incident has changed for thirty minutes. Which sending pattern
+        follows the playbook's cadence rule for updates?
+      options:
+      - A) Silence, because updates are only sent when something changes
+      - B) An immediate escalation, since quiet means the responder is stuck
+      - C) A no-change update on the agreed cadence with the next check time
+      - D) A summary of everything so far, sent to every audience at once
+      answer: C
+    - question: Management asks whether records were stolen. No evidence bears on the question yet.
+        What may the responder write in the next update?
+      options:
+      - A) That the evidence question is open and which check will answer it
+      - B) A guess marked as fact, because management expects an answer
+      - C) Nothing at all until the question can be fully answered
+      - D) A reassurance that no records leave this range's networks
+      answer: A
+    - question: A partner organisation reports the same suspicious sign-in pattern against its own
+        systems. What may be shared under the playbook's sharing rule?
+      options:
+      - A) The full internal incident record, to speed the partner's work
+      - B) Nothing, because observations never leave the enterprise boundary
+      - C) The affected user account names, so the partner can block them
+      - D) The time window and the sign-in pattern, without internal host names
+      answer: D
+- ordinal: 6
+  title: Handover and the Incident Record
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Assemble a handover that a new responder can act on without re-deriving the first hour
+  - Order the incident record entries so the chronology survives the handover intact
+  - Judge when a first-hour playbook is complete enough to hand to the longer response
+  topics:
+  - The handover package, from the chronology to open actions, containment state and contacts.
+  - Incident record structure, entries that carry a time, a source and a decision reason.
+  - What a new responder needs first and where the record keeps each of those things.
+  - Common handover failures and the checks that catch them before the hour closes.
+  - Closing the first hour, when the playbook hands control to the longer response.
+  lab: >-
+    Lab: On the small-enterprise range, build the handover package for the end of the first
+    hour on a suspected compromise of ws-02. Evidence: the session start time from jump-box
+    as the first record entry; one observed fact each from dc-01 and ws-01 with host, time
+    and source in chronology order; the containment state as the range shows it, including
+    any fw-01 rules the instructor disabled; the open actions the instructor names with an
+    owner each. Pass: the chronology reads in time order with no gaps; every open action has
+    an owner and a next check; the handover summary names the one judgement the new responder
+    must make first.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the session start time as the first entry of
+        the incident record.
+    - hosts: [dc-01, ws-01]
+      action: Record one observed fact each from dc-01 and ws-01 with its host, time and source,
+        and place both entries in chronology order.
+    - hosts: [fw-01]
+      action: Record the fw-01 rules that connect the networks as the containment state shows them,
+        and any rule the instructor has disabled.
+    - hosts: [jump-box]
+      action: List the open actions the instructor names, giving each an owner and a next check,
+        and write the handover summary with the first judgement the new responder must make.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A responder leaves at the end of the first hour. Which handover lets the next
+        responder act without re-deriving anything that already happened?
+      options:
+      - A) A handover chronology, the open actions and the containment state
+      - B) A verbal summary at the door with no written trace at all
+      - C) The raw alerts in a file, with a promise to explain later
+      - D) A screenshot of the monitoring queue as it stood at handover
+      answer: A
+    - question: Which incident record entry will still make sense to a responder who reads the
+        record after the handover is done?
+      options:
+      - A) Fixed it, seemed like a network thing in the end
+      - B) Record updated, see earlier notes for the full story
+      - C) Record entry, 09:14, file changes on ws-02, source monitoring alert
+      - D) Alert handled, no further action thought to be needed
+      answer: C
+    - question: Which chronology order does the playbook fix for four entries timed 09:05, 09:20,
+        09:14 and a second entry at 09:05?
+      options:
+      - A) In the order the entries were typed into the record
+      - B) By recorded time, with same-time entries kept apart by source
+      - C) By how important each entry seems to the investigation now
+      - D) By host, grouping every entry under the machine it mentions
+      answer: B
+    - question: A new responder opens the incident record mid-handover and asks what to do first.
+        Which entry does the playbook send them to first?
+      options:
+      - A) The open actions in the incident record and their owners
+      - B) The severity decision taken at the very start of the hour
+      - C) The contacts list at the back of the incident record
+      - D) The raw alerts, so the new responder builds their own view
+      answer: A
+    - question: The first hour ends. Which judgement makes the handover complete enough to pass
+        to a new responder and the longer response?
+      options:
+      - A) The alerts stop arriving while the responder is still working
+      - B) Every tool the range offers has been run at least once over
+      - C) The record lets a new responder act without asking questions
+      - D) Management has signed off the notifications sent so far
+      answer: C

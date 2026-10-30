@@ -1,0 +1,178 @@
+course_code: C549
+audience: staff_only
+overview: ICS & SCADA Fundamentals is a hands-on draft course of six 40-minute modules (240 minutes, 4 hours) run
+  against the large-enterprise range. Each module has the same split, about 10 minutes teaching the concepts, 22
+  minutes on the range lab, and 8 minutes for the five-item quiz passed at 70 percent. Students work individually,
+  hand in a lab evidence record per module, and meet the two controller simulators, both HMI workstations, the
+  historian, the OT firewall and the protocol-aware sensor on the range. Say 'Student' throughout and keep every
+  description defensive and observable.
+timings:
+- module: 1
+  minutes: 40
+  plan: 10 teach (controller parts and the scan cycle), 22 lab (read both controller programs from eng-ws01),
+    8 assessment (quiz and hand-in of the evidence record)
+- module: 2
+  minutes: 40
+  plan: 10 teach (HMI elements and the historian archive), 22 lab (map both HMI workstations and the historian
+    tags), 8 assessment (quiz and hand-in of the evidence record)
+- module: 3
+  minutes: 40
+  plan: 10 teach (Modbus TCP frames and capture points), 22 lab (capture controller traffic and read the sensor
+    alerts), 8 assessment (quiz and hand-in of the evidence record)
+- module: 4
+  minutes: 40
+  plan: 10 teach (Purdue levels and default deny), 22 lab (read the rule set on ot-fw01 and judge the OT
+    isolation), 8 assessment (quiz and hand-in of the evidence record)
+- module: 5
+  minutes: 40
+  plan: 10 teach (safe state and the OT priority order), 22 lab (classify alarms and order a response), 8
+    assessment (quiz and hand-in of the evidence record)
+- module: 6
+  minutes: 40
+  plan: 10 teach (inventory and telemetry), 22 lab (build the inventory and judge the sensor alerts), 8 assessment
+    (quiz, hand-in, and a two-minute debrief of the whole estate)
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (start of the scan), M01-O02: The scan reads inputs first, then executes, then writes; not A because
+    reading is not continuous during execution, not C because the write comes last, not D because the operator
+    screen plays no part in the cycle. Q2 C (fixed worst-case time), M01-O03: Determinism is the new requirement a
+    server never had; throughput (A, B) and desktop software (D) are office concerns. Q3 A (energises the starter
+    coil), M01-O01: A rung is a condition and an output; B, C and D describe network or historian actions a rung
+    does not perform. Q4 D (no fixed interval means no reliance), M01-O02: Scan speed alone proves nothing without
+    a bound; A and B are cost and human-factor distractions, C misstates the historian''s role. Q5 B (patch windows
+    planned around production), M01-O03: An unplanned stop can be the hazard; A is false (controllers have
+    processors), C is false (office patches do not apply), D invents a hardware protection that does not exist.'
+- module: 2
+  notes: 'Q1 D (a new alarm hidden in the noise), M02-O01: The alarm-flood failure is suppression of what matters;
+    the historian (A), the controllers (B) and the trend displays (C) keep running. Q2 A (archiving at a set
+    interval), M02-O02: Trending rests on time-stamped archives; B belongs to the controller, C to the operator,
+    D to the HMI. Q3 C (level is read-only, button is operator-writable), M02-O03: The exact distinction the lab
+    drills; A and B erase the difference, D mislabels both. Q4 B (one-hour gap in the tags), M02-O02: The
+    historian archives what arrives, so the outage is a data gap only; the controller keeps running (A), the HMI
+    keeps its screens (C) and nothing auto-acknowledges (D). Q5 C (in the controller), M02-O01: The setpoint is
+    written to the controller that drives the process; the historian (A) and other screens (B) only mirror it
+    afterwards, and the alarm banner (D) is a notification, not the action.'
+- module: 3
+  notes: 'Q1 A (Modbus TCP), M03-O01: Cleartext register reads with no login are the signature of Modbus; B, C and
+    D all authenticate or encrypt. Q2 D (no endpoint authentication), M03-O02: Any device can read and write
+    because the protocols never verify the sender; A and C are wrong about firmware and specification, B describes
+    a control that is absent. Q3 B (SPAN port mirroring the OT network), M03-O03: The capture point must sit on
+    the path of the traffic; the email server (A), resolver (C) and office wireless (D) never carry it. Q4 C (an
+    unauthenticated write occurred), M03-O01: A sensor proves what crossed the wire, nothing about approval (A),
+    process outcome (B) or firmware state (D). Q5 A (payload hidden, sender still unauthenticated), M03-O02:
+    Encryption is not authentication; B, C and D invent scan, historian and sensor consequences encryption does
+    not cause.'
+- module: 4
+  notes: 'Q1 C (Level 1, basic control), M04-O01: The controller acts directly on the process below supervision;
+    Levels 3, 4 and 5 (A, B, D) are site and enterprise functions. Q2 B (a DMZ brokering the flow), M04-O02: The
+    demilitarised zone exists precisely to serve data outward without opening the control network; a flat network
+    (A) is the opposite, encryption (C) does not segment, and a second controller (D) duplicates rather than
+    brokers. Q3 D (over-broad; one named flow should replace it), M04-O03: Any-to-any any-port is the textbook
+    over-broad rule; stateful replies (A) do not need an any rule, source being internal (B) is not
+    authorisation, and the internet (C) is not the criterion. Q4 A (programs moved on laptops and USB), M04-O02:
+    Portable media and people cross an air gap daily; the printer vendor (B), file sharing (C) and cloud email
+    (D) all stay inside the enterprise side. Q5 D (enterprise and OT control network), M04-O03: The strictest
+    boundary sits between the enterprise and control networks; the other pairs are IT-internal.'
+- module: 5
+  notes: 'Q1 B (the dose could leave the safe range), M05-O01: Severity is set by consequence to the process and
+    the public; leakage (A), a collection interval (C) and a colour (D) are lesser harms. Q2 D (safety, then
+    availability and integrity, then confidentiality), M05-O02: The taught OT priority order; A and B put
+    confidentiality or evidence first, C is a nonsense ordering. Q3 C (an uncontrolled stop can create the
+    hazard), M05-O02: Continuous processes can be more dangerous stopping than running; evidence (A), vendor
+    dependence (B) and historian recording (D) are real but secondary. Q4 A (hold the safe state and cut network
+    access), M05-O03: The taught containment pair; defaults (B) abandon the safe state, moving the HMI (C)
+    changes nothing on the process, and a slower interval (D) is a monitoring tweak. Q5 B (process owner with the
+    control engineer, against the safe state), M05-O01: The people who own the hazard decide; seniority (A),
+    the vendor (C) and the alerting analyst (D) do not.'
+- module: 6
+  notes: 'Q1 A (unexplained asset, investigated first), M06-O01: Inventory is the baseline, so an unmapped address
+    is the finding; suppressing (B), deduplicating (C) or editing it away (D) destroys the signal. Q2 C
+    (protocol-aware sensor alerts and OT firewall logs), M06-O02: The pair that actually sees control traffic;
+    badge and payroll records (A), dashboards (B) and press releases (D) are not OT telemetry. Q3 D (confirm the
+    safe state, then contain), M06-O03: The taught order; a wipe (A) destroys the estate, publication (B) and
+    recipe copying (C) skip both safety and containment. Q4 B (tag values on a fixed interval), M06-O01: A
+    historian one level up collects exactly that; print jobs (A), domain auth (C) and email sync (D) are
+    enterprise flows. Q5 C (escalate to the process owner before any OT change), M06-O03: The taught handoff;
+    acting alone (A), rebooting (B) and waiting silently (D) all violate it.'
+lab_setup:
+- module: 1
+  setup: Revert the large-enterprise range to its baseline before the module. Confirm eng-ws01 reaches plc01 and
+    plc02 on the OT network and that the OpenPLC projects load. Record the loaded project names and ladder rungs
+    on both controllers before the lab so Student evidence can be marked. Note that the OT VLAN is isolated in
+    this template build, so Students work at each OT console, not from jump01.
+- module: 2
+  setup: Confirm hmi01 and hmi02 are on the operator build with the instructor-assigned operator account enabled,
+    and that historian01 collects the baseline tag set. Record the tags and collection intervals before the lab.
+    Leave the two HMI workstations deliberately different (for example a suppressed alarm list on hmi02) so the
+    comparison step has an observable difference.
+- module: 3
+  setup: Confirm eng-ws01 has its packet-capture tooling, that polling plc01 and plc02 over Modbus TCP works, and
+    that ids01 receives the SPAN mirror of OT traffic and raises its baseline protocol alerts. Record the alert
+    set ids01 produces for normal polling traffic before the lab, so "expected" can be judged against it.
+- module: 4
+  setup: Confirm ot-fw01 is reachable at its own console (the OT VLAN is isolated; do not plan ot-fw01 access
+    through jump01). Export the current rule set on ot-fw01 before the lab and keep the instructor copy, so
+    Student rule lists can be marked against it. Warn Students who go looking that fw01 has no interface on the
+    OT VLAN, so it yields no OT-zone rules; the OT-to-corporate transit is not built in this range and ot-fw01
+    holds the OT gateway only, so the isolation itself is the finding.
+- module: 5
+  setup: Confirm hmi01 shows the baseline alarm list and that plc02 drives its documented output states. Record
+    the active alarms and output states before the lab. Verify the safe state for the plc02 program is documented
+    in the project the engineering workstation loads, since step 4 asks Students to find it there.
+- module: 6
+  setup: Confirm jump01 can SSH to the sensor console on ids01 and that eng-ws01 can enumerate the OT network.
+    Baseline the sensor alert list before the lab. The lab deliberately leaves one observation that will not
+    match the inventory; seed it (for example a second address on the OT network) and record what was seeded so
+    the "unexplained" marking can be marked correct.
+common_faults:
+- module: 1
+  fault: Students describe the scan cycle as read, write, execute, or as one continuous read.
+  remedy: Walk one rung on the board against the three phases, then have the Student restate the order before
+    opening the controller on the range.
+- module: 1
+  fault: Students treat a controller as an undersized office server and propose throughput fixes.
+  remedy: Ask what breaks if the scan interval varies; tie every answer back to determinism before the quiz.
+- module: 2
+  fault: Students mark the tank-level number as a control because it is live data.
+  remedy: Drill the test, what changes the process if the Student operates it, on every element they recorded
+    before they classify.
+- module: 2
+  fault: Students expect the historian to command the controller when a link fails.
+  remedy: Redraw the data path controller to HMI to historian with arrows in one direction and ask which arrows
+    can carry commands.
+- module: 3
+  fault: Students call the cleartext controller traffic an attack or malware.
+  remedy: Show the baseline capture from the instructor setup next to theirs and ask which frames differ; nothing
+    does, because the protocol is the point.
+- module: 3
+  fault: Students place the capture point wherever a console is convenient rather than on the traffic path.
+  remedy: Have them trace the route from eng-ws01 to plc01 first, then place the sensor on that path.
+- module: 4
+  fault: Students place the historian at the wrong Purdue level, usually with the controllers.
+  remedy: Ask what the historian does for a living, archive and serve, then match function to level; never map by
+    rack position.
+- module: 4
+  fault: Students judge the any-to-any OT rule acceptable because replies are stateful.
+  remedy: Contrast what a stateful reply needs with what the rule allows outbound, then have them name the one
+    flow the plant actually needs.
+- module: 4
+  fault: A Student lists the rules on fw01 hunting for OT-zone rules, finds none, and reports the range as
+    broken.
+  remedy: Show the topology, fw01 has no interface on the OT VLAN and the transit leg is not built yet, so the
+    boundary to read is ot-fw01; the isolation itself is the finding.
+- module: 5
+  fault: Students rank confidentiality first because the write was unauthorised.
+  remedy: Ask what happens to people if the dose moves; severity is the consequence, not the categorisation of
+    the command.
+- module: 5
+  fault: Students order containment as isolate-first with no safe-state step.
+  remedy: Have them write what the process is doing at the moment of isolation; if it is not in the safe state,
+    isolation is not yet containment.
+- module: 6
+  fault: Students reach for OT hosts from jump01, find the route refused, and report the range as broken.
+  remedy: Explain the air gap is the point of the template, not a fault; every OT console is reached at the
+    device, and the lab steps already say so.
+- module: 6
+  fault: Students classify the seeded unexplained address as a false positive to close it quickly.
+  remedy: Point at the inventory rule, unmapped means unexplained, and have them write the investigation step they
+    skipped.

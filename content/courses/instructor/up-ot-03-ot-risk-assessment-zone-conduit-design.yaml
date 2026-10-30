@@ -1,0 +1,165 @@
+# Instructor pack for C551 - OT Risk Assessment & Zone Conduit Design (staff only).
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+
+course_code: C551
+audience: staff_only
+overview: >-
+  C551 is a self-paced upskilling course of six 50-minute modules (300 minutes, 5 hours) run on the
+  large-enterprise range. Each module teaches three objectives, runs a 25-minute range lab, and ends
+  with a five-item quiz passed at 70 percent. The through-line is one continuous assessment: findings
+  recorded in modules 1 to 4 become risk statements in module 5 and design changes in module 6. Say
+  'Student' throughout and keep every description defensive and observable.
+timings:
+- module: 1
+  minutes: 50
+  plan: '15 teach, 25 lab (vuln01 findings to consequence-driven threat events), 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '15 teach, 25 lab (zones, conduits and forest trusts inventoried), 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '15 teach, 25 lab (compensating controls proposed for legacy hosts), 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '15 teach, 25 lab (air-gap claim tested and judged), 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '15 teach, 25 lab (findings turned into a prioritised risk register), 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '15 teach, 25 lab (design changes proposed, tested and recorded), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: >-
+    Q1 B: the keyed option names the consequence (a spoiled batch), not a technique; A reports a trend,
+    C describes tradecraft and D is a standing weakness, none of which is a threat event. Q2 C: the
+    severity of the credible consequence is graded before any likelihood work; A counts assets, B counts
+    age and D counts fame, and none of them changes impact. Q3 A: with no conduit reaching the host,
+    the event stays low priority however loud the scanner is; B lets the scanner drive the assessment,
+    and C and D jump to action without an assessment. Q4 D: credibility comes from a path that bypasses
+    the boundary controls; A attributes the malware, B values the laptop and C describes assurance. Q5
+    B: with the consequence fixed, the easier path ranks higher; C inverts the reasoning, and D refuses
+    to rank what the reachability already orders.
+- module: 2
+  notes: >-
+    Q1 C: the relative narrowness of the rules between two segments is the evidence that they behave as
+    one zone; A reads VLAN numbers, B reads hardware and D reads administration, none of which is trust.
+    Q2 D: the rule set is the authoritative record of what crosses; A diagrams age, B lists assets and
+    C states intent. Q3 A: a forest trust is a conduit whose reach follows its direction; B invents a
+    VLAN, C invents an account and D invents a merge. Q4 B: the first review question is which business
+    need the database port serves; A, C and D are worth asking later but do not test the purpose of the
+    conduit. Q5 A: narrow to the named web hosts and the one port; B moves the asset the wrong way, C
+    over-allows for hosts that do not exist, and D documents instead of narrowing.
+- module: 3
+  notes: >-
+    Q1 D: isolation behind a default-deny boundary compensates without touching the host; A presumes a
+    fix exists, B only observes and C leaves the risk unmanaged. Q2 B: the allow-list admits exactly the
+    one legitimate source and nothing else; A and C try to fix inside a host that cannot be fixed, and
+    D states a rule no device enforces. Q3 C: a real compensation is one that fires; A and B are
+    paperwork and D is a meeting. Q4 A: verification tests both directions, the traffic that must be
+    blocked and the business traffic that must survive; B only reads the configuration, and C and D
+    defer the test to others. Q5 D: a year without updates is a weakness the compensation must assume,
+    not explain away; A trusts a clean scan, B blames the tooling and C overstates the mirror.
+- module: 4
+  notes: >-
+    Q1 A: reachability is tested from outside the segment and the rule set is read before the diagram
+    is believed; B dates the paper, and C and D collect context that proves nothing about reachability.
+    Q2 C: the mirror copies traffic to the sensor without opening a route into the segment; A needs
+    agents on hosts that cannot take them, B loses fidelity and freshness, and D is not part of this
+    design. Q3 D: any path into the segment is a conduit, whatever medium carries it; A complains about
+    cost, B about training and C about paperwork. Q4 B: timeouts plus no outward rule support
+    isolation, and the open question is the transfer paths; A gives up on the segment, C over-reads
+    the timeouts, and D invents a contradiction that the evidence does not show. Q5 C: extending the
+    mirror adds visibility with no new route; A and B both open routes, and D adds an unmanaged path.
+- module: 5
+  notes: >-
+    Q1 B: it names the threat (a copied report), the conduit (into the OT VLAN), the affected
+    asset and the consequence; A judges importance, C repeats the scanner and D reports a trend. Q2 D:
+    reachability through the DMZ conduit outranks an equal severity; A ranks by housekeeping, B refuses
+    to rank and C ranks by quietness. Q3 A: one risk with the findings listed as evidence; B inflates
+    the count, C splits by host when the conduit is the cause, and D dismisses a documented conduit. Q4
+    C: a risk is not closable while monitoring would miss the event; A and B name owners and diagrams,
+    and D transfers what nobody verified. Q5 A: each risk must name the conduit and consequence a
+    change must address; B dresses the scanner output, C links away from the register, and D hides
+    behind shorthand.
+- module: 6
+  notes: >-
+    Q1 C: narrowing the rule to the web hosts and the one port answers the conduit directly; A detects
+    later, B adds a password at the wrong tier, and D accepts the exposure. Q2 A: every business flow
+    the old rule carried must still be served before the change is applied; B tidies numbers, C
+    schedules and D archives. Q3 B: the rule difference, its evidence and the residual risk let the
+    next assessment start from the current design; A and D record bookkeeping, and C records permission
+    rather than substance. Q4 D: the remaining reach is a residual risk with an accepting owner; A
+    declares victory, B rescans instead of judging, and C reopens the exposure. Q5 B: narrow the
+    existing rule at the same boundary before reaching for equipment; A trusts novelty, C doubles the
+    rule sets to maintain, and D delays a cheap fix.
+lab_setup:
+- module: 1
+  setup: Revert the large-enterprise baseline. Confirm vuln01 holds a completed scan of the server VLAN
+    hosts, that jump01 reaches the vuln01 console, and that fw01 displays the dmz-to-server, corp-to-server
+    and mgmt rule groups.
+- module: 2
+  setup: Revert the baseline. Confirm the VLAN table with isolation flags is readable from jump01, that
+    dc01 answers trust queries (corp.truenorth.local two-way with subsidiary.truenorth.local, one-way
+    incoming from partner.external.local), and that fw01 exports its rule set.
+- module: 3
+  setup: Revert the baseline. Confirm historian01 and the HMI workstations report their operating system
+    versions (historian01 runs windows-server-2019; the HMI workstations run windows-10-ltsc), that wsus01
+    shows the legacy hosts' patch state with historian01 stale, and that ot-fw01 rules are viewable.
+- module: 4
+  setup: Revert the baseline. Confirm jump01 cannot reach the OT VLAN (the timeouts are the expected,
+    correct result), that no network route reaches the OT VLAN so vendor updates arrive by manual
+    transfer only, and that the monitoring-mirror rule delivers copies to ids01.
+- module: 5
+  setup: Revert the baseline. Confirm siem01 holds the queries and alerts for OT VLAN events, the
+    DMZ-to-server database port and historian activity. Hand each Student the findings they recorded in
+    modules 1 to 4.
+- module: 6
+  setup: Revert the baseline. Confirm web01 can reach sql01 on the database port (the conduit is live by
+    design), and book a supervised fw01 change window for the lab, reverting the rule set afterwards.
+common_faults:
+- module: 1
+  fault: Findings are ranked by scanner severity instead of worst credible consequence.
+  remedy: Rank the module 1 findings both ways on the board and discuss where the two orders disagree,
+    then keep the consequence order.
+- module: 1
+  fault: Consequence sentences name tools or techniques rather than effects.
+  remedy: Ask what stops working for the business until the sentence names an effect on production,
+    data or safety.
+- module: 2
+  fault: VLAN numbers are treated as the zones themselves.
+  remedy: Have the Student justify the corporate and server split from the rule differences, not from
+    the numbering.
+- module: 2
+  fault: The forest trusts are missed as conduits.
+  remedy: Point at the two-way subsidiary trust and ask what an account compromised in the subsidiary
+    reaches in the corporate forest.
+- module: 3
+  fault: A compensating control is proposed on the legacy host itself, which cannot take one.
+  remedy: Restate the constraint (no change to the host) and ask for the isolation, allow-listing,
+    boundary or monitoring version instead.
+- module: 3
+  fault: Controls are stated as wishes, such as 'monitor it', with no must-block and must-permit pair.
+  remedy: Require one thing the control blocks and one thing it must still permit before the control
+    is accepted.
+- module: 4
+  fault: A timeout is recorded as proof that no route exists.
+  remedy: Pair every test result with the rule that explains it; a timeout without a rule is a symptom,
+    not a verdict.
+- module: 4
+  fault: The legitimate transfer path is forgotten because no rule mentions it.
+  remedy: Ask how last month's vendor update arrived; record the path with the boundary it crosses.
+- module: 5
+  fault: Priorities are copied from scanner severity.
+  remedy: Rank two equal-severity findings with different reachability and require the reason to cite
+    consequence and reachability.
+- module: 5
+  fault: A risk is marked covered by monitoring without naming the source.
+  remedy: Require the siem01 query or alert name; no name, no coverage.
+- module: 6
+  fault: Design changes are stated as wishes, such as 'harden the DMZ'.
+  remedy: Rewrite each as a rule difference with source, destination and port.
+- module: 6
+  fault: A narrowed rule is accepted without checking the traffic it must preserve.
+  remedy: List the flows the old rule carried one by one and mark each still served or legitimately
+    dropped.

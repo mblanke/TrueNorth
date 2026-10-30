@@ -1,0 +1,171 @@
+# Instructor pack for C504 - Supply-Chain & Third-Party Risk Management. Staff only.
+course_code: C504
+audience: staff_only
+overview: >-
+  C504 is a six-module intermediate course (six 50-minute sessions, five hours) for Students who already
+  hold the third-party foundations prerequisite. Modules 1 to 3 build the evidence base: the dependency
+  graph, verified questionnaire answers and an SBOM comparison. Modules 4 to 6 apply it: watching live
+  third-party connections, contracting and exit, and the first hour of a supplier software incident. Every
+  module runs its lab on the greyspace-internet range (edge01, dc01, ws01, ws02), so the same dependency
+  graph is built in Module 1 and reused for scoping in Module 6. Students hand in one dependency graph, one
+  claim-by-claim questionnaire verification, one SBOM discrepancy list, one supplier evidence pack, one exit
+  sequence and one incident scoping note.
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: >-
+    Q1 B: the compression library enters through the calendar library, so it is transitive; A ignores the
+    intermediary, C misuses fourth party for a component rather than an organisation, D borrows firewall
+    vocabulary. Q2 C: one company behind several products is concentration risk; A and B are rule and
+    configuration terms, D is contractual. Q3 D: resolver logs show live contacts, while the other three
+    show what was bought or registered, not what happens. Q4 A: no substitute plus business criticality is
+    the definition the ranking step uses; C is the opposite end of the same scale. Q5 B: purchases miss
+    bundled and transitive components, which only an inventory or SBOM catches; the other options are
+    things a purchase list does show or irrelevant.
+- module: 2
+  notes: >-
+    Q1 C: the question invites assurance; a useful version names a policy and a date. A is overbroad, B is
+    cosmetic, D is false. Q2 A: a patch date is factual and checkable, unlike culture, promises or
+    self-scored maturity. Q3 D: uniform perfect answers are a self-attestation signal, not proof; A and B
+    accept the claim, C mistakes volume for honesty. Q4 B: a shared account destroys attribution, which is
+    what the admin-rights check on ws01 exposes; the other options are untouched by sharing. Q5 C: a score
+    does not remove the risk of the one unpatched component you consume; A and D misplace it, B is the
+    score-reading error the module warns against.
+- module: 3
+  notes: >-
+    Q1 A: components, versions and licences are what a software bill of materials lists. Q2 D: a signature
+    proves origin and integrity, not absence of flaws; A and C are false statements, B confuses signing
+    with obfuscation. Q3 B: the SBOM maps the named library to your products and versions; the others are
+    blame, insurance or cost questions no SBOM answers. Q4 C: staleness means the list no longer matches
+    what shipped; A and D are not weaknesses of an old list, B is a format matter. Q5 D: artefacts signed
+    after a key theft have unproven origin until the supplier states what it did; A ignores the theft, B is
+    not the buyer's act, C destroys working software.
+- module: 4
+  notes: >-
+    Q1 D: first compare with the approved-supplier list and record evidence; A is irresponsible, B destroys
+    the record, C skips scoping. Q2 B: a baseline is what makes the unexplained stand out; it does not
+    replace contracts or change cost. Q3 A: domain, hosts, times and counts are the observable facts a
+    supplier can act on; the others are hearsay, price or irrelevant. Q4 C: exchanging descriptions of
+    malicious infrastructure is threat information sharing; A, B and D are other processes in this course.
+    Q5 D: escalation is warranted by criticality or persistence after the supplier cannot explain it; the
+    other options tie the decision to irrelevant triggers.
+- module: 5
+  notes: >-
+    Q1 B: a security-relevant change without notice duty leaves the buyer blind; the others are commercial
+    or cosmetic clauses. Q2 C: as soon as practicable sets no measurable deadline; B is wrong because the
+    wording gives no length at all, A and D are red herrings. Q3 A: an exit plan starts from what would be
+    lost and what replaces it; B, C and D are actions that come later or not at all. Q4 D: audit rights
+    matter where you cannot verify claims otherwise and the dependency is critical; the other situations do
+    not change the need to verify. Q5 B: data return and deletion governs end-of-contract data; the others
+    cover branding, money and uncontrollable events.
+- module: 6
+  notes: >-
+    Q1 C: tampering between build and delivery is the buyer-side definition of a software supply-chain
+    incident; the other labels miss the supplier path. Q2 D: resolver logs show who reached the update
+    source and the inventory shows what was installed and at which version; the others are irrelevant
+    records. Q3 B: early isolation stops use but costs evidence and cooperation; A is the overreaction the
+    module warns about, C and D are false. Q4 A: your own notification duties run in parallel with the
+    supplier's; B publishes prematurely, C and D defer or overreact. Q5 C: times, domains, versions and
+    hosts with sources are the observable record; A and B are judgement and cost, D is staffing.
+lab_setup:
+- module: 1
+  setup: >-
+    Revert the greyspace-internet range to baseline. Confirm ws01 and ws02 reach the greyspace internet
+    through edge01 and that the resolver query log on edge01 records queries from both workstations. Run
+    one office-day profile so the log holds realistic entries, and note which external domains and
+    publishers appear so you can mark Evidence against the Student's graph.
+- module: 2
+  setup: >-
+    Revert the range to baseline. Prepare the returned-questionnaire handout: claims about monthly patching,
+    administrators only, enforced screen locking, and a domain password policy (state a minimum length and
+    lockout threshold), phrased as supplier assurances. Before class, check
+    what the baseline actually holds on ws01 (update history, local administrators group, screen lock) and
+    on dc01 (password policy), and keep those values as the marking key.
+- module: 3
+  setup: >-
+    Revert the range to baseline. Confirm the developer site pack is reachable from ws01 and that the
+    sample package downloads and shows signature details (signer and issuing certificate authority). Prepare
+    the supplier SBOM extract and the component with the affected range, and note which inventory entries
+    the extract deliberately omits so the discrepancy list can be marked.
+- module: 4
+  setup: >-
+    Revert the range to baseline and run the office-day profile long enough that the resolver log on edge01
+    shows repeated queries to several domains. Prepare the approved-supplier list handout, leaving at least
+    one observed domain off it. Note the per-domain query counts and the first and last query times you
+    expect, so the evidence pack can be marked quickly.
+- module: 5
+  setup: >-
+    Revert the range to baseline. Create or confirm the vendor-prefixed domain accounts on dc01 and their
+    group memberships, and confirm the forwarding rules or connections on edge01 that point at the vendor
+    service. Prepare the draft contract handout with the notification window, patch duty, audit right and
+    data return clauses, some of them missing. Record the accounts, rules and publisher entries the
+    Student should find.
+- module: 6
+  setup: >-
+    Revert the range to baseline. Choose the update domain the scenario uses and confirm it appears in the
+    resolver log on edge01 with queries from both workstations; note the installed version of the affected
+    application on ws01 and ws02 and which one falls inside the affected range. Prepare the contract clause
+    that carries the notification duty so the Student can cite its source.
+common_faults:
+- module: 1
+  fault: Students list applications but stop at direct dependencies, never asking what sits behind them.
+  remedy: Take one entry from their inventory and ask what it loads at run time; send them back to mark
+    every entry transitive or direct before drawing the graph.
+- module: 1
+  fault: The graph records purchased software only and ignores the domains in the resolver log.
+  remedy: Point at the edge01 log and ask which supplier operates each domain; unexplained domains belong
+    on the graph as supplier unknown.
+- module: 2
+  fault: Students mark a claim supported because the questionnaire says so, not because the range shows it.
+  remedy: Insist every marking carries the observed value beside it; no observed value, no marking.
+- module: 2
+  fault: Students copy the dc01 password-policy values but mark the password-policy claim from the
+    questionnaire wording rather than the observed minimum length and lockout threshold.
+  remedy: Require the claimed value and the dc01 value on the same line before the claim is marked, then
+    the risk classification step.
+- module: 3
+  fault: Students treat a valid signature as a safety certificate.
+  remedy: Return to the distinction - origin and integrity, not absence of flaws - and ask what a signature
+    would still prove about a flawed component.
+- module: 3
+  fault: The discrepancy list records only what the SBOM omits, not what the inventory omits.
+  remedy: Require both directions on the list, one column per side, so the supplier conversation covers
+    both.
+- module: 4
+  fault: Students read the resolver log as a wall of lines and never aggregate per domain.
+  remedy: Have them count per domain first; the repeated ones are the conversation starters.
+- module: 4
+  fault: The evidence pack states a conclusion (it looks malicious) instead of observations.
+  remedy: Strike every adjective that is not in the log; the pack carries domain, hosts, times, counts and
+    one question.
+- module: 5
+  fault: The exit sequence removes accounts before naming what must replace the vendor application.
+  remedy: Ask what stops working the moment each item is removed, and have them reorder until nothing
+    critical is orphaned.
+- module: 5
+  fault: Missing contract clauses are listed without the risk each leaves.
+  remedy: Pair every missing clause with one sentence of consequence before the data return statement.
+- module: 6
+  fault: Students scope from memory of the demo rather than from the resolver log and inventory.
+  remedy: Require an evidence citation for every host named in the scope.
+- module: 6
+  fault: Containment is chosen instantly and the cost column of the trade-off is left empty.
+  remedy: Block the decision until each option has both a preserve and a cost line; then choose.

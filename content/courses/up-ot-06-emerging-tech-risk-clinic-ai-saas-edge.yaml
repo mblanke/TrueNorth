@@ -1,0 +1,593 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# C554 - Emerging Tech Risk Clinic - AI, SaaS & Edge - draft course content.
+# `refs` are keys into content/catalogue/references.yaml.
+course_code: C554
+title: Emerging Tech Risk Clinic — AI, SaaS & Edge
+version: '1.0'
+difficulty: advanced
+duration_hours: 6
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C551
+- C504
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cybersecurity Risk Manager; Systems Security Analyst.'
+  - 'NIST CSF 2.0: ID.RA, GV.RM, GV.SC.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: AI/ML System Risk Inventories
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Build a risk inventory entry for an AI system naming its owner, data flows and failure modes
+  - Classify the data an AI feature can expose by confidentiality, integrity and availability impact
+  - Distinguish a first-party model, an embedded vendor feature and an employee-used AI service in an inventory
+  topics:
+  - AI systems as assets — models, training data, prompts, integrations and generated outputs.
+  - Inventory scope across embedded vendor features, copilots and employee-used public services.
+  - Data exposure paths through prompts, attachments, vendor retention and training reuse.
+  - Failure modes of generated output — wrong answers, data leakage and over-trust.
+  - Confidentiality, integrity and availability impacts applied to AI features.
+  lab: >-
+    Lab: On the small-enterprise range, build the first rows of an AI and cloud service risk
+    inventory for the client environment. Evidence: the list of hosts reachable from jump-box
+    with each host's role; the installed applications and browser extensions on ws-01 and the
+    data each AI, cloud-sync or generative feature could receive; the network services the range
+    documents for dc-01 and fw-01; inventory rows naming owner role, classification, data flows
+    and failure mode. Pass: every observed feature and service recorded as first-party,
+    vendor-embedded or employee-used; each row carries an owner role, at least one data flow and
+    one failure mode; the classification quotes what the range showed.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH as the analyst account, note the start time in the lab
+        notes and list the hosts reachable from jump-box.
+    - hosts: [jump-box, ws-01]
+      action: From jump-box, sign in to ws-01 as the standard user account the instructor supplies
+        and record ws-01's role in the client network.
+    - hosts: [ws-01]
+      action: On ws-01, open the list of installed applications and browser extensions and mark
+        every one with an AI assistant, cloud sync or generative feature.
+    - hosts: [ws-01]
+      action: For each marked feature, record the data it can receive from this workstation, such
+        as documents, messages or browsing history; record none observed if the list shows no
+        such feature.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, confirm dc-01 answers a name lookup and record the services the
+        client environment runs on dc-01 and fw-01, noting which network each serves.
+    - hosts: [jump-box]
+      action: Write one inventory row per observed feature or service naming an owner role, the
+        classification first-party, vendor-embedded or employee-used, one data flow and one
+        failure mode.
+  refs:
+  - nist-sp-800-30r1
+  - nist-cswp-29
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A word processor the organisation bought includes an AI drafting feature that
+        processes internal documents automatically. In a risk inventory, how should this system
+        be classified?
+      options:
+      - A) A first-party model that the organisation operates entirely on its own computers
+      - B) An embedded vendor feature sending data outside the organisation's control
+      - C) An employee-used service, chosen and switched on by staff alone
+      - D) Not an AI system, since the organisation neither trained nor operates it
+      answer: B
+    - question: An account manager pastes the customer contact list into a public chatbot to draft
+        a follow-up email. Which impact does this primarily create?
+      options:
+      - A) Availability, because the chatbot could stop responding in the busiest season
+      - B) Integrity, because the draft may contain small errors nobody notices
+      - C) Confidentiality, because customer data reached an outside service
+      - D) No impact, because the list was pasted in only this once
+      answer: C
+    - question: An analyst sorts the AI systems the client runs into inventory categories. Which
+        pair belongs in the same category?
+      options:
+      - A) The in-house support classifier and the organisation's summarisation model
+      - B) The editor copilot and the summarisation feature the CRM vendor embeds
+      - C) The editor copilot and a developer's personal public AI account
+      - D) A staff member's public chatbot account and the in-house support classifier
+      answer: A
+    - question: An employee-used meeting transcription service retains recordings and may reuse
+        them to improve the vendor's models. What is the main inventory concern?
+      options:
+      - A) The service mis-transcribes some accents, an integrity failure in the transcripts
+      - B) Recordings fill the storage quota, an availability problem for the archive
+      - C) Employees lose meeting time, a productivity loss for the client teams
+      - D) Submitted recordings are retained and reused outside the organisation's control
+      answer: D
+    - question: A team ships customer replies drafted by a language model without checking them.
+        Which failure mode does the inventory record?
+      options:
+      - A) Data leakage through prompts staff paste into the tool while drafting
+      - B) Over-trust, because unverified generated output reaches the customer
+      - C) Vendor retention of submitted data for the vendor's later training reuse
+      - D) Loss of availability of the drafting tool at peak working times
+      answer: B
+- ordinal: 2
+  title: Shadow SaaS Discovery and Control
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Discover unapproved cloud services in use from network and endpoint evidence
+  - Classify each discovered service as approved, tolerable or blocked against the organisation's policy
+  - Select a proportionate control for an unapproved service and justify it against the risk
+  topics:
+  - Shadow SaaS — cloud services adopted by staff without the organisation's approval.
+  - Discovery evidence in egress logs, DNS queries, browser extensions and expense claims.
+  - Sanctioned alternatives and the approved service catalogue as the control anchor.
+  - Control options — block, broker through single sign-on, replace or tolerate with justification.
+  - Why outright bans push adoption to unmonitored personal accounts.
+  lab: >-
+    Lab: On the small-enterprise range, find what the client's firewall actually permits the
+    workstations to reach and judge the egress posture against policy. Evidence: each fw-01 rule
+    in order with its name, source network, destination and services; the action fw-01 takes for
+    traffic that no rule names; whether any rule permits a destination outside the range; each
+    permitted destination marked approved, unapproved or unknown against the instructor's list;
+    an exposure rating with a reason. Pass: both documented rules recorded with source,
+    destination and services; every permitted destination classified with evidence quoted from
+    the range, unknown where the list does not name it; one proportionate control proposed for
+    the egress posture with a one-sentence reason.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, note the start time in the lab notes and confirm
+        which networks the range uses.
+    - hosts: [fw-01]
+      action: Read the rules on fw-01 in order and record each rule's name, source network,
+        destination and permitted services.
+    - hosts: [fw-01]
+      action: Record the action fw-01 takes for traffic that no rule names, and whether any rule
+        permits traffic to a destination outside the range.
+    - hosts: [jump-box]
+      action: Compare every permitted destination against the approved list the instructor
+        supplies and mark each one approved, unapproved or unknown.
+    - hosts: [jump-box]
+      action: Rate the exposure of the egress posture as low, medium or high, give a
+        one-sentence reason and propose one proportionate control.
+  refs:
+  - nist-sp-800-145
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: Marketing staff signed up for an online design tool with company email and upload
+        brand assets weekly. The tool appears on no approved list. What is this?
+      options:
+      - A) A sanctioned service still awaiting its renewal date
+      - B) A first-party application built in house by staff
+      - C) A shadow SaaS service staff adopted without approval
+      - D) An edge device, because the internet reaches the tool
+      answer: C
+    - question: The instructor asks which outside services the client's workstations really use.
+        Which evidence most reliably shows this?
+      options:
+      - A) The vendor's marketing site for each product the client owns
+      - B) A staff survey about cloud habits from the last year
+      - C) The purchase ledger of the software subscriptions bought
+      - D) Egress logs and DNS queries recorded at the firewall
+      answer: D
+    - question: The network team blocks every unapproved service at the firewall. Within a week,
+        staff resume using the same tools from personal accounts on personal phones. What did the
+        block achieve?
+      options:
+      - A) It moved the use onto unmonitored personal accounts
+      - B) It removed the risk of the unapproved services entirely
+      - C) It sanctioned the services by making the ban official
+      - D) It improved the logging of the activity through the firewall
+      answer: A
+    - question: A file-sharing service is widely used and carries little risk, and the organisation
+        owns a licence for a similar approved tool. Which response is proportionate?
+      options:
+      - A) Tolerate the unapproved use with no record and no action
+      - B) Sanction the approved tool, migrate users, monitor for stragglers
+      - C) Terminate every unapproved account today and reprimand the users involved
+      - D) Ignore the finding because the risk is low this quarter
+      answer: B
+    - question: Staff use an approved design tool, but one team also synced a shared folder to a
+        personal cloud drive from the same workstation. How is this recorded?
+      options:
+      - A) The approved tool becomes unapproved because of the personal sync
+      - B) No new finding, because the workstation's primary service is approved
+      - C) An unapproved use alongside it, its own separate finding
+      - D) A first-party application, because the organisation manages the workstation itself
+      answer: C
+- ordinal: 3
+  title: Edge Device Exposure
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Enumerate the services an edge device exposes on each network it touches
+  - Identify the exposures that raise likelihood most, such as default credentials and delayed firmware
+  - Propose containment for an exposed edge device that preserves required administration
+  topics:
+  - Edge devices in the small environment — firewalls, VPN gateways and wireless access points.
+  - Why attackers target them — reachability, infrequent patching and factory default settings.
+  - Management interface exposure and which networks can reach it.
+  - Firmware currency, end-of-support devices and the risk of delayed updates.
+  - Containment that preserves the administration path the organisation still needs.
+  lab: >-
+    Lab: On the small-enterprise range, map what the client's firewall exposes and judge whether
+    each exposure is acceptable. Evidence: the interfaces, networks and addresses on fw-01; the
+    services fw-01 exposes and the networks that reach each; whether the management page loads
+    from jump-box on the management network; the observed outcome of the same test from ws-01 on
+    the user network; the version information the status page shows. Pass: every exposed service
+    recorded with the network that reaches it; both management-page tests recorded with the
+    exact outcome, the user-network result whatever the range shows; each exposure marked
+    acceptable or excessive with a reason; one proportionate change proposed for each excessive
+    exposure.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and note the start time in the lab notes.
+    - hosts: [fw-01]
+      action: Record the interfaces of fw-01, the network each one serves and the address fw-01
+        holds on each.
+    - hosts: [fw-01]
+      action: List the services fw-01 exposes, such as the management page, and record which
+        networks can reach each one.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box on the management network, open the management page of fw-01 and
+        record whether it loads.
+    - hosts: [ws-01, fw-01]
+      action: From ws-01 on the user network, run the same management-page test and record the
+        exact outcome, whatever the range shows.
+    - hosts: [fw-01]
+      action: Read the status page of fw-01 and record the firmware or version information it
+        shows.
+    - hosts: [jump-box]
+      action: Judge each recorded exposure as acceptable or excessive, give a reason and propose
+        one change that preserves administration.
+  refs:
+  - nist-sp-800-213
+  - owasp-iot
+  - nist-sp-800-183
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A branch firewall's administration page can be opened from the staff Wi-Fi network.
+        What does this most directly increase?
+      options:
+      - A) Likelihood, because anyone on the network can attempt it
+      - B) Impact, because the data on the firewall becomes publicly readable
+      - C) Availability, but only for the staff Wi-Fi network, nothing else
+      - D) Nothing, because the page still asks every visitor for credentials
+      answer: A
+    - question: A wireless access point still runs its factory credential, and the vendor published
+        the default in its manual. Which statement is correct?
+      options:
+      - A) The credential stays safe because the manual is old and rare
+      - B) Default credentials raise the likelihood, being public knowledge
+      - C) The device is unaffected because it sits inside the network
+      - D) Only the access point's confidentiality is at risk from publication
+      answer: B
+    - question: A VPN gateway reached the end of supported firmware eight months ago and cannot be
+        updated. How should the inventory record it?
+      options:
+      - A) As current, because the device still passes traffic without any errors
+      - B) As low risk, because the gateway sits behind another firewall
+      - C) As a compliance issue only, with no security meaning attached
+      - D) As end-of-support, with delayed firmware noted as likelihood-raising
+      answer: D
+    - question: An edge device must stay remotely manageable, but its management page is reachable
+        from the user network today. Which interim containment is proportionate?
+      options:
+      - A) Disconnect the device completely until a replacement arrives next quarter
+      - B) Publish the management page openly on the internet for convenience
+      - C) Restrict management to the management network, keeping administration
+      - D) Reboot the device weekly, recording each reboot as the fix
+      answer: C
+    - question: An analyst starts an edge device inventory for the client. What should each entry
+        contain at minimum?
+      options:
+      - A) The model, firmware and networks reaching its exposed services
+      - B) The purchase price, invoice date and the supplier's contact details
+      - C) The administrator's personal contact number, home address and working hours
+      - D) The rack position, cable colour and nickname staff gave it
+      answer: A
+- ordinal: 4
+  title: Emerging Technology Risk Assessment
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a risk statement for a technology finding that names threat, vulnerability and impact
+  - Rank emerging technology risks by likelihood and impact when usage history is thin
+  - Distinguish treating, tolerating and terminating a risk and record who accepted it
+  topics:
+  - Turning a finding into a risk statement — threat, vulnerability, likelihood and impact.
+  - Scoring likelihood for technology with little incident history.
+  - Impact beyond the affected host — data, process and compliance consequences.
+  - Response choices — treat, tolerate with recorded acceptance, or terminate.
+  - Recording the accepted risk, the accepter and the review date.
+  lab: >-
+    Lab: On the small-enterprise range, turn the client's administration findings into scored risk
+    statements. Evidence: the administrative groups and member counts on dc-01; the mgmt-to-all
+    rule on fw-01 and what it permits; whether the management page of fw-01 loads from jump-box
+    on the management network; the observed outcome of the same test from ws-01 on the user
+    network; at least three risk statements naming threat, vulnerability, likelihood and impact; a
+    ranked order from most to least urgent. Pass: both management-page tests recorded with the
+    exact outcome, the user-network result whatever the range shows; each statement names all four
+    elements; each score carries a one-sentence reason tied to the recorded evidence; the ranking
+    is argued from the scores.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and note the start time in the lab notes.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, query dc-01 for the groups holding administrative rights and record
+        each group name and member count.
+    - hosts: [fw-01]
+      action: Read the mgmt-to-all rule on fw-01 and record the source networks and the services
+        it permits.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box on the management network, open the management page of fw-01 and
+        record whether it loads.
+    - hosts: [ws-01, fw-01]
+      action: From ws-01 on the user network, run the same management-page test and record the
+        exact outcome, whatever the range shows.
+    - hosts: [jump-box]
+      action: Write at least three risk statements from the recorded evidence, each naming the
+        threat, the vulnerability, the likelihood and the impact.
+    - hosts: [jump-box]
+      action: Rank the statements from most to least urgent and give one sentence of reason per
+        position, argued from the scores.
+  refs:
+  - nist-sp-800-30r1
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A clinic reviewer reads four register entries about a newly adopted AI tool. Which
+        statement records the risk completely?
+      options:
+      - A) The AI tool is risky, new and should be watched closely
+      - B) The vendor is large, well known and unlikely to fail
+      - C) Staff have raised concerns about the new copilot tool at every meeting
+      - D) A threat actor exploits unpatched firmware and exposes client data
+      answer: D
+    - question: Little incident history exists for a newly adopted transcription service. What is
+        the soundest ground for a likelihood estimate?
+      options:
+      - A) The personal opinion of the most senior administrator in the office
+      - B) Observed usage, recorded exposure and the known failure modes
+      - C) The vendor's market share and the logo on its website
+      - D) A single news story from last year about a competitor's outage
+      answer: B
+    - question: A low-impact finding cannot be fixed this quarter, and management chooses to live
+        with it. What must happen for the risk to be properly handled?
+      options:
+      - A) Nothing further at all, because low impact means there was no risk
+      - B) The finding is deleted from the register so the report stays clean
+      - C) Tolerated with recorded acceptance naming the accepter and a review date
+      - D) The finding is quietly relabelled as treated so the report looks complete
+      answer: C
+    - question: A vendor tool processes client data in a way the organisation cannot permit, and no
+        control can bring it in line. Which response fits?
+      options:
+      - A) Terminate the use and remove the tool from the environment
+      - B) Tolerate the risk and review it again at the next annual cycle
+      - C) Treat it with an awareness campaign for the staff using it
+      - D) Transfer the risk to the staff who chose the tool initially
+      answer: A
+    - question: Three findings sit in the risk inventory — a firewall management page reachable
+        from the user network, an end-of-support VPN gateway and an unmanaged AI feature. Which
+        ranks first?
+      options:
+      - A) The AI feature, because it is newsworthy and the board asks
+      - B) The gateway, because it is the oldest and most outdated device
+      - C) They tie for first because all three risks weigh the same
+      - D) The firewall exposure, with the highest likelihood and reach
+      answer: D
+- ordinal: 5
+  title: Governance for Fast-Moving Technology
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design an approval pathway for new technology with a stated turnaround time
+  - Select controls proportionate to the risk a fast-moving technology actually carries
+  - Set review triggers that bring a technology back before governance when its risk changes
+  topics:
+  - Proportionality — matching the control burden to the risk the technology carries.
+  - Intake triage and a fast lane for low-risk requests with a stated turnaround.
+  - Risk appetite statements as the line between tolerated and unacceptable.
+  - Time-boxed approvals and sunset clauses for quickly changing services.
+  - Review triggers — vendor change, data change, incident and renewal.
+  lab: >-
+    Lab: On the small-enterprise range, judge whether the client's existing controls are
+    proportionate and attach a review trigger to each. Evidence: the rule set of fw-01 and its
+    default action for unnamed traffic; the domain password policy on dc-01; the exact outcome
+    when a standard user on ws-01 opens an administrative share on dc-01, whatever the range
+    shows; each control marked proportionate or
+    disproportionate with a reason; one review trigger drafted per control. Pass: every control
+    judged with a reason tied to the observed risk; each disproportionate control given a lighter
+    or stronger alternative; each review trigger names the change that would fire it.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and note the start time in the lab notes.
+    - hosts: [fw-01]
+      action: Read the rule set on fw-01 and record its default action for traffic that no rule
+        names.
+    - hosts: [dc-01]
+      action: Read the domain password policy on dc-01 and record the minimum length, the lockout
+        threshold and the lockout duration.
+    - hosts: [ws-01, dc-01]
+      action: Sign in to ws-01 as the standard user account the instructor supplies, try to open
+        an administrative share on dc-01 and record the exact outcome, whatever the range shows.
+    - hosts: [jump-box]
+      action: Mark each observed control proportionate or disproportionate for this small
+        environment and give a one-sentence reason for each.
+    - hosts: [jump-box]
+      action: Draft one review trigger for each control, naming the specific change that would
+        bring it back for review.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A three-person charity adopts a note-taking app that holds no personal data.
+        Governance still demands a 40-page assessment, two sign-offs and a penetration test. What
+        has failed?
+      options:
+      - A) Proportionality, because the control burden outweighs the app's risk
+      - B) The risk appetite, which in every respect is set too low
+      - C) The approval pathway, which is far too fast for a charity
+      - D) Intake triage, because the app should have been auto-approved with no record
+      answer: A
+    - question: A small organisation wants staff requests for low-risk tools answered within three
+        working days. Which design serves this?
+      options:
+      - A) One committee that reviews every request monthly, whatever the risk
+      - B) No pathway at all, so staff decide for themselves and move fast
+      - C) A fast lane triaging low-risk requests with a stated turnaround
+      - D) A rule that every request waits until the next annual review cycle
+      answer: C
+    - question: An AI transcription service changes vendors every few months, and its terms are
+        renegotiated often. Which approval form fits best?
+      options:
+      - A) A permanent approval with no end date and no conditions attached
+      - B) A time-boxed approval with a sunset clause and renewal review
+      - C) A ban until the vendor promises to stop changing anything
+      - D) An approval that transfers automatically to whatever new vendor appears next
+      answer: B
+    - question: Six months after approval, the transcription vendor announces a new sub-processor
+        in another jurisdiction. What should the governance pathway do?
+      options:
+      - A) Nothing, because the original approval still stands until renewal
+      - B) Ban the service permanently for making the announcement
+      - C) Wait for the next annual review to consider the change
+      - D) Fire the review trigger and reassess before further use
+      answer: D
+    - question: What does a risk appetite statement give staff who are choosing tools quickly?
+      options:
+      - A) A stated line between risks the organisation tolerates and rejects
+      - B) A list of banned vendors that covers every category of software
+      - C) The annual budget of the security team for new purchases
+      - D) The organisation's insurance certificate together with its renewal schedule
+      answer: A
+- ordinal: 6
+  title: The Emerging Technology Risk Clinic
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Consolidate AI, shadow SaaS and edge device findings into a single risk inventory
+  - Prioritise the consolidated findings into an ordered treatment plan under one budget
+  - Present each finding with its evidence, its risk and a proportionate treatment
+  topics:
+  - The clinic process — intake, evidence collection, triage and recommendation.
+  - Consolidating separate inventories into one register with one owner per entry.
+  - Ordering treatments when several technologies compete for the same budget.
+  - Evidence quality — what was observed, where, and when.
+  - Handover — named owners, treatments and review dates.
+  lab: >-
+    Lab: On the small-enterprise range, run the clinic end to end for the client and hand over one
+    register. Evidence: one observation re-collected from each of dc-01, ws-01 and fw-01, recorded
+    whatever the range shows; register
+    rows recording the evidence, the data or service affected and an owner role; a likelihood and
+    impact score and a ranked order for the rows; a treatment and a review trigger per row. Pass:
+    the three observations match what the range shows; each row names an owner role and cites the
+    observed evidence; the ranking is argued from the scores; every treatment carries an owning
+    role and a review trigger.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, note the start time in the lab notes and open the
+        notes kept from the earlier labs.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, re-collect one finding from dc-01, such as the administrative groups
+        and their member counts.
+    - hosts: [ws-01]
+      action: On ws-01, check the installed applications for an AI assistant or cloud-syncing
+        feature and record the data flows observed, or none observed if the list shows no such
+        feature.
+    - hosts: [ws-01, fw-01]
+      action: From ws-01, re-collect one edge finding by testing whether the management page of
+        fw-01 loads from the user network and recording the exact outcome, whatever the range
+        shows.
+    - hosts: [jump-box]
+      action: Write one register row per finding recording the evidence, the data or service
+        affected, the owner role, a likelihood and impact score, and a treatment with a review
+        trigger.
+    - hosts: [jump-box]
+      action: Rank the rows from most to least urgent and give one sentence of reason per position,
+        argued from the scores and the evidence.
+  refs:
+  - nist-sp-800-30r1
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: An analyst holds three separate lists — AI features, cloud services and edge
+        devices. For the clinic's treatment plan, what should these become?
+      options:
+      - A) Three registers kept apart so each technology stays visible on its own
+      - B) One consolidated inventory with one owner named for every entry
+      - C) A single list of vendor names, with no evidence attached
+      - D) A summary of product titles that replaces the detail entirely
+      answer: B
+    - question: Budget covers one treatment. The firewall exposure is exploitable by any local
+        user, the AI feature leaked one document and the shadow SaaS tool holds old files. What
+        comes first?
+      options:
+      - A) The AI feature, because it attracts the most board attention
+      - B) The shadow SaaS tool, because it is the newest recorded adoption
+      - C) Any order, because all three findings count for exactly the same
+      - D) The firewall exposure, highest likelihood and the widest reach
+      answer: D
+    - question: Four analysts write up the same firewall observation. Which line is clinic-grade
+        evidence?
+      options:
+      - A) On 12 May the fw-01 management page opened from ws-01
+      - B) The firewall is probably badly configured by whoever set it up
+      - C) Everyone in the office knows the edge devices are a mess
+      - D) The vendor said the device follows current best practice
+      answer: A
+    - question: A register row records a real exposure but names no owner. What is the consequence?
+      options:
+      - A) The risk counts as treated because it is written in the register
+      - B) The row can be closed and removed from the treatment plan
+      - C) The risk remains untreated, because nobody is accountable for it
+      - D) The risk transfers to the analyst who first recorded the finding
+      answer: C
+    - question: A treatment is applied to an AI feature today. What keeps the risk from drifting
+        back?
+      options:
+      - A) Deleting the register row entirely once the fix has shipped to production
+      - B) A scheduled reassessment with a review trigger in the register
+      - C) An annual report on the register that nobody ever reads
+      - D) Trusting the vendor's changelog to flag anything important before it spreads
+      answer: B

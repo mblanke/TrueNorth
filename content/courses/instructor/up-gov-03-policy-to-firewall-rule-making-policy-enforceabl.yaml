@@ -1,0 +1,153 @@
+course_code: C503
+audience: staff_only
+overview: 'Policy to Firewall Rule - Making Policy Enforceable is a self-paced upskilling course of six 50-minute
+  modules (300 minutes, 5 hours). Each module follows the same split: 10 minutes of teaching, 30 minutes of hands-on
+  lab work on the medium-enterprise range and a 10-minute five-item quiz passed at 70 percent. Students read policy
+  clauses, map them to firewall rules on fw01, test the rules, check hardening baselines, read deny logs on siem01
+  and finally assemble an evidence pack. Say ''Student'' throughout and keep every description defensive and
+  observable.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 teach (clause anatomy and classification), 30 lab (read the extract, record zones and node ids on ws01
+    and fw01, classify), 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '10 teach (rule anatomy on the firewall), 30 lab (list rules on fw01, map each to a clause, draft one gap
+    closure), 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '10 teach (test matrix design), 30 lab (run the connect tests from ws01, web01 and mail01, mark the matrix),
+    10 quiz'
+- module: 4
+  minutes: 50
+  plan: '10 teach (baselines and drift), 30 lab (record the password policy from dc01 and the listening ports on
+    web01, mark drift), 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '10 teach (deny events and the log server), 30 lab (query siem01 as the analyst account, summarise and
+    classify pairs), 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '10 teach (what makes an artefact evidence), 30 lab (capture the three artefacts, write evidence lines),
+    10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: approval of change requests is a procedural duty for a person; A confuses any clause mentioning the
+    firewall with device configuration, C denies it an owner, D misreads it as a rule. Q2 C: the office-hours clause
+    is technical and lands on the rule that permits staff to the server zone; A mistakes the log server that records
+    denied attempts for a device that enforces, B calls a technical limit procedural, D claims the firewall cannot
+    express it. Q3 C: a technical clause must
+    already be enforced somewhere, so the first implementer task is finding the rule or zone boundary that enforces it
+    on the range; A treats a measurable requirement as intent, D destroys live configuration before it is understood,
+    B is an audit task that comes later. Q4
+    D: no requirement, no role, no behaviour means intent; A-C each attach substance the clause lacks. Q5 B: a clause
+    list with the chosen rule or node id is the traceable record; A, C and D are context, consensus or vendor
+    material, not traceability.'
+- module: 2
+  notes: 'Q1 B: no clause allows every service, so an allow with no port limit is broader than any clause and the
+    first observation to record; A reads the clause as if it permitted every service, C mistakes the rule for
+    redundant with default deny when it actually permits traffic the default deny would block, D invents an interface
+    error the rule does not have. Q2 A: the clause requiring security events to reach the log server
+    authorises the collector flow; B-D are real clauses that cannot authorise it. Q3 D: the absence of an allow rule
+    means default deny already enforces the clause; A adds an unnecessary rule, B and C misstate the conclusion. Q4
+    B: the two directions of a mapping gap are a rule with no clause and a clause with no rule; A-D name real but
+    different faults. Q5 C: a proposal needs the clause, the expected effect and a rollback note; A, B and D are
+    padding, volume or over-approval.'
+- module: 3
+  notes: 'Q1 A: a pass needs a clause or rule that explains the allow, not merely a working connection; B-D test
+    performance, repetition and quiet logs. Q2 C: the observed deny matches the expected deny from the clause list,
+    so the line passes; A and B treat a correct deny as failure, D generalises from one path. Q3 C: record the
+    failure, mark fail and propose a rule change; A hides it, B records intent as result, D hunts for a convenient
+    network. Q4 B: an allow with no clause is recorded as allowed but unexplained and flagged; A mistakes rule
+    matching for policy, C records an allow as a deny, D skips evidence. Q5 B: retesting shows observed results
+    still match expected results after the change; A, C and D touch authorship, retention and review speed.'
+- module: 4
+  notes: 'Q1 D: a shared account where the baseline requires named accounts is drift on account settings; A excuses
+    it, C reaches for the firewall, D rewrites policy to match practice. Q2 B: an undocumented listening port with no
+    clause behind it is the drift item; A, C and D are expected or unrelated observations. Q3 C: raise the domain
+    setting through change control with a rollback note; A-C cover asking, ignoring and lowering the baseline to
+    match the fault. Q4 A: change control with the baseline attached keeps the host matching; B re-baselines drift
+    away, C and D hide or lose the record. Q5 D: the policy is only as strong as the weakest host the rules protect;
+    A overstates log impact, C and D claim drift breaks rules or addresses.'
+- module: 5
+  notes: 'Q1 B: repeated denies from one workstation to an unpermitted port are unexpected traffic needing
+    investigation; A and C call any deny enforcement, D invents a rule. Q2 C: a deny event with no matching allow
+    rule in the rule set shows default deny did the blocking; A is policy text, D is out of range, B is agreement.
+    Q3 A: a reusable query names the log source, time window, filter and summary; B is personal storage, C and D
+    break repeatability. Q4 D: the clause limiting DMZ access explains the deny, so the pair is expected
+    enforcement; A flips it, C blames logging, D proposes a rule change the policy forbids. Q5 A: deny logs show
+    what was blocked, never that the allows are exactly right; B-D are things the logs do show.'
+- module: 6
+  notes: 'Q1 C: without a time, a source and a method the claim cannot be reproduced; A is formatting, B invents a
+    rule, D appeals to authority. Q2 D: a timestamped rule export plus a matching deny event shows the limit is
+    live; A is the clause itself, B is from memory, C is an asset list. Q3 B: the exact query text with source,
+    filter and window lets the reviewer re-run it; A, C and D store context, counts or a name. Q4 C: a reproducible
+    observation with time and method is evidence; A dismisses testing, B and D reward the weaker record. Q5 A: the
+    artefact must be refreshed from the current rule set and the line updated; B, C and D keep stale or duplicated
+    citations.'
+lab_setup:
+- module: 1
+  setup: 'Revert the medium-enterprise range to its baseline before the module. Have ws01 reachable and the account
+    for each Student assigned. Have the fw01 appliance configuration login ready and hand out the eight-clause
+    policy extract on ws01. Expected: fw01 shows one interface per zone with its address; no changes are made on
+    fw01 in this module.'
+- module: 2
+  setup: 'Range on baseline. Have the fw01 rule listing reachable (corp-to-servers, corp-to-dmz, dmz-to-servers,
+    logs-to-siem, mgmt-to-all) and the clause extract from Module 1 still on ws01. Expected marks: the dmz-to-servers
+    allow list covers name resolution and directory ports only (53, 88, 389, 636); the web and mail ports (80, 443,
+    25, 587, 143, 993) sit on corp-to-dmz for the staff network; anything else is default deny.'
+- module: 3
+  setup: 'Range on baseline. Students test from ws01 and web01 only; no rule changes during the module. Expected
+    marks: ws01 to web01 web port succeeds; ws01 to web01 on an unlisted port fails; web01 to fs01 file share port
+    fails; ws01 to mail01 submission port succeeds. Confirm the connect test tooling is present on ws01 and web01.'
+- module: 4
+  setup: 'Range on baseline. Have the two baseline extracts printed or placed on ws01: the domain password policy
+    extract and the web01 listening-port extract. Students need the query path from ws01 to dc01. Expected marks:
+    dc01 password settings and the web01 port list as the range baseline shows them; deviations are instructor-known
+    values, not guesses.'
+- module: 5
+  setup: 'Range on baseline, with fw01 forwarding deny events to siem01 (logs-to-siem allows the collector ports).
+    Have the analyst account on siem01 assigned to each Student and the firewall event index populated. Expected
+    marks: a nonzero deny count, top pairs dominated by denied DMZ and unlisted-port attempts.'
+- module: 6
+  setup: 'Range on baseline; Modules 1 to 5 work products still available. Students need the fw01 export path, the
+    saved siem01 query from Module 5 and one recorded test result from Module 3. Reserve time at the end for the
+    completeness judgement.'
+common_faults:
+- module: 1
+  fault: Students classify any clause that mentions the firewall as technical.
+  remedy: Have them ask what must change and where; if the answer is a person approving, the clause is procedural.
+- module: 1
+  fault: Students name the whole range instead of a node id as the enforcement point.
+  remedy: Insist on one node id per clause from the range diagram; if none fits, the clause is marked as having none.
+- module: 2
+  fault: Students map rules to clauses by keyword match rather than authorisation.
+  remedy: For each rule ask which clause allows this traffic; a clause about training authorises no rule.
+- module: 2
+  fault: Students propose adding explicit deny rules where default deny already enforces the clause.
+  remedy: Point at the dmz-to-servers allow list and ask what happens to a port not on it before any rule is drafted.
+- module: 3
+  fault: Students record the expected result instead of the observed result.
+  remedy: Have them run the test first and write the result before re-reading the matrix line.
+- module: 3
+  fault: Students treat every denied path as a failure of the rule set.
+  remedy: Mark the line against the expected result from the clause; a deny that matches the clause is a pass.
+- module: 4
+  fault: Students lower the baseline to match the observed value so the records agree.
+  remedy: The baseline comes from the clause; only change control on the host closes the gap.
+- module: 4
+  fault: Students record drift without host, setting and baseline value, so the item cannot be remediated.
+  remedy: Enforce the three-part drift line on the board before they leave the recording step.
+- module: 5
+  fault: Students classify every deny as expected enforcement.
+  remedy: Ask for the clause that explains each pair; repeated denies from one host to an unpermitted port need investigation.
+- module: 5
+  fault: Students query without recording the filter and time window, so the counts cannot be reproduced.
+  remedy: Have them write the query line before running it and re-run it at the end of the lab to compare counts.
+- module: 6
+  fault: Evidence lines state conclusions with no artefact, time or node id.
+  remedy: Use the fixed line format from the lab brief; mark each line reproducible or not before the completeness judgement.
+- module: 6
+  fault: Students pair clauses with the clause text itself as the artefact.
+  remedy: The clause is the claim; the artefact must be an observation from the range that answers it.

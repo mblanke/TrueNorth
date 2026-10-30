@@ -1,0 +1,529 @@
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+course_code: C539
+title: C2 Infrastructure & Operational Security
+version: '1.0'
+difficulty: advanced
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C537
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Exploitation Analyst (Adversary Emulation - DCWF) (AN-EXP-001)'
+  - 'NIST CSF 2.0: ID.RA, DE.CM'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: C2 Infrastructure Fundamentals
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the components of red-team command and control infrastructure and state the function of each
+  - Distinguish the operational security risk that exposure of each infrastructure component creates for an engagement
+  - Select the network segment for each infrastructure component on a range and justify the placement
+  topics:
+  - Command and control infrastructure and the role of the operator console.
+  - Team servers, redirectors and staging hosts as separate components.
+  - Segmentation of attacker infrastructure away from target networks.
+  - Operational security as a design property, not an afterthought.
+  - How infrastructure choices become observable on the defender side.
+  lab: >-
+    Lab: On the red-team range, inventory the attacker infrastructure by function, then judge whether
+    each component sits on the right segment with the right exposure. Evidence: the service names and
+    listening ports on a-teamserver; the protocol and port of every listening service on a-redir01 and
+    a-redir02; the web services and staged file locations on a-payload; the fw01 rules that connect
+    attacker_infra to the other VLANs. Pass: all four items recorded exactly as the range shows them;
+    each component marked "correctly placed" or "misplaced" with a one-sentence reason; one change
+    proposed for every component marked "misplaced".
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [a-kali01]
+      action: Log on to a-kali01 over SSH, open a terminal and write the start time in your lab notes.
+    - hosts: [a-teamserver]
+      action: Inspect the services configured on a-teamserver and record each service name and its listening port.
+    - hosts: [a-redir01, a-redir02]
+      action: List the listening services on a-redir01 and a-redir02 and record the protocol and port of each.
+    - hosts: [a-payload]
+      action: Inspect a-payload and record which web services it runs and where staged files are served from.
+    - hosts: [fw01]
+      action: On fw01, list the rules that connect attacker_infra to the other VLANs and record each permitted source and destination network.
+    - hosts: [a-kali01]
+      action: For each component, write one sentence judging whether its placement and exposure follow the segmentation principle, and record your reasoning.
+  refs:
+  - nist-sp-800-115
+  - mitre-attack
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A red-team range separates operator tooling from internet-facing relay hosts. Which component
+        holds the command and control listener that operator consoles connect to?
+      options:
+      - A) The redirector
+      - B) The team server
+      - C) The staging host
+      - D) The target domain controller
+      answer: B
+    - question: Why do mature programmes place the team server on a segment that target hosts cannot reach
+        directly?
+      options:
+      - A) Because relays cannot carry encrypted traffic
+      - B) Because consoles require a separate VLAN licence
+      - C) To make the channel traffic measurably faster
+      - D) Because direct reachability would let defenders pivot to operator tooling
+      answer: D
+    - question: A Student must serve staged files that only the team server should fetch. Which host role
+        matches this need?
+      options:
+      - A) The staging host
+      - B) The redirector
+      - C) The jump host
+      - D) The target file server
+      answer: A
+    - question: During a walkthrough an instructor asks which VLAN hosts the redirectors on this range.
+        Which network is it?
+      options:
+      - A) target_db
+      - B) pivot_network
+      - C) attacker_infra
+      - D) target_corp
+      answer: C
+    - question: An engagement lead reviews an infrastructure plan before deployment. Which finding indicates
+        the weakest operational security?
+      options:
+      - A) Redirectors run a different operator tool than the team server
+      - B) One public host serves staging files and accepts channel traffic together
+      - C) The team server segment blocks direct routes from target VLANs
+      - D) Redirector and team server records are kept as separate logs
+      answer: B
+- ordinal: 2
+  title: Redirectors
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Trace the path of channel traffic from a target network through a redirector to the team server
+  - Classify which firewall rules expose a redirector and which would expose the team server directly
+  - Select redirector protocols and ports for a scenario and justify the choice against expected traffic
+  topics:
+  - Purpose of a redirector and separation of front-end and back-end infrastructure.
+  - HTTPS and DNS redirector designs and the protocol each pretends to carry.
+  - Firewall rules and network placement for redirectors.
+  - How a redirector failure preserves the team server from direct exposure.
+  - Comparing a direct listener with a redirected listener from the defender's view.
+  lab: >-
+    Lab: On the red-team range, follow the redirected path end to end and judge whether the team server
+    stays hidden behind the redirectors. Evidence: the backend address and port the web configuration on
+    a-redir01 forwards to; the zones and resolver a-redir02 forwards for; the listener addresses and ports
+    configured on a-teamserver; the fw01 rules that permit traffic into attacker_infra; the certificate
+    subject and issuer the HTTPS listener presents. Pass: all five items recorded exactly as the range
+    shows them; each hop marked "team server hidden" or "team server exposed" with a one-sentence reason;
+    one rule or configuration change proposed for every hop marked "team server exposed".
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [a-redir01]
+      action: Inspect the web server configuration on a-redir01 and record the backend address and port it forwards to.
+    - hosts: [a-redir02]
+      action: Inspect the DNS service on a-redir02 and record which zones it forwards and to which resolver.
+    - hosts: [a-teamserver]
+      action: On a-teamserver, record which listener addresses and ports are configured and whether any is reachable without a redirector.
+    - hosts: [fw01]
+      action: On fw01, list the rules that permit traffic into attacker_infra and record which ones reach a redirector rather than the team server.
+    - hosts: [a-kali01, a-redir01]
+      action: From a-kali01, connect to the HTTPS listener on a-redir01 and record the certificate subject and issuer it presents.
+    - hosts: [a-kali01]
+      action: For each hop you recorded, write one sentence judging whether the team server address stayed hidden, and note one change that would hide it further.
+  refs:
+  - nist-sp-800-207
+  - rfc-8446
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A redirector forwards HTTPS traffic received on port 443 to the team server behind the
+        firewall. What is the primary operational security benefit of this design?
+      options:
+      - A) It applies a second layer of encryption to the whole channel
+      - B) It removes the need to keep any access logs at all
+      - C) The team server address never appears on target networks
+      - D) It increases the throughput that the channel can sustain under load
+      answer: C
+    - question: From the defender's view, which comparison between a direct team server listener and a
+        redirected listener is accurate?
+      options:
+      - A) A direct listener reveals the team server address; a redirected one reveals only the redirector
+      - B) A redirected listener hides the traffic from flow records entirely
+      - C) Both expose the same details in connection logs
+      - D) A direct listener is harder for defenders to block
+      answer: A
+    - question: An instructor asks which host on this range terminates target-facing DNS queries before
+        they reach the team server. Which host is it?
+      options:
+      - A) t-dns01
+      - B) a-payload
+      - C) a-redir01
+      - D) a-redir02
+      answer: D
+    - question: A firewall review finds one rule that permits target_corp hosts to reach the team server
+        segment directly. Why must this rule change?
+      options:
+      - A) It slows the channel for legitimate target users during work
+      - B) It exposes infrastructure that should only be reachable through redirectors
+      - C) It duplicates a filtering rule that already exists on the redirector
+      - D) It prevents the team server from logging source addresses
+      answer: B
+    - question: A redirector presents a certificate during a TLS handshake. Which detail should a Student
+        record to describe the channel it supports?
+      options:
+      - A) The redirector's local root password
+      - B) The number of processor cores the redirector currently runs on
+      - C) The certificate subject and issuing certificate authority
+      - D) The redirector's uptime
+      answer: C
+- ordinal: 3
+  title: Domains and Staging
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the DNS records that publish a staging or channel domain and classify each record's purpose
+  - Distinguish an aged domain from a newly registered domain by the defender signals each produces
+  - Trace how a staged file is hosted and retrieved on the range and record every host involved
+  topics:
+  - Domain registration, DNS record types and name server delegation.
+  - Aged versus newly registered domains and how defenders weigh them.
+  - Staging hosts, staging directories and their separation from channel traffic.
+  - Sinkholes and passive DNS as analyst views of domain infrastructure.
+  - What a DNS review reveals about infrastructure age and ownership.
+  lab: >-
+    Lab: On the red-team range, map the published domain records and the staging path, then judge what
+    each would tell a defender. Evidence: every record type, name and value that t-dc01 holds for the
+    targetcorp.local zone; whether the external DNS server t-dns01 permits a zone transfer and which
+    zone and records it exposes; the directories and staged files the a-payload web services expose;
+    any a-teamserver profile that references a staging host and the address it fetches from; the fw01
+    rules that permit target networks to reach a-payload. Pass: all five items recorded exactly as the
+    range shows them; each record and path annotated with what it reveals about the infrastructure's
+    age and purpose; one remediation proposed for the weakest finding.
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [a-kali01, t-dc01]
+      action: From a-kali01, query t-dc01, the domain controller whose DNS serves the targetcorp.local zone, and record each record type, name and value it returns.
+    - hosts: [a-kali01, t-dns01]
+      action: From a-kali01, test whether the external DNS server t-dns01 permits a zone transfer and record whether it succeeded, which zone it exposed and the records returned.
+    - hosts: [a-payload]
+      action: Inspect a-payload and record which directories its web services expose and which files are staged there.
+    - hosts: [a-teamserver]
+      action: On a-teamserver, record whether any configured profile references a staging host, and note the address it would fetch from.
+    - hosts: [fw01]
+      action: On fw01, record which rules permit target networks to reach a-payload and whether any of them should.
+    - hosts: [a-kali01]
+      action: For each DNS record and staged path you recorded, write one sentence on what it would tell a defender about the infrastructure's age and purpose.
+  refs:
+  - mitre-attack
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: Which DNS record type maps a staging domain name to the address of the host serving the
+        staged content?
+      options:
+      - A) An address record
+      - B) A mail exchange record
+      - C) A text record
+      - D) A name server record
+      answer: A
+    - question: A defender reviewing resolver logs sees a domain registered three days ago that several
+        hosts resolved once. Why does the domain draw attention?
+      options:
+      - A) Its registered name is unusually long
+      - B) It uses a very popular registrar
+      - C) Briefly used new registrations are a common phishing and channel indicator
+      - D) It publishes no mail exchange record
+      answer: C
+    - question: On this range, which host serves staged content to the attacker infrastructure?
+      options:
+      - A) t-web01
+      - B) t-fs01
+      - C) a-redir01
+      - D) a-payload
+      answer: D
+    - question: A zone transfer against t-dns01 returns every record in the zone. What does this finding
+        demonstrate?
+      options:
+      - A) The resolver caches records for too long
+      - B) Any host can enumerate the whole zone, a misconfiguration defenders must close
+      - C) The zone has too few records to be safe
+      - D) The name servers are correctly separated
+      answer: B
+    - question: Passive DNS analysis collects resolved domain and address pairs over time. Which
+        infrastructure change does passive DNS expose first?
+      options:
+      - A) A domain moved to an address other domains used before
+      - B) A certificate renewed on its usual schedule
+      - C) A firewall rule quietly tightened
+      - D) A credential rotated on the staging host
+      answer: A
+- ordinal: 4
+  title: C2 Channels and Profiles
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Trace how a profile's sleep interval and jitter change a channel's traffic pattern over time
+  - Distinguish HTTPS, DNS and peer-to-peer channels by the telemetry each produces
+  - Select channel and profile settings for a scenario and justify them against the telemetry defenders record
+  topics:
+  - Channel profiles, sleep intervals, jitter and declared user agent.
+  - HTTPS, DNS and peer-to-peer channels and their traffic shapes.
+  - How interval and jitter choices appear in flow records and packet captures.
+  - Why default profiles stand out against published tool signatures.
+  - Matching channel appearance to the traffic a target network expects.
+  lab: >-
+    Lab: On the red-team range, read the configured channel profiles, then observe the traffic they
+    produce and judge whether the two agree. Evidence: the sleep interval, jitter and transport protocol
+    of each listener profile on a-teamserver; which profile's traffic passes through a-redir01 and its
+    backend listener; the callback interval you observe in a two-minute capture from a-kali01 toward the
+    team server listener; the HTTP headers a-redir01 forwards compared with the profile's declared user
+    agent. Pass: all four items recorded exactly as the range shows them; the observed channel classified
+    as HTTPS, DNS or peer-to-peer with one sentence of evidence; one sentence judging whether the observed
+    timing matches the recorded profile, and one setting you would change and why.
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [a-teamserver]
+      action: Open the channel configuration on a-teamserver and record the sleep interval, jitter and transport protocol each listener profile uses.
+    - hosts: [a-teamserver, a-redir01]
+      action: Trace which profile's traffic passes through a-redir01 and record the profile name and its backend listener.
+    - hosts: [a-kali01, a-teamserver]
+      action: From a-kali01, capture traffic toward the team server listener for two minutes and record the callback interval you observe.
+    - hosts: [a-redir01]
+      action: Compare the HTTP headers a-redir01 forwards with the profile's declared user agent and record any mismatch.
+    - hosts: [a-kali01]
+      action: Classify the channel you observed as HTTPS, DNS or peer-to-peer, write one sentence of evidence from your capture, and judge whether the observed timing matches the recorded profile.
+  refs:
+  - nist-sp-800-94
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A channel profile sets a 60-second sleep interval with zero jitter. What traffic pattern
+        does this produce?
+      options:
+      - A) Unpredictable bursts of traffic scattered across each observation day
+      - B) One continuous streaming session with no quiet gaps
+      - C) No traffic in either direction after the first exchange
+      - D) A metronome callback every 60 seconds that flow records expose
+      answer: D
+    - question: Which channel choice blends best with ordinary web browsing when its profile imitates a
+        common browser?
+      options:
+      - A) DNS
+      - B) HTTPS
+      - C) SMB
+      - D) ICMP
+      answer: B
+    - question: Jitter is added to a fixed sleep interval. Why does a defender analysing flow records
+        care?
+      options:
+      - A) Jitter increases the volume of telemetry that defenders must collect and store
+      - B) Jitter removes the channel's callbacks from flow records altogether
+      - C) Jitter turns one fixed interval into a spread that resists simple matching
+      - D) Jitter changes the channel's protocol to DNS
+      answer: C
+    - question: Which profile setting names the application a redirector claims to serve, and appears in
+        server-side logs?
+      options:
+      - A) The user agent
+      - B) The sleep interval
+      - C) The jitter percentage
+      - D) The public key
+      answer: A
+    - question: An operator leaves a team server listener on the tool's default profile settings. Why is
+        this a finding?
+      options:
+      - A) Default profiles consume more bandwidth than carefully customised profiles would
+      - B) Default profiles cannot pass through a redirector
+      - C) Default profiles disable logging on the team server
+      - D) Default profiles match published signatures defenders test for first
+      answer: D
+- ordinal: 5
+  title: Assuming Blue Sees Everything
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Enumerate the log sources on a range that record interactions with infrastructure, by host and log type
+  - Map each infrastructure action to the blue-side evidence it leaves and identify the most exposing action
+  - Judge a planned infrastructure change by the defender visibility it creates before approving it
+  topics:
+  - Web server, resolver, firewall and endpoint logs as blue-side evidence.
+  - Flow records and packet captures as corroboration of host logs.
+  - Indicators of compromise and how infrastructure details become them.
+  - Threat hunting for channel traffic patterns across log sources.
+  - Writing infrastructure plans that assume every action is recorded.
+  lab: >-
+    Lab: On the red-team range, read the target side's own logs and judge how much each recorded line
+    reveals about the infrastructure. Evidence: every access log request on t-web01 whose source address
+    lies outside target networks; the resolver query log entries on t-dns01 that name external domains;
+    the fw01 rules that log traffic involving attacker_infra; any authentication event on t-dc01 whose
+    source address is not a target host. Pass: all four items recorded exactly as the range shows them;
+    each recorded line paired with the infrastructure action that produced it; your findings ranked by
+    how much they reveal, with one sentence justifying the top-ranked item.
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [t-web01]
+      action: On t-web01, review the web access log and record each request whose source address lies outside target networks.
+    - hosts: [t-dns01]
+      action: On t-dns01, review the resolver query log and record the entries that name external domains.
+    - hosts: [fw01]
+      action: On fw01, list the rules that log traffic involving attacker_infra and record the volume each rule recorded.
+    - hosts: [t-dc01]
+      action: Review recent authentication events on t-dc01 and record any event whose source address is not a target host.
+    - hosts: [t-web01, fw01]
+      action: For each line you recorded, pair it with the infrastructure action that produced it, then rank your findings by how much they reveal and justify the top one.
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-61r3
+  - sigma
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: Which log source would first reveal that a target host resolved an unknown external
+        domain?
+      options:
+      - A) The web access log
+      - B) The resolver query log
+      - C) The authentication log
+      - D) The application error log
+      answer: B
+    - question: A Student plans to test a redirector URL directly from a target workstation. From the blue
+        side, what does this create?
+      options:
+      - A) A web access log line that names infrastructure directly
+      - B) Nothing, because redirectors do not log
+      - C) An alert only if the URL is malformed
+      - D) A firewall rule change on the workstation
+      answer: A
+    - question: Flow records show 1440 evenly spaced connections per day to one external address. What
+        does the regularity suggest?
+      options:
+      - A) A scheduled backup job
+      - B) A monthly patch cycle
+      - C) A user streaming video
+      - D) An automated channel pattern worth hunting
+      answer: D
+    - question: Which pairing of independent sources best corroborates suspected channel activity in one
+        interval?
+      options:
+      - A) Endpoint log and staffing roster
+      - B) Web log and office calendar
+      - C) Resolver log and firewall flow records
+      - D) Ticket system and DHCP lease file
+      answer: C
+    - question: An infrastructure plan states every test will run from attacker infrastructure only.
+        Which review comment is strongest?
+      options:
+      - A) Approve it, because attacker infrastructure cannot be observed
+      - B) Rewrite it to assume every connection is logged and reviewed
+      - C) Approve it if the redirectors are replaced first
+      - D) Rewrite it to run all tests from target workstations
+      answer: B
+- ordinal: 6
+  title: Infrastructure Burn and Rotation
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the indicators that mark channel infrastructure as burned and classify each by how it was exposed
+  - Design a rotation plan for redirectors, domains and staging hosts that keeps the engagement running
+  - Distinguish planned rotation from emergency rotation and select the trigger that demands each
+  topics:
+  - Burn indicators, from exposed addresses to sinkholed domains and blocked ports.
+  - Planned rotation schedules versus emergency replacement after exposure.
+  - Keeping an engagement's channels running while infrastructure changes underneath.
+  - Diversity of addresses, providers and protocols across rotation cycles.
+  - Decommissioning and record keeping after an engagement ends.
+  lab: >-
+    Lab: On the red-team range, catalogue what each infrastructure component would surrender if captured
+    or burned, then draft the rotation order. Evidence: the listeners on a-teamserver and which redirector
+    each depends on; the logs, configurations and certificates held on a-redir01 and a-redir02 that would
+    identify the operation if seized; the fw01 rules that would need to change if a-redir01 were replaced;
+    the staged content on a-payload that must move and the components that reference it. Pass: all four
+    items recorded exactly as the range shows them; a rotation order written for the components you
+    recorded; one sentence justifying which component you would rotate first and what its loss would
+    cost the engagement.
+  lab_range:
+    template: red-team
+    steps:
+    - hosts: [a-teamserver]
+      action: List the listeners configured on a-teamserver and record which redirector each one depends on.
+    - hosts: [a-redir01, a-redir02]
+      action: Record the logs, configurations and certificates held on a-redir01 and a-redir02 that would identify the operation if seized.
+    - hosts: [fw01]
+      action: On fw01, record which rules would need to change if a-redir01 were replaced with a new host.
+    - hosts: [a-payload]
+      action: Record which staged content on a-payload must move during a rotation and note which components reference it.
+    - hosts: [a-teamserver]
+      action: Draft a rotation order for the components you recorded and write one sentence justifying which one you would rotate first.
+  refs:
+  - nist-sp-800-115
+  - mitre-attack
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A blue team sinkholes a domain used by the redirector and begins answering its queries
+        itself. What state is the infrastructure in?
+      options:
+      - A) Healthy
+      - B) Idle
+      - C) Burned
+      - D) Redundant
+      answer: C
+    - question: Which event most clearly triggers an emergency rotation rather than a scheduled one?
+      options:
+      - A) A scheduled quarterly review of infrastructure health and cost
+      - B) A certificate nearing its scheduled expiry date
+      - C) A quiet week in the engagement calendar
+      - D) A published detection rule naming the team server's address
+      answer: D
+    - question: Which rotation practice best preserves continuity of an engagement's running channels?
+      options:
+      - A) Bringing the replacement redirector online and tested before the old one retires
+      - B) Retiring every component at the same time and rebuilding the whole set from scratch
+      - C) Reusing the burned domain under a new name server
+      - D) Moving the team server to a target network address
+      answer: A
+    - question: Why do mature teams diversify providers and address ranges across rotation cycles?
+      options:
+      - A) To reduce the monthly cost of running the whole infrastructure
+      - B) So one provider takedown cannot remove every channel at once
+      - C) To make the traffic pattern easier to profile
+      - D) Because registrars limit domains per customer
+      answer: B
+    - question: An engagement ends. Which decommissioning record best supports the after-action review?
+      options:
+      - A) The operator's personal notebook pages covering everything from the final two weeks
+      - B) A screenshot of the final console state
+      - C) A dated inventory of every domain, address and host, with its final state
+      - D) The invoice from the last hosting provider
+      answer: C

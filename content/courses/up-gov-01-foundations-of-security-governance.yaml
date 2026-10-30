@@ -1,0 +1,522 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C501
+title: Foundations of Security Governance
+version: '1.0'
+difficulty: foundation
+duration_hours: 4
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C110
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Analyst (PR-CDA-001) and Cybersecurity Risk Manager.'
+  - 'NIST CSF 2.0: the course teaches the Govern function (GV.OC, GV.RR) at foundation level.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: The Govern function in practice
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe the outcomes the Govern function establishes for a small enterprise and how they direct the other functions
+  - Distinguish governance decisions from operational security work using evidence recorded on the range
+  - Classify observations from a running range as direction, accountability or oversight
+  topics:
+  - The purpose of the Govern function and its relation to the other functions.
+  - Governance outcomes in a small enterprise, direction, accountability and oversight.
+  - How governance decisions become configuration, accounts and rules on a running network.
+  - Evidence a Student can gather to show governance is operating.
+  lab: >-
+    Lab: On the small-enterprise range, survey the environment and show its governance is real.
+    Record the hosts and networks, the domain services dc-01 answers on the server network, and
+    the password policy and fw-01 rules from the range baseline, then judge each item as an act of
+    direction, accountability or oversight. Evidence: the list of hosts and networks with a one-line
+    role for each; the dc-01 services that answer; the baseline password policy values and fw-01
+    rule notes; a classification of each item as direction, accountability or oversight. Pass: all
+    items recorded exactly as the range shows them; every item classified with a one-sentence
+    reason; one sentence naming which classification the range demonstrates least well.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and write the start time in your lab notes.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, list the hosts and networks the range contains, including dc-01, and record a one-line role for each.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box on the management network, test the domain service ports on dc-01 and record which dc-01 services answer.
+    - hosts: [jump-box]
+      action: Record the domain password policy values and the fw-01 rule notes from the range baseline the instructor supplies.
+    - hosts: [jump-box]
+      action: For each recorded item, write direction, accountability or oversight, with one sentence of reason for the choice.
+  refs:
+  - nist-cswp-29
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A small enterprise must show that security decisions are made and recorded before any technical
+        control is configured. Which function carries this duty?
+      options:
+      - A) Detect
+      - B) Govern
+      - C) Respond
+      - D) Recover
+      answer: B
+    - question: During a range survey a Student records who signed the current firewall rule set and when it
+        was reviewed. Which governance act does this evidence show?
+      options:
+      - A) Direction
+      - B) Implementation
+      - C) Accountability
+      - D) Procurement
+      answer: C
+    - question: An administrator edits a firewall rule during an incident without any recorded decision behind
+        the change. The missing artefact belongs to which category?
+      options:
+      - A) Governance direction
+      - B) Technical detection
+      - C) User training
+      - D) Vendor support
+      answer: A
+    - question: A Student lists every host on the range and records which role each host plays for the business.
+        Which governance outcome does this inventory support?
+      options:
+      - A) Threat hunting
+      - B) Packet capture
+      - C) Malware analysis
+      - D) Oversight of assets
+      answer: D
+    - question: Two enterprises run identical firewalls, but only one can show who decided the rules and who
+        checks them. What separates the two?
+      options:
+      - A) Hardware age
+      - B) Governance maturity
+      - C) Network speed
+      - D) Staff headcount
+      answer: B
+- ordinal: 2
+  title: Governance structures and forums
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Name the forums where a small enterprise takes security decisions and state what each approves
+  - Match a proposed range change to the forum whose authority the change requires
+  - Record change evidence so each forum decision can be traced to its technical result
+  topics:
+  - Security forums in a small enterprise, from the owner to the technical change meeting.
+  - Standing agendas, decision rights and quorum for governance forums.
+  - Change requests, approval records and the path from decision to firewall rule.
+  - Escalation between forums when a decision exceeds a forum's authority.
+  lab: >-
+    Lab: On the small-enterprise range, run a change-control pass over the two fw-01 rules so
+    each can be traced to a forum decision. Record each rule with its source, destination and
+    note from the range baseline, name the forum that should approve it, and flag the one rule
+    the baseline decision record does not cover. Evidence: the two fw-01 rules with source and
+    destination networks; the approving forum named for each rule; the rule flagged as lacking
+    a recorded decision, with the reason. Pass: every rule traced to a named forum or flagged;
+    the flagged rule justified in one sentence; one agenda item drafted that would let the right
+    forum approve it.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the start time in your lab notes.
+    - hosts: [jump-box]
+      action: Record the two fw-01 rules, user-to-srv-ad and mgmt-to-all, with their source and destination networks and notes from the range baseline the instructor supplies.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, test one administrative connection to dc-01 that mgmt-to-all permits and record whether it succeeds.
+    - hosts: [jump-box]
+      action: Name the forum that should approve each rule and record the name beside the rule.
+    - hosts: [jump-box]
+      action: Mark the one rule the baseline decision record does not cover and draft the agenda item that would let the right forum approve it.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A small enterprise takes security decisions at three tables, the owner alone, the manager with
+        staff, and the technical change meeting. What does each table hold?
+      options:
+      - A) Budget approvals
+      - B) Vendor contracts
+      - C) Certificate lifetimes
+      - D) Decision rights
+      answer: D
+    - question: A Student proposes adding a firewall rule and must name the forum that approves it before the
+        change is made. Which record shows the approval?
+      options:
+      - A) A dated approval record
+      - B) A network diagram with zones
+      - C) A vulnerability scan report
+      - D) An asset inventory list
+      answer: A
+    - question: A request to open a rule from the user network to the server network exceeds what the change
+        meeting may decide alone. What should the meeting do?
+      options:
+      - A) Approve it quietly
+      - B) Escalate to the forum above
+      - C) Deny it without a record
+      - D) Implement it and note it later
+      answer: B
+    - question: After a forum approves a rule change, the rule is configured on fw-01 the same day. Which
+        evidence ties the decision to the configuration?
+      options:
+      - A) A login banner text
+      - B) A backup completion log
+      - C) A change request with rule identifier
+      - D) A training attendance roster
+      answer: C
+    - question: One person both proposes firewall changes and approves them on the same range. Which
+        governance weakness does this dual role create?
+      options:
+      - A) Slow scanning
+      - B) Weak encryption
+      - C) Poor patching
+      - D) No independent approval
+      answer: D
+- ordinal: 3
+  title: Roles, responsibilities and authority
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the accounts and groups on a range that hold administrative authority and what each can change
+  - Assign named responsibility for each governance duty the range environment requires
+  - Judge whether administrative reach on the range matches the authority each role should hold
+  topics:
+  - Roles and responsibilities for governance, who owns decisions and who operates controls.
+  - Administrative groups, standard users and service accounts on a Windows domain.
+  - Authority over network rules, domain policy and host administration.
+  - Matching administrative reach to documented responsibility, including least privilege.
+  lab: >-
+    Lab: On the small-enterprise range, establish who actually holds administrative authority and
+    compare it with the responsibility a small enterprise would assign. Record the groups with
+    administrative rights and the number of accounts in each from the range baseline, the fw-01
+    rule that allows administration, and the denial the analyst account receives when it attempts
+    an administrative action on dc-01. Evidence: group names with account counts; the fw-01
+    administration rule and its source network; the exact denial the analyst account receives on
+    dc-01. Pass: all three items recorded as the range shows them; each item judged as matching
+    or exceeding the authority the role should hold, with a reason; one named owner proposed for
+    the weakest area.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and write the start time in your lab notes.
+    - hosts: [jump-box]
+      action: Record the domain administrative groups and the number of accounts in each from the range baseline the instructor supplies.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, attempt an administrative action against dc-01 as the analyst account and record the exact denial the range returns.
+    - hosts: [jump-box]
+      action: Record the fw-01 rule that allows administration and the source network it trusts from the range baseline.
+    - hosts: [jump-box]
+      action: Judge each finding as matching or exceeding the authority its role should hold and propose one named owner for the weakest finding.
+  refs:
+  - nist-sp-800-37r2
+  - nist-cswp-29
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A Student must name who may change the domain password policy and who may only operate within
+        it. Which distinction does the Student draw?
+      options:
+      - A) Policy authority
+      - B) Encryption strength
+      - C) Backup frequency
+      - D) Physical access
+      answer: A
+    - question: On the range, three accounts hold domain administrative rights and one of them also manages
+        fw-01. Which governance question does this concentration raise?
+      options:
+      - A) Certificate expiry handling
+      - B) Free disk space
+      - C) Concentration of authority
+      - D) Operating system patch levels
+      answer: C
+    - question: A standard user on ws-01 is denied when opening an administrative share on dc-01. What does
+        the denial demonstrate about the design?
+      options:
+      - A) Broken trust
+      - B) Missing encryption
+      - C) Faulty routing
+      - D) Authority limits
+      answer: D
+    - question: An enterprise documents that the operations lead owns firewall rules, yet any administrator can
+        edit them on the range. What is the gap?
+      options:
+      - A) A missing backup schedule
+      - B) Responsibility without enforced authority
+      - C) An outdated asset inventory
+      - D) Untrained night staff
+      answer: B
+    - question: A range task asks the Student to record which named person answers for each governance duty.
+        Which record does the task produce?
+      options:
+      - A) A responsibility assignment
+      - B) A packet capture
+      - C) A scan report
+      - D) A recovery plan
+      answer: A
+- ordinal: 4
+  title: Policy families and the policy lifecycle
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Sort the controls observed on a range into the policy families that require them
+  - Recognise where each range control sits in the policy lifecycle from draft to review
+  - Identify the evidence a policy in force leaves on a running network
+  topics:
+  - Policy families for acceptable use, access, change management, configuration and passwords.
+  - The policy lifecycle from draft, approval and publication to scheduled review.
+  - How a policy becomes enforced settings on hosts, accounts and firewalls.
+  - Distinguishing a policy, a standard and a procedure by scope and wording.
+  lab: >-
+    Lab: On the small-enterprise range, treat the enforced settings as the visible end of policies
+    and sort each one into its policy family and lifecycle stage. Record the domain password
+    policy and the fw-01 rule set from the range baseline and the denial the analyst account
+    meets on dc-01, then name the family each control serves. Evidence: the password policy
+    values; the fw-01 rules with their notes; the dc-01 denial message; a family named for each
+    control. Pass: each control assigned to one policy family with a reason; each family given a
+    lifecycle stage with the evidence that would show the stage; one control named whose policy
+    the range cannot demonstrate.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the start time in your lab notes.
+    - hosts: [jump-box]
+      action: Record the domain password policy values, minimum length, lockout threshold and lockout duration, from the range baseline the instructor supplies.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, repeat the administrative attempt against dc-01 with the analyst account and record the exact denial the host returns.
+    - hosts: [jump-box]
+      action: Record the fw-01 rules with their notes from the range baseline and note which family of policy each rule enforces.
+    - hosts: [jump-box]
+      action: Name the lifecycle stage each recorded policy has reached and the evidence that shows it, then name one policy the range cannot demonstrate.
+  refs:
+  - nist-cswp-29
+  - cis-benchmarks
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A range shows a minimum password length, a lockout threshold and a scheduled review date for
+        the setting. Which family do these belong to?
+      options:
+      - A) Acceptable use
+      - B) Incident response
+      - C) Account standards
+      - D) Physical security
+      answer: C
+    - question: A firewall rule carries a note naming the forum that approved it and the month it falls due
+        for review. Which lifecycle stages does the note span?
+      options:
+      - A) Initial drafting only
+      - B) Approval and review
+      - C) Formal retirement
+      - D) Publication only
+      answer: B
+    - question: A policy demands approval before any firewall change, yet a rule appears on the range with no
+        approval record. What does the missing record show?
+      options:
+      - A) Poor encryption
+      - B) Weak passwords
+      - C) Slow network
+      - D) The lifecycle was skipped
+      answer: D
+    - question: A Student must separate what a policy states from what a standard measures on the range. Which
+        pairing does that?
+      options:
+      - A) Policy directs, standard measures
+      - B) Policy replaces the firewall
+      - C) Standard approves the budget
+      - D) Policy captures packets
+      answer: A
+    - question: An enterprise rewrites its access control policy after an audit and republishes it with a new
+        review date. Which lifecycle act closes the loop?
+      options:
+      - A) Initial drafting
+      - B) Formal deletion
+      - C) Review after publication
+      - D) Ignoring the audit
+      answer: C
+- ordinal: 5
+  title: Organisational context and risk posture
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Map the assets and dependencies on a range and state what each asset depends on
+  - Rank range assets by criticality using the impact of losing each one
+  - Describe the risk posture the range environment reveals about its owner organisation
+  topics:
+  - Organisational context, mission, assets, dependencies and suppliers behind a small network.
+  - Criticality ranking from dependency chains, such as authentication before applications.
+  - Risk posture as the sum of accepted, treated and unowned risks.
+  - Recording assets, dependencies and owners so risk decisions can be made.
+  lab: >-
+    Lab: On the small-enterprise range, build the organisational picture behind the network,
+    which assets exist, what each depends on and which loss hurts most. Record the role of every
+    host, the dependency of the server network on dc-01 for authentication and name resolution,
+    and the exposure fw-01 permits. Evidence: the host list with roles; the dependency each host
+    has on dc-01 or fw-01; a criticality rank for each host with the impact of its loss. Pass:
+    every host ranked with a one-sentence impact reason; the dependency chain through dc-01 stated
+    explicitly; one unowned dependency named, with the role that should own it.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and write the start time in your lab notes.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, list every reachable host, including dc-01, and record the role each host plays for the enterprise.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, test name resolution through dc-01 and record what stops working across the range if dc-01 fails.
+    - hosts: [jump-box]
+      action: Record the exposure the fw-01 baseline rules permit between networks and note which assets each exposure touches.
+    - hosts: [jump-box]
+      action: Rank the hosts by criticality with the impact of losing each, and name one dependency nobody owns.
+  refs:
+  - nist-sp-800-30r1
+  - nist-cswp-29
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A Student learns that every workstation sign-in depends on one domain controller for
+        authentication and name resolution. What does dc-01 hold in the dependency chain?
+      options:
+      - A) A redundant spare role
+      - B) A critical dependency
+      - C) A secondary backup path
+      - D) A minor desktop service
+      answer: B
+    - question: Losing fw-01 cuts every network path at once, while losing ws-03 affects one desk. Which
+        ranking does this difference support?
+      options:
+      - A) Both hosts have equal criticality
+      - B) The difference has uncertain value
+      - C) No ranking can be justified here
+      - D) fw-01 above ws-03 in criticality
+      answer: D
+    - question: An enterprise accepts running one firewall with no replacement on hand. Which term names that
+        recorded choice?
+      options:
+      - A) Risk acceptance
+      - B) Unexplained packet loss
+      - C) Progressive signal drift
+      - D) Scheduled key rotation
+      answer: A
+    - question: A dependency has no named owner, so nobody decides whether to reduce it. How does the
+        enterprise's posture describe this?
+      options:
+      - A) A risk fully managed elsewhere
+      - B) A risk transferred to a supplier
+      - C) An unowned dependency
+      - D) A risk already closed out
+      answer: C
+    - question: Before ranking assets, a Student records that authentication must work before any application
+        is usable. Which chain does this ordering follow?
+      options:
+      - A) The dependency chain
+      - B) The physical cable route
+      - C) The annual budget cycle
+      - D) The monthly staff roster
+      answer: A
+- ordinal: 6
+  title: Governance judgement and the individual role
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Locate an individual role within the governance structures a range demonstrates
+  - Assemble the governance evidence gathered across the course into one coherent picture
+  - Name one unowned governance decision and the role that should hold it
+  topics:
+  - Locating a role, analyst and risk manager duties inside governance structures.
+  - Combining inventories, forums, authority records and policy evidence into a picture.
+  - Judgement under incomplete governance, including naming unowned decisions.
+  - Individual accountability for governance outcomes in daily security work.
+  lab: >-
+    Lab: On the small-enterprise range, close the course by judging the whole environment, gather
+    the artefacts recorded in earlier modules, classify each under the governance outcome it
+    serves and name what remains unowned. Work from the host inventory, the fw-01 rule notes,
+    the password policy values and the authority findings on dc-01. Evidence: each artefact
+    labelled with the governance outcome it serves; the strongest and weakest governance areas
+    named with reasons; one unowned decision with the role that should hold it. Pass: every
+    artefact classified with a reason; the weakest area justified against the others; the unowned
+    decision matched to a specific role.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and open the lab notes from the earlier modules.
+    - hosts: [jump-box]
+      action: From the range baseline, re-check the dc-01 administrative groups and confirm the account counts recorded in module 3.
+    - hosts: [jump-box]
+      action: Re-read the fw-01 rule notes from the range baseline and confirm which rules map to a named approving forum and which remains flagged.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, repeat the administrative attempt against dc-01 with the analyst account and confirm the denial text is unchanged.
+    - hosts: [jump-box]
+      action: Classify every artefact under the governance outcome it serves, name the weakest area and assign one unowned decision to a specific role.
+  refs:
+  - nist-sp-800-37r2
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A Cyber Defense Analyst on a small team must state where the role sits in governance. Which
+        placement is correct?
+      options:
+      - A) Outside governance, technical only
+      - B) Owner of the entire security budget
+      - C) A supplier sales contact
+      - D) Inside the governance structures
+      answer: D
+    - question: Across the course a Student recorded inventories, forum approvals, authority findings and
+        policy mappings. What does assembling them produce?
+      options:
+      - A) A new vulnerability scan
+      - B) A faster internal network
+      - C) A governance picture
+      - D) A renewed threat model
+      answer: C
+    - question: The range shows a dependency nobody owns and no forum has decided whether to accept it. What
+        has the Student found?
+      options:
+      - A) A well tuned detective control
+      - B) An unowned governance decision
+      - C) A broken and expired certificate
+      - D) A stale and unreviewed inventory
+      answer: B
+    - question: Who should hold the unowned decision about the single point of failure in the range network?
+      options:
+      - A) The standard user account on ws-01
+      - B) The external audit contractor
+      - C) The firewall hardware vendor
+      - D) The role holding authority
+      answer: D
+    - question: At course end the Student marks which governance area the range demonstrates least well and
+        says why. Which practice is this?
+      options:
+      - A) Advanced threat hunting exercises
+      - B) Deep packet forensics analysis
+      - C) Accountability for governance
+      - D) Extended log retention policies
+      answer: C

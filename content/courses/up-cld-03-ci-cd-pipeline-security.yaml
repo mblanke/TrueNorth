@@ -1,0 +1,549 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C545
+title: CI/CD Pipeline Security
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites: [C544]
+source:
+  origin: "TAZ upskilling catalogue v1 (2026-10-28)"
+  notes:
+  - "NICE work roles: Systems Security Analyst."
+  - "NIST CSF 2.0: PR.PS, GV.SC and PR.DS."
+  - "Self-paced upskilling, outside DP1/DP2."
+  - "Unpublished pending Standards review."
+modules:
+- ordinal: 1
+  title: Pipeline threat modelling
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Diagram the trust boundaries of a delivery pipeline and identify where an untrusted change first executes
+  - Rank pipeline assets by exposure in a threat model and justify the ranking with evidence from the range
+  - Predict which pipeline systems one compromised credential would expose and name the containment boundary
+  topics:
+  - Delivery pipeline anatomy, from source repository through build, artefact registry and deployment stages.
+  - Threat modelling a pipeline with trust boundaries, attacker view and entry points.
+  - Pipeline assets worth protecting, including source code, runner credentials, CI variables and deployment rights.
+  - Common attack paths such as unreviewed changes on shared runners and over-broad CI variable scope.
+  - Recording assumptions and risks so they can be re-tested after every pipeline change.
+  lab: >-
+    Lab: On the cloud-security range, map the attack surface of the delivery pipeline: which pipeline
+    systems are reachable, which respond without authentication and which hold credentials a build job
+    could read. Evidence: the fw01 rules that admit traffic toward the pipeline and container networks;
+    the gitlab01 project settings and CI variables a plain developer account sees; the jenkins01 web
+    interface behaviour when reached from the management network; the registry01 pull policy. Pass: all
+    four items recorded exactly as the range shows them; each finding marked intended-exposure or
+    unintended-exposure with a one-sentence reason; the single finding that most shortens an attacker's
+    path to production named.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH and write the start time in the lab notes.
+    - hosts: [fw01]
+      action: List the fw01 rules that admit traffic toward the pipeline and container networks and record
+        source and destination for each.
+    - hosts: [gitlab01]
+      action: Open the gitlab01 project settings and record which members and CI variables are visible to a
+        plain developer account without extra approval.
+    - hosts: [jenkins01]
+      action: From jump01, reach the jenkins01 web interface and record what the script console offers
+        without signing in.
+    - hosts: [registry01]
+      action: Record the registry01 pull policy and who can push or pull images without individual
+        credentials.
+    - hosts: [jump01]
+      action: Judge each finding as intended exposure or unintended exposure with one sentence of reason,
+        and name the finding that most shortens an attacker's path to production.
+  refs:
+  - nist-sp-800-30r1
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: In a threat model of a delivery pipeline, the build runner holds deployment credentials for
+        production. Which stage does this put at greatest risk if the runner is compromised?
+      options:
+      - A) Source code review
+      - B) Deployment to production
+      - C) Documentation of the pipeline
+      - D) Reporting of test results
+      answer: B
+    - question: During threat modelling, a team lists every place a secret is stored in the pipeline. Which
+        finding deserves the highest risk rating?
+      options:
+      - A) A readme that names the staging address
+      - B) A test report that lists the slowest tests
+      - C) A CI variable holding a cloud access key readable by every job
+      - D) A code comment asking for a second reviewer
+      answer: C
+    - question: A developer proposes accepting changes from any fork without review to speed up delivery.
+        Judged as a pipeline threat model finding, what is the correct verdict?
+      options:
+      - A) Acceptable, because builds run in isolated workspaces
+      - B) Acceptable, because tests run automatically on every change
+      - C) Acceptable, as long as the target branch is not the main branch
+      - D) Unacceptable, because an unreviewed build file can run with the runner's credentials
+      answer: D
+    - question: Which asset, if stolen, lets an attacker publish altered container images that deployments
+        will trust?
+      options:
+      - A) The registry write credential
+      - B) The test coverage report
+      - C) The staging environment hostname
+      - D) The meeting minutes of the release review
+      answer: A
+    - question: On a shared build machine, one job can read the workspace cache of another job. Where does
+        this belong in the threat model?
+      options:
+      - A) A compliance finding against the audit policy
+      - B) A trust boundary violation between jobs on one runner
+      - C) A performance problem of the cache disk
+      - D) A documentation gap in the runner guide
+      answer: B
+- ordinal: 2
+  title: Secrets and signing in the pipeline
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Classify the secrets a pipeline needs and select where each should live and who may read it
+  - Explain how release signing protects artefacts and what key rotation and custody require
+  - Audit a repository and its CI configuration for committed or over-shared secrets
+  topics:
+  - Secret types in a pipeline, from cloud keys and registry credentials to signing keys and deployment tokens.
+  - Central secret stores and short-lived credentials instead of long-lived CI variables.
+  - Asymmetric release signing, key custody and the rotation schedule secrets need.
+  - How state files and variable files leak credentials that code review never sees.
+  - Detecting committed secrets and revoking and rotating every credential that was exposed.
+  lab: >-
+    Lab: On the cloud-security range, audit where build and deployment secrets actually live and judge
+    each location against least privilege. Evidence: the CI variables defined on gitlab01 and who can
+    read them; the terraform01 working directory files that hold credentials and their readability; the
+    azure-mock01 access policy on the development secrets; the committed credentials the gitlab01
+    repository history reveals (file, commit and secret type, with no secret value copied into the
+    notes). Pass: every secret location recorded with its exposure; each location marked acceptable or
+    unacceptable with a one-sentence reason; one corrective action named for each unacceptable location.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [gitlab01]
+      action: Read the gitlab01 CI configuration and project settings and record each variable the pipeline
+        defines, with its scope and whether it is masked.
+    - hosts: [terraform01]
+      action: Inspect the terraform01 working directory and record which files hold credentials and who can
+        read them.
+    - hosts: [azure-mock01]
+      action: Review the azure-mock01 access policy attached to the development secrets and record which
+        pipeline identities can read or change them.
+    - hosts: [gitlab01]
+      action: Search the gitlab01 repository history for committed credentials and record the file, the
+        commit and the secret type, without copying any value into the notes.
+    - hosts: [jump01]
+      action: On jump01, for each recorded location, write acceptable or unacceptable against least privilege, and name
+        one corrective action per unacceptable location, such as moving a variable into a secret store or
+        rotating a key.
+  refs:
+  - nist-sp-800-57pt1r5
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A pipeline defines its cloud access key as a project CI variable that every job can read.
+        Where should that key live instead?
+      options:
+      - A) In a committed defaults file
+      - B) In the runner's preinstalled environment
+      - C) In a central secret store, issued per job
+      - D) In the build log, printed once at job start
+      answer: C
+    - question: Why does an asymmetric release signature protect a pipeline artefact better than a checksum
+        file published on the same server?
+      options:
+      - A) A checksum is a fixed-length digest of the artefact's bytes
+      - B) The signature verifies faster in deployment scripts
+      - C) The checksum uses an older algorithm
+      - D) Only the private signing key can produce it, and that key never leaves its store
+      answer: D
+    - question: A variable file holding a database password was committed two years ago and deleted last
+        month. What is the correct response?
+      options:
+      - A) Rotate the password now, because history keeps it
+      - B) Take no action, because the file is no longer present
+      - C) Rename the replacement file so it is harder to find
+      - D) Archive the repository and start a clean one
+      answer: A
+    - question: The signing key for release images is held on one engineer's laptop. Which practice most
+        reduces the risk this creates?
+      options:
+      - A) Emailing a copy of the key to a second engineer as a backup
+      - B) Moving the key into a managed, audited signing store
+      - C) Copying the key into the CI variables of the release project
+      - D) Writing the key's fingerprint into the project readme
+      answer: B
+    - question: A masked CI variable still leaks because a build script prints the whole environment for
+        debugging. Which control would have caught the leak?
+      options:
+      - A) A longer and less guessable variable name
+      - B) A more complex value chosen for the secret
+      - C) A rule that fails printing jobs, plus rotation
+      - D) Disabling the build log for the whole project
+      answer: C
+- ordinal: 3
+  title: Artifact integrity and provenance
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Verify that a deployed artefact is the one the pipeline built and signed, by digest not by tag
+  - Explain what a build provenance record attests and which gaps it can never prove away
+  - Configure the registry and cluster so only artefacts with verified integrity are admitted
+  topics:
+  - Artefact integrity from build to deployment, using digests, signatures and their verification points.
+  - Provenance records stating which source revision was built, by which pipeline, under which inputs.
+  - Registry controls covering anonymous pull restrictions, immutable tags and admission by digest.
+  - Image scanning before promotion and blocking vulnerable artefacts from deployment.
+  - Provenance gaps verification cannot close, such as a compromised builder or a stolen signing key.
+  lab: >-
+    Lab: On the cloud-security range, test whether the registry and cluster admit only artefacts the
+    pipeline built. Evidence: the registry01 pull policy and who can push or pull without individual
+    credentials; the tag and digest the pipeline's image carries in registry01; the image digests actually
+    running on k3s-master; any signature, digest pinning or scan result checked on the way in. Pass: both
+    digests recorded exactly; the admission path described step by step; each gap marked with the control
+    that would close it.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [registry01]
+      action: Record the registry01 pull policy and list who can push and pull images without individual
+        credentials.
+    - hosts: [registry01]
+      action: Find the image the pipeline pushes and record its tag and digest exactly as the registry shows
+        them.
+    - hosts: [k3s-master]
+      action: List the images running on k3s-master with their digests and compare them with the recorded
+        build digest.
+    - hosts: [k3s-master]
+      action: Inspect how the cluster admits images and record whether any signature, digest pinning or scan
+        result is verified before a pod starts.
+    - hosts: [jump01]
+      action: On jump01, judge whether a modified image could reach the cluster without detection, and name the control
+        that would close each gap found.
+  refs:
+  - nist-sp-800-218
+  - nist-sp-800-190
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A deployment references an image by a mutable tag that anyone with registry access may
+        overwrite. Which practice closes the integrity gap?
+      options:
+      - A) Choosing a clearer and more descriptive naming scheme for tags
+      - B) Copying the image into a second registry
+      - C) Adding a release note that names the tag
+      - D) Pinning the deployment to the build digest
+      answer: D
+    - question: What does a provenance record for a pipeline build attest?
+      options:
+      - A) Which source revision the pipeline built
+      - B) That the software contains no vulnerabilities
+      - C) That the artefact is licensed for production use
+      - D) Who approved the release for customers
+      answer: A
+    - question: The registry allows anonymous pulls and the cluster pulls straight from it. Which
+        consequence matters most for artefact integrity?
+      options:
+      - A) Pulls become slower at peak times, and the local cache grows stale
+      - B) Registry storage fills up faster
+      - C) Outsiders can read private images and push without review
+      - D) Image tags become case sensitive
+      answer: C
+    - question: A scan blocks images with critical findings before promotion. What does a passed scan NOT
+        prove about the promoted artefact?
+      options:
+      - A) That it was scanned by the pipeline before promotion
+      - B) That no later-found vulnerability affects it
+      - C) That it is stored in the registry
+      - D) That its size fits the deployment target
+      answer: B
+    - question: An attacker alters an artefact after it was signed but before deployment pulls it. Which gap
+        does this expose?
+      options:
+      - A) The deploy path never verifies it again
+      - B) The signature algorithm is too weak for the artefact
+      - C) The registry needs more storage
+      - D) The build was not reproducible
+      answer: A
+- ordinal: 4
+  title: Runner and Build Environment Hardening
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Harden build runners so one compromised job cannot reach neighbouring jobs or systems
+  - Apply least privilege to the credentials a build job receives and bound its blast radius
+  - Compare the build estate against a hardening benchmark and remediate the largest deviations
+  topics:
+  - Runner isolation with ephemeral builders, job separation and network egress control.
+  - Least privilege for build credentials and the blast radius of a stolen runner token.
+  - Build server hardening covering authentication, authorisation, script consoles and plugin upkeep.
+  - Benchmark-based configuration checks for build hosts and cluster nodes.
+  - Privileged containers and host mounts in the cluster and why they widen the build estate.
+  lab: >-
+    Lab: On the cloud-security range, find where a single compromised job or console session spreads
+    furthest across the build estate, and rank the fixes. Evidence: how jenkins01 authenticates users and
+    what its script console can run unauthenticated; the gitlab01 runner configuration, including which
+    projects share the runner and what credentials jobs receive; the privileged pods running on
+    k3s-master. Pass: the reach of each finding recorded; the three findings with the widest blast radius
+    ranked; one concrete hardening step written for each ranked finding.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jenkins01]
+      action: Record how jenkins01 authenticates users and what the unauthenticated script console can
+        execute.
+    - hosts: [gitlab01]
+      action: Read the gitlab01 runner settings and record which projects and groups share the runner and
+        what credentials its jobs receive.
+    - hosts: [k3s-master]
+      action: List the pods on k3s-master that run with host privileges or host mounts and record what each
+        could reach from that position.
+    - hosts: [k3s-master, jenkins01]
+      action: Compare the build and cluster hosts against a hardening benchmark and record the largest
+        deviations that can be verified from the range.
+    - hosts: [jump01]
+      action: On jump01, rank the three findings with the widest blast radius and write one concrete hardening step for
+        each, ordered by the risk it reduces.
+  refs:
+  - nist-sp-800-190
+  - cis-benchmarks
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A build job needs to publish exactly one image and nothing else. Which grant matches least
+        privilege?
+      options:
+      - A) A short-lived credential for one image
+      - B) An administrator token valid for a year
+      - C) The shared credential of the runner pool
+      - D) Root access on the build host
+      answer: A
+    - question: Why does an ephemeral runner limit the damage of a compromised build?
+      options:
+      - A) Jobs finish faster on fresh machines
+      - B) What the attacker leaves is destroyed at job end
+      - C) Build logs become shorter and cheaper to store
+      - D) The job queue balances load more evenly
+      answer: B
+    - question: A build server exposes a script console that runs commands without authentication. What is
+        the widest realistic consequence?
+      options:
+      - A) Builds queue more slowly behind the console calls
+      - B) Duplicate notifications go to the team channel
+      - C) The audit log grows beyond its retention limit and fills storage
+      - D) Full control of the server and every credential it holds
+      answer: D
+    - question: A pod runs with host mounts so its build can tune the node. What does this configuration
+        widen?
+      options:
+      - A) The node's disk usage during builds
+      - B) The cluster's DNS lookup zone
+      - C) The job's blast radius to the node
+      - D) The image pull time of the build
+      answer: C
+    - question: Which check belongs in a benchmark-driven review of the build estate?
+      options:
+      - A) Checking default accounts and unused plugins are gone
+      - B) Counting the pipelines and repositories each team owns
+      - C) Measuring the median build duration
+      - D) Archiving branches older than a year
+      answer: A
+- ordinal: 5
+  title: Pipeline Detection and Monitoring
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select the pipeline events worth logging and route them into protected central storage
+  - Draft a detection rule that separates a poisoned pipeline from the normal build baseline
+  - Assess the deployment estate with a configuration assessment tool and triage its findings
+  topics:
+  - Pipeline audit sources, from repository events and job logs to runner activity and registry changes.
+  - Central log collection, integrity protection and the retention investigations need.
+  - Detection rules for pipeline events, tuned against a known-normal baseline.
+  - Continuous configuration assessment of the cloud and cluster deployment estate.
+  - From alert to action, covering triage, severity and escalation for pipeline detections.
+  lab: >-
+    Lab: On the cloud-security range, check that pipeline and deployment activity would actually be seen:
+    what is logged, where it lands and which detections exist. Evidence: the cloud-siem01 inputs and which
+    pipeline sources they cover; a falco01 event showing runtime activity on the cluster; the prowler01
+    findings for the deployment estate with severities. Pass: coverage and gaps of each source recorded;
+    one detection rule drafted from a recorded event with its baseline stated; the assessment findings
+    triaged into fix-now and track.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [cloud-siem01]
+      action: Record which inputs cloud-siem01 receives and which pipeline and cluster sources are missing
+        from it.
+    - hosts: [falco01]
+      action: Read recent falco01 events and record one runtime event on the cluster with its rule name and
+        severity.
+    - hosts: [cloud-siem01]
+      action: Search the ingested events for the recorded cluster event and note whether the same evidence
+        exists centrally.
+    - hosts: [prowler01]
+      action: Run the configuration assessment on prowler01 and record the findings for the deployment estate
+        with their severities.
+    - hosts: [cloud-siem01]
+      action: Draft one detection rule for a pipeline event worth alerting, state the baseline it compares
+        against, and triage the assessment findings into fix-now and track.
+  refs:
+  - nist-sp-800-92
+  - sigma
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A runner token is used at an unusual hour from an unknown address. Which logging gap would
+        make this invisible to the team?
+      options:
+      - A) Short build job names
+      - B) Rotating image tags
+      - C) Runner activity not in central storage
+      - D) Too many pipelines running at the same time of day
+      answer: C
+    - question: Why must pipeline logs be protected against modification?
+      options:
+      - A) Investigations need evidence that survives tampering
+      - B) Signed logs take less storage space than unsigned ones
+      - C) Protection makes searches faster
+      - D) Retention rules cost less to apply
+      answer: A
+    - question: A detection rule alerts on every job that reads a secret, and fires on hundreds of normal
+        builds in its first week. What is wrong with the rule?
+      options:
+      - A) Its severity is set too low
+      - B) It lacks a tuned baseline of secret use
+      - C) The log format changed underneath it during the first week
+      - D) It should run only once per quarter
+      answer: B
+    - question: Which event most deserves a pipeline detection rule of its own?
+      options:
+      - A) A successful scheduled build
+      - B) A merge that changes documentation
+      - C) A test suite that passes
+      - D) A push to the production branch
+      answer: D
+    - question: A configuration assessment reports an overly broad cloud policy on the deployment account.
+        What is the right triage?
+      options:
+      - A) Archive the report with the other audits
+      - B) Fix now, since it matches the credential-theft path
+      - C) Track it until the next scheduled audit
+      - D) Re-run the assessment on another day before deciding anything
+      answer: B
+- ordinal: 6
+  title: Poisoned pipeline attack drill
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Trace a poisoned pipeline attack from a malicious change to its deployment effects with times
+  - Determine the earliest point where the attack could have been stopped and the control missing there
+  - Coordinate containment across repository, build, registry and cluster during the incident
+  topics:
+  - The poisoned pipeline pattern of malicious change, compromised build and trusted deployment.
+  - Indicators of a poisoned pipeline across repository, runner, registry and cluster.
+  - The containment order of freezing changes, revoking credentials, quarantining artefacts and restoring trusted versions.
+  - The incident response lifecycle applied to a compromised delivery pipeline.
+  - After-action review that turns the drill into new detection rules and control changes.
+  lab: >-
+    Lab: On the cloud-security range, run the drill: a change that reached the pipeline is suspected of
+    being malicious, and the Student must establish what ran, where it spread and how to contain it.
+    Evidence: the gitlab01 commits and jobs the suspect change triggered; the jenkins01 job history and any
+    console activity in the same window; the newest images in registry01 and where they were deployed; the
+    cloud-siem01 events that correlate across those systems. Pass: the attack path written from change to
+    effect with times; the earliest point where a control would have stopped it named; containment steps
+    listed in the order they should run.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [gitlab01]
+      action: Open the gitlab01 project history, identify the suspect change and record which jobs it
+        triggered and when.
+    - hosts: [jenkins01]
+      action: Read the jenkins01 job history for the same window and record what the build did beyond its
+        declared steps.
+    - hosts: [registry01]
+      action: List the newest images in registry01, record their digests and note any that the suspect job
+        pushed.
+    - hosts: [cloud-siem01]
+      action: Correlate the repository, build and registry events in cloud-siem01 and write the attack path
+        from change to effect with times.
+    - hosts: [gitlab01, cloud-siem01]
+      action: Name the earliest point where a control could have stopped the attack, then list containment
+        steps in the order they should run, freezing changes, revoking credentials, quarantining artefacts
+        and restoring trusted versions.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-218
+  - mitre-attack
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A contributor's change adds one line to a build file, runs on a shared runner and reads the
+        project's CI variables. Why is this the poisoned pipeline concern?
+      options:
+      - A) All changes are reviewed by two people
+      - B) Build files are versioned like any other file in the project
+      - C) Runners are replaced after every job
+      - D) The runner runs unreviewed code with pipeline credentials
+      answer: D
+    - question: An attacker who poisoned a pipeline has pushed a backdoored artefact. Which first indicator
+        is most likely visible in the registry?
+      options:
+      - A) Registry storage shrinking overnight
+      - B) A tag pushed outside the release window by the build identity
+      - C) A changed readme on the project page
+      - D) Image pulls becoming slower for the whole cluster during peak times
+      answer: B
+    - question: Containment of a poisoned pipeline has just been declared. Which step comes first?
+      options:
+      - A) Freeze the pipeline so no more poisoned builds run
+      - B) Notify all customers of the incident
+      - C) Rebuild from the same branch to overwrite the artefact
+      - D) Delete the audit logs to reduce confusion
+      answer: A
+    - question: After the drill, which after-action change most reduces the chance of a repeat?
+      options:
+      - A) Keeping build logs for a longer period
+      - B) Releasing more frequently to shrink the window between reviews
+      - C) Review and provenance checks before changes reach a runner
+      - D) Buying faster runners to shorten build times
+      answer: C
+    - question: A poisoned build pushed a backdoored image that production has already pulled. Which pair of
+        actions contains it?
+      options:
+      - A) Rename the tag and restart the whole cluster
+      - B) Wait for the next scan cycle and update the readme in the meantime
+      - C) Email the team and archive the source branch
+      - D) Quarantine by digest and roll back to the last verified image
+      answer: D

@@ -24,8 +24,10 @@ Checks, per course file:
   lab_range     the template resolves to content/ranges/<id>/template.yaml; a scenario, if
                 given, resolves to content/scenarios/<id>/scenario.yaml and names the same
                 range_template.
-  hosts         every host a step lists is a node id in that template, and a step's action
-                text names no host-shaped token (dc01, ws-01, v-ws01) that is not.
+  hosts         every host a step lists is a node id in that template, a step's action
+                text names no host-shaped token (dc01, ws-01, v-ws01) that is not, and every
+                host a step lists is named in that step's action or an earlier step's of the
+                same module (name the machine; "the sensor" alone does not count).
   refs          every module ref is a key in content/catalogue/references.yaml.
   quiz          each module's quiz has 5 questions with 4 options lettered "A) " to "D) "
                 in order and an answer among A-D; no question stem repeats in the course.
@@ -274,13 +276,21 @@ def check_hosts(root: Path, doc: dict) -> list[str]:
         nodes = template_nodes(root, str(lr.get("template") or ""))
         if nodes is None:
             continue  # reported by lab_range
+        touched: set[str] = set()
         for i, step in enumerate(lr.get("steps") or [], start=1):
             if not isinstance(step, dict):
                 problems.append(f"module {n} step {i}: not a {{hosts, action}} mapping")
                 continue
+            action = str(step.get("action") or "")
             for host in step.get("hosts") or []:
                 if host not in nodes:
                     problems.append(f"module {n} step {i}: host {host!r} is not a node of {lr['template']!r}")
+                if re.search(rf"(?<![\w-]){re.escape(str(host))}(?![\w-])", action):
+                    touched.add(str(host))
+                elif str(host) not in touched:
+                    problems.append(
+                        f"module {n} step {i}: lists host {host!r} but no action text names it, here or in an earlier step"
+                    )
             for token in HOST_SHAPE.findall(str(step.get("action") or "")):
                 if token not in nodes and token not in NOT_HOSTS:
                     problems.append(

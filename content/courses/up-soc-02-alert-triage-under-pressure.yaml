@@ -1,0 +1,563 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# C520: Alert Triage Under Pressure. Individual upskilling course (one Student, no team work),
+# six 50-minute modules on the soc-training range.
+course_code: C520
+title: Alert Triage Under Pressure
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites: [C519]
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Analyst (PR-CDA-001).'
+  - 'NIST CSF 2.0: DE.AE and RS.MA.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: The triage funnel
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Order the stages of a triage funnel from detection to escalation and place an alert at the right stage
+  - Rank a mixed alert queue by severity and asset exposure so the most urgent cases are worked first
+  - Estimate the pressure on a shift queue and decide which alerts can wait without breaching response targets
+  topics:
+  - The alert pipeline from sensor and detection rule through the SIEM to the analyst queue.
+  - Severity, priority and asset exposure; response targets and what happens when they slip.
+  - Risk-based ordering of a queue and the traps of first-in-first-out review.
+  - Duplicates, noisy rules and alert fatigue, and how each distorts a queue.
+  - Where the funnel ends; retire, document or hand on to the next stage.
+  lab: >-
+    Lab: Open the morning queue on the soc-training range and impose an order on it; rank the
+    queued alerts by severity and asset exposure, collapse the duplicate alerts into single
+    incidents and choose the two alerts that must be worked first. Evidence: a numbered review
+    order for the queued alerts with one sentence of justification for each position; the
+    duplicate groups, named by the rule that generated them; the two alerts chosen first and
+    the reason each was chosen. Pass: the review order places every critical alert ahead of
+    low-severity noise; each justification cites a field from the alert itself; the duplicate
+    count matches what the queue shows.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log in to jump01 over SSH, open a browser session to the OpenSearch Dashboards on siem01
+        and record the start time in the lab notes.
+    - hosts: [siem01]
+      action: Filter the alert view on siem01 to the last twelve hours, group the events by rule name
+        and record the three rules with the highest counts.
+    - hosts: [siem01]
+      action: Read the severity and destination of the ten most recent alerts on siem01 and mark which
+        entries are duplicates of one another.
+    - hosts: [siem01, v-web01]
+      action: For the alert that names v-web01, open the underlying event on siem01 and record the source
+        address, destination port and rule name.
+    - hosts: [siem01]
+      action: Write the numbered review order on siem01, give one justification per position and mark the
+        two alerts that will be worked first.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-92
+  - sigma
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A queue holds one critical alert on a domain controller and three low-severity workstation
+        alerts. Which review order serves the triage funnel best?
+      options:
+      - A) Clear the three low-severity alerts first to shorten the queue
+      - B) Work the domain controller alert first, then batch the workstation alerts
+      - C) Send every alert to the next tier because all are open
+      - D) Leave the queue until the end of the shift
+      answer: B
+    - question: One rule fires the same failed-logon alert forty times in ten minutes for a single account.
+        What is the correct first move in the funnel?
+      options:
+      - A) Escalate all forty alerts to the incident response team
+      - B) Close all forty alerts as false positives without reading them
+      - C) Treat them as one incident and review once, not forty times
+      - D) Disable the rule so it cannot fire again during the shift
+      answer: C
+    - question: Two alerts carry the same high severity; one concerns a payment server and the other an
+        isolated laboratory host. How should priority be set?
+      options:
+      - A) By asset exposure and impact, so the payment server is worked first
+      - B) By arrival time, so whichever alert came first is worked first
+      - C) By the rule author, because custom rules outrank shipped ones
+      - D) By severity alone, so both alerts must wait the same time
+      answer: A
+    - question: A response target gives critical alerts fifteen minutes to acknowledgement. Which action
+        best protects that target at the start of a shift?
+      options:
+      - A) Review the queue in arrival order regardless of severity
+      - B) Read every alert in full before acknowledging any of them
+      - C) Acknowledge every alert at once to empty the queue
+      - D) Acknowledge the critical alerts first, then review
+      answer: D
+    - question: A detection rule floods the queue with low-value alerts every night, and reviewers begin
+        skimming without reading. Which term names this failure?
+      options:
+      - A) Priority inversion caused by mislabelled severity
+      - B) Alert fatigue caused by rule noise
+      - C) Duplicate suppression
+      - D) Severity inflation
+      answer: B
+- ordinal: 2
+  title: True/false positive decision drills
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Decide whether an alert is a true positive, a false positive or a benign true positive from event evidence
+  - Justify every disposition with observations recorded from the range rather than the alert title or severity
+  - Distinguish a benign true positive from a false positive by testing the activity against the detection intent
+  topics:
+  - The disposition categories; true positive, false positive, benign true positive and unknown.
+  - Reading the raw event fields behind an alert before judging it.
+  - Authorised activity; change windows, scheduled maintenance and documented scanner traffic.
+  - Decision traps; rule-name bias, single-field conclusions and stopping at the first calm explanation.
+  - Evidence to capture before a disposition is closed.
+  lab: >-
+    Lab: Run two decision drills on the soc-training range. Drill one is a scheduled-task alert on
+    a workstation; drill two is a mass share-read alert on the file server. For each drill, read the
+    event, gather host context and record a disposition with the evidence that forced it. Evidence:
+    the event fields behind each alert, copied into the notes; the host context gathered from the
+    endpoint console; one disposition per drill with a two-sentence justification. Pass: drill one
+    is dispositioned as a benign true positive because the task matches a documented maintenance
+    schedule; drill two is dispositioned as a true positive and held for escalation; each
+    justification cites at least two recorded observations.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log in to jump01 and open the two drilled alerts in the queue on siem01.
+    - hosts: [siem01, v-ws02]
+      action: Open the scheduled-task alert for v-ws02 on siem01 and record the rule name, the task name
+        and the account that ran it.
+    - hosts: [velociraptor01, v-ws02]
+      action: From the endpoint console on velociraptor01, query v-ws02 for the task and record its trigger
+        time and the schedule that authorised it.
+    - hosts: [siem01, v-fs01]
+      action: Open the share-read alert for v-fs01 on siem01 and record the source account, the share path
+        and the number of files touched.
+    - hosts: [velociraptor01]
+      action: List the session history for the source account on velociraptor01 and record when the same
+        account last touched the share.
+    - hosts: [siem01]
+      action: Write one disposition per drill on siem01 with a two-sentence justification citing the
+        recorded observations.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-94
+  - sigma
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: An alert fires because a maintenance script ran on a workstation inside a documented change
+        window. What is the correct disposition?
+      options:
+      - A) A false positive, because the rule fired but no attack occurred
+      - B) A true positive that warrants immediate escalation to incident response
+      - C) Unknown, pending a rebuild of the rule and its threshold
+      - D) A benign true positive, because the matched activity was authorised
+      answer: D
+    - question: An alert tags a nightly backup transfer to the backup server as data exfiltration, because
+        the rule counts any large transfer to one destination. What is the correct disposition?
+      options:
+      - A) False positive; tune the rule to exclude the backup destination
+      - B) Benign true positive, because the backup transfer really happened
+      - C) True positive, because bulk files left the server for one destination
+      - D) Unknown, until the next backup window has been observed
+      answer: A
+    - question: Three failed logons to a workstation are followed by a successful logon from the same source
+        outside working hours, with no maintenance scheduled. What does the evidence support?
+      options:
+      - A) A false positive, because failed logons are common
+      - B) A benign true positive, because the logon eventually succeeded
+      - C) A true positive that warrants escalation
+      - D) A duplicate of an earlier alert and safe to close
+      answer: C
+    - question: A disposition note must survive a peer review six months later, when the alert
+        is no longer open. Which disposition can be defended without reworking the case?
+      options:
+      - A) One that matches the alert title written by the rule author
+      - B) One backed by recorded event fields and a written justification
+      - C) One agreed verbally with the shift lead at the time
+      - D) One marked urgent so reviewers trust it without reading
+      answer: B
+    - question: An analyst closes a mass file-read alert after glancing at the rule name, which reads
+        quarterly-report job. Which decision trap does this show?
+      options:
+      - A) Severity inflation from an unreviewed queue
+      - B) Over-escalation of a routine maintenance event
+      - C) Duplicate suppression applied to a distinct alert
+      - D) Rule-name bias combined with premature closure
+      answer: D
+- ordinal: 3
+  title: Enrichment with OSINT and threat intel
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Enrich an alert with internal context such as asset role, account history and events in the same window
+  - Query a threat intelligence platform for an indicator and judge whether the match bears on the alert
+  - Weigh external intelligence against local evidence before a disposition is changed
+  topics:
+  - Internal enrichment first; asset inventory, the source account history and timeframe widening.
+  - Indicators of compromise; addresses, domains and file hashes, and the limits of each.
+  - Threat intelligence platforms; indicator confidence, age and sighting context.
+  - Open source checks done passively, and why active contact can warn an intruder.
+  - Recording enrichment so the disposition can cite where each fact came from.
+  lab: >-
+    Lab: Take the true-positive share-read alert from the previous module and enrich it before
+    touching the disposition. Pull the internal context from the SIEM, then search the source
+    address and the file hash in the threat intelligence platform and record what comes back.
+    Evidence: the asset role and event history of the source account; the intelligence verdict
+    for each indicator with its confidence and age; a one-line statement of whether the
+    intelligence changes the case. Pass: internal context is gathered before external lookups;
+    each indicator search records the verdict, confidence and age; the final statement names the
+    evidence that settles the case.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log in to jump01 over SSH and reopen the share-read case in the queue on siem01.
+    - hosts: [siem01]
+      action: Widen the timeframe on siem01 to seven days and record the earlier activity of the source
+        account and the role of the touched asset.
+    - hosts: [siem01, misp01]
+      action: Take the source address and file hash from the alert on siem01 and search both in the threat
+        intelligence platform on misp01.
+    - hosts: [misp01]
+      action: Record each verdict on misp01 with its confidence, its age and any tags attached to the
+        indicator.
+    - hosts: [misp01, siem01]
+      action: Write a one-line judgement citing both platforms; does the intelligence change the case, and
+        which evidence settles it?
+  refs:
+  - oasis-cti
+  - mitre-attack
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: An analyst wants context on a suspicious logon before judging it. Which enrichment sequence
+        gives the most reliable picture?
+      options:
+      - A) Search public sources for the account name, then read the event
+      - B) Ask the next shift, then act on the reply
+      - C) Internal context first, then external lookups
+      - D) External lookups first, because local logs may be tampered with
+      answer: C
+    - question: A threat intelligence platform returns a match for a source address, tagged high confidence
+        but last seen three years ago. How should the match be treated?
+      options:
+      - A) Accepted as proof the alert is malicious, because confidence is high
+      - B) Recorded with its age, then weighed against current local evidence
+      - C) Discarded, because old intelligence is always worthless
+      - D) Forwarded to the intelligence team instead of triaging the alert
+      answer: B
+    - question: A file hash taken from an alert matches an entry tagged as malware in the intelligence
+        platform. What is the sound next step?
+      options:
+      - A) Close the alert, because hashes alone prove nothing
+      - B) Reimage the asset named in the alert straight away
+      - C) Write the finding into the queue without recording the source
+      - D) Cite the match and escalate with both sources
+      answer: D
+    - question: Why are passive lookups preferred when checking an external indicator against public
+        sources?
+      options:
+      - A) Active contact can reveal the investigation to the attacker
+      - B) Passive lookups return fresher results than active ones
+      - C) Active contact is forbidden by the detection rule licence
+      - D) Passive lookups are the only ones the platform supports
+      answer: A
+    - question: Public intelligence lists a partner address as hostile, yet the alert shows a documented
+        nightly feed from that address. What settles the disposition?
+      options:
+      - A) The local evidence of the documented feed
+      - B) The public listing, because intelligence outranks local logs
+      - C) The alert severity, which the platform set on its own
+      - D) A coin toss between the two sources, recorded in the note
+      answer: A
+- ordinal: 4
+  title: Documenting dispositions
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a disposition note that states the evidence, the reasoning and the decision for an alert
+  - Separate observed facts from interpretation when recording what an alert showed
+  - Record a disposition so another analyst can reconstruct the decision without reworking the case
+  topics:
+  - The disposition note; alert identifiers, recorded evidence, reasoning, decision and time.
+  - Facts versus interpretation; quoting event fields instead of impressions.
+  - Timestamp discipline; one time zone, stated, captured at the moment of observation.
+  - Closing fields in the case system and what each one commits the analyst to.
+  - The review pass; how another analyst tests a note against the recorded evidence.
+  lab: >-
+    Lab: Move the two drilled cases from the SIEM into the case system and write a disposition
+    note for each. One note documents the benign scheduled task; the other documents the
+    share-read true positive held for escalation. Evidence: one case per alert with the alert
+    identifiers attached; a note per case that separates quoted event fields from interpretation
+    and states the decision; the closing field chosen for each case. Pass: every factual line in
+    each note quotes a recorded field or names its source; interpretation appears only in a
+    marked reasoning line; the second note carries the escalation status and the time zone used
+    throughout.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log in to jump01 over SSH and open the case system on thehive01 for the two
+        drilled cases.
+    - hosts: [thehive01, siem01]
+      action: Create one case per alert on thehive01 and attach the alert identifiers taken from siem01.
+    - hosts: [thehive01]
+      action: Write the note for the scheduled-task case on thehive01; quoted fields first, then a marked
+        reasoning line, then the decision.
+    - hosts: [thehive01]
+      action: Write the note for the share-read case on thehive01 with the escalation status and the time
+        in one stated zone.
+    - hosts: [thehive01]
+      action: Choose and record the closing field for each case on thehive01 and re-read both notes as a
+        reviewer would.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-86
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A peer reviewer reads the note written for a closed alert. Which line belongs in a
+        defensible disposition note?
+      options:
+      - A) Account, share and file count, quoted from the event
+      - B) A statement that the alert looked harmless at a glance
+      - C) A reminder to the next shift to watch the asset
+      - D) The analyst opinion that the rule is probably badly written
+      answer: A
+    - question: A note contains the sentence that the logons are probably the administrator running patches.
+        What is this line an example of?
+      options:
+      - A) A quoted fact from the event record
+      - B) A required closing field for the case
+      - C) A timestamp captured in one stated zone
+      - D) An unsupported interpretation
+      answer: D
+    - question: An investigation spans four hours across a shift change. Which timestamp practice keeps the
+        record usable?
+      options:
+      - A) Write each time in whatever zone the observer prefers
+      - B) Capture each time in one stated zone at the moment of observation
+      - C) Record only the date, since the hour rarely matters later
+      - D) Reconstruct the times from memory at the end of the shift
+      answer: B
+    - question: A note must let another analyst reconstruct the decision later. Which feature serves that
+        purpose most directly?
+      options:
+      - A) A short title that hides the detail
+      - B) A link to the shift calendar for that week
+      - C) Evidence lines that cite a source
+      - D) A list of every alert the shift ever touched
+      answer: C
+    - question: A peer review finds the sentence that the queue looked quiet so the alert was closed. What
+        is the correct remedy?
+      options:
+      - A) Delete the note entirely and leave the case open
+      - B) Keep the line and add the reviewer name underneath
+      - C) Rewrite the line to cite the evidence that supported closing
+      - D) Move the line to a private notebook outside the case
+      answer: C
+- ordinal: 5
+  title: Escalation criteria
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Apply escalation criteria of scope, impact and confidence to decide which alerts leave the first tier
+  - Write an escalation note that carries the verified evidence and the actions already taken
+  - Name the authorising role and the facts a containment request must carry before action is approved
+  topics:
+  - Escalation criteria; scope, impact and confidence, and the cost of a wrong call either way.
+  - Under-escalation and over-escalation; missed intrusions and crowded next-tier queues.
+  - The escalation note; what happened, what was verified, what was done, what is needed.
+  - Containment requests; the authorising role and the facts the request must carry.
+  - Declining to escalate and closing with recorded reasons.
+  lab: >-
+    Lab: The share-read case has grown; a second account touched the same share overnight.
+    Decide whether the case meets the escalation criteria and, if it does, hand it on properly.
+    Evidence: the scope of the case with every host and account now named; an impact and
+    confidence judgement for each criterion; an escalation note in the case system stating what
+    happened, what was verified, what was already done and what is needed. Pass: the scope check
+    finds both accounts and both hosts; each criterion is marked met or not met with the evidence
+    that decides it; the note contains no claim that the recorded events do not support.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [siem01]
+      action: Re-run the share query on siem01 for the past day and record every account and host that
+        appears.
+    - hosts: [siem01, v-fs01]
+      action: Confirm against the v-fs01 events in siem01 that both accounts touched the same share path
+        and record the times.
+    - hosts: [thehive01]
+      action: Mark each escalation criterion met or not met in the case on thehive01, citing the recorded
+        evidence.
+    - hosts: [thehive01]
+      action: Write the escalation note on thehive01; what happened, what was verified, what was done and
+        what is needed.
+    - hosts: [thehive01, siem01]
+      action: Cross-check every factual claim in the note against the stored events on siem01 before
+        handing the case on from thehive01.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-94
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: The share-read case now touches two accounts and two hosts instead of one. Which escalation
+        criterion has most clearly changed?
+      options:
+      - A) Confidence, because the accounts may be linked
+      - B) Scope, since more assets are involved
+      - C) Impact, because the share was always sensitive
+      - D) None; the criteria do not change after an alert opens
+      answer: B
+    - question: The escalation note for the share case is being drafted. Which sentence belongs in it?
+      options:
+      - A) Two accounts touched the share within one hour
+      - B) Someone should probably look at the file server soon
+      - C) The queue was busy, so the detail was not checked
+      - D) Everything about this case feels wrong to the analyst
+      answer: A
+    - question: A tier-one analyst escalates every ambiguous alert to avoid missing an intrusion. What is
+        the most likely cost?
+      options:
+      - A) The first tier runs out of alerts to practise on
+      - B) The intelligence platform runs out of indicator slots
+      - C) The response targets for low alerts are breached
+      - D) The next tier drowns and genuine cases wait longer
+      answer: D
+    - question: Scope is contained to one host, impact is low and confidence in the account story is high.
+        What does the criteria check support?
+      options:
+      - A) Escalating anyway, because the alert is still open
+      - B) Rebuilding the detection rule before anything else
+      - C) Declining to escalate and closing with recorded reasons
+      - D) Requesting containment of the whole file server
+      answer: C
+    - question: A confirmed intrusion on a production share needs containment. What must the request carry
+        before the authorising role will act?
+      options:
+      - A) A promise that the disruption will be worth it
+      - B) The affected assets, the verified evidence and the action asked for
+      - C) A copy of every alert the shift has ever closed
+      - D) The approval of the analyst who wrote the note
+      answer: B
+- ordinal: 6
+  title: Working a Live Queue End to End
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Triage a batch of mixed alerts from first look to documented disposition inside one session
+  - Combine ordering, enrichment, disposition and escalation decisions on the same cases
+  - Defend every queue decision in review using the recorded evidence alone
+  topics:
+  - A full pass over a mixed queue; order, enrich, decide, document and escalate.
+  - Holding decision quality while new alerts keep arriving.
+  - Reading a recorded session; what the evidence supports and what it does not.
+  - Recurring patterns across the module cases and how to recognise them next time.
+  lab: >-
+    Lab: Work a fresh batch of five queued alerts end to end in one sitting; order the batch,
+    enrich where needed, disposition each alert and escalate or close with a note. Evidence: the
+    numbered review order for the batch; one disposition or escalation per alert with its note in
+    the case system; the enrichment searches performed and what each returned. Pass: the review
+    order is justified from severity and exposure; every disposition cites recorded evidence
+    rather than the alert title; each escalation note carries scope, impact and confidence; the
+    batch is closed or handed on inside the session.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log in to jump01 and open a fresh five-alert batch in the queue on siem01, recording the
+        start time.
+    - hosts: [siem01]
+      action: Write the numbered review order for the batch on siem01 with one justification per position.
+    - hosts: [misp01, siem01]
+      action: Enrich the alerts that carry indicators, searching siem01 context and the misp01 platform,
+        and record each result with its confidence.
+    - hosts: [velociraptor01]
+      action: Pull endpoint context from velociraptor01 for the alerts that touch workstations and record
+        what the agent shows.
+    - hosts: [thehive01]
+      action: Disposition or escalate each alert in the case system on thehive01 with a note per case.
+    - hosts: [siem01]
+      action: Re-read every note against the stored events on siem01 and correct any line the evidence
+        does not support.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-92
+  - mitre-attack
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A fresh batch arrives mid-shift while two cases are still open. What is the sound first
+        action?
+      options:
+      - A) Close the two open cases to make room for the batch
+      - B) Escalate the whole batch to clear it faster
+      - C) Work the batch in arrival order without reading severities
+      - D) Order the batch by severity and exposure first
+      answer: D
+    - question: New alerts keep arriving while a disposition is being written. Which habit protects
+        decision quality?
+      options:
+      - A) Skim the new arrivals and mark them reviewed
+      - B) Park the open note and start the next alert immediately
+      - C) Finish each case to a recorded decision before opening the next
+      - D) Escalate every new arrival until the queue is empty
+      answer: C
+    - question: Before searching public intelligence on the file hash in an alert, what should be gathered
+        first?
+      options:
+      - A) The internal context; asset role, account history and surrounding events
+      - B) A second opinion from the detection rule author
+      - C) The next month of scheduled maintenance windows
+      - D) A rebuilt version of the alert with new severity labels
+      answer: A
+    - question: An enriched case now shows two accounts, rising impact and high confidence. Which decision
+        follows the criteria?
+      options:
+      - A) Close the case, because one host is still the limit
+      - B) Escalate with a note carrying verified evidence
+      - C) Wait for a third account before acting on the pattern
+      - D) Downgrade the severity, since enrichment is never conclusive
+      answer: B
+    - question: In review, a colleague challenges a disposition made earlier in the shift. What makes the
+        call defensible?
+      options:
+      - A) Recorded evidence lines a reviewer can re-check
+      - B) The number of similar alerts closed the same way
+      - C) The confidence the analyst expressed while working the case
+      - D) The speed with which the alert was cleared from the queue
+      answer: A

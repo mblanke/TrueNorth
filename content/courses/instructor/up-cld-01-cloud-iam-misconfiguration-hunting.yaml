@@ -1,0 +1,160 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# Instructor pack for C543 - Cloud IAM Misconfiguration Hunting - DRAFT.
+
+course_code: C543
+audience: staff_only
+overview: >-
+  Cloud IAM Misconfiguration Hunting is an intermediate self-paced course for one Student: six 30-minute
+  modules on the cloud-security range, 180 minutes in total. The labs build in sequence - map the
+  account's identity, evaluate policy decisions, sweep for public exposure, trace a privilege escalation
+  path, hunt misconfigurations in audit logs, then fix and verify one finding end to end. The Student
+  hands in recorded principals, expected and observed decisions, exposure judgements, a drawn escalation
+  path, finding lines and one closure note. Say 'Student' throughout; every exercise is defensive,
+  judged against least privilege.
+timings:
+- module: 1
+  minutes: 30
+  plan: '8 teach (principals, policy kinds), 15 lab (map the principals and policies of the account), 7 quiz'
+- module: 2
+  minutes: 30
+  plan: '8 teach (evaluation order, both policy sides), 15 lab (trace three assigned requests), 7 quiz'
+- module: 3
+  minutes: 30
+  plan: '8 teach (exposure surfaces, sweep), 15 lab (sweep and judge against policy), 7 quiz'
+- module: 4
+  minutes: 30
+  plan: '8 teach (escalation as a path), 15 lab (trace the path from the assigned principal through dev-deploy), 7 quiz'
+- module: 5
+  minutes: 30
+  plan: '8 teach (audit events, benign versus anomalous), 15 lab (hunt the exercise window), 7 quiz'
+- module: 6
+  minutes: 30
+  plan: '8 teach (fix workflow, verification), 15 lab (close one finding and verify both ways), 7 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 A, M01-O01: Sign-in succeeded (authentication); the bucket refusal is authorisation. Distractor
+    B reverses the two controls. Q2 C, M01-O01: Workloads assume roles - no passwords to leak. A and B
+    test the shared-credential and per-workload-user habits; D tests confusing groups (for people) with
+    workload identity. Q3 B, M01-O02: Attached to the role = identity-based; on the bucket = resource-based.
+    C tests managed-versus-inline, A and D test other policy kinds. Q4 D, M01-O03: Wildcards are flagged
+    because they grant more than the stated need, regardless of trust or use. A, B and C are the three
+    common justifications reviews reject. Q5 A, M01-O03: Cross-account trust shares no credentials. B, C
+    and D test credential sharing and over-broad fixes.'
+- module: 2
+  notes: 'Q1 B, M02-O01: Explicit deny wins over every allow, whichever document holds it. A tests
+    document-order thinking, C ownership thinking, D misreads a missing allow as a deny reason. Q2 C,
+    M02-O01: No statement allows deletion, so the implicit default deny applies. A and B test the
+    allow-by-default misconception. Q3 D, M02-O03: Cross-account requests need permission on both sides.
+    A ignores the resource side; B confuses public access with this policy set; C invents a boundary. Q4
+    A: The confused deputy trusts the claimed caller instead of the request context. B, C and D
+    name unrelated evaluation concepts. Q5 C, M02-O02: The statement allows exactly the write action on
+    exactly the named path. A, B and D each widen or change one element.'
+- module: 3
+  notes: 'Q1 D, M03-O01: No identity required means anonymous public access. A, B and C relabel the same
+    setting. Q2 A, M03-O03: A sweep inventories settings that differ from the intended baseline; it is
+    not an object listing, patch report or sign-in count. Q3 B, M03-O02: Public access to client records
+    breaches the handling policy. A and C are ownership and encryption excuses; D swaps the real reason
+    for a labelling one. Q4 C, M03-O03: Stored credentials outrank everything else listed. A and B rely
+    on weak reasons; D misjudges attention as sensitivity. Q5 B, M03-O03: Tokens grant identity, so they
+    reach other users'' sessions. A, C and D test size, absolutes and expiry reasoning.'
+- module: 4
+  notes: 'Q1 C, M04-O01: The right to grant permissions plus one over-privileged principal is a path to
+    control, not a control. A, B and D name real concepts that do not fit. Q2 A, M04-O02: Changing
+    permissions is the escalation primitive; read, compute and listing rights do not grow. Q3 D, M04-O02:
+    Trust scoped by account rather than named principals lets every analyst in. A, B and C misname the
+    weakness. Q4 B, M04-O01: The key is usable by anyone who reads the repository, so the exposure is
+    where a path starts. A, C and D test
+    irrelevant consequences. Q5 C, M04-O03: Scope to the write action and the one bucket - least
+    privilege. A keeps the breadth with a deny list, B removes the needed access, D changes nothing.'
+- module: 5
+  notes: 'Q1 A, M05-O01: Audit entries carry principal, action and time - exactly the question. B, C and
+    D are nearby records that do not answer it. Q2 B, M05-O02: Ticket match, working hours, known network
+    - benign administrative. A overstates, C misreads the time, D lets the absence of an alarm decide.
+    Q3 D, M05-O02: Many denials across actions is probing behaviour before misuse. A, B and C are
+    dismissals without evidence. Q4 C, M05-O03: It names the principal, the action, the time and the
+    source. A and B are vague or alarmist; D delegates without recording. Q5 A, M05-O01: Filter by
+    principal and date to reconstruct the day. B over-scopes, C and D trust default views and severity
+    labels.'
+- module: 6
+  notes: 'Q1 B, M06-O02: Verification re-tests the old access (now denied) and the legitimate use (still
+    working). A, C and D are proxies that prove nothing. Q2 D, M06-O03: The record of verification is the
+    new decision for that exact request. A, B and C are metadata about the change. Q3 A, M06-O01: Named
+    applications, read rights only - least privilege. B keeps broad reach, C and D are cosmetic. Q4 C,
+    M06-O03: The re-run confirms the fixes landed and no new exposure appeared. A, B and D give wrong
+    reasons. Q5 D, M06-O03: The line pairs the change with both verification results. A, B and C assert
+    or imply without evidence.'
+lab_setup:
+- module: 1
+  setup: 'Revert the cloud-security range to baseline. Confirm jump01 reaches localstack01 over the lab
+    network. Expected: the account holds the admin, dev-deploy and lambda-exec principals; dev-deploy
+    carries the wildcard identity policy; the public-assets bucket policy names the principals it grants
+    and their effects; one role trust policy names a principal the Student can read.'
+- module: 2
+  setup: 'Revert the range. Confirm jump01 reaches localstack01. Seed the three assigned requests (one
+    allowed by the identity policy, one explicitly denied by the bucket policy, one with no matching
+    allow) and confirm the public-assets bucket policy shows its principals and effects.'
+- module: 3
+  setup: 'Revert the range. Confirm jump01 reaches prowler01, localstack01 and azure-mock01. Expected:
+    the sweep flags the world-readable public-assets bucket; company-backups and secret-configs are not
+    public; the azure dev-secrets vault shows its overly broad access policy. Bring the written
+    data-handling policy handout.'
+- module: 4
+  setup: 'Revert the range. Confirm jump01 reaches localstack01 and gitlab01. Assign each Student the
+    low-privilege principal they will act as; dev-deploy is the wildcard-holding middle hop, not the
+    starting principal. Expected: the public repository on gitlab01 holds a file that records a
+    credential (file name only, never its value); the dev-deploy policy holds the wildcard identity
+    action that changes permissions; dev-deploy can reach a stronger role through that action or a trust
+    policy. The Student traces one path from their assigned principal, through dev-deploy''s wildcard, to
+    administrative control.'
+- module: 5
+  setup: 'Revert the range. Confirm jump01 reaches cloud-siem01. Seed the exercise window in the cloud
+    audit ingest: two benign policy changes (ticket references, working hours) and one anomalous edit at
+    an unusual hour, plus a run of denied decisions for one principal. Assign the principal per Student.'
+- module: 6
+  setup: 'Revert the range and confirm the Module 4 finding still stands: dev-deploy''s over-broad policy
+    on localstack01. Assign the instructor credentials for the change and the documented deployment
+    actions the scoped policy must keep. Have the closure note format on the board.'
+common_faults:
+- module: 1
+  fault: The Student lists principals but not the policy each one holds, so the map cannot be judged.
+  remedy: Require two columns from step 2 before any reading of policies; no policy column, no pass.
+- module: 1
+  fault: Every grant is labelled identity-based, including the grant read from the bucket policy.
+  remedy: Ask which document each grant was read from - the principal's policy, the bucket or the role -
+    before the classification step.
+- module: 2
+  fault: The Student predicts from the identity policy alone and never opens the bucket policy.
+  remedy: Hold step 3 until the bucket policy's principals and effects are recorded on the same sheet as
+    the identity policy.
+- module: 2
+  fault: Mismatches with the observed decision are explained away instead of marked mismatch.
+  remedy: Insist the reason line names the evaluation rule that the observed decision actually followed.
+- module: 3
+  fault: Sweep findings are accepted as judged without opening the setting that proves each one.
+  remedy: Require the exact setting (bucket access setting or vault access policy) quoted next to each
+    finding before the in-policy marking.
+- module: 3
+  fault: Exposures are ranked by ease of fixing rather than sensitivity of the data reached.
+  remedy: Ask 'who can reach this, and what does it grant them?' for each of the top two before ranking.
+- module: 4
+  fault: The path is drawn as one hop because the wildcard action is treated as a single flaw.
+  remedy: Make the Student name the permission that opens each hop; a one-hop path must still name the
+    hop to the administrative role.
+- module: 4
+  fault: The Student records the credential value from the repository instead of the file name.
+  remedy: Stop the lab if a value is written down; the evidence is the file path only, and the value is
+    never copied.
+- module: 5
+  fault: All policy changes are marked anomalous, or all benign, without per-event reasons.
+  remedy: Require the three pattern checks (ticket, hours, network) per event before the marking.
+- module: 5
+  fault: The finding line names the action but not the log source, or neither principal nor time.
+  remedy: Enforce the four-part format - principal, action, time, source - and have the Student re-read
+    their own line against it.
+- module: 6
+  fault: The fix is verified only by re-running the failing check, and the legitimate deployment is never
+    re-tested.
+  remedy: Both results go in the closure note; one result, no pass.
+- module: 6
+  fault: The scoped policy is written from memory instead of the documented deployment actions.
+  remedy: Compare the new action and resource list against the documented need line by line in step 3.

@@ -1,0 +1,572 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C518
+title: "Network Defense Capstone — Defend the Enterprise"
+version: '1.0'
+difficulty: advanced
+duration_hours: 6
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C515
+- C516
+source:
+  origin: "TAZ upskilling catalogue v1 (2026-10-28)"
+  notes:
+  - "NICE work roles: Cyber Defense Analyst (PR-CDA-001), Cyber Defense Infrastructure Support Specialist."
+  - "NIST CSF 2.0: DE.AE, RS.MI, PR.IR."
+  - "Self-paced upskilling, outside DP1/DP2."
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Baseline the Enterprise
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Enumerate the trust zones, firewall rule set and Active Directory trust relationships that define the enterprise network
+  - Record normal authentication, network and log activity for each zone as the reference the response compares against
+  - Identify the telemetry each security tool collects and name the zones that generate no collected record
+  topics:
+  - Trust zones, VLAN boundaries and the core firewall rule set as the network's shape.
+  - Active Directory forests, domain controllers and forest trust relationships.
+  - Security tooling on the monitoring segment — SIEM, network sensor, log collector and case platform.
+  - Baselining, which records normal authentication volumes, traffic patterns and log rates before an incident.
+  - Coverage gaps — zones and hosts that produce no telemetry, and the decisions they limit later.
+  lab: >-
+    Lab: On the large-enterprise range, record the shape of the network and its normal behaviour before any
+    intrusion, so the response in later modules has a baseline to compare against. Evidence: the zone pairs for
+    which fw01 holds rules, with one allow rule recorded per boundary; the two Active Directory forest names and
+    the trust type between them; each host on the monitoring segment with its function; hourly authentication
+    counts for one evening as siem01 shows them for dc01. Pass: every zone boundary listed with one recorded
+    rule; both forest names and the trust type recorded; each monitoring host matched to its function; the
+    hourly counts recorded together with the dashboard or query used.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over RDP, open the fw01 dashboard, and write the start time in the lab notes.
+    - hosts: [jump01, fw01]
+      action: From jump01, list the zone-to-zone rules on fw01 in order and record one allow rule for each zone
+        boundary found.
+    - hosts: [jump01, dc01]
+      action: From jump01, query dc01 for the forest and domain names and the trust relationships between forests,
+        and record each with its trust type.
+    - hosts: [jump01, siem01]
+      action: From jump01, log on to siem01 over SSH and open the OpenSearch dashboards served on siem01 itself.
+    - hosts: [siem01]
+      action: On siem01, record which log sources feed siem01 for each zone and name every host that sends no
+        data at all.
+    - hosts: [siem01, dc01]
+      action: On siem01, search one evening of authentication events from dc01 and record the hourly counts
+        together with the query or dashboard used.
+    - hosts: [jump01]
+      action: Mark each recorded item "baseline recorded" or "coverage gap" with a one-sentence reason, and write
+        one question the baseline cannot yet answer.
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-207
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A baseline review finds that one zone allows a route the written network policy does not mention.
+        How should the analyst record it?
+      options:
+      - A) As a deviation from policy, noted in the baseline for later judgement
+      - B) As a coverage gap, because the policy collected no record of it
+      - C) As normal behaviour, because the rule set defines the network's shape
+      - D) As an intrusion chain, because the boundary was crossed without approval
+      answer: A
+    - question: Two Active Directory forests hold a two-way trust. Sign-ins from the second forest appear in the
+        first forest's domain controller logs. How should this appear in the identity baseline?
+      options:
+      - A) A coverage gap, because the second forest sends no telemetry
+      - B) A boundary deviation, because the trust crosses a firewall rule
+      - C) A normal authentication path that belongs in the identity baseline
+      - D) An intrusion stage, because the accounts arrive from another forest
+      answer: C
+    - question: The SIEM shows no telemetry at all from the operational technology zone. What is the correct
+        baseline entry for that zone?
+      options:
+      - A) The zone is secure, because nothing has been alerted on there
+      - B) The zone is out of scope, because defence tools cover the corporate zones
+      - C) The zone is trusted, because no SIEM source has flagged it
+      - D) A coverage gap, because activity there could leave no collected record
+      answer: D
+    - question: Why does a baseline of one evening's hourly authentication counts from a domain controller help the
+        response that follows?
+      options:
+      - A) It proves the domain controller holds no stale or unused service accounts
+      - B) It gives a reference volume so abnormal sign-in patterns stand out
+      - C) It confirms the monitoring segment collects from every zone
+      - D) It shows which workstations the users sign in to each morning
+      answer: B
+    - question: An analyst maps which hosts the SIEM, the network sensor and the log collector each observe. Which
+        later decisions does that mapping support directly?
+      options:
+      - A) Detection and scoping decisions, because the analyst knows what each source can show
+      - B) Recovery decisions, because the mapping ranks hosts by business criticality
+      - C) Firewall rule decisions, because the mapping lists each zone boundary
+      - D) Eradication ordering, because the mapping shows which hosts to clean first and which to leave
+      answer: A
+- ordinal: 2
+  title: Detect the Intrusion Chain
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Reconstruct a multi-stage intrusion as an ordered chain of events from the telemetry the range records
+  - Correlate authentication, network and endpoint events across hosts to separate the intrusion chain from routine noise
+  - Label each stage of the chain with the adversary goal the observed behaviour serves
+  topics:
+  - The intrusion chain as ordered stages — entry, foothold, privilege gains, lateral movement, objectives.
+  - Correlating events across the SIEM, the network sensor and endpoint records by host and time.
+  - Time normalisation and the role of a single time source in sequencing events.
+  - Benign lookalikes — scheduled jobs, administrative sign-ins and software updates that resemble intrusion stages.
+  - Stating adversary intent per stage, with the evidence that supports the label.
+  lab: >-
+    Lab: On the large-enterprise range under the apt-nation-state exercise, reconstruct the intrusion as an
+    ordered chain from the telemetry the monitoring segment records. Evidence: every event placed in the
+    chain, in order, with its time, host and the siem01 or ids01 query that produced it; the correlation that
+    links each event to the next; one routine event from the baseline telemetry judged a benign lookalike or a
+    chain stage. Pass: at least four ordered events across at least two hosts; every link states the shared field
+    and time window; each stage carries a labelled adversary goal with the detail that supports it; the lookalike
+    judgement states the baseline evidence behind the call.
+  lab_range:
+    template: large-enterprise
+    scenario: apt-nation-state
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open the siem01 dashboards for the apt-nation-state exercise window, and record
+        the window start and end times.
+    - hosts: [siem01]
+      action: On siem01, list the authentication anomalies in the exercise window and record each account, source
+        host and timestamp.
+    - hosts: [ids01]
+      action: On ids01, list the network alerts in the same window and record the source and destination of each.
+    - hosts: [siem01, syslog01, edr01]
+      action: Cross-check the siem01, syslog01 and edr01 records for the named hosts and record the events
+        that share timestamps or accounts.
+    - hosts: [jump01]
+      action: Order the recorded events into a chain on jump01 and note the field and time window that links each
+        pair of consecutive events.
+    - hosts: [jump01]
+      action: Label each chain stage with the adversary goal it serves, then judge one routine baseline event —
+        a scheduled job or service sign-in — as benign lookalike or chain stage, with the reason.
+  refs:
+  - mitre-attack
+  - nist-sp-800-94
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: The SIEM shows a service account sign-in to a server minutes after network alerts on the web tier.
+        What is the analyst's first move?
+      options:
+      - A) Disable the service account before the adversary reaches more hosts
+      - B) Escalate the web alerts first, because network telemetry carries more detail than sign-in records
+      - C) Correlate both records by time and host to test whether the events belong to one chain
+      - D) Treat the sign-in as noise, because service accounts sign in constantly
+      answer: C
+    - question: Nightly backup sign-ins appear in every week of the baseline. Why must the analyst still examine
+        them carefully during detection?
+      options:
+      - A) An adversary can hide real activity behind a known benign lookalike
+      - B) Backup jobs always run with stolen service credentials
+      - C) The baseline proves the backup schedule never changes, so the jobs need no review
+      - D) Backup traffic bypasses the network sensor by design
+      answer: A
+    - question: A burst of failed sign-ins to one account is followed by a success, then new scheduled tasks on
+        the same host. What does the sequence indicate?
+      options:
+      - A) A misconfigured batch job that keeps retrying until one attempt succeeds
+      - B) A coverage gap, because the sensor saw none of the traffic
+      - C) A benign lookalike of the kind the baseline records weekly
+      - D) One intrusion chain moving from initial access toward persistence
+      answer: D
+    - question: Hosts in the enterprise keep clocks that differ from the SIEM by several minutes. What is the
+        direct risk to the analysis?
+      options:
+      - A) Alerts firing twice, once for each of the two clock readings the SIEM compares
+      - B) The baseline counts drift below the recorded volumes
+      - C) The sensor losing packets between the time sources
+      - D) Misordering the chain, which would point the wrong way at the entry host
+      answer: D
+    - question: An account begins signing in to hosts it never touched in the baseline. What belongs in the
+        detection note about that account?
+      options:
+      - A) The owner's department, so the helpdesk can reset the password
+      - B) The evidence linking the account to each new host, with the goal the access serves
+      - C) The firewall rules that would block the account's traffic
+      - D) The volume of baseline sign-ins for the account, so the anomaly can be closed quickly
+      answer: B
+- ordinal: 3
+  title: Contain Without Breaking the Business
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Rank candidate containment actions by the harm each could cause to business services that depend on the affected hosts
+  - Select containment measures that fit the evidence and the criticality of each affected host
+  - Define the observability to keep while containing, so the response can continue after the action
+  topics:
+  - Containment options — isolate a host, block a route, disable an account, sinkhole a name.
+  - Business criticality, which maps hosts and accounts to the services that depend on them.
+  - Blast radius — predicting what a containment action breaks before taking it.
+  - Balancing eradication pressure against the evidence and visibility the response still needs.
+  - Recording containment decisions and their expected effects for later review.
+  lab: >-
+    Lab: On the large-enterprise range, contain the intrusion chain from the previous module — the workstation
+    ws06, the file server fs01 and the database server sql01 — without stopping the finance and engineering
+    services that depend on those hosts.
+    Evidence: each candidate action with
+    the hosts and business services it touches; the blast radius of the chosen action; the telemetry that
+    still flows after the action. Pass: every candidate lists the services it would interrupt; the chosen
+    action is justified against the criticality recorded in the first module's baseline; at least one detection
+    source is confirmed still feeding siem01 after the action.
+  lab_range:
+    template: large-enterprise
+    scenario: apt-nation-state
+    steps:
+    - hosts: [jump01, siem01]
+      action: From jump01, open the siem01 view of the chain hosts from the previous module and record each host
+        with its current activity.
+    - hosts: [jump01, fs01, sql01, ws06]
+      action: From jump01, review the service records on fs01, sql01 and the affected workstation ws06, and
+        record which business services stop if each host is isolated.
+    - hosts: [fw01]
+      action: On fw01, list the zone rules a route block would use and record the other traffic each candidate
+        rule carries.
+    - hosts: [jump01, siem01]
+      action: From jump01, record which siem01 sources and which ids01 alerts keep flowing under each candidate
+        action.
+    - hosts: [fw01, jump01]
+      action: Take the lowest blast-radius action on fw01, confirm from jump01 that a detection source still
+        feeds siem01, and record both as evidence.
+    - hosts: [jump01]
+      action: Record the action taken, its expected effect on the chain, and one sign in the telemetry that
+        would show the containment failed.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-83r1
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: The chain touches a workstation and a file server that finance depends on. Which containment
+        order best fits the evidence and the criticality?
+      options:
+      - A) Isolate the workstation first and schedule the file server for a controlled window
+      - B) Isolate both hosts immediately, because eradication pressure matters more than service continuity
+      - C) Block the whole server zone route until finance confirms it is safe
+      - D) Disable the accounts instead, so neither host needs to be isolated
+      answer: A
+    - question: An analyst disables an account the chain uses without checking which processes authenticate with
+        it. What is the most likely result?
+      options:
+      - A) The chain returns later through the same account's cached credentials
+      - B) The SIEM loses the account's sign-in records for the review
+      - C) Nothing, because standard accounts carry no services
+      - D) An outage that interrupts services far beyond the intrusion
+      answer: D
+    - question: The only ready containment rule on fw01 would also cut the monitoring feed for three zones. What
+        should the analyst do first?
+      options:
+      - A) Apply the rule unchanged and accept the loss, because containment cannot wait
+      - B) Leave the rule off until the chain is fully eradicated
+      - C) Adjust the rule scope first, so containment proceeds without losing the feed
+      - D) Sinkhole a name instead, because firewall rules cannot be tuned
+      answer: C
+    - question: Containment must begin while part of the chain is still unverified. Which practice keeps the
+        response defensible?
+      options:
+      - A) Recording the action taken, its expected effect and the sign that would show failure
+      - B) Waiting for full verification of every host, because partial evidence cannot justify action
+      - C) Isolating every host in the zone so the record stays simple
+      - D) Deleting the unverified findings so the record holds only confirmed facts
+      answer: A
+    - question: An analyst weighs sinkholing a malicious name against isolating the workstations that contact it.
+        Why can sinkholing be the better containment choice?
+      options:
+      - A) It removes the malicious name from the network and stops every session at once
+      - B) It proves which users clicked the original delivery message
+      - C) Traffic stays observable at a controlled point while the hosts keep working
+      - D) It needs no change to the firewall rule set or the name servers
+      answer: C
+- ordinal: 4
+  title: Eradicate, Recover and Verify
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Plan eradication steps for each compromised host in an order that preserves the evidence the response still needs
+  - Select recovery actions that restore services without reintroducing the access the intrusion used
+  - Verify eradication with targeted checks that show the chain's access is gone from the enterprise
+  topics:
+  - Eradication ordering — evidence first, then persistence removal, then credential resets.
+  - Reimaging versus in-place cleaning for compromised workstations and servers.
+  - Credential resets and their order — privileged accounts, service accounts, then standard users.
+  - Recovery validation — clean images, restored services and the absence of the chain's access.
+  - Verification checks that distinguish removal from mere absence of alerts.
+  lab: >-
+    Lab: On the large-enterprise range, plan and verify the eradication of the chain contained in the previous
+    module, preserving the evidence the after-action review will need. Evidence: the eradication order for each
+    host with a reason per position; the credential reset order; one targeted verification result per host.
+    Pass: evidence capture precedes any cleaning step; the reset order runs privileged accounts first and
+    standard users last; each verification check is a specific query with its recorded result, not just an
+    absence of alerts.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01, edr01]
+      action: From jump01, open edr01 and record what evidence has already been collected for each chain host
+        before any change is made.
+    - hosts: [jump01]
+      action: On jump01, write the eradication order for each host — evidence capture, persistence removal,
+        cleaning — with one reason for each position.
+    - hosts: [jump01, dc01]
+      action: From jump01, query dc01 for the accounts the chain used and record the reset order — privileged,
+        service, then standard.
+    - hosts: [jump01, ws06]
+      action: From jump01, record for ws06 whether to reimage or clean in place, and the reason, before any
+        recovery step runs.
+    - hosts: [siem01, jump01]
+      action: After recovery, run one targeted siem01 query per host for the chain's indicators and record the
+        exact result of each query.
+    - hosts: [jump01]
+      action: Mark each host "eradication verified" or "not yet verified" from the query results, and name any
+        check that rests only on an absence of alerts.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-83r1
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A file server shows signs of the chain but finance needs it back fast, so the analyst cleans it in
+        place. What is the strongest argument against that choice?
+      options:
+      - A) In-place cleaning always destroys the operating system's licence and activation state
+      - B) Reimaging requires a change window finance cannot grant
+      - C) Cleaned servers must stay off the network for a full week
+      - D) Cleaning can leave the intrusion's access in place where nobody looked
+      answer: D
+    - question: The eradication plan schedules evidence capture after the cleaning steps to save time. Why is
+        that order wrong?
+      options:
+      - A) Evidence belongs to the after-action review, which runs much later and can reconstruct the artefacts
+      - B) Capture the evidence first, because cleaning and resets destroy what the after-action needs
+      - C) The SIEM already holds every artefact the evidence step would gather
+      - D) Cleaning first is right, because persistence removal changes the evidence
+      answer: B
+    - question: The chain used a privileged account and a service account. In what order should the resets run?
+      options:
+      - A) Service accounts first, because workstations authenticate with them hourly
+      - B) Standard users first, so the workforce is secured while the rest proceeds
+      - C) Privileged accounts first, then service accounts, then standard users
+      - D) Any order, because every reset invalidates the adversary's access at once
+      answer: C
+    - question: Recovery is declared because no alerts fired for a day. Why does that not verify eradication?
+      options:
+      - A) A day is too short; the quiet period must match the baseline month
+      - B) Alerts keep firing after eradication until the detection rules are tuned down by hand
+      - C) Verification belongs to the after-action review, not to recovery
+      - D) Absence of alerts is not a targeted check that the chain's access is gone
+      answer: D
+    - question: A verification query for the chain's indicators returns nothing. What must the record hold for
+        that check to count?
+      options:
+      - A) The query text, the hosts checked and the time window, so the check can be repeated
+      - B) A screenshot of the empty result, filed with the containment record for the reviewer
+      - C) The analyst's statement that the chain no longer touches the host
+      - D) The count of alerts the same query raised during the intrusion
+      answer: A
+- ordinal: 5
+  title: Run the After-Action Review
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Assemble a defensible incident timeline from the recorded events, decisions and times of the response
+  - Measure the response against the times a review can defend — detection, decision and containment
+  - Distinguish root causes from symptoms in the review findings and assign each an owner
+  topics:
+  - The after-action review — purpose, participants and a blameless examination of decisions.
+  - Incident timeline assembly from case records, alerts and the decisions taken.
+  - Detection and response intervals, and what each interval's length does and does not prove.
+  - Root cause versus symptom, and findings that name a control, not a person.
+  - Feeding review findings into detection rules, architecture and the next baseline.
+  lab: >-
+    Lab: On the large-enterprise range, build the after-action record for the response the previous modules
+    performed. Evidence: the timeline in order, each entry with its event, host, time and source; the detection
+    and containment intervals computed from it; three findings split into root causes and symptoms; the finding
+    marked most likely to let the chain recur, with its reason. Pass: every timeline entry carries a time and a
+    source; both intervals are computed from timeline entries with the arithmetic shown; each finding names a
+    control or process rather than a person and is marked root cause or symptom with a reason; the marked
+    finding carries a one-sentence reason.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01, soar01]
+      action: From jump01, open the soar01 case for the response and record the case start time and the first
+        alert time.
+    - hosts: [siem01, soar01]
+      action: From siem01 and soar01, list every response event in order, each with its time, host and the
+        source it came from.
+    - hosts: [jump01]
+      action: On jump01, compute the detection interval from the first intrusion event to the first alert, and
+        the containment interval from the alert to the action; show the arithmetic.
+    - hosts: [jump01]
+      action: Split the findings into root causes and symptoms on jump01, with a reason for each classification.
+    - hosts: [tip01]
+      action: On tip01, check whether the chain's indicators were already known before the exercise, and record
+        what the check shows.
+    - hosts: [jump01, soar01]
+      action: Write each finding into the soar01 case as an action with an owner and a target date, and record
+        the entries made.
+    - hosts: [jump01]
+      action: Mark which finding would most likely let the chain recur if its fix is delayed, and record the
+        choice with a one-sentence reason from the timeline.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: In an after-action review, between which two points is the detection interval measured?
+      options:
+      - A) The first alert and the first containment action taken
+      - B) The first malicious event and the first alert
+      - C) The exercise start and the case closure
+      - D) The first escalation and the incident review meeting
+      answer: B
+    - question: A detection rule existed for the entry stage, but its alert landed in an unwatched queue. Which
+        finding explains the delay best?
+      options:
+      - A) Alert routing for that rule lacked an owner and was never checked
+      - B) The rule's threshold was set too high for the normal traffic volume the sensor sees
+      - C) The sensor missed the entry traffic, so the rule never fired
+      - D) The queue held too many alerts for one analyst to clear
+      answer: A
+    - question: A review names "rules too broad" as a symptom. Which statement is a root cause behind it?
+      options:
+      - A) The firewall console makes rule editing too slow for narrow rules to be practical
+      - B) One administrator wrote most of the broad rules years ago
+      - C) No rule review process existed that would have removed unused broad allows
+      - D) The chain exploited several of the broad allows in sequence
+      answer: C
+    - question: The containment interval is much shorter than the detection interval. What does that comparison
+        show?
+      options:
+      - A) The containment action was taken before the intrusion began, so the comparison is meaningless
+      - B) Decisions after the alert were quicker than the detection that raised them
+      - C) The detection tooling is better than the containment tooling
+      - D) The intervals cannot be compared, because they use different sources
+      answer: B
+    - question: A review finding reads "improve monitoring". Which rewrite turns it into a defensible action?
+      options:
+      - A) Improve the monitoring of every zone by the end of the quarter
+      - B) Improve monitoring so the next intrusion is found faster than this one
+      - C) Have the monitoring team review all detection rules for coverage
+      - D) Add a monitored source for the OT zone and test its alert path
+      answer: D
+- ordinal: 6
+  title: After-Action and Architecture Fixes
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Convert each confirmed review finding into a specific architecture change with the zone or control it touches
+  - Design segmentation and firewall rule changes that remove the lateral paths the intrusion used
+  - Prioritise the fixes by risk reduced against the effort each change costs
+  topics:
+  - From finding to fix — naming the zone, boundary or control each change touches.
+  - Segmentation changes that cut the lateral paths a chain used.
+  - Firewall rule changes — narrowing allows, adding explicit denies and their order.
+  - Monitoring fixes — new sources, tuned detections and retesting against the old chain.
+  - Prioritising fixes by risk reduced, effort and the order of implementation.
+  lab: >-
+    Lab: On the large-enterprise range, turn the after-action findings into architecture changes that remove
+    the paths the intrusion used. Evidence: each finding paired with one change and the zone, boundary or
+    control it touches; a fw01 rule change written in rule order; a segmentation change for the chain's lateral
+    path; a priority order with reasons. Pass: every change names its zone or control; each lateral path is
+    removed or accepted with a written reason; the priority order is justified by risk reduced against effort.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01, soar01]
+      action: From jump01, open the soar01 case and list the confirmed findings, naming the zone, boundary or
+        control each one touches.
+    - hosts: [jump01, fw01]
+      action: From jump01, read the current fw01 rules along the chain's paths and record each rule's position
+        and scope.
+    - hosts: [fw01, jump01]
+      action: On fw01, write the proposed rule change in order — the narrowed allow, then the explicit deny —
+        and record where each sits in the rule set.
+    - hosts: [jump01, dc01]
+      action: From jump01, record the trust and administration paths between dc01 and dc03 that the segmentation
+        change must cover.
+    - hosts: [siem01, jump01]
+      action: From jump01, record one siem01 monitoring fix per changed control — a new source, or a tuned detection
+        that would catch the old chain.
+    - hosts: [jump01]
+      action: Order the changes by risk reduced against effort on jump01, mark any accepted lateral paths with a
+        written reason, and record the order.
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-41r1
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A review finding reads "lateral movement to the server zone was too easy". Which architecture
+        change answers it directly?
+      options:
+      - A) A new SIEM dashboard that charts lateral sign-ins per hour
+      - B) A staff training session on the dangers of credential reuse
+      - C) Segmenting the server zone so only named sources reach it
+      - D) An antivirus policy that scans every server weekly
+      answer: C
+    - question: A narrowed allow rule is written, but the chain also crossed a forest trust. What must the fix
+        also cover?
+      options:
+      - A) The wireless network the workstations authenticate against
+      - B) The internet boundary, where the chain first entered
+      - C) The monitoring feed, which the narrowed allow no longer reaches
+      - D) It restricts the administration paths across that forest trust
+      answer: D
+    - question: One finding can be fixed by a rule edit or by re-architecting a boundary. Both cut the same path.
+        What favours the rule edit first?
+      options:
+      - A) The rule edit, because it cuts the same path at far less effort
+      - B) The re-architecture, because only boundaries stop determined adversaries
+      - C) Neither, because the finding demands a full zero-trust programme
+      - D) Both at once, because partial fixes leave the path open
+      answer: A
+    - question: The chain is replayed in a test exercise after the fixes land. When is the segmentation change
+        verified?
+      options:
+      - A) When the replayed test traffic is visible in the new monitoring source for the zone
+      - B) When the firewall rule count matches the written design
+      - C) When no alerts fire during the replay exercise
+      - D) When the replayed chain fails to reach the paths the segmentation removed
+      answer: D
+    - question: A new monitoring source is added for a zone that had none. What proves the source's value?
+      options:
+      - A) The source forwards logs continuously without gaps for a full week of operation
+      - B) A detection on the new source catches the exercise chain when retested
+      - C) The source's licence costs less than the collector it replaced
+      - D) The zone's hosts appear in the asset inventory at last
+      answer: B

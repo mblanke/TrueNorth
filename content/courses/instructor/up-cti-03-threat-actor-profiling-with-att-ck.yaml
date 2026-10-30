@@ -1,0 +1,182 @@
+# Instructor pack for up-cti-03-threat-actor-profiling-with-att-ck (C557).
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C557
+audience: staff_only
+overview: 'Threat Actor Profiling with ATT&CK (C557) is an intermediate individual course of six 50-minute
+  modules (300 minutes, 5 hours). Each module splits into roughly 10 minutes of teaching, 30 minutes of
+  lab work on the small-enterprise range and 10 minutes for the five-item quiz, passed at 70 percent.
+  Every lab is a defensive analysis exercise on the baseline range: Students record what the range shows,
+  cluster it, map it to ATT&CK tactics, separate indicators from behaviours, grade confidence, write a
+  one-page actor profile and turn that profile into detection and briefing material. Students hand in
+  their lab notes (clusters, mappings, grades, the profile and the three-sentence leadership brief) as
+  evidence. Say "Student" throughout and keep every description defensive and observable.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 teach (clustering criteria and worksheet), 30 lab (fw-01 rules, dc-01 administrative groups,
+    one domain logon, then cluster the recorded activity), 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '10 teach (tactics as goals, event-by-event reading), 30 lab (record three observed activities
+    and map each to an ATT&CK tactic with a reason), 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '10 teach (indicators against behaviours, expiry), 30 lab (record addresses, fw-01 rule services
+    and one ws-02 logon, then rewrite three facts both ways), 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '10 teach (observed, inferred, assumed; confidence), 30 lab (grade recorded statements, including
+    one deliberate failed sign-in from ws-03), 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '10 teach (profile structure and evidence lines), 30 lab (re-check earlier notes, write the
+    one-page profile, revise out unsupported lines), 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '10 teach (behaviour to telemetry, briefing), 30 lab (map each behaviour to telemetry or "no
+    telemetry", pick the first gap, write the three-sentence brief), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: The recurrence of distinctive behaviour and tooling across victims is the clustering
+    evidence; same country (A) is a weak single attribute, victim size (C) says nothing, weekdays (D) is
+    coincidence-level. M01-O01. Q2 C: Clustering starts from shared attributes, so only the matching pair
+    clusters; merging all four (A) over-clusters, discarding (B) loses evidence, attribution (D) skips the
+    step. M01-O02. Q3 A: A vendor label is a handle for discussion, not proof of a distinct operator; the
+    name is not evidence (B), not a fact to record as attribution (C), not a version (D). M01-O03. Q4 B:
+    One shared indicator is weak evidence, so the clusters stay separate until more attributes repeat;
+    matching one address (A) repeats the fallacy, deleting (C) and confirming (D) are not justified by the
+    evidence. M01-O03. Q5 D: Victim profile and objective support campaign-level clustering even without
+    techniques; technique mapping (A), tool-based detection (B) and signature writing (C) all need
+    technique detail the report lacks. M01-O01.'
+- module: 2
+  notes: 'Q1 C: Listing shares and groups is learning about the environment; Collection (A) is gathering
+    the target data itself, Persistence (B) and Credential Access (D) need an access or credential
+    action. M02-O01. Q2 A: Destroying backups serves the Impact goal; the move itself (B) is lateral
+    movement but the removal is the goal asked about, Collection (C) and Defence Evasion (D) do not fit
+    destroying archives. M02-O02. Q3 D: Mapping needs the specific actions that kept access, with hosts
+    and times; sector (A), malware name (B) and incident count (C) do not describe adversary behaviour.
+    M02-O03. Q4 C: Enumeration of accounts is Discovery, staging documents is Collection; the reversed
+    pair (D) and the all-one-tactic answers (A, B) mix the two goals. M02-O01. Q5 B: Behaviour survives
+    tooling change, which is why tactics are the shared vocabulary; confidentiality (A) is beside the
+    point, mapping does not replace reporting (C) and does not attribute (D). M02-O02.'
+- module: 3
+  notes: 'Q1 D: Tactic sequences persist after addresses (A), hashes (B) and staging domains (C) have all
+    been rotated and expired. M03-O02. Q2 B: One blocked indicator only stops that address; the behaviour
+    continues from elsewhere, so nothing shows the campaign ended (A), motivation changed (C) or that more
+    hashes help (D). M03-O01. Q3 A: The line describes what the actor did, expressed independently of a
+    fixed address or file, so it is behaviour; it is not a machine-referenceable indicator (B), not an
+    attribution judgement (C) and not an asset (D). M03-O01. Q4 D: The access path and its re-establishment
+    survive infrastructure change; an address list (A) expires, hash watching (B) misses the path, removal
+    dates (C) record history not behaviour. M03-O02. Q5 B: The contractor access path is a behaviour that
+    outlives indicators; the staging domain (A) and loader hash (C) expire, the firewall model (D) is a
+    victim asset. M03-O03.'
+- module: 4
+  notes: 'Q1 A: A claim cited only from another vendor is inherited and single-source; it is not directly
+    observed (B), not a technical indicator (C) and never proof of attribution (D). M04-O03. Q2 C: The
+    supplier logons are observed, the compromised account is an inference and must carry a confidence
+    level; it is not an observed fact (A), not false enough to delete outright (B) and not something to
+    block (D). M04-O02. Q3 B: Two independent sources with evidence raise confidence most; three posts
+    from one vendor (A) are one source, repetition (C) and layout (D) say nothing about independence.
+    M04-O03. Q4 A: Disagreement is recorded with both claims, not averaged (B), not resolved by recency
+    (C) and not dropped (D), because the disagreement itself is profile content. M04-O01. Q5 D: An
+    uncited location claim is an assumption, marked low confidence or removed; it cannot serve as a
+    mapping fact (A), detection criterion (B) or blocking indicator (C). M04-O02.'
+- module: 5
+  notes: 'Q1 B: House standard separates observation from conclusion and marks it; the other options state
+    judgements (A, C) and predictions (D) as if they were facts. M05-O01. Q2 D: An unsupported line is
+    removed or held as an open question; it is not promoted to the summary (A), given confidence it has
+    not earned (B) or rescued by rewording (C). M05-O03. Q3 C: The profile serves operators and
+    leadership, each able to use their own parts; responder-only (A) and executive-only (B) audiences both
+    fail the two-reader rule, and the vendor (D) is not the consumer. M05-O01. Q4 B: A group label is
+    justified when reported with the linking evidence; a ban (A) overstates, a court decision (C) and a
+    credible sound (D) are not the test. M05-O02. Q5 C: Each reader must get usable content without the
+    other''s section; equal length (A), tool citations (B) and a malware name (D) do not serve that test.
+    M05-O01.'
+- module: 6
+  notes: 'Q1 D: Sign-in times outside hours are visible in the finance server''s authentication logs;
+    resolver logs (A), backup schedule (B) and asset inventory (C) do not record who signed in when.
+    M06-O01. Q2 A: A gap list drives the order for building the missing telemetry and detections; it does
+    not retire the profile (B), rename the actor (C) or set retention (D). M06-O02. Q3 C: The strong line
+    names the target, the path and the change to watch; A and B are filler, D is unanchored history.
+    M06-O03. Q4 D: Hunt findings update the profile''s behaviour section with the new evidence; the vendor
+    report (A) and expired indicators (B) are not the Student''s to update, and course notes (C) are not
+    the profile. M06-O03. Q5 B: A profile in use is cited by detections and briefs; version count (A),
+    growing length (C) and naming more actors (D) measure churn, not use. M06-O03.'
+lab_setup:
+- module: 1
+  setup: Revert the small-enterprise range to its baseline. Confirm jump-box reaches fw-01, dc-01 and
+    ws-01 over the network, confirm the analyst account on jump-box and assign each Student a standard
+    domain user for the ws-01 logon. Capture the baseline fw-01 rule list and dc-01 administrative groups
+    so recorded Evidence can be marked against them without inventing values.
+- module: 2
+  setup: Revert the range again so module 1 changes do not carry over. Confirm the remote administration
+    path from jump-box to ws-01 works and the standard user can sign in on ws-01. Keep the ATT&CK tactic
+    names visible on the board or in the notes for the whole module.
+- module: 3
+  setup: Revert the range. Confirm ws-02 is reachable for the domain logon and that fw-01's rule list is
+    available from jump-box. Remind Students the addresses they record are today's range
+    addresses, since the lab asks which form survives a change of address.
+- module: 4
+  setup: Revert the range. Confirm the domain password policy is readable from jump-box over the network
+    (mgmt-to-all permits jump-box to reach dc-01; no Student signs in to dc-01 directly) and that the lockout
+    behaviour Students will trigger from ws-03 matches the baseline values recorded before class; warn
+    Students that the deliberate failed sign-in is a lab step, so the helpdesk is not surprised. Record
+    the baseline policy values without inventing them.
+- module: 5
+  setup: Revert the range. Confirm the earlier module notes are available to Students (lab folder or
+    shared location) and that the fw-01 rules and dc-01 groups match the module 1 baseline; if anything
+    drifted, note the drift, since "any rule that differs" is a recorded Evidence item.
+- module: 6
+  setup: Revert the range. Confirm dc-01's audit categories are readable from jump-box over the network
+    (mgmt-to-all permits jump-box to reach dc-01; no Student signs in to dc-01 directly) and that the module
+    5 profile files are accessible. Have the module 5 gap marks ("no telemetry") ready to compare, since
+    this lab turns them into the gap list and the leadership brief.
+common_faults:
+- module: 1
+  fault: Students cluster on victim sector alone and call the job done.
+  remedy: Make each cluster name at least two shared attributes, one of which must be behaviour, before
+    the cluster is accepted.
+- module: 1
+  fault: A single reused address is treated as proof that two clusters are one actor.
+  remedy: 'Point back to the worksheet: count shared attributes, and require the reason sentence to name
+    the count, not just the match.'
+- module: 2
+  fault: Events are mapped by the technical action instead of the adversary's goal (Discovery against
+    Collection).
+  remedy: For each mapping ask what the adversary was trying to achieve at that moment, with the tactic
+    list visible.
+- module: 2
+  fault: Students map events the report does not actually describe.
+  remedy: Require the "could not be mapped" mark with the missing information stated, and grade it as a
+    correct answer rather than a failure.
+- module: 3
+  fault: The behaviour form of a fact still names a fixed address or file.
+  remedy: Have Students underline any address, port or hash in their behaviour lines and rewrite until
+    none remain.
+- module: 3
+  fault: Indicators and behaviours are treated as good and bad rather than two lifetimes.
+  remedy: Ask which form survives the change of range addresses, and require the one-sentence reason to
+    name why.
+- module: 4
+  fault: Every recorded statement is graded observed because it was seen on the range.
+  remedy: Distinguish what was seen (the logons) from what was concluded from seeing it (the inference);
+    the grade applies to the statement, not the activity.
+- module: 4
+  fault: Confidence words are attached without naming the underlying observation.
+  remedy: Refuse any inferred or assumed grade until its line names the observation it rests on.
+- module: 5
+  fault: Profile lines state conclusions as facts, without the observed or assumed mark.
+  remedy: Check each line for its mark and evidence before accepting the profile; an unmarked line is not
+    a finished line.
+- module: 5
+  fault: Students keep unsupported lines because they read well.
+  remedy: 'Run the final revision strictly: if no recorded item from the course supports the line, it goes,
+    or it becomes an open question.'
+- module: 6
+  fault: Every behaviour is given a telemetry source even where the range has none.
+  remedy: The "no telemetry" mark is a valid and expected answer; count explicit marks as correct and
+    invented sources as faults.
+- module: 6
+  fault: The leadership brief restates the whole profile or states guesses as facts.
+  remedy: Hold the brief to three sentences naming target, access path and the change to watch, and mark
+    any judgement sentence without evidence.

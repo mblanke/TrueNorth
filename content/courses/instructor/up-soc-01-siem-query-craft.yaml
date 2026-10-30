@@ -1,0 +1,206 @@
+# Instructor pack for C519 SIEM Query Craft. Unsourced draft -- not validated by Standards.
+# TAZ upskilling catalogue v1 (GLM draft).
+course_code: C519
+audience: staff_only
+overview: >-
+  SIEM Query Craft is a foundation course of six 30-minute modules (3 hours) for one Student working
+  alone on the soc-training range. Each module has the same split: 10 minutes teach, 12 minutes lab
+  in OpenSearch Dashboards on siem01 reached from jump01, and 8 minutes quiz and debrief. The Student
+  ends each module with a five-item quiz passed at 70 percent. Every lab runs in Discover: the Student
+  records counts, query text and field values exactly as the range shows them, and the last step of
+  each lab is a judgement, not a command. Say "Student" throughout and keep every description
+  defensive and observable.
+timings:
+- module: 1
+  minutes: 30
+  plan: '10 teach (search syntax and fields), 12 lab (4 guided walkthrough, 8 individual), 8 quiz and
+    debrief.'
+- module: 2
+  minutes: 30
+  plan: '10 teach (boolean logic and operators), 12 lab (4 guided walkthrough, 8 individual), 8 quiz
+    and debrief.'
+- module: 3
+  minutes: 30
+  plan: '10 teach (from alert to triage query), 12 lab (4 guided walkthrough, 8 individual), 8 quiz
+    and debrief.'
+- module: 4
+  minutes: 30
+  plan: '10 teach (tuning and testing), 12 lab (4 guided walkthrough, 8 individual), 8 quiz and
+    debrief.'
+- module: 5
+  minutes: 30
+  plan: '10 teach (time windowing and pivoting), 12 lab (4 guided walkthrough, 8 individual), 8 quiz
+    and debrief.'
+- module: 6
+  minutes: 30
+  plan: '10 teach (saving and sharing detections), 12 lab (4 guided walkthrough, 8 individual), 8
+    quiz and debrief.'
+answer_key_notes:
+- module: 1
+  notes: >-
+    Q1 B, M01-O01: The search moved from a bare term matched in every field to a field-level filter
+    matched only when the outcome field holds that value; the time range (not C) and the index
+    pattern (not D) are unchanged, and it no longer searches every field (not A). Q2 C, M01-O01:
+    The time range picker bounds every result set, so only events recorded inside the last 15
+    minutes can return even though the index holds eight weeks (not A, not B); a correct search
+    still returns what falls in the window (not D). Q3 A, M01-O03: An index that does not hold the
+    wanted events cannot return them; the search text (not B), time range (not C) and table columns
+    (not D) are untouched by the choice. Q4 D, M01-O02: A field:value expression matches only events
+    whose named field holds exactly that value, unlike the bare term that matches any field; there
+    is no absent-field case (not B) and no whole-table match (not C). Q5 C, M01-O03: Fields made
+    visible without opening a document are the selected columns of the results table; the index
+    pattern name (not A), the search bar (not B) and the time picker (not D) do not display per-event
+    values.
+- module: 2
+  notes: >-
+    Q1 D, M02-O01: AND intersects the two filters, and only the 50 events matching both remain; 700
+    (A) unions, 650 (B) invents a subtraction and 200 (C) lets the larger list decide. Q2 A,
+    M02-O02: OR returns the union of the two host filters; AND narrows to both (not B), NOT excludes
+    (not C) and an equals sign is not an operator between filters (not D). Q3 B, M02-O01: NOT
+    outcome:success removes the successful sign-ins and leaves the failed ones for that account; NOT
+    does remove matches (not A) and the filters do not contradict (not D). Q4 C, M02-O03: A range
+    expression keeps events whose value passes the stated bound; it is not equality at the bound
+    (not B), not every event (not A) and not a ranked top-N (not D). Q5 A, M02-O02: The risk of a
+    wildcard is over-matching: more hosts than the triage question needs; display speed (not B),
+    loss of exact matches (not C) and a changed field (not D) are not what broadening does.
+- module: 3
+  notes: >-
+    Q1 C, M03-O01: The first triage query must decide whether the failures come from one account or
+    many; a restart (not A), index size (not B) and the shift roster (not D) do not answer the
+    alert. Q2 D, M03-O02: Authentication events the domain controller produces are the log source
+    that can answer sign-in questions; DHCP leases (not A), web access logs (not B) and mail queues
+    (not C) cannot. Q3 A, M03-O02: Time, host, account and action are the four core triage columns;
+    index internals (not B), unrelated metadata (not C) and query bookkeeping (not D) do not support
+    the judgement. Q4 B, M03-O01: Free text matches documents that merely mention the value, which
+    is why field filters are the precise choice (not A); field filters do not match narration (not
+    C) and the field still exists (not D). Q5 D, M03-O03: Two failures at one time in a stated
+    window does not show a burst, so the result set contradicts the alert's claim and the analyst
+    questions the alert; it neither proves compromise (not A) nor confirms the alert (not B), and
+    dropping the window (not C) widens rather than tests.
+- module: 4
+  notes: >-
+    Q1 A, M04-O01: The benign-case test shows whether the query matches activity that should not
+    alert; storage (not B), speed (not C) and picker calibration (not D) are not what it
+    establishes. Q2 C, M04-O02: Results from every account mean a filter is missing or too loose; a
+    narrow time range (not A) shrinks results, a hidden column (not B) only hides them and the save
+    name (not D) does not change the match. Q3 B, M04-O02: Adding a host filter for that one
+    workstation narrows the query to the alert's scope; removing the outcome filter (not A) and
+    widening time (not C) broaden, and bare free text (not D) loosens precision. Q4 D, M04-O03:
+    Comparing counts before and after shows whether each change removed noise without losing the
+    wanted events; licence use (not A), latency (not B) and event age (not C) are not what the
+    counts compare. Q5 B, M04-O03: The tested query text belongs beside the triage decision in the
+    triage note so the decision can be checked later; nowhere (not A), the address bar (not C) and
+    the index configuration page (not D) do not keep it with the decision.
+- module: 5
+  notes: >-
+    Q1 D, M05-O01: The window should cover the stated burst with context on each side; one minute
+    (not A) truncates, eight weeks (not B) and full retention (not C) bury the burst in routine
+    events. Q2 B, M05-O01: A two-minute window on hour-long activity leaves events from the activity
+    outside the window and unseen; reindexing (not A), an extra column (not C) and self-saving (not
+    D) do not happen. Q3 A, M05-O02: Copying a value from a result into a new filter is pivoting on
+    a field value; reindexing (not B), exporting (not C) and changing the index pattern (not D) are
+    different actions. Q4 C, M05-O02: The account value is what follows the account across sources;
+    the outcome (not A), the host alone (not B) and a day-rounded timestamp (not D) do not. Q5 D,
+    M05-O03: Recorded pivots let another analyst retrace and check the trail; deletion (not A),
+    storage reporting (not B) and a substitute for testing (not C) are not the reason.
+- module: 6
+  notes: >-
+    Q1 C, M06-O01: A saved search stores the query text under a name so it can be reopened; the
+    calendar (not A), the index management page (not B) and the export menu (not D) do not. Q2 A,
+    M06-O01: A name that states who, what and where tells the next reader the purpose; Search-type
+    labels (not B), version chatter (not C) and Untitled (not D) tell nothing. Q3 D, M06-O02: Log
+    source, time window, query text and key fields let a reviewer rerun and judge without asking
+    questions; ticket data (not A), the colour scheme (not B) and index size (not C) do not. Q4 B,
+    M06-O03: Exported results show what the query matched when it ran; the export neither deletes
+    events (not A), converts the query (not C) nor gates storage (not D). Q5 A, M06-O02: A Sigma
+    rule describes the query and its fields in a vendor-neutral, version-controlled format other
+    tools can read; screenshots (not B), a raw-event spreadsheet (not C) and a chat message (not D)
+    do not.
+lab_setup:
+- module: 1
+  setup: >-
+    Verify siem01 serves OpenSearch Dashboards and jump01 is reachable over SSH. Confirm the training
+    index pattern holds the last 24 hours of sign-in and host events. Have the analyst account
+    credentials, the index pattern name, the unfiltered term search string and the field:value filter
+    ready to hand out.
+- module: 2
+  setup: >-
+    Same range checks as Module 1. Have the sign-in failure field pair, the second AND filter value
+    and the noisy account or source name ready. Confirm the training data actually contains the noise
+    so the NOT clause shows a visible drop in the count.
+- module: 3
+  setup: >-
+    Verify the authentication index holds failed sign-in events for v-dc01 in the lab window. Have
+    the alert text printed or on the board and the authentication index pattern name ready to hand
+    out.
+- module: 4
+  setup: >-
+    Pre-load the over-broad starting query into the shared notes. Confirm both the alert case and the
+    benign lookalike appear in the window the Student will search, so the tuning has a visible
+    effect on the counts.
+- module: 5
+  setup: >-
+    Confirm the pivot account appears both in v-dc01 sign-in events and in v-ws01 activity inside the
+    stated window. Have the window length and the pivot account ready to announce once the first
+    query returns.
+- module: 6
+  setup: >-
+    Verify the export format is available from Dashboards and that the Student can write the export
+    somewhere retrievable. Have the tuned query text ready in case the Student's Module 4 query is
+    not at hand.
+common_faults:
+- module: 1
+  fault: The Student reads a bare term search as if it were a field filter, or the reverse, and cannot
+    say which events either matches.
+  remedy: Re-run the two Module 1 searches side by side and ask what changed between the search bar
+    texts, pointing at the field:value pair.
+- module: 1
+  fault: The Student trusts the search bar alone and ignores the time range when explaining a result
+    count.
+  remedy: Ask what the picker is set to before discussing any count; the Module 1 topics state the
+    picker bounds every result set.
+- module: 2
+  fault: The Student treats AND as a union and predicts the sum of the two filter counts.
+  remedy: Re-run Q1 of Quiz 2 with two small named filters in Discover and let the returned count
+    correct the prediction.
+- module: 2
+  fault: The Student drops parentheses when editing a grouped search and reads the result as if the
+    grouping survived.
+  remedy: Have the Student read the grouped search aloud before running it, then after, and compare
+    the counts.
+- module: 3
+  fault: The triage query is typed as free text, so narration mentions match alongside real sign-in
+    events.
+  remedy: Show the narration-match document from Module 3's quiz case and rebuild the query as field
+    filters.
+- module: 3
+  fault: The Student judges sufficiency from the count alone, without the four core columns.
+  remedy: Require the time, host, account and outcome columns on screen before any judgement is
+    written.
+- module: 4
+  fault: The Student narrows by widening the time range or removing a filter, and the count grows.
+  remedy: Point at the count trend across the recorded changes; narrowing shows a falling count that
+    still contains the alert case.
+- module: 4
+  fault: Changes are made without recording the count at each step, so the final query cannot be
+    justified.
+  remedy: Make the before-and-after count line a pass requirement of the lab before the Student
+    tunes further.
+- module: 5
+  fault: The Student sets the widest available window to avoid missing anything and drowns in
+    routine events.
+  remedy: Re-read the Module 5 window-size topic and ask how much context the stated burst needs on
+    each side.
+- module: 5
+  fault: The pivot reuses a value the Student remembered instead of the value a result actually
+    shows.
+  remedy: Require the account value recorded from the result row before the second query is written.
+- module: 6
+  fault: The saved search name is a label such as Search1 that states no purpose.
+  remedy: >-
+    Apply the Module 6 naming topic: the name must let the next reader know who, what and
+    where without opening the query.
+- module: 6
+  fault: The detection description omits the time window or the log source, so it cannot be rerun.
+  remedy: Check the description against the four required items (source, window, fields, purpose)
+    and have the Student add the missing ones before the lab passes.

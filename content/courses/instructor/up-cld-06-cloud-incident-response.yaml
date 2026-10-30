@@ -1,0 +1,195 @@
+# Instructor pack for Cloud Incident Response (C548) - staff only, not shown to students.
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# Shape per docs/interfaces/course-instructor-pack.schema.json and scripts/check_course.py.
+# The answer letters below are the course's key; each note says why the keyed option is right and
+# what the strongest distractor tests. Lab setup is what the instructor does on the cloud-security
+# range before the module starts.
+course_code: C548
+audience: staff_only
+overview: 'Cloud Incident Response is an individual upskilling course of six 60-minute modules (360 minutes,
+  6 hours) on the cloud-security range. Each module has the same split: about 15 minutes teach on the topics,
+  35 minutes hands-on lab on the range, and a 10-minute five-item quiz passed at 70 percent. The student
+  works alone throughout - there is no pairing, role-play or group work in this course. Modules 1 to 3 run
+  detection and containment on the range (shared responsibility, a compromised pod on k3s-worker02, an
+  over-privileged identity on localstack01); modules 4 to 6 cover evidence capture, recovery and the
+  post-incident review. Say ''student'' throughout and keep every description defensive and observable.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (shared responsibility, activation triggers, telemetry), 35 lab (prowler01 findings sorted
+    into provider and customer duties, cloud-siem01 record sources, declare or not decide), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (runtime indicators, network policy isolation, snapshot before termination), 35 lab (find
+    the suspect pod on k3s-worker02, isolate it through k3s-master, judge isolate/snapshot/terminate), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (key exposure, log tracing, revocation order, session invalidation), 35 lab (identity
+    policies on localstack01, trace the identity in cloud-siem01, rank the containment steps), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (volatility, capture order, autoscaling and replacement), 35 lab (export records from
+    cloud-siem01, capture the suspect workload state on k3s-worker02, mark artefacts volatile or persistent),
+    10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (recovery from declarations, restore points, recovery order, baseline verification), 35 lab
+    (declarations on argocd01, newest restore point on localstack01, redeploy through k3s-master, verify each
+    workload), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (post-incident review, findings to detections, re-testing after remediation), 35 lab (re-run
+    the prowler01 audit, check for a new detection on cloud-siem01, record the localstack01 policy against
+    its original grants, write three lessons-learned items), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (Customer), M01-O01: The provider patches the runtime it operates; the application''s own libraries
+    sit on the customer side of the boundary, so patching them is the customer''s duty. Distractor A tests the
+    "the platform runs it, so the provider owns everything" error. Q2 C (Provider access logs), M01-O02: Only
+    access logs record each read with the identity that made it; the landing page, a network diagram and an
+    invoice show none of that. Q3 D (Shared identity in one hour), M01-O03: Correlation of failed sign-ins and
+    unusual API activity to one identity in the same hour is the activation trigger; the retired account, the
+    scheduled backup job and working hours are each routine on their own. Q4 A (Security group block), M01-O01:
+    Network containment of a workload is customer-side configuration; the cable, the hypervisor and the provider
+    edge certificate are all provider estate. Q5 B (Customer timeline), M01-O01: When a provider acts on the
+    customer''s estate, the customer keeps the record of its own actions, decisions and evidence; everything
+    else listed is the provider''s internal record.'
+- module: 2
+  notes: 'Q1 C (Isolate, then capture), M02-O02: Network isolation stops the damage at once while keeping the
+    pod''s state for capture; terminating destroys evidence, waiting lets it run, and restarting moves it. Q2
+    A (Node-wide reach), M02-O03: A pod with host privileges and host PID access can read the node''s filesystem
+    and reach every pod on that node - that is what raises the blast radius; image size, log destination and
+    scheduling age change nothing about reach. Q3 D (Snapshot, terminate, analyse), M02-O03: The snapshot
+    satisfies the analyst and the termination satisfies the lead; platform records alone are not always enough.
+    Q4 C (Outbound to an address nothing else contacts), M02-O01: The other three observations are all
+    consistent with a healthy, busy workload; an unmatched destination is the runtime indicator. Q5 A (Running
+    but unreachable), M02-O02: A deny-all network policy keeps the pod running so its state can be examined
+    while cutting it off from every other system; it does not delete, rebuild or erase anything.'
+- module: 3
+  notes: 'Q1 D (Revoke and invalidate sessions), M03-O02: Revocation plus session invalidation stops the key at
+    once; a replacement alongside the old key changes nothing, scheduled expiry is too slow, and privatising
+    the repository does not un-leak the string. Q2 B (Alter and destroy the estate), M03-O03: Create plus
+    delete on every bucket means one leaked key can rewrite or erase the whole storage estate; key length,
+    usage hours and bucket listing do not change the damage the key can do. Q3 A (Account logs), M03-O01: Only
+    account logs list each action with the resource it touched; the commit file, the creation date and the
+    invoice show existence, not activity. Q4 D (Legitimate work fails, copied session survives), M03-O02:
+    Rotation without dependency mapping breaks every system using the key, and a copied session can outlive
+    the rotation. Q5 B (Tokens outlive revocation), M03-O02: Tokens issued before revocation keep working
+    until they expire, so invalidation is what actually stops them; sessions are customer-revocable and have
+    nothing to do with rotation speed.'
+- module: 4
+  notes: 'Q1 A (Exported platform records), M04-O03: Records already exported off the workload survive the
+    autoscaler; memory, the ephemeral disk and the process list are destroyed with the instance. Q2 C (Platform
+    records first, then disk and memory), M04-O02: The capture order runs from the most remote record to the
+    most volatile: platform records, network records, then disk and memory; a screenshot, an approval wait and
+    disk-only all lose evidence. Q3 B (Attacker with account control), M04-O01: Evidence stored in the account
+    under investigation can be altered or deleted by whoever holds the account; encryption, storage quota and
+    an hourly deletion policy are not the risk. Q4 A (Capture before or during replacement), M04-O03:
+    Autoscaling removes the option of capturing later; the replacement pod holds no evidence, going offline
+    loses everything, and deleting the cluster destroys the estate. Q5 C (Memory shows what runs), M04-O01:
+    Memory holds running processes and live network connections that a disk snapshot cannot show; size, cost
+    and content claims about memory images are wrong.'
+- module: 5
+  notes: 'Q1 D (Versioned and tested), M05-O01: Declarations are versioned and testable, so a rebuild matches
+    the intended state; they do not remove the need for backups, and hand-built copies are neither current nor
+    tested. Q2 A (Newest backup before the corruption began), M05-O02: Restore points must predate the damage,
+    not the detection; the most recent backup may hold corrupted data, and post-detection backups hold it too.
+    Q3 B (The database), M05-O03: Both other services depend on it, so recovering it first unblocks the rest;
+    urgency and simultaneous recovery do not change the dependency order. Q4 C (Verify against baseline),
+    M05-O01: Answering requests is not recovered; each service is compared with its known-good baseline before
+    the incident closes. Q5 B (Restore what is verified, report the rest), M05-O03: The defensible decision
+    restores verified components now and states honestly what verification is outstanding; skipping checks,
+    declaring success unverified and refusing to start are all indefensible.'
+- module: 6
+  notes: 'Q1 B (Over-privilege), M06-O01: The root cause is that the identity held far more permission than its
+    role needed - that is what turned a leaked key into severe damage; key length, adversary skill and log
+    readability are not causes of the impact. Q2 D (Anomaly detection on key use), M06-O02: A detection that
+    alerts when a key touches resources it never used before addresses the undetected misuse directly; storage,
+    password length and removing logging do not. Q3 C (Re-run the audit), M06-O02: Claims are proven by
+    re-running the audit and comparing the identity''s permissions to its role; a closure note, a verbal
+    confirmation and a scheduled review prove nothing. Q4 A (Verifiable change), M06-O03: Only item A names a
+    change and how to verify it (the audit report); sentiment, intentions and platform comparisons cannot be
+    checked. Q5 D (Update the plan, exercise the detections), M06-O03: Incident data improves the next response
+    through plan updates and exercised detections; deleting the record, leaving the plan unchanged and hiding
+    the findings all discard the lesson.'
+lab_setup:
+- module: 1
+  setup: Revert the cloud-security range to its baseline. Confirm jump01 reaches cloud-siem01 and prowler01.
+    Check the cloud-siem01 dashboards show incident records and the prowler01 audit report lists its findings
+    (including the world-readable public-assets bucket and the over-privileged dev-deploy identity on
+    localstack01). Open the prowler01 report in a browser tab on jump01 before the module starts.
+- module: 2
+  setup: Revert the range. Confirm k3s-worker02 runs the crypto-miner-sim pod with unexpected outbound
+    traffic and the exposed-dashboard pod, and that jump01 can reach k3s-worker02
+    and k3s-master. (web-app sits on k3s-worker01 and is itself vulnerable, so it is not part of this
+    baseline check.) Confirm k3s-master accepts network policy manifests from the student's session.
+- module: 3
+  setup: Revert the range. Confirm localstack01 has the IAM users and policies as seeded - admin, dev-deploy
+    with a policy granting far more than its deploy role needs (including iam:*), and the lambda-exec identity.
+    Confirm cloud-siem01 holds account log events showing what the over-privileged identity touched and when.
+- module: 4
+  setup: Revert the range. Confirm the suspect workload on k3s-worker02 is running, cloud-siem01 holds the
+    platform and network records for it, and jump01 has write access to storage outside the workload for the
+    state capture (a mounted export directory is enough).
+- module: 5
+  setup: Revert the range. Confirm argocd01 shows the declared workloads (web-app among them) and at least one
+    workload missing from the declarations, localstack01 holds the company-backups bucket with a restore point
+    newer than the seeded corruption time, and k3s-master accepts redeployments through the student's session.
+- module: 6
+  setup: Revert the range, then confirm the module 3 containment actually holds on the reverted estate - the
+    prowler01 audit still flags the over-privileged identity, cloud-siem01 has no detection for the key misuse
+    pattern, and localstack01 still shows the original wide policy - so students confirm the difference their
+    remediation design promises against this baseline.
+common_faults:
+- module: 1
+  fault: Students mark every finding a customer duty because the range is 'their' estate, or the reverse -
+    everything a provider duty because it is a cloud platform.
+  remedy: Take one finding (the world-readable public-assets bucket) and walk the boundary - the provider
+    secures the storage service itself, the customer owns the bucket's ACL. Then have the student apply the
+    same question to each remaining finding alone.
+- module: 1
+  fault: Students declare an incident for every finding, or none, without an activation reason.
+  remedy: Point at the module's activation trigger - correlated evidence on one identity in a short window -
+    and have each student write the one-sentence reason before the marking, not after.
+- module: 2
+  fault: Students terminate the suspect pod first and only then think about evidence.
+  remedy: Ask what the investigation would lose (the pod's running state, memory and live connections) and
+    have them re-run the decision with the isolate/snapshot/terminate options in order.
+- module: 2
+  fault: The network policy is written to deny only egress, leaving the pod able to receive connections.
+  remedy: Have the student test both directions from the pod after applying the policy and record what still
+    connects before declaring isolation done.
+- module: 3
+  fault: Students rotate the key first and never invalidate live sessions, then declare containment complete.
+  remedy: Have them check in the logs what the identity could still do with a pre-existing token and add
+    invalidation to the ranked order with what remains exposed after each step.
+- module: 3
+  fault: The blast radius is quoted from the policy document instead of what the logs show the identity
+    actually touched.
+  remedy: Compare the policy's granted permissions against the logged activity side by side and ask which
+    granted permission was never used - that gap is the over-privilege finding.
+- module: 4
+  fault: Students capture the workload state first and export the platform records later, or never.
+  remedy: Remind them the platform records are the only copy of what the workload did once it is gone; the
+    lab's Pass criterion requires exports before state capture, so have them restart the capture in order.
+- module: 4
+  fault: Volatile and persistent artefacts are marked by size or location instead of by what destroys them.
+  remedy: For each artefact ask one question - 'what platform action deletes this?' - and accept a volatile
+    marking only when the destroyer is named.
+- module: 5
+  fault: Students pick the most recent restore point without checking when the corruption began.
+  remedy: Put the corruption start time next to the restore point times on the board and have them state, per
+    candidate, whether the backup predates the damage.
+- module: 5
+  fault: Recovery is declared complete as soon as the workloads answer requests.
+  remedy: Point at the baseline comparison step - answering is not recovered. Have them mark verified or not
+    verified per workload with the comparison shown before the Pass is granted.
+- module: 6
+  fault: Lessons-learned items are written as sentiments ('we will monitor better') with no verifiable change.
+  remedy: Hold each item to three parts - what happened, what changed, how the change is verified on this
+    range - and have the student name the exact check (a re-run audit, a detection name on cloud-siem01) that
+    proves the change.
+- module: 6
+  fault: Students accept the remediation claim from the module 3 exercise without re-testing.
+  remedy: Have them run the prowler01 audit and record the identity's current grants before writing any
+    lessons-learned item; the re-test is the module's first Pass criterion.

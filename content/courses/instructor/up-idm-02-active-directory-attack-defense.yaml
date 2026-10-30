@@ -1,0 +1,175 @@
+course_code: C508
+audience: staff_only
+overview: 'Active Directory Attack and Defence is a self-paced upskilling course of six 50-minute modules (300
+  minutes, 5 hours) run entirely on the red-team range. Each module follows the same split: 10 minutes teaching
+  the objectives, 30 minutes on the range lab, and 10 minutes for the five-item quiz passed at 70 percent. The
+  Student works alone throughout: collecting the domain with read-only graph tooling on a-kali01, judging the
+  Kerberos and delegation exposures the collection reveals, auditing tiered administration, and reading
+  t-dc01''s security event log for signs of abuse. Say ''Student'' throughout and keep every description
+  defensive and observable; no offensive tooling is taught, only what an analyst collects, decides and detects.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 teach (identity surface of a domain), 30 lab (inventory the domain''s privileged groups, accounts
+    and local administrator membership from a-kali01), 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '10 teach (attack path graphs), 30 lab (query the graph for kerberoastable accounts, delegation,
+    sessions; trace and rank paths to Domain Admins), 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '10 teach (the Kerberos exchange), 30 lab (record password ages, pre-authentication gaps, delegation
+    settings and one ticket request''s log evidence), 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '10 teach (the tier model), 30 lab (audit privileged groups, workstation local administrators and
+    privileged sessions; assign tiers and sign-in restrictions), 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '10 teach (domain controller event channels), 30 lab (baseline the security log on t-dc01, separate
+    routine ticket traffic from abuse, write a rule statement), 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '10 teach (verified remediation), 30 lab (refresh the collection, compare against the module baseline,
+    rank open paths and write the review report), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 A (Directory), M1-O01: The domain controller decides identity and access for the whole domain;
+    file shares, the website and the OS build are not identity decisions. Q2 B (Inheritance), M1-O02: Group
+    nesting is transitive - membership of the inner group grants the outer group''s rights; re-sign-in is not
+    needed and the inner rights alone understate it. Q3 D (Service account), M1-O03: An account running an
+    application with rights on every server is a service account with broad reach; local and standard
+    workstation accounts cannot hold domain-wide rights. Q4 B (Local scope), M1-O02: Local Administrators
+    membership grants rights on that one workstation only; it is not Domain Admins and not domain-joined wide.
+    Q5 C (Domain controller), M1-O01: Privilege paths converge on the directory; the Wi-Fi, website and
+    database do not decide identity.'
+- module: 2
+  notes: 'Q1 C (Graph tooling), M2-O01: Attack path analysis is graph work - nodes, edges, shortest paths; a
+    scanner lists vulnerabilities and a configuration database does not compute paths. Q2 A (Read-only), M2-O01:
+    Collection must change nothing in a production directory; admin credentials, write access and schemas are
+    not collector properties. Q3 B (Session placement), M2-O02: The path''s weak edge is the privileged sign-in
+    on an ordinary workstation; traffic encryption, a second firewall and password expiry do not break it.
+    Q4 D (Least effort), M2-O03: Ranking favours reach, privilege gained and effort - one hop plus a delegated
+    host beats four hops; alphabetical order, host count and query age are not criteria. Q5 C (Long-lived
+    password), M2-O02: An unchanged password gives an attacker unlimited offline time against ticket material;
+    log appearance, blocking and disablement are not the mechanism.'
+- module: 3
+  notes: 'Q1 D (Offline work), M3-O01: An SPN lets anyone request a service ticket; with a two-year-old
+    password the ticket can be taken offline and worked without lockout or noise. Q2 C (AS-REP material),
+    M3-O03: Without pre-authentication an unauthenticated request yields ticket material for offline work;
+    spraying, group changes and SMB relay are different paths. Q3 A (Credential forwarding), M3-O02:
+    Unconstrained delegation accepts forwarded credentials from any connecting account - that is the standing
+    trust; the other options describe nothing delegation does. Q4 D (Long random password), M3-O03: Offline
+    work against ticket material is beaten by a password no dictionary reaches; renaming, OU moves and
+    interactive rights change nothing about crackability. Q5 B (Resource decides), M3-O02: Resource-based
+    delegation is configured by the resource, so only named accounts may act for others there; it stays visible
+    in the directory and Kerberos keeps working.'
+- module: 4
+  notes: 'Q1 B (Separate accounts), M4-O01: The tier model separates daily work from administration with a
+    dedicated administrative account; shared accounts, night disabling and a ''database tier'' do not implement
+    the model. Q2 D (Credential theft), M4-O03: A Tier 0 sign-in on a workstation leaves the highest-value
+    credentials exposed to that host''s compromise; logging, compatibility and lockout are not the reason.
+    Q3 A (Just in time), M4-O02: Elevation granted for approved tasks and revoked removes standing rights;
+    password resets, Domain Admins and rebuilds leave standing privilege. Q4 D (Unauthorised grant), M4-O02:
+    An account off the approved list is an unauthorised privilege grant to investigate - not drift, a licence
+    error or a false positive to suppress. Q5 A (Domain trust), M4-O01: A CA issuing domain authentication
+    certificates is Tier 0 because compromise lets accounts be trusted across the domain; co-location, OS build
+    and log size are not trust reasons.'
+- module: 5
+  notes: 'Q1 A (Security log), M5-O01: Ticket requests land as security events on the domain controller;
+    firewall, web and database logs do not record Kerberos ticket issuance. Q2 B (Anomalous burst), M5-O02:
+    Forty requests in an hour from one host against a two-per-hour baseline is an indicator worth
+    investigating; it proves neither deletion nor load balancing. Q3 D (Condition, threshold, exception),
+    M5-O03: Only that line states what to watch (one account), how much (ten hourly requests) and what is
+    excluded (the scanner); the others lack at least two of the three parts. Q4 B (Failure burst then
+    success), M5-O02: The overnight failure burst followed by a success from the same unfamiliar host is the
+    correlation that matters; total volume and host account counts dilute it. Q5 A (Account, host, times),
+    M5-O03: The handoff leads with the affected account, requesting host and observed times - facts a responder
+    can act on; reinstalls, opinions and deletion requests are not evidence.'
+- module: 6
+  notes: 'Q1 A (Fresh scan), M6-O01: Only a re-scan verifies a path is closed; signatures, emails and ticket
+    counts are assumed remediation, not tested remediation. Q2 D (Privilege with modest effort), M6-O02: A
+    remaining path is prioritised by what it still reaches and at what cost; age, server vintage and tool
+    novelty are not priority criteria. Q3 B (Privilege creep), M6-O01: The review exists to catch privilege
+    creep reopening closed paths; password expiry, printers and licence cost are not attack path state.
+    Q4 A (Finding, evidence, control), M6-O03: A markable finding names the path, the evidence and the control;
+    feelings, ''monitor more closely'' and ''several were considered'' cannot be marked. Q5 C (Change process),
+    M6-O02: A path reappearing with a new account means the change process granted standing privilege again;
+    tool updates, reboots and firewall rules do not create directory edges.'
+lab_setup:
+- module: 1
+  setup: Revert the red-team range to its baseline template. Confirm a-kali01 reaches t-dc01 over LDAP and that
+    the graph tool on a-kali01 collects the target domain read-only. Record the baseline user, group and
+    computer counts for later comparison in module 6.
+- module: 2
+  setup: Revert the red-team range. Confirm the module 1 collection is complete on a-kali01 and that the
+    baseline contains one kerberoastable service account and one account without Kerberos pre-authentication
+    on t-dc01. Verify the shortest-path query against the Domain Admins group returns within the lab time.
+- module: 3
+  setup: Revert the red-team range. Confirm a-kali01 can request service tickets against t-dc01 and that the
+    security event log on t-dc01 records the request. Check the baseline service account's password age is set
+    so the offline-work finding is demonstrable, and that t-dc01 holds the delegation settings to be recorded.
+- module: 4
+  setup: Revert the red-team range. Confirm t-ws01 carries its baseline domain_admin user profile and cached
+    credentials, and that t-ws01 and t-ws02 hold the local Administrators membership the graph reports. Have
+    the tier definitions (0, 1, 2) visible for the audit.
+- module: 5
+  setup: Revert the red-team range. Generate the baseline ticket-request traffic on t-dc01 and record the
+    baseline volume per service account for the lab's comparison. Confirm t-ws01 generates the anomalous
+    request burst in the log and that the security event log retains the module's window of events.
+- module: 6
+  setup: Revert the red-team range. Carry the module 1 and 2 baseline counts (users, groups, sessions,
+    kerberoastable accounts, delegation settings) into the lab materials so differences can be recorded.
+    Confirm the earlier findings are reproducible before the Student's re-scan.
+common_faults:
+- module: 1
+  fault: The Student records the range's default graph view instead of the privileged groups the graph ranks,
+    and misses nested groups.
+  remedy: Have them expand each top-ranked group's members in the graph before recording counts, and mark every
+    member that inherits rights from a nested group.
+- module: 1
+  fault: Local administrator members are listed without their domain or local origin, so the pass criterion is
+    unmet.
+  remedy: Show one domain member and one local member side by side in the graph, then have the Student state
+    the origin and reason for each before moving on.
+- module: 2
+  fault: The Student treats the graph collection as reconnaissance to repeat manually and re-runs it write-
+    enabled against the production domain.
+  remedy: Re-point them at the read-only flag and the module 2 objective; collection must change nothing in
+    the directory.
+- module: 2
+  fault: Paths are ranked by hop count alone, ignoring privilege gained and effort.
+  remedy: Rank the module's two paths on the board against all three criteria from the objective (reach,
+    privilege gained, effort) before the Student finalises their own ranking.
+- module: 3
+  fault: The Student requests tickets for every service account at once, drowning the log evidence the lab
+    asks for.
+  remedy: Enforce the lab's 'one service ticket request' wording; one request leaves one event the Student can
+    cite.
+- module: 3
+  fault: Delegation settings are recorded without their owning account or host, so they cannot be classified.
+  remedy: Have each finding written as 'setting - owner' pairs; a delegation setting without an owner is not
+    evidence.
+- module: 4
+  fault: The Student assigns tiers by job title instead of by what the account can reach.
+  remedy: Ask 'what does this account sign in to?' for each account; tier follows reach, not title.
+- module: 4
+  fault: The host check on t-ws01 is skipped and the graph answer is trusted without the direct comparison.
+  remedy: Point at the lab step on t-ws01; the point is to see whether the host matches the graph at all.
+- module: 5
+  fault: The Student flags every ticket request above the baseline as abuse without reading field values.
+  remedy: Require the field values that decided each classification; no routine event is marked as abuse
+    without a stated reason.
+- module: 5
+  fault: The rule statement names a condition but no threshold or exception, and would fire on routine traffic.
+  remedy: Walk the module 5 quiz example (account, ten hourly requests, approved scanner) and have them state
+    all three parts before writing their own.
+- module: 6
+  fault: The Student trusts the earlier finding is fixed without re-running the queries, and marks it closed
+    from memory.
+  remedy: Require the graph evidence next to each closed or open mark; no mark without the query result that
+    decided it.
+- module: 6
+  fault: The review report names findings without a control or an owner, so nothing is actionable.
+  remedy: Use the report format from the objective - finding, evidence, control, owner - and check each open
+    finding has all four.

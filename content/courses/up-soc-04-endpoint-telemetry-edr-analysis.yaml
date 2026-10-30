@@ -1,0 +1,551 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C522
+title: Endpoint Telemetry & EDR Analysis
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C519
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Analyst (PR-CDA-001), Cyber Defense Forensics Analyst (IN-FOR-002).'
+  - 'NIST CSF 2.0: DE.CM, DE.AE.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Process Telemetry
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the fields of a process creation event that show what ran, when and on whose behalf
+  - Distinguish endpoint-observed facts from values the running process reports about itself
+  - Select the telemetry source that answers a stated question about a process on an endpoint
+  topics:
+  - 'The process creation event: image path, command line, parent process, account and process identifier.'
+  - Command-line auditing and why many endpoints do not record it by default.
+  - System-reported fields versus process-reported fields in endpoint telemetry.
+  - Matching an investigative question to the telemetry source that can answer it.
+  lab: >-
+    Lab: On the soc-training range, collect process telemetry for one workstation through the
+    Velociraptor server and separate endpoint-observed facts from values the running process reports
+    about itself. Evidence: the number of endpoint clients that have checked in; each process name on
+    v-ws01 with its process identifier and parent process identifier; the full command line of the
+    browser process; the new entry that appears after starting a plain text editor; one field marked
+    system-observed or process-reported with a one-sentence reason. Pass: all collections recorded
+    exactly as the console shows them; every recorded field classified with a reason; one investigative
+    question stated that this telemetry cannot answer.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, velociraptor01]
+      action: Log on to jump01 over SSH, open the Velociraptor console on velociraptor01 and record how many endpoint
+        clients have checked in.
+    - hosts: [velociraptor01, v-ws01]
+      action: Select the client for v-ws01, run a process listing collection and record each process name with its
+        process identifier and parent process identifier.
+    - hosts: [velociraptor01, v-ws01]
+      action: Enable command-line collection for v-ws01, rerun the process listing and record the full command line of
+        the browser process.
+    - hosts: [v-ws01, velociraptor01]
+      action: On v-ws01, start a plain text editor, then rerun the process listing from the console on velociraptor01
+        and record the new entry with its parent.
+    - hosts: [jump01]
+      action: Mark each recorded field system-observed or process-reported with one sentence of reason, and write one
+        investigative question this telemetry cannot answer.
+  refs:
+  - nist-sp-800-92
+  - mitre-attack
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: An endpoint records every process image path and parent, but its process creation events show an empty
+        command line. What does this indicate?
+      options:
+      - A) The endpoint has no process telemetry enabled at all
+      - B) Command-line auditing is not enabled for process creation events
+      - C) The processes were launched by the operating system kernel directly
+      - D) The events were collected before the endpoint joined the fleet
+      answer: B
+    - question: A process creation event names one parent, while the properties of the running process today name a
+        different parent that exited long ago. Which explanation is correct?
+      options:
+      - A) The creation event was written late, so it missed the true parent
+      - B) The running process re-registered itself with a new process identifier
+      - C) The event kept the launch parent, while the surviving process re-parents
+      - D) Both fields are wrong because the system reuses process identifiers frequently
+      answer: C
+    - question: A team needs to know which account launched a background process on a workstation. Which telemetry
+        field answers this directly?
+      options:
+      - A) The account field in the process creation event
+      - B) The process identifier reused from an earlier process
+      - C) The name of the file the process last wrote
+      - D) The network connections the process currently holds
+      answer: A
+    - question: A signed system utility appears in telemetry with a command line naming a script in an account
+        directory. Which field could the running process have supplied?
+      options:
+      - A) The image path of the utility
+      - B) The timestamp of the event
+      - C) The process identifier of the parent process
+      - D) The command line attached to the launch
+      answer: D
+    - question: Two unrelated process creation events on one workstation cite the same process identifier hours apart.
+        What is the most likely explanation?
+      options:
+      - A) One process ran twice under the same account
+      - B) The operating system reused the identifier after the first process exited
+      - C) The telemetry pipeline duplicated a single event
+      - D) The workstation clock jumped between the events
+      answer: B
+- ordinal: 2
+  title: File and Registry Telemetry
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the file and registry events an endpoint records when a program persists itself
+  - Distinguish file artefacts from registry values as evidence of persistence on a host
+  - Map recorded file and registry events to the intrusion stage they could evidence
+  topics:
+  - File creation, modification and deletion events and the blind spots between them.
+  - Registry run keys and service registration as persistence telemetry.
+  - Temporary directories and staged files written by script interpreters.
+  - Matching file and registry events to earlier stages of an intrusion.
+  lab: >-
+    Lab: On the soc-training range, collect file and registry telemetry from one workstation through
+    the Velociraptor server and judge which artefacts could evidence persistence. Evidence: the registry
+    run key values from v-ws01; the newest files in each account directory with their write times; the
+    scheduled tasks and registered services on the host; each artefact marked persistence evidence,
+    staging evidence or benign with a one-sentence reason; the single artefact a responder should collect
+    first. Pass: all three collections recorded; every artefact classified with a reason; the first
+    artefact for response named with a justification.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, velociraptor01]
+      action: Log on to jump01 over SSH, open the Velociraptor console on velociraptor01 and wait for the workstation
+        clients to show as online before collecting anything.
+    - hosts: [velociraptor01, v-ws01]
+      action: Collect the registry run key values from v-ws01 and record every value name with its data.
+    - hosts: [velociraptor01, v-ws01]
+      action: Collect the newest files in each account directory on v-ws01 and record each file name with its write
+        time.
+    - hosts: [velociraptor01, v-ws01]
+      action: From the console on velociraptor01, collect the scheduled tasks and registered services from v-ws01 and
+        record each entry that runs a program from an account-writable path.
+    - hosts: [jump01]
+      action: Mark each recorded artefact with a one-sentence reason, and name the artefact a responder should collect
+        first and why.
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-86
+  - mitre-attack
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: An endpoint was rebooted and a program started again without anyone signing in. Which telemetry most
+        directly explains the automatic start?
+      options:
+      - A) A file modification event in a temporary directory
+      - B) A process creation event with a fresh process identifier
+      - C) A registry run key value that names the program
+      - D) A network connection logged after the reboot
+      answer: C
+    - question: A program writes a file, runs it and deletes it within the same minute. Which record proves the file
+        existed?
+      options:
+      - A) The current directory listing of the folder
+      - B) The running process list from the host
+      - C) The registry run key the program created
+      - D) The file creation and deletion events in endpoint telemetry
+      answer: D
+    - question: A server holds a service registered to run a program from an account-writable directory. Why does
+        this matter more than a run key change in an account hive?
+      options:
+      - A) Services start faster than run key programs
+      - B) A service can start without any sign-in, so it persists across reboots
+      - C) Run keys are encrypted and cannot be read
+      - D) The registry does not record service registrations
+      answer: B
+    - question: A script interpreter writes several files into a temporary directory over ten minutes and then launches
+        one of them. What does the file telemetry suggest?
+      options:
+      - A) The directory was used as a staging area before the launch
+      - B) The interpreter was performing a routine self-update
+      - C) The files were copied there by a backup job
+      - D) The launch failed because the files were incomplete
+      answer: A
+    - question: A document was written minutes before a registry run key changed to reference a new program. Which
+        intrusion stage does the run key change evidence?
+      options:
+      - A) Initial access
+      - B) Data theft
+      - C) Persistence
+      - D) Credential access
+      answer: C
+- ordinal: 3
+  title: Velociraptor Hunts
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Plan a Velociraptor hunt that collects one artefact from every enrolled endpoint
+  - Run a hunt across the client fleet and interpret the results it collected
+  - Judge whether a hunt covers the fleet completely before drawing a conclusion from it
+  topics:
+  - Clients, artefacts and the Velociraptor collection model.
+  - Scheduled hunts versus one-off collections, and when each fits an investigation.
+  - Reading hunt results as rows, columns and completeness.
+  - Hunt cost, endpoint load and scheduling windows.
+  lab: >-
+    Lab: On the soc-training range, plan and run a Velociraptor hunt across the workstation fleet from
+    velociraptor01 and judge whether its coverage supports a fleet-wide conclusion. Evidence: the hunt
+    definition with the artefact chosen and its parameters; the number of clients scheduled, completed
+    and failed; the process names found on more than one workstation; a written statement of whether the
+    coverage is complete. Pass: the hunt definition and the client counts recorded; repeated findings
+    listed with a count each; the completeness judgement written with one sentence naming any client
+    that did not report.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, velociraptor01]
+      action: Log on to jump01 over SSH, open the Velociraptor console on velociraptor01 and record the total number
+        of enrolled clients.
+    - hosts: [velociraptor01]
+      action: Create a hunt that runs the process listing artefact against every client and record the artefact name
+        and its parameters.
+    - hosts: [velociraptor01, v-ws01, v-ws02, v-ws03, v-ws04]
+      action: Launch the hunt against the workstation fleet (v-ws01, v-ws02, v-ws03 and v-ws04), wait for it to
+        complete and record how many clients completed and how many failed.
+    - hosts: [velociraptor01]
+      action: Read the hunt results and record the process names that appear on more than one workstation with a count
+        for each.
+    - hosts: [jump01]
+      action: Write whether the coverage supports a fleet-wide conclusion, with one sentence naming any client that
+        did not report.
+  refs:
+  - mitre-attack
+  - nist-sp-800-92
+  source_gaps:
+  - 'the Velociraptor documentation is not in the reference library.'
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: An analyst needs the same process listing from every endpoint in an office, collected in one action.
+        Which Velociraptor mechanism does this?
+      options:
+      - A) A hunt scheduled against all enrolled clients
+      - B) One client-by-client remote shell session on each endpoint
+      - C) A local copy of the tool run on the server
+      - D) A daily export from the monitoring sensor
+      answer: A
+    - question: A hunt has finished with 40 of 50 clients reporting. What must the analyst record before drawing a
+        fleet-wide conclusion?
+      options:
+      - A) The average collection time per client
+      - B) The ten clients that did not report and why
+      - C) The total size of the data the hunt collected
+      - D) The version of every process found
+      answer: B
+    - question: A memory-hungry collection is scheduled on every workstation in the middle of the working day. What
+        is the most likely operational consequence?
+      options:
+      - A) The Velociraptor server runs out of licences
+      - B) The endpoint events are lost permanently
+      - C) The hunt results arrive faster than expected
+      - D) Noticeable slowdown on the endpoints while people are working
+      answer: D
+    - question: The same artefact is collected every night across the fleet without an analyst launching anything.
+        Which choice fits this requirement?
+      options:
+      - A) A one-off hunt started by the duty analyst each evening
+      - B) A manual collection on each client every Monday
+      - C) A scheduled hunt that launches automatically each night
+      - D) Storing the artefact definition in the case folder
+      answer: C
+    - question: A hunt for one specific process name returns that process on three of sixty workstations. What is the
+        best first interpretation?
+      options:
+      - A) The three workstations share something worth comparing next
+      - B) The other fifty-seven clients failed to report
+      - C) The process name is misspelled in the artefact
+      - D) The hunt should be widened to the server fleet
+      answer: A
+- ordinal: 4
+  title: Parent-Child Process Anomalies
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Trace a parent-child chain from collected telemetry and identify each legitimate parent
+  - Classify parent-child relationships that contradict the baseline for the role of the host
+  - Rank anomalous process chains by how far they depart from the recorded baseline
+  topics:
+  - Normal parent-child chains for workstation and server roles.
+  - Orphaned processes and re-parenting after a parent exits.
+  - Office applications and script interpreters appearing as parents of system tools.
+  - Building and using a per-host process baseline.
+  lab: >-
+    Lab: On the soc-training range, trace parent-child chains on two workstations through the Velociraptor
+    server and rank the chains that contradict the recorded baseline. Evidence: the full chain from each
+    suspicious leaf process back to its root, collected from velociraptor01; the baseline chain for the
+    same program on the untouched workstation; each chain marked matches baseline or anomalous with a
+    one-sentence reason; the anomalous chains ranked from most to least concerning. Pass: both chains
+    recorded in full from leaf to root; every mark justified with a reason; the ranking ordered with a
+    reason for each position.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, velociraptor01]
+      action: Log on to jump01 over SSH, open the Velociraptor console on velociraptor01 and wait for the workstation
+        clients to show as online before collecting any process chains.
+    - hosts: [velociraptor01, v-ws02]
+      action: Collect the process listing with parent identifiers from v-ws02 and record the chain behind the command
+        interpreter that runs under the spreadsheet application.
+    - hosts: [velociraptor01, v-ws01]
+      action: Collect the same listing from v-ws01 and record the parent chain of its spreadsheet application as the
+        baseline.
+    - hosts: [velociraptor01, v-dc01]
+      action: Collect the process listing from the domain controller v-dc01 and record any chain whose leaf is a command
+        interpreter, noting its parent.
+    - hosts: [jump01]
+      action: Mark each recorded chain matches baseline or anomalous with one sentence of reason, and rank the anomalous
+        chains from most to least concerning.
+  refs:
+  - mitre-attack
+  - sigma
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A process creation event ties a tool to its launching script, but the live system now shows the tool
+        under a system parent. What happened?
+      options:
+      - A) The tool was launched twice by different parents
+      - B) The event recorder attached the wrong identifier
+      - C) The tool restarted itself under a new name
+      - D) The original parent exited and the system re-parented the surviving tool
+      answer: D
+    - question: A compiler launching a command interpreter is normal on a build server. The same relationship appears
+        once on a finance workstation. What should the analyst consult first?
+      options:
+      - A) The per-host baseline for the role of the workstation
+      - B) The vendor documentation for the compiler and its usual children
+      - C) The network firewall logs for that day
+      - D) The antivirus quarantine history on the host
+      answer: A
+    - question: A duty analyst reviews the process chains of one standard office workstation. Which parent-child
+        pair most deserves escalation?
+      options:
+      - A) The explorer shell launching the web browser at sign-in
+      - B) The update service launching its own updater during a scan
+      - C) The spreadsheet application launching a script interpreter
+      - D) The print spooler launching the print monitor during a large job
+      answer: C
+    - question: A long-running background process has no living parent; its recorded parent identifier belongs to a
+        process that exited hours ago. How is this best described?
+      options:
+      - A) A kernel thread with no parent
+      - B) An orphaned process that outlived its parent
+      - C) A duplicated record from two collections
+      - D) A service that replaced its parent intentionally
+      answer: B
+    - question: 'Two anomalies are reported: a text editor that launched a calculator, and a spreadsheet application
+        that launched a scripting host which then opened a network connection. Which ranking is right?'
+      options:
+      - A) The editor pair, because text editors hold no legitimate calculator use
+      - B) Both pairs equally, because each chain contains two unrelated programs
+      - C) Neither pair, because both pairs could still be harmless experiments
+      - D) The spreadsheet chain, because it adds an interpreter and network reach
+      answer: D
+- ordinal: 5
+  title: Script and LOLBin Detection
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Define a living-off-the-land binary and identify what its telemetry looks like on an endpoint
+  - Distinguish administrative interpreter use from interpreter use that warrants investigation
+  - Draft a detection idea that flags risky interpreter launches without disabling administration
+  topics:
+  - Living-off-the-land binaries and why signed tools pass allow-listing.
+  - Script interpreters and the process, file and network telemetry they leave.
+  - Context that separates administrative interpreter use from investigation-worthy use.
+  - Detection ideas that target risky interpreter launches without blocking administration.
+  lab: >-
+    Lab: On the soc-training range, hunt script interpreter launches across the workstation fleet through
+    the Velociraptor server and separate administrative use from use that warrants investigation. Evidence:
+    every interpreter launch with its parent process and command line; the launches that also wrote files
+    or opened network connections; each launch marked administrative or investigate with a one-sentence
+    reason; one detection idea written as a condition on the parent, the interpreter and the follow-on
+    activity. Pass: all launches listed with their context; every mark justified with a reason; the
+    detection idea testable against the recorded telemetry.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, velociraptor01]
+      action: Log on to jump01 over SSH, open the Velociraptor console on velociraptor01 and wait for the workstation
+        clients to show as online before running any hunt.
+    - hosts: [velociraptor01, v-ws01, v-ws02, v-ws03, v-ws04]
+      action: Run a hunt across the workstation fleet (v-ws01, v-ws02, v-ws03 and v-ws04) for script interpreter
+        launches and record each launch with its parent process and command line.
+    - hosts: [velociraptor01, v-ws03]
+      action: For workstation v-ws03, collect the file writes and network connections that followed each interpreter
+        launch and record them beside the launch.
+    - hosts: [velociraptor01]
+      action: Rerun the same hunt on the server fleet and record whether any interpreter launch appears there.
+    - hosts: [jump01]
+      action: Mark each launch administrative or investigate with a one-sentence reason, and write one detection idea
+        as a condition on the parent, the interpreter and the follow-on activity.
+  refs:
+  - nist-sp-800-83r1
+  - mitre-attack
+  - sigma
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A signed operating system utility makes an outbound network connection to an unknown address. Why is
+        this pattern worth an alert even though the binary is signed?
+      options:
+      - A) Signed binaries never make outbound connections legitimately
+      - B) Living-off-the-land binaries are trusted tools used in untrusted ways
+      - C) The signature only covers the name of the file publisher
+      - D) Operating system utilities cannot be monitored by an endpoint agent or sensor
+      answer: B
+    - question: Two identical interpreter launches appear in one hour, one after a helpdesk ticket and the other
+        after a document opened from an e-mail attachment. Which context separates them for triage?
+      options:
+      - A) The length of each command line
+      - B) The process identifier each launch received
+      - C) The time each launch appears in the telemetry
+      - D) The parent process that led to each launch
+      answer: D
+    - question: A detection alerting on every interpreter launch floods the queue because administrators use interpreters
+        daily. Which change keeps the detection useful?
+      options:
+      - A) Alert when the parent is an office application or files are written
+      - B) Remove the detection and rely on the antivirus product alone
+      - C) Alert only outside normal business hours, when administrators are away
+      - D) Raise the alert threshold until the daily noise from administrators stops
+      answer: A
+    - question: An allow-list policy permits every signed operating system binary. What blind spot does this create?
+      options:
+      - A) Unsigned tools cannot run at all on the endpoint
+      - B) The policy blocks all script interpreters by default
+      - C) Trusted binaries can carry out adversary actions without tripping the list
+      - D) The endpoint stops recording process creation events
+      answer: C
+    - question: An interpreter runs for two minutes, writes three files in a temporary directory and exits. Which
+        telemetry set reconstructs what it did?
+      options:
+      - A) The network firewall logs alone
+      - B) Process, file-write and network telemetry from the endpoint
+      - C) The registry run keys from the host
+      - D) The antivirus scan history for the directory and its parent folder
+      answer: B
+- ordinal: 6
+  title: EDR Alert Triage Lab
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Triage endpoint alerts into true positive, false positive and needs-more-evidence verdicts
+  - Assemble the process, file and network telemetry that supports or refutes an alert
+  - Write a triage record that states the finding, the evidence and the next action
+  topics:
+  - 'The alert triage workflow: enrich, gather telemetry, decide, document.'
+  - Verdict categories and the action each one commits the team to take.
+  - Corroborating an endpoint alert with process, file and network telemetry.
+  - 'The triage record: finding, evidence, verdict and next action.'
+  lab: >-
+    Lab: On the soc-training range, triage a set of endpoint alerts raised against the workstations using
+    the Velociraptor server on velociraptor01. Evidence: each alert with the telemetry collected against
+    it; each alert marked true positive, false positive or needs more evidence with a one-sentence reason;
+    a triage record for one true positive stating the finding, the evidence and the next action. Pass:
+    every alert marked with a reason; supporting telemetry named for each alert; the triage record complete
+    for one true positive.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, velociraptor01]
+      action: Log on to jump01 over SSH, open the Velociraptor console on velociraptor01 and record the alert identifiers
+        the instructor assigned.
+    - hosts: [velociraptor01, v-ws04]
+      action: For the alert on v-ws04, collect the process listing with command lines and record the process the alert
+        names.
+    - hosts: [velociraptor01, v-ws04, v-dc01]
+      action: Collect the network connections from v-ws04 and the authentication events on v-dc01 for the same time
+        window, and record both.
+    - hosts: [velociraptor01, v-ws01]
+      action: Run the same collections for the alert on v-ws01 and record how its telemetry differs from the first
+        alert.
+    - hosts: [jump01]
+      action: 'Mark each alert with a one-sentence reason, and write the triage record for the true positive: finding,
+        evidence, next action.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-86
+  - mitre-attack
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: An alert names a process that the change record shows was installed by the IT team that morning. What
+        is the correct triage verdict?
+      options:
+      - A) False positive, because the process should not exist
+      - B) A benign true positive, with a tuning request to the detection owner
+      - C) Needs more evidence, until IT confirms the change record
+      - D) A false negative, because the alert caused no harm
+      answer: B
+    - question: An alert says a workstation ran a script interpreter that opened a connection to an external address.
+        Which additional telemetry best corroborates or refutes it?
+      options:
+      - A) The process chain, file writes and connection record from the same window
+      - B) The purchase record, warranty status and service age of the affected workstation
+      - C) A successful sign-in on the host from a week before the alert
+      - D) The version number and the author of the matching detection rule
+      answer: A
+    - question: An alert names a suspicious parent-child pair, but the endpoint stopped reporting before collection.
+        What is the correct verdict?
+      options:
+      - A) False positive, because nothing further was found
+      - B) True positive, because the alert matched its rule
+      - C) Benign, because the host is offline
+      - D) Needs more evidence, with containment considered while collection is impossible
+      answer: D
+    - question: A new analyst writes the triage record for an endpoint alert. Which record line states a finding
+        together with its evidence?
+      options:
+      - A) The workstation is infected with malware, so its image needs rebuilding today
+      - B) Something suspicious happened on the host, so advise the whole duty team
+      - C) At 03:12 the spreadsheet application launched an interpreter, per telemetry
+      - D) The alert severity was raised to high by the duty analyst
+      answer: C
+    - question: An alert arrives naming an unknown process. Which sequence follows the triage workflow?
+      options:
+      - A) Enrich the alert, collect the endpoint telemetry, decide a verdict, record it
+      - B) Record a verdict, collect telemetry, enrich the alert, rebuild the host
+      - C) Rebuild the host, record the verdict, collect telemetry, enrich the alert
+      - D) Collect telemetry, rebuild the host, enrich the alert, record the verdict
+      answer: A

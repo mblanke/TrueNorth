@@ -1,0 +1,518 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C503
+title: Policy to Firewall Rule — Making Policy Enforceable
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites: [C501]
+source:
+  origin: "TAZ upskilling catalogue v1 (2026-10-28)"
+  notes:
+    - "NICE work roles: Cyber Defense Infrastructure Support Specialist; Security Control Assessor."
+    - "NIST CSF 2.0: GV.PO, PR.PS, PR.AA."
+    - "Self-paced upskilling, outside DP1/DP2."
+    - "Unpublished pending Standards review."
+modules:
+- ordinal: 1
+  title: Reading Policy as an Implementer
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify which clauses of a network access policy bind a firewall administrator and which bind other roles
+  - Classify policy clauses as technical controls, procedural duties or statements of intent
+  - Locate the network enforcement point implied by each technical clause on the range
+  topics:
+  - How a policy document is structured purpose, scope, roles, clauses and review dates.
+  - 'Reading a clause as an implementer: what must change and where it takes effect.'
+  - Technical, procedural and intent clauses, and why only some become device configuration.
+  - Mapping policy scope to networks, zones, hosts and accounts on the range.
+  - Recording implementer decisions so a reviewer can trace each one back to a clause.
+  lab: >-
+    Lab: Read the course policy extract, classify each clause and find where on the range each
+    technical clause takes effect, so the later rule mapping starts from a clause list instead of
+    from the firewall. Evidence: for each clause, its number, its classification as technical,
+    procedural or intent, the role that must carry it out, and the node id of the enforcement
+    point, or "no enforcement point on this range". Pass: every clause classified with a one-line
+    reason; every technical clause paired with a node id or explicitly marked as having none;
+    each classification marked agree or disagree against the marking scheme.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01 with the account your instructor assigned, open the policy extract and read all eight clauses.
+    - hosts: [fw01]
+      action: Log in to the fw01 appliance configuration, record each interface with its zone name and address, then close without changes.
+    - hosts: [ws01, fw01]
+      action: For each technical clause, name the zone or host on the range where it takes effect and record the node id beside the clause.
+    - hosts: [ws01]
+      action: Classify each clause as technical, procedural or intent, and record which role must carry the clause out.
+    - hosts: [ws01]
+      action: Judge whether every technical clause has a real enforcement point on the range, and name each clause that has none.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A policy clause states that managers must approve every firewall change request before it is applied.
+        How should an implementer classify this clause?
+      options:
+      - A) A technical control to configure as a rule on the firewall
+      - B) A procedural duty belonging to a change approver, not to a device
+      - C) A statement of intent with no owner and no effect
+      - D) A default deny rule written on the untrusted interface
+      answer: B
+    - question: A clause says branch staff may reach the file server only during office hours. Which classification and
+        enforcement point fit this clause on the range?
+      options:
+      - A) Technical, enforced by the log server that records the denied attempts
+      - B) Procedural, enforced by the staff duty roster
+      - C) Technical, enforced at the firewall rule that permits staff to the server zone
+      - D) Intent only, because hours cannot be expressed in any device
+      answer: C
+    - question: An implementer reads the clause all remote administration must use the management network. What is the
+        immediate implementer task for this clause?
+      options:
+      - A) Rewrite the clause as an intent statement for the next review
+      - B) Ask staff to confirm at each quarterly review that they follow the clause
+      - C) Find which rule or zone boundary currently enforces it on the range
+      - D) Delete every rule that mentions administration from the firewall
+      answer: C
+    - question: A draft policy contains a clause with no measurable requirement, no named role and no network behaviour
+        to enforce. What kind of clause is it?
+      options:
+      - A) A technical control awaiting a rule number
+      - B) A procedural duty for the security team
+      - C) A procedural duty for every host owner
+      - D) A statement of intent for the next policy revision
+      answer: D
+    - question: You must show a reviewer that each implementer decision traces back to a clause. Which working record
+        does this best?
+      options:
+      - A) A screenshot of the firewall rule screen kept in personal notes
+      - B) A clause list with the rule or node id chosen for each clause
+      - C) An email thread where the team agreed the mapping
+      - D) A copy of the vendor documentation for the firewall
+      answer: B
+- ordinal: 2
+  title: Mapping Controls to pfSense Firewall Rules
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe each existing rule on the range firewall by source, destination, service and effect
+  - Map each firewall rule to the policy clause that authorises it and flag rules with no clause
+  - Propose a rule change that closes the gap between a policy clause and the current rule set
+  topics:
+  - Firewall rule anatomy on the range interface, action, source, destination, port and logging.
+  - Tracing a rule back to the clause that authorises it and recording the mapping.
+  - 'Default deny on the range: what the absent rule blocks and how it is logged.'
+  - 'Rules without a clause and clauses without a rule: two directions of one gap.'
+  - Writing a rule change proposal with justification, expected effect and a rollback note.
+  lab: >-
+    Lab: List every rule on the range firewall, map each one to the clause that authorises it and
+    propose the rule change that closes the largest gap. Evidence: a rule listing with interface,
+    source, destination and port for each rule; the clause number beside each rule or "none"; the
+    list of technical clauses with no matching rule; and one drafted rule with interface, source,
+    destination, port and action. Pass: every rule mapped or flagged; every clause accounted for in
+    at least one direction; the drafted rule marked as matching or contradicting each neighbouring
+    clause; a rollback note written for the proposal.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [fw01]
+      action: Open the rule listing on fw01 and record every rule with its interface, source, destination and ports.
+    - hosts: [fw01]
+      action: Beside each recorded rule, write the clause number from the policy extract that authorises it, or write none.
+    - hosts: [fw01]
+      action: List every technical clause from the extract that has no matching rule, and record what traffic each should allow or deny.
+    - hosts: [fw01]
+      action: Choose one gap, draft the rule that would close it and record its interface, source, destination, port and action.
+    - hosts: [fw01]
+      action: Judge whether the drafted rule would change any behaviour that an existing clause forbids, and give the reason.
+  refs:
+  - nist-sp-800-41r1
+  - nist-cswp-29
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A rule on the staff interface allows traffic from the staff network to the server zone with no port
+        limit. Which observation should an implementer record first?
+      options:
+      - A) The rule matches the clause that lists each permitted service exactly
+      - B) The rule is broader than any clause, because no clause allows every service
+      - C) The rule is redundant, because default deny already blocks that traffic
+      - D) The rule belongs on the untrusted interface instead of the staff one
+      answer: B
+    - question: An implementer finds a rule that allows a single management workstation to reach the log server on the
+        collector port. Which clause most plausibly authorises it?
+      options:
+      - A) The clause requiring security events to reach the log server
+      - B) The clause stating managers approve firewall changes
+      - C) The clause requiring staff awareness training each year
+      - D) The clause reserving address ranges for future server zones
+      answer: A
+    - question: A policy clause forbids the DMZ from opening connections to staff workstations. The rule set has no
+        such allow rule anywhere. What does an implementer conclude?
+      options:
+      - A) A deny rule must be added to the DMZ interface to enforce the clause
+      - B) The rule set is incomplete and the gap must be recorded as a finding
+      - C) The clause has no owner, so it must be reclassified as intent
+      - D) The clause is already enforced by default deny, so no rule is needed
+      answer: D
+    - question: Which pair shows the two directions of a mapping gap between a policy and a rule set?
+      options:
+      - A) A slow rule and a rule with logging disabled
+      - B) A rule with no clause, and a clause with no rule
+      - C) A duplicate rule and a rule with the wrong interface
+      - D) A disabled rule and a rule with a stale description
+      answer: B
+    - question: A drafted rule to close a gap allows one workstation to one server on one port. What must accompany the
+        proposal before it is applied?
+      options:
+      - A) A vendor datasheet for the firewall model in use
+      - B) A list of every rule on the appliance, reordered by age
+      - C) A justification naming the clause, the expected effect and a rollback note
+      - D) A request for the approval of every staff member in the branch
+      answer: C
+- ordinal: 3
+  title: Testing Rules Against Policy
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Build a connect test matrix from a policy clause list with an expected result for each path
+  - Execute the test matrix from named range hosts and record each observed result exactly
+  - Distinguish a path the policy enforces from a path that works by accident of the rule set
+  topics:
+  - Test matrix design with hosts, ports and expected results drawn from the clauses.
+  - Running connect tests from workstations and servers without changing the rule set.
+  - Recording observed results beside expected results and marking each line pass or fail.
+  - An observed result counts as enforcement only when a clause or rule explains it.
+  - Retesting after a rule change and keeping the matrix as reusable evidence.
+  lab: >-
+    Lab: Build a test matrix from the clause list, run the tests from the named range hosts and mark
+    each line pass or fail against the policy. Evidence: the matrix with source host, destination
+    host, port and expected result for each path; the observed result beside each expected result;
+    a pass or fail mark per line; and a note naming the clause or rule that explains every allow
+    observed. Pass: at least one allowed path and two denied paths tested; every observed result
+    recorded as seen, not as expected; every allow traced to a clause or flagged as unexplained;
+    every fail line given a proposed rule change.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [ws01, web01]
+      action: From ws01, run a connect test to web01 on the web port, then on a port outside the clause list, and record both results.
+    - hosts: [web01, fs01]
+      action: From web01, attempt to reach the file server fs01 on the file share port and record the observed result.
+    - hosts: [ws01, mail01]
+      action: From ws01, run a connect test to mail01 on the message submission port and record the observed result.
+    - hosts: [ws01]
+      action: Set each observed result beside its expected result in the matrix and mark every line pass or fail.
+    - hosts: [ws01]
+      action: Judge whether each observed allow traces to a clause, and name any allow that no clause explains.
+  refs:
+  - nist-sp-800-115
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A matrix line expects staff to reach the DMZ web server on the web port. The test from the workstation
+        succeeds. What must the implementer check before calling the line a pass?
+      options:
+      - A) That a clause or rule explains the allow, not just that the connection worked
+      - B) That the web server answered faster than the agreed response target from the staff network
+      - C) That the same test also succeeds from the management network
+      - D) That the firewall logged no events during the test window
+      answer: A
+    - question: A test from the DMZ web server to the file server on the file share port is denied. The clause list
+        allows DMZ servers only directory and time access to the server zone. What is the correct mark?
+      options:
+      - A) Fail, because every deny between zones needs an explicit deny rule
+      - B) Fail, because the matrix expected the connection to succeed
+      - C) Pass, because the observed deny matches the expected deny from the clause
+      - D) Pass, because the file server is unreachable from every network on the range by design
+      answer: C
+    - question: An implementer tests a path the clause list allows and the connection fails. Which follow-up keeps the
+        matrix trustworthy?
+      options:
+      - A) Delete the line from the matrix so that the finished sheet shows only passing tests
+      - B) Mark the line pass, because the clause shows the intent of the design
+      - C) Record the observed failure, mark the line fail and propose a rule change
+      - D) Re-test from a different network until the connection succeeds
+      answer: C
+    - question: A workstation can reach a server on a port that no clause lists. The rule set has a broad allow rule
+        left from an old design. How should the matrix record this path?
+      options:
+      - A) Pass, because the observed result matches the live rule set
+      - B) Allowed but unexplained, flagged against the clause list as a finding
+      - C) Denied, because the clause list does not permit the port anywhere in the design
+      - D) Skipped, because the path was not part of the agreed matrix
+      answer: B
+    - question: Why does a retest after every rule change keep the matrix useful as evidence?
+      options:
+      - A) It proves the matrix was written by the same person throughout
+      - B) It shows observed results still match expected results after the change
+      - C) It removes the need to keep the earlier observed results
+      - D) It shortens the policy review cycle that the team must follow for the following year
+      answer: B
+- ordinal: 4
+  title: Hardening Baselines and Drift
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Compare a host configuration against the hardening baseline derived from a policy clause
+  - Detect configuration drift by recording each deviation from the baseline with its location
+  - Propose a remediation for each deviation that restores the baseline without breaking a documented service
+  topics:
+  - What a hardening baseline is and which policy clauses produce one.
+  - Reading a host inventory of listening ports, running services and account settings.
+  - Comparing live configuration to the baseline and recording deviations as drift items.
+  - Benchmark-derived checks for password policy, unused services and administrative access.
+  - Remediating drift through change control so enforcement survives the fix.
+  lab: >-
+    Lab: Compare two hosts on the range against the supplied baseline extracts, record every
+    deviation as a drift item and propose one remediation. Evidence: the recorded password policy
+    values from the directory controller; the recorded listening ports on the DMZ web server; each
+    recorded value marked matches or drift beside its baseline value; and one drift item chosen as
+    the most weakening, with a remediation and a rollback step. Pass: every baseline line marked
+    with a recorded value; every deviation named with host, setting and baseline value; the chosen
+    remediation stating which documented service it must not break.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [ws01, dc01]
+      action: From ws01, query the directory controller dc01 for the domain password policy and record length, history and lockout settings.
+    - hosts: [web01]
+      action: List the listening ports on web01 and record each port with the service that holds it.
+    - hosts: [ws01]
+      action: Set the recorded values beside the baseline extracts and mark every line matches or drift.
+    - hosts: [web01, dc01]
+      action: For each drift item, record the host, the setting, the value observed and the baseline value it should return to.
+    - hosts: [ws01]
+      action: Judge which drift item most weakens enforcement of the policy, and propose a remediation with a rollback step.
+  refs:
+  - cis-benchmarks
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A policy clause requires server administrators to hold named individual accounts. The baseline records
+        this, but the directory shows a shared admin account in use. What is the correct finding?
+      options:
+      - A) No finding to record, because the shared account still enforces authentication on the host
+      - B) A clause rewrite, because shared accounts are normal practice
+      - C) A rule change, because the firewall must block the shared account
+      - D) Drift from the baseline on account settings, remediated by issuing named accounts
+      answer: D
+    - question: Which observation on the DMZ web server is a drift item against a baseline that permits only the web
+        port and one administrative port?
+      options:
+      - A) The web service holds the web port and answers requests from the staff network
+      - B) An extra service listens on an undocumented port with no clause behind it
+      - C) The server keeps its time correct against the internal time source
+      - D) The server address matches the address recorded in the range diagram
+      answer: B
+    - question: The recorded domain password policy allows eight character passwords; the baseline requires fourteen.
+        Which remediation keeps enforcement intact?
+      options:
+      - A) Ask staff politely to choose longer passwords at the next login
+      - B) Record the finding and close it, because longer passwords meet resistance
+      - C) Raise the domain setting to fourteen through change control and note the rollback
+      - D) Lower the baseline to eight characters so the records agree with the observed value today
+      answer: C
+    - question: A host matches every baseline line today. Which practice most reliably keeps it matching through
+        ordinary administration?
+      options:
+      - A) Routing every configuration change through change control with the baseline attached
+      - B) Re-recording the baseline from the live host each time a deviation is noticed during review
+      - C) Disabling the service inventory so drift cannot be recorded
+      - D) Keeping the baseline document on the host itself for convenience
+      answer: A
+    - question: Why does unremediated drift on one host weaken policy enforcement across the range?
+      options:
+      - A) Because a drifted host can no longer forward its own logs to the log server on the range
+      - B) Because drift changes the addresses the range diagram records
+      - C) Because drift always disables the firewall rules on that network
+      - D) Because the policy is only as strong as the weakest host the rules protect
+      answer: D
+- ordinal: 5
+  title: Logging and Monitoring Enforcement
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Query firewall event logs on the range log server for deny records and summarise them by source and destination
+  - Classify observed deny events as expected enforcement or unexpected traffic needing investigation
+  - Explain which log source and event type prove that a specific rule acted on specific traffic
+  topics:
+  - Which range devices forward logs, and what a firewall deny event contains.
+  - Querying stored firewall events by source network, destination and port.
+  - Summarising deny counts into top source and destination pairs.
+  - Expected denies from default deny enforcement versus denies that show a fault or probing.
+  - Keeping queries repeatable so the same evidence can be produced again later.
+  lab: >-
+    Lab: On the range log server, query the firewall deny events, summarise them into top source
+    and destination pairs and classify each pair as expected enforcement or unexpected. Evidence:
+    the total deny count for the session; the top three source and destination pairs with counts;
+    each pair marked expected or unexpected with the clause or rule that explains the mark; and a
+    note of the exact query used so it can be repeated. Pass: the query runs against the firewall
+    source only; every recorded pair carries a count and a classification; at least one unexpected
+    pair investigated with a one-line conclusion; the repeated query returns the same counts.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Sign in to siem01 as the analyst account your instructor assigned and open the firewall event index.
+    - hosts: [siem01, fw01]
+      action: Filter the events to those forwarded from fw01 with the deny action and record the total count for the session.
+    - hosts: [siem01]
+      action: Group the deny events by source and destination and record the top three pairs with their counts.
+    - hosts: [siem01]
+      action: Mark each of the three pairs expected enforcement or unexpected, naming the clause that explains the mark.
+    - hosts: [siem01]
+      action: Judge whether the deny logs alone prove default deny is enforced, and name one thing they do not show.
+  refs:
+  - nist-sp-800-92
+  - sigma
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A deny summary shows repeated denied connections from the staff network to a server port that no clause
+        permits. The source is one workstation. What is the right classification?
+      options:
+      - A) Expected enforcement, because the firewall denied the connection on an unpermitted port exactly as designed
+      - B) Unexpected traffic needing investigation, since one host repeatedly targets an unpermitted port
+      - C) Expected enforcement, because denies always come in large numbers
+      - D) A logging fault, because the deny rule was never written down
+      answer: B
+    - question: Which evidence proves that default deny, rather than a written rule, blocked a connection on the
+        range firewall?
+      options:
+      - A) A screenshot of the policy clause that lists permitted services
+      - B) A ticket where the network team agreed the port should stay closed for the year
+      - C) A deny event from the firewall with no matching allow rule in the rule set
+      - D) A test result from a host outside the range
+      answer: C
+    - question: An analyst saves a deny query so it can be rerun next session. What makes the saved query reusable as
+        evidence?
+      options:
+      - A) It names the log source, the time window, the filter and the summary it produces
+      - B) It is stored on the analyst personal drive with a short filename
+      - C) It returns a different deny count on each run to show that the range stays active and busy
+      - D) It excludes the deny action so the output stays short
+      answer: A
+    - question: A deny summary shows the DMZ web server denied when attempting to reach the file server. The clause list
+        allows DMZ servers only directory access to the server zone. How should the pair be classified?
+      options:
+      - A) Unexpected traffic, because DMZ servers should never initiate connections to any host
+      - B) A logging fault, because the event names the wrong interface
+      - C) A rule change, because the file share should be permitted to the DMZ
+      - D) Expected enforcement, explained by the clause that limits DMZ access
+      answer: D
+    - question: What do firewall deny logs alone fail to show about enforcement on the range?
+      options:
+      - A) That the rule set also allows exactly the traffic the clauses permit
+      - B) That denied connections actually occurred during the recorded session on the range
+      - C) That the firewall forwarded its events to the log server
+      - D) That the log server stored the events under the firewall source
+      answer: A
+- ordinal: 6
+  title: Evidence of Enforcement
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Assemble an evidence pack that pairs each policy clause with an artefact observed on the range
+  - Write evidence lines that state what was observed, where, when and by which observation method
+  - Assess whether the assembled evidence would convince a reviewer that enforcement is real
+  topics:
+  - What makes a range artefact evidence with a time, source, observation method and observer.
+  - 'Pairing clauses with artefacts: the rule export, test matrix and log query.'
+  - Writing one evidence line per clause in a fixed, repeatable format.
+  - Weak evidence such as screenshots without context or results without recorded times.
+  - Storing the pack so a reviewer can re-run or inspect every artefact later.
+  lab: >-
+    Lab: Assemble an evidence pack for the technical clauses using three range artefacts, write one
+    evidence line per clause and judge whether the pack would convince a reviewer. Evidence: the
+    timestamped rule export from the firewall; one recorded connect test result; the saved deny
+    query summary from the log server; and one evidence line per technical clause stating the
+    artefact, where it was observed, when and how. Pass: every technical clause paired with at
+    least one artefact; every evidence line carrying a time, a node id and an observation method;
+    each line marked reproducible or not; gaps listed for any clause with no artefact.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [fw01]
+      action: Capture the current rule listing on fw01 with a timestamp and save it as the rule artefact.
+    - hosts: [siem01]
+      action: Re-run the saved deny query on siem01 and save the top pairs summary as the log artefact.
+    - hosts: [ws01]
+      action: Add one recorded connect test result from ws01 as the matrix artefact, noting the exact command used.
+    - hosts: [ws01]
+      action: Write one evidence line per technical clause with the artefact, node id, time and observation method.
+    - hosts: [ws01]
+      action: Judge whether every clause now has evidence a reviewer could reproduce, and mark the pack complete or list the gaps.
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-37r2
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: An evidence line reads the firewall blocks the port, with no time, no node id and no observation
+        method. Why does a reviewer reject it?
+      options:
+      - A) The line is too short to fit the pack template
+      - B) Evidence lines may describe only allowed traffic and never the traffic that was blocked
+      - C) Without a time, a source and a method, the claim cannot be reproduced or trusted
+      - D) Only the firewall vendor may state what the firewall blocks
+      answer: C
+    - question: Which artefact best evidences that a clause limiting DMZ access to named services is enforced?
+      options:
+      - A) The clause text copied into the pack with a highlight
+      - B) A diagram of the zones and their addresses drawn from memory after the training session had ended
+      - C) A list of every host on the range with its address
+      - D) A timestamped rule export showing the DMZ rules and a matching deny event from the log server
+      answer: D
+    - question: A reviewer asks to re-run the log query behind an evidence line. Which pack record lets them?
+      options:
+      - A) The analyst personal notes describing where the query was saved last week
+      - B) The exact query text with its log source, filter and time window
+      - C) The final counts only, pasted into the evidence line
+      - D) The name of the person who wrote the query
+      answer: B
+    - question: Two Students tested the same path. One recorded the result with the command and time; the other wrote
+        only that it worked. Whose evidence stands?
+      options:
+      - A) Neither, because test results never count as evidence
+      - B) Both, because both observed the same result
+      - C) The first, because a reproducible observation with time and method is evidence
+      - D) The second, because brevity makes the reading faster for the reviewer during the audit
+      answer: C
+    - question: The pack pairs every technical clause with an artefact, but one line cites a rule that was deleted last
+        week. What does the pack need?
+      options:
+      - A) A refreshed artefact captured from the current rule set, with the line updated
+      - B) A note that the rule existed and was considered valid when the clause was first written
+      - C) A second line citing the deleted rule again for balance
+      - D) Nothing, because older artefacts are always acceptable
+      answer: A

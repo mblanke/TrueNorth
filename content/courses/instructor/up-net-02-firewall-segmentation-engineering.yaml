@@ -1,0 +1,200 @@
+course_code: C514
+audience: staff_only
+overview: 'Firewall & Segmentation Engineering is an intermediate self-paced course for one Student
+  working alone, six modules on the medium-enterprise range totalling five hours. Modules 1 and 2,
+  30 minutes each, teach the Student to rebuild a zone model from the rule base and to judge rules
+  as shadowed, redundant or over-broad; modules 3 and 4, 60 minutes each, tell stateful from proxy
+  inspection and take a controlled rule change from request to rollback; module 5 verifies
+  segmentation with test connections; module 6 applies the same craft under an incident. Every
+  module ends with a range lab whose evidence the Student records, then a five-item quiz passed at
+  70 percent. The Student hands in the lab evidence sheets and the change and emergency change
+  records from modules 4 and 6.'
+timings:
+- module: 1
+  minutes: 30
+  plan: '10 teach, 15 lab, 5 quiz'
+- module: 2
+  minutes: 30
+  plan: '10 teach, 15 lab, 5 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 A: the mail host is reached by systems outside the company, so it takes the most
+    restricted zone. B and C are reached only by staff; D answers to every internal host but from
+    inside. Q2 B: placement follows who reaches the host, not the data it holds or the platform it
+    runs. A, C and D test properties that do not change with reachability. Q3 C: a contractor host
+    gets its own restricted zone and one rule naming only the service it needs. A mistakes supplier
+    trust for network trust; B places the host beside the assets it must not reach; D removes the
+    host from policy instead of scoping it. Q4 D: traffic crosses a boundary only where a rule names
+    the zone pair and its ports. A narrows filtering to the internet edge; B lets a shared domain
+    override zoning; C exempts inside-originated traffic from the design. Q5 C: web01 and mail01
+    share a zone because both are reached by outsiders and trusted little inside. A, B and D tie
+    placement to platform, data volume or patching, none of which sets trust.'
+- module: 2
+  notes: 'Q1 B: the earlier any-port allow already matched and decided the remote desktop traffic, so
+    the later block is shadowed. A inverts first-match order; C invents a scope the rule does not name;
+    D confuses logging with deciding. Q2 D: a second rule granting what the first already grants is
+    redundant; the first rule decides the traffic. A mislabels it over-broad; B names shadowing, which
+    is the default deny''s doing, not a twin rule''s; C invents an exception the scenario never
+    created. Q3 A: a rule with no port list admits every service, over-broad against the three the
+    policy names. B mislabels over-broad as shadowed; C reverses the narrowing logic; D denies that a
+    policy can be written as services. Q4 D: owner, justification and review date are what make 300
+    rules answerable. A documents late and twice; B and C are control changes that never explain
+    existing rules. Q5 C: no rule connects the servers zone to the corporate zone, so the default deny
+    refuses the traffic. A assumes zone trust no rule grants; B invents a hold state; D smuggles the
+    traffic under an unrelated earlier rule.'
+- module: 3
+  notes: 'Q1 D: the state entry for the outbound session admits the reply without any second rule. A
+    describes a mirrored rule set stateful designs avoid; B names a proxy the design has not placed;
+    C would refuse the reply. Q2 B: reading application commands requires terminating the connection,
+    which only a proxy does. A tracks sessions but never reads payloads; C and D only observe or
+    record. Q3 A: the rule permits the submission session and its reply; the state entry carries the
+    return traffic. B is refused by the port list; C invents session-wide trust; D confuses an expired
+    state entry with a live one. Q4 C: encryption end to end leaves the proxy addresses, ports and
+    timing only. A forgets the proxy cannot decrypt a session it did not originate with the server; B
+    invents state-based decryption; D wrongly exempts encrypted traffic from proxies altogether. Q5
+    B: only terminating the connection exposes the protocol content, so a proxy fits. A overstates
+    what a state table reads; C ignores the requirement; D is false about performance.'
+- module: 4
+  notes: 'Q1 C: without a business need and expiry the allow can never be reviewed or removed, which
+    is how unexplained rules accumulate. A and D are formatting concerns, and B adds precision, none
+    of which makes the rule reviewable. Q2 A: testing only the permitted side cannot show whether
+    the broad rule still catches what the narrow rule refuses, which is the point of narrowing. B, C
+    and D are facts the test as run would show. Q3 D: an expiry date is what schedules the review that
+    removes a temporary rule. A and D-adjacent logging and B-adjacent testing do not cause removal;
+    C is a nonsensical placement. Q4 B: prove the refusal, the permit and the neighbours, so the
+    change is shown to do what was asked and nothing more. A widens without cause; C stops at half
+    the evidence; D tests the firewall, not the change. Q5 A: a failed test rolls back first, records
+    the failure, then reworks the design. B extends user impact; C widens a rule to make a broken
+    change pass; D deletes a rule no failure implicates.'
+- module: 5
+  notes: 'Q1 B: an allow from corporate to every server port leaves the compromised workstation a
+    lateral path to every service, so segmentation fails to contain. A equates zone membership with
+    safety; C names encryption the rule set does not provide; D names a logging gap, not the
+    segmentation failure. Q2 D: rules that follow a host across zones leave access the new zone never
+    asked for; the topics call this trust decay. A mislabels the leftovers as shadowing; B asserts the
+    opposite of what happened; C describes the default deny, not the stale rules. Q3 C: verification
+    means attempting the forbidden connection and recording the refusal. A reads the rule but never
+    exercises it; B checks a rule unrelated to the path; D looks for history where none may exist. Q4
+    A: one host opening many servers on ports the rules never name is the signal a zone model forbids.
+    B is ordinary use; C measures log volume, not lateral probing; D is the default deny working as
+    designed. Q5 B: an emergency allow with no enforced expiry is an over-broad exception three weeks
+    on. A mislabels it shadowed; C names trust decay, which is about hosts moving zone; D names a
+    review gap, not the open rule.'
+- module: 6
+  notes: 'Q1 A: a rule naming the one host and the questioned paths cuts the incident with the least
+    business damage. B closes the whole zone; C silently refuses all unmatched traffic range-wide; D
+    widens logging but contains nothing. Q2 C: scope, authoriser, expiry and rollback are what make
+    an emergency change governable, written before applying. A defers to the vendor; B guesses a
+    duration instead of setting an expiry; D exports the rule base instead of recording the change.
+    Q3 B: narrow the change so the mail host keeps directory access while the cut path stays closed;
+    containment and service both survive. A abandons containment; C accepts damage no evidence
+    requires; D spreads the failure to every dmz host. Q4 D: the change completes when the rule is
+    rolled back, the baseline tests pass and the record closes. A and B re-label a dead rule; C
+    leaves a live allow in place for an incident that closed. Q5 D: folding the lesson into the rule
+    base as named, reviewed rules changes the artefact future changes inherit. A and B circulate
+    paper; C schedules talk with no artefact.'
+lab_setup:
+- module: 1
+  setup: 'Revert the medium-enterprise range to its baseline. Confirm siem01 is reachable and the
+    analyst account the Student is assigned signs in. Confirm web01 resolves names against dc01 (the
+    dmz-to-servers rule allows 53). The Student should find five firewall rules on fw01 connecting
+    these zone pairs, in order: corp-to-servers (no port list), corp-to-dmz (80, 443, 25, 587, 143,
+    993), dmz-to-servers (53, 88, 389, 636), logs-to-siem (514, 5044, 9200) and mgmt-to-all (any).'
+- module: 2
+  setup: 'Revert the medium-enterprise range to its baseline. Confirm siem01 is reachable and the
+    analyst account the Student is assigned signs in. Confirm ws01 reaches fs01 (the corp-to-servers
+    rule allows any port, so the share opens). The Student should find five firewall rules on fw01 in
+    this order: corp-to-servers (no port list), corp-to-dmz (80, 443, 25, 587, 143, 993),
+    dmz-to-servers (53, 88, 389, 636), logs-to-siem (514, 5044, 9200) and mgmt-to-all (any); the
+    default action on unmatched traffic is pfSense''s default deny.'
+- module: 3
+  setup: 'Revert the range to its baseline. Confirm siem01 reachability, the analyst login, and that
+    web01 can resolve names against dc01 but cannot open a file share on fs01 (dmz-to-servers allows
+    53, 88, 389, 636 only; the share attempt times out or is refused). The pfSense state table on fw01
+    should show the allowed web01-to-dc01 session with reply traffic admitted without a second rule.'
+- module: 4
+  setup: 'Revert the range to its baseline and confirm the five baseline rules on fw01, corp-to-servers
+    on top with no port list. Give the Student the fw01 appliance login and confirm the rule match log
+    is enabled so both test connections produce log lines. The change replaces the corp-to-servers
+    allow with file-share 445 to fs01 only. Expected evidence: the file share from ws01 to fs01 opens
+    under the narrow rule; a service the narrow rule does not name (for example remote desktop from
+    ws01 to fs01) is refused by the default deny; after rollback the rule list matches the baseline,
+    with corp-to-servers back on top with no port list.'
+- module: 5
+  setup: 'Revert the range to its baseline. Confirm web01 can resolve names against dc01 but cannot
+    reach fs01 file sharing, and that ws01 reaches the SMTP service on mail01 (corporate-to-dmz allows
+    25). Enable the rule match log on fw01 so each test records its deciding rule; the three tests are
+    decided by the default deny (refusal), dmz-to-servers (DNS) and corp-to-dmz (SMTP).'
+- module: 6
+  setup: 'Revert the range to its baseline. Confirm web01 reaches dc01 on 53, 88, 389 and 636, and
+    that mail01 authenticates against dc01 under dmz-to-servers. Give the Student the fw01 appliance
+    login and name the authoriser for the exercise. Expected evidence after the change: web01''s
+    directory connection to dc01 refused, web01''s name resolution still working, mail01''s directory
+    connection still working.'
+common_faults:
+- module: 1
+  fault: The Student places hosts by data sensitivity or seniority of their users instead of by who
+    reaches them.
+  remedy: Ask for each host which zone pairs the rules open toward it; a host nobody outside its zone
+    reaches does not belong in the restricted zone, whatever it stores.
+- module: 1
+  fault: The Student reads the zone model from the host names alone and never from the rule list.
+  remedy: Have the Student name the zone pair for each of the five rules before placing any host; the
+    rule list is the zone model written down.
+- module: 2
+  fault: The Student reads only rule names and judges the rule base from the names instead of source,
+    destination and ports.
+  remedy: Have the Student rebuild each rule as a sentence (this zone may reach that zone on these
+    ports) before marking any rule in policy or over-broad.
+- module: 2
+  fault: The Student calls corp-to-servers in policy because the note says domain members need AD.
+  remedy: Point back at the written policy in the lab brief; sign-in, name resolution and file shares
+    are named services, and a rule with no port list grants every service.
+- module: 3
+  fault: The Student reports the fs01 share failure as proof the firewall is broken rather than proof
+    the default deny works.
+  remedy: Ask what the dmz-to-servers rule allows and re-run the DNS test; the refusal is the design
+    holding.
+- module: 3
+  fault: The Student reads the state table but records the reply direction as another rule.
+  remedy: Show the state entry on fw01 next to the rule list and ask which rule the reply matched;
+    none did, the state did.
+- module: 4
+  fault: The Student adds the narrow rule without removing the broad allow, and the service the
+    request does not name still connects under the broad allow.
+  remedy: Re-read the rule order together and apply the replacement the request specifies; first-match
+    evaluation decides which rule speaks, and any surviving allow keeps the path open.
+- module: 4
+  fault: The change request states the rule but omits the expiry and rollback step.
+  remedy: Reject the record before the rule is applied; a change without rollback is not testable
+    against the baseline.
+- module: 5
+  fault: The Student marks a path contained because the rule list says so, without running the test.
+  remedy: Insist on the recorded refusal or success text for each of the three paths; verification is
+    a test connection, not a reading.
+- module: 5
+  fault: The Student answers the trust-decay question with shadowing because both are about old
+    rules.
+  remedy: Re-run the definitions. Shadowed rules never match; trust decay rules still match and grant
+    access the host no longer needs.
+- module: 6
+  fault: The emergency change is applied before the change record names scope, authoriser, expiry and
+    rollback.
+  remedy: Stop the lab and revert; under fire the record is written first precisely because steps are
+    skipped when rushed.
+- module: 6
+  fault: The containment change cuts the whole dmz-to-servers rule, breaking mail01 authentication.
+  remedy: Have the Student compare the pre- and post-change tests for mail01 and narrow the change to
+    web01 only; containment names the path, not the zone.

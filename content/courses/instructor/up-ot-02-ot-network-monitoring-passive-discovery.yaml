@@ -1,0 +1,187 @@
+# Instructor pack for C550 - OT Network Monitoring & Passive Discovery (up-ot-02).
+# Staff-only material: quiz keys, facilitation timings, range preparation and common faults.
+# Quiz keys mirror content/courses/up-ot-02-ot-network-monitoring-passive-discovery.yaml.
+course_code: C550
+audience: staff_only
+overview: 'C550 OT Network Monitoring & Passive Discovery is a hands-on course of six 50-minute
+  modules (300 minutes, 5 hours) on the large-enterprise range. Every lab is passive: the OT
+  VLAN on that range is isolated and nothing routes to it, so all observation runs on the
+  sensors and search platform that receive mirrored copies - ids01 for captures, siem01 for the
+  traffic records - reached from jump01. Never assign a step that sends traffic toward the OT
+  segment; that is the course premise and the labs must model it. Each module follows the same
+  split: 10 minutes teaching the objectives, 30 minutes on the range lab, 10 minutes for the
+  five-item quiz, passed at 70 percent. Say "Student" throughout and keep every description
+  defensive and observable.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 contact (what passive discovery is and what active scanning costs on a process
+    network), 30 lab on ids01 (observed-asset picture), 10 assessment (quiz)'
+- module: 2
+  minutes: 50
+  plan: '10 contact (baseline attributes and the repeatable profile), 30 lab on ids01 (measure
+    pairs, poll interval, write events), 10 assessment (quiz)'
+- module: 3
+  minutes: 50
+  plan: '10 contact (rogue signatures and stale records), 30 lab on ids01 (masters and writes
+    judged against the Module 2 profile), 10 assessment (quiz)'
+- module: 4
+  minutes: 50
+  plan: '10 contact (rules on copies, tuning against the baseline), 30 lab on ids01 (write and
+    replay two rules), 10 assessment (quiz)'
+- module: 5
+  minutes: 50
+  plan: '10 contact (inventory as reference, evidence and confidence), 30 lab on jump01 and
+    siem01 (reconcile against the supplied inventory export), 10 assessment (quiz)'
+- module: 6
+  minutes: 50
+  plan: '10 contact (shift order: coverage, triage, escalation), 30 lab across jump01 and
+    siem01 (full passive shift with escalation note), 10 assessment (quiz)'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (objective 1): Building the picture from copies of traffic is the passive
+    approach; A is the scanning that caused the outage, C cannot show what is actually on the
+    wire and D leaves unrecorded gaps. Q2 C (objective 3): An asset that is silent between
+    monthly tests is the stated limit of passive discovery, not a fault; A and B invent
+    hardware faults and D a decode failure the case does not support. Q3 D (objective 1):
+    Cyclic register reads on an industrial port are protocol behaviour, the strongest
+    fingerprint; an address range (B) is assumption, not evidence. Q4 A (objective 2): No
+    inventory record accounts for the conversation, so it is unknown; B confuses the workstation
+    being known with the conversation being known. Q5 B (objective 3): Probing legacy
+    controllers can fault them - the objection that outweighs convenience; D is wrong because
+    the gap exists precisely because the inventory is incomplete.'
+- module: 2
+  notes: 'Q1 C (objective 2): A write outside the scheduled window is the departure a baseline
+    is built to reveal; aggregate bytes (A) and port counters (D) are too coarse. Q2 A
+    (objective 1): Reads without the logged setpoint writes mean the capture missed traffic, so
+    the profile is incomplete; B and C invent faults with no evidence. Q3 B (objective 3): A
+    written profile is repeatable and comparable after changes, which is the standard; D
+    confuses absence of attack with absence of record. Q4 C (objective 3): The profile is
+    updated at the next capture after the change note, keeping it aligned with commissioning;
+    A makes the baseline a lie, B and D tie it to the wrong trigger. Q5 D (objective 3): "Quiet"
+    records nothing another analyst can compare against; C names the right deficiency but D
+    states the standard the module set.'
+- module: 3
+  notes: 'Q1 A (objective 1): Rogue candidacy comes from behaviour the baseline and inventory do
+    not grant; same VLAN (B) or slow polling (D) describe ordinary traffic. Q2 D (objective 2):
+    A commissioning laptop is authorised but undocumented - record it and remove or sponsor it;
+    A escalates without evidence and B waives the record-keeping duty. Q3 B (objective 1):
+    Acting as a polling master is the behaviour test that separates a rogue controller from a
+    stale record; A alone is just an unknown address. Q4 A (objective 3): The firewall view maps
+    the candidate''s reach so the cut point is the least disruptive one; D is the outcome the
+    module rules out. Q5 C (objective 3): Denying one address at the OT firewall cuts the rogue
+    device while controller traffic continues; A and B disrupt the process, D blinds the
+    monitoring the course depends on.'
+- module: 4
+  notes: 'Q1 D (objective 1): Polling injects traffic into the process network and pollutes the
+    baseline the rules judge against; A, B and C assert costs or properties the mirror does not
+    have. Q2 B (objective 2): The known talker pairs go into the rule''s permitted conditions -
+    targeted tuning; A is indiscriminate and C discards real coverage. Q3 C (objective 2): Time,
+    zone, source, target and the baseline line broken is the field set the module defines; the
+    others omit what a responder needs. Q4 A (objective 3): Preserve, notify, escalate is the
+    first response that keeps evidence and process intact; B and C touch the process network,
+    D loses time. Q5 D (objective 1): Watching the mirrored copy means no new packet reaches the
+    controllers - the passive design stated exactly; A is false and B understates what the
+    sensors protect.'
+- module: 5
+  notes: 'Q1 C (objective 2): A capture contradicting the inventory is recorded as a
+    contradiction with the capture line cited - never guessed away (B) or entered unchecked
+    (D). Q2 B (objective 1): Address, vendor and protocol are what the wire shows directly;
+    budget, serial numbers and criticality come from other sources. Q3 A (objective 1):
+    Confidence exists so later analysts can judge how far to trust capture-derived facts; B and
+    D invent procedural requirements. Q4 D (objective 2): Only the protocol question is settled
+    by rereading the capture; owner and moved-controller questions need people, not packets.
+    Q5 A (objective 3): The reconciliation cycle is tied to commissioning, maintenance windows
+    and the capture schedule; B, C and D make the cycle reactive or stale.'
+- module: 6
+  notes: 'Q1 A (objective 1): Coverage comes first - if a zone is dark, every triage mark made
+    on it is unsound; B and C skip the order, D silences a real alert. Q2 C (objective 1): An
+    unlisted asset follows a different decision path from a known one, which is why the
+    inventory check runs first; A and B are non-reasons. Q3 D (objective 2): Unlisted master,
+    no inventory record, no baseline pair - that meets the rogue candidate test from Module 3;
+    C is the stale-record explanation the evidence does not support. Q4 B (objective 3): Only B
+    has time, evidence and source; A, C and D are opinion or vagueness and must be rewritten.
+    Q5 C (objective 2): Confirmed departures feed the baseline and the reconciliation cycle,
+    which is what closes the loop; D destroys the record.'
+lab_setup:
+- module: 1
+  setup: 'Book the large-enterprise range and confirm before the session that the ids01 monitor
+    interface is receiving the monitoring-mirror copies and that the OT segment is isolated.
+    Print one inventory table for the OT assets and hand it out at the lab; the Students mark
+    known, unknown or unexpected against it.'
+- module: 2
+  setup: 'Same range booking. Announce a capture window (15 minutes is enough) at the start of
+    the lab and keep it identical for the whole cohort so profiles can be compared. Have the
+    Module 1 observed-asset lists available for cross-reference.'
+- module: 3
+  setup: 'Same range booking. Students need their Module 2 baseline profiles from the previous
+    session - keep them, they are the reference this lab judges against. Print a fresh inventory
+    copy for marking in-baseline or unexplained.'
+- module: 4
+  setup: 'Same range booking. Confirm the ids01 rule directory is writable by the lab accounts
+    and that the capture window can be replayed. Students bring their Module 2 baseline
+    profiles; rules are tested against that window, never against live controller polling.'
+- module: 5
+  setup: 'Same range booking. Prepare and print the site inventory export Students reconcile
+    against - one page, address, vendor, protocol and owner columns, with at least one retired
+    or stale record deliberately left in so a contradiction can be found honestly. Keep siem01
+    query access working from the lab accounts.'
+- module: 6
+  setup: 'Same range booking. Leave the alert queue on siem01 in the state the session found
+    it; Students triage what is actually there rather than a prepared list. Print the escalation
+    note format from the Module 6 topics. This is the integration lab: all four earlier artefacts
+    (asset picture, baseline profile, rules, reconciled inventory) should be on hand.'
+common_faults:
+- module: 1
+  fault: Students mark an asset "known" because its address looks plausible rather than because
+    the inventory table lists it.
+  remedy: 'Insist on pointing at the exact inventory row for every "known" mark; no row, no
+    "known".'
+- module: 1
+  fault: Students propose a quick active scan to settle an unknown, forgetting the module's
+    premise.
+  remedy: 'Ask what the scan sends toward the process network and what a legacy controller does
+    with an unexpected probe; then route the question back to the mirrored capture and the
+    inventory.'
+- module: 2
+  fault: Baseline profiles come out as prose ("the network looked quiet") instead of values.
+  remedy: 'Require the three recorded values - pairs with direction, one interval in seconds,
+    write events with source and target - before the profile is accepted.'
+- module: 2
+  fault: Students record the poll interval from one reading.
+  remedy: 'Have them time the same exchange at least three times and state the readings the
+    stated interval came from.'
+- module: 3
+  fault: Every unexplained source is immediately called a rogue and containment jumps to
+    stopping production.
+  remedy: 'Walk the Module 3 topics order: behaviour evidence first, stale-record and
+    maintenance-laptop alternatives second, reach mapping third, containment point last.'
+- module: 3
+  fault: Containment proposals name no cut point ("block the rogue somehow").
+  remedy: 'Require the specific firewall rule location and what the process keeps doing while
+    the address is denied.'
+- module: 4
+  fault: Rules are written so broad they fire on the whole baseline, then Students tune by
+    raising thresholds blindly.
+  remedy: 'Show the two-step order: condition from the baseline first, threshold second. An
+    alert storm is a condition problem before it is a threshold problem.'
+- module: 4
+  fault: Students test rules by generating traffic toward the OT segment.
+  remedy: 'Stop the session and replay the capture window instead; the premise is never broken
+    for a test.'
+- module: 5
+  fault: Students overwrite inventory fields with capture values and delete the old ones.
+  remedy: 'Require the corrected entry to keep evidence and confidence per changed field; the
+    inventory records where each fact came from, it does not replace sources silently.'
+- module: 5
+  fault: A contradiction is resolved by trusting whichever source is newer.
+  remedy: 'Bring them back to the capture line: the traffic record either shows the value or it
+    does not; recency is not evidence.'
+- module: 6
+  fault: Students triage alerts before checking sensor coverage.
+  remedy: 'Enforce the recorded coverage check as step one; a triage mark made on a dark zone
+    is redone after coverage is confirmed.'
+- module: 6
+  fault: Escalation notes state conclusions without time, source or where the fact was observed.
+  remedy: 'Mark each note line as fact with source or interpretation; the note must contain the
+    finding, the evidence with source and time, and one requested decision.'

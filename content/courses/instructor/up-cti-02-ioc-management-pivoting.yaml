@@ -1,0 +1,187 @@
+# Instructor pack for C556 IOC Management & Pivoting (staff only; not for Students).
+course_code: C556
+audience: staff_only
+overview: >-
+  C556 is an individual five-hour course of six 50-minute modules on the soc-training range: one Student
+  works alone with an analyst account on jump01 and the SOC tools. Modules 1 to 5 follow the catalogue
+  arc, audit and decay an indicator set on misp01, pivot across WHOIS, DNS and certificate data, run MISP
+  workflows, and hunt the validated set on siem01 and velociraptor01; module 6 closes the campaign by
+  validating, packaging and sharing the set. Every module pairs a short read with one range lab and ends
+  with a five-item quiz passed at 70 percent. The same two campaign events on misp01 carry all six labs,
+  so the Student watches one indicator set age, get validated and close.
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 teach (indicator types, decay models, expiry versus suppression), 30 lab (indicator audit on
+    misp01 and the stale-match check on siem01), 10 assessment (quiz and debrief)'
+- module: 2
+  minutes: 50
+  plan: '10 teach (WHOIS record anatomy, redaction, pivot confidence), 30 lab (registration records on
+    misp01, pivot chain, telemetry check on siem01), 10 assessment (quiz and debrief)'
+- module: 3
+  minutes: 50
+  plan: '10 teach (DNS record types, passive DNS, certificate transparency), 30 lab (resolution from
+    jump01, certificate link on misp01, Zeek confirmation in the Security Onion console on seconion01),
+    10 assessment (quiz and debrief)'
+- module: 4
+  minutes: 50
+  plan: '10 teach (events, attributes, taxonomies, distribution levels), 30 lab (draft event, attributes,
+    tags, correlation judgement on misp01), 10 assessment (quiz and debrief)'
+- module: 5
+  minutes: 50
+  plan: '10 teach (query scoping, Sigma structure, verdict discipline), 30 lab (scoped hunt on siem01,
+    file hunt on velociraptor01, write-back to misp01), 10 assessment (quiz and debrief)'
+- module: 6
+  minutes: 50
+  plan: '10 teach (validation criteria, STIX and TAXII, campaign closure), 30 lab (validation marks on
+    misp01, packaging, closure check on siem01), 10 assessment (quiz and debrief)'
+answer_key_notes:
+- module: 1
+  notes: >-
+    Q1 B (no expiry): keeping every indicator forever is exactly what fills the queue with benign matches;
+    the distractors each name a control the team may already have, so the cause is the missing expiry.
+    Q2 A (last-seen age): a four-year-old single report mention means the observation is stale, which drives
+    the decay decision; length, tag count and report order say nothing about currency. Q3 D (suppress as
+    false positive and keep context): the match is recurring and explained, so the indicator stays in the set
+    with the match suppressed; retiring would lose the context and deleting SIEM events destroys evidence.
+    Q4 B (hash atomic, domain computed): a hash equals the file itself; a domain indicator carries observed
+    context such as resolution and reputation, which is the computed side. Q5 A (retirement reason and final
+    match count): the audit trail must let a later analyst re-weigh the decision; contact, event prose and a
+    bare date do not.
+- module: 2
+  notes: >-
+    Q1 C (weak link): shared name servers at large hosting providers are the classic over-weighted pivot;
+    redaction neither proves ownership nor makes the link invalid. Q2 C (name-server host): privacy proxies
+    strip registrant identity fields but leave the operational name servers in place; the distractors are all
+    registrant fields a proxy removes. Q3 A (bulk registration): a tight creation-date burst at one registrar
+    is an infrastructure reuse signal that survives redaction; the distractors misread normal registrar
+    behaviour. Q4 D (matched value, both domains, date): a pivot record must be retraceable; recording only
+    the value or only the campaign name drops one end of the chain. Q5 B (created eleven days before the
+    phishing mails): proximity of creation to abuse is the core newly-registered-domain signal; age alone,
+    weekday creation and a long expiry term carry no abuse signal.
+- module: 3
+  notes: >-
+    Q1 A (load-balanced mail service): consistent MX-shaped answers point at a provider mail platform; the
+    distractors blame the resolver or the records without evidence. Q2 C (MX): the mail exchanger record
+    names the receiving hosts, which identify the mail provider; AAAA, CNAME and TXT answer other questions.
+    Q3 B (check for shared hosting first): certificates on shared platforms list unrelated customers in one
+    subject alternative name set, so the overlap needs a hosting check before any link is claimed. Q4 D (one
+    uncorroborated observation): a single live answer can change between queries; passive DNS history shows
+    the pattern over time. Q5 B (shared name-server host): name servers persist across a campaign, while
+    round-robin addresses and one-off relays churn.
+- module: 4
+  notes: >-
+    Q1 A (delete the attribute): distribution levels control who sees the event, not whether an internal
+    asset belongs in shared content; tagging private still exports the value in some configurations. Q2 D
+    (taxonomy-dependent automation will not fire): the event correlates and imports fine; tags are what
+    triage rules and filters key on. Q3 B (short generic values correlate falsely): correlation is exact
+    matching on values, so a generic string matches everything; the actor conclusion and the type complaint
+    are unsupported. Q4 C (draft stays in distribution scope; publication signals consumers): the distractors
+    invent editing, attribute or revision behaviour the workflow does not have. Q5 A (hostname):
+    evil-example.test is a domain name without a scheme, so hostname fits; ip-dst, sha256 and email-subject
+    are the wrong classes of value.
+- module: 5
+  notes: >-
+    Q1 D (scope tighter, then re-run): two thousand matches is a scoping failure, not an indicator problem;
+    a longer window and a scheduled alert make the noise worse. Q2 C (benign true positive): the rule
+    detected exactly the behaviour it was written for and the actor was authorised, which is the benign true
+    positive verdict, not a false positive or a defect. Q3 A (artefact name, endpoint, evidence line): the
+    finding must carry its own evidence before it earns indicator status; durations and unrelated hostnames
+    add nothing. Q4 C (negative result rules the indicators out for that scope and window): an empty hunt is
+    a finding about the scope, not proof of a broken pipeline or a bad set. Q5 B (two endpoints with full
+    connection evidence): observed corroboration is what raises confidence; single mentions, unsourced blog
+    claims and press releases sit at the bottom of the scale.
+- module: 6
+  notes: >-
+    Q1 B (cannot re-weigh, unknown trust): values alone import and parse fine; it is the missing provenance
+    and confidence that leave the receiver with no basis to weigh them. Q2 C (validated with suppression,
+    then shared): the indicator is specific and evidenced, so it survives validation; the known backup host
+    is handled as a suppression rather than by rejecting or retiring the indicator. Q3 A (burned address
+    retired, low-and-slow domain watched): closure decisions follow the infrastructure's future value; the
+    all-or-nothing distractors and the inverted pair test whether the Student reasons per indicator. Q4 B
+    (typed objects import, correlate and decay): structure is what machines act on; length, validation and
+    the prose strawman are wrong. Q5 C (longer domain windows, shorter address windows): the review
+    measured exactly that error, so the corrected windows inherit per type; uniform or absent windows
+    repeat the mistake.
+lab_setup:
+- module: 1
+  setup: >-
+    Revert the soc-training range to baseline. Confirm jump01 reaches misp01 and siem01. Check the analyst
+    account opens the MISP events index and Dashboards on siem01. Seed the two campaign events on misp01
+    with the mixed indicator list, including one domain whose last-seen date sits well past its decay
+    window, so the audit finds its stale entry.
+- module: 2
+  setup: >-
+    Revert to baseline. Confirm the two campaign events on misp01 carry WHOIS attribute blocks: one record
+    with clear registrant e-mail, one fully redacted, both sharing one name server. Confirm dig and a
+    browser reach the tool pages from jump01.
+- module: 3
+  setup: >-
+    Revert to baseline. Confirm the campaign event on misp01 holds one certificate attribute whose subject
+    alternative names match a second domain in the event. Confirm Zeek connection logs in the Security Onion
+    console on seconion01 cover the campaign domains, and that jump01 resolves them with dig and reaches the
+    console with the analyst account.
+- module: 4
+  setup: >-
+    Revert to baseline. Confirm the analyst account can create draft events on misp01. Seed the correlation
+    picture: one short generic URL value that appears in two older unrelated events, plus one clean
+    correlation, so the query returns both. Leave distribution defaults set so the Student must change them.
+- module: 5
+  setup: >-
+    Revert to baseline. Confirm the campaign indicators are searchable in siem01 telemetry and that a
+    scheduled backup job on one endpoint will match the file-path indicator benignly. Confirm the campaign
+    hash is present on exactly one endpoint image so the Velociraptor file hunt finds one host of many.
+- module: 6
+  setup: >-
+    Revert to baseline. Confirm the campaign event on misp01 holds the validated set from module 5, one
+    indicator matching only a known backup host, and one low-and-slow domain. Confirm the campaign hunt
+    query returns zero matches when re-run, so the closure check reads clean.
+common_faults:
+- module: 1
+  fault: Students mark a stale but still-true indicator for retirement instead of decay, or suppress a truly
+    expired one.
+  remedy: Ask 'what would change the decision tomorrow?' before the mark; decay means lower score with the
+    indicator active, suppression silences a known-benign match, retirement removes it.
+- module: 1
+  fault: The siem01 match is recorded without its timestamp or source host.
+  remedy: Insist on the evidence line as observed; a match without time and source cannot be judged in the
+    later modules.
+- module: 2
+  fault: Students grade the shared name server as a strong link.
+  remedy: Have them name who else could share that name server before grading; large providers make the
+    link weak unless something corroborates it.
+- module: 2
+  fault: The pivot chain is written as a conclusion with no field order.
+  remedy: Require the chain in field order, first record field, matched value, second record, so another
+    analyst can retrace each hop.
+- module: 3
+  fault: Students record only the A record and call the map complete.
+  remedy: Point back at the objective; MX and NS answers are what place the domain on hosting and mail
+    infrastructure.
+- module: 3
+  fault: A shared certificate is read as proof the two domains share an owner.
+  remedy: Ask whether the certificate could be a provider or shared-hosting certificate; the confirmation
+    mark exists precisely so unconfirmed links stay unconfirmed.
+- module: 4
+  fault: Students set distribution to the widest level by default and move on.
+  remedy: Ask who the event should reach and why; the justification line is the deliverable, not the
+    setting.
+- module: 4
+  fault: Both correlations are accepted or both rejected without reading the matched values.
+  remedy: Have them open each correlated event and compare values; the generic URL string is the designed
+    false positive.
+- module: 5
+  fault: The hunt query is run unscoped and the match flood is treated as the SIEM's fault.
+  remedy: Reread the objective with them; scoping by time, host group and source is the first correction,
+    before any verdict is attempted.
+- module: 5
+  fault: The benign backup-job match is written as a false positive.
+  remedy: 'Walk the verdict definitions: the rule saw exactly what it was built to see, so the verdict is
+    benign true positive and the remedy is tuning, not re-labelling.'
+- module: 6
+  fault: Validation marks are given without a reason per indicator.
+  remedy: Require one sentence per mark against the three criteria, specificity, evidence and query syntax;
+    an unexplained mark fails the lab.
+- module: 6
+  fault: The keep-internal decision is omitted and the whole set is packaged for sharing.
+  remedy: Ask which indicator would expose internal telemetry if shared; there is one in the set by design.

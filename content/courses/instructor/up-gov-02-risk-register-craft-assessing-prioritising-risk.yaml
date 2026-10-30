@@ -1,0 +1,181 @@
+course_code: C502
+audience: staff_only
+overview: >-
+  Risk Register Craft is a self-paced course of six 40-minute modules (240 minutes, 4 hours)
+  for a Student working alone, aimed at the risk manager and authorising-official level. The modules
+  build one register across the course: module 1 sets the scales, module 2 tiers the range assets,
+  module 3 turns range facts into testable statements, module 4 scores and ranks them, module 5
+  reviews the entries against the live range, and module 6 drafts an acceptance for the residual
+  risk the range actually carries. Every lab runs on the small-enterprise range through jump-box;
+  the Student hands in a scale with anchors, a tier table, three risk statements, a ranked register
+  with dated review outcomes, and one written acceptance.
+timings:
+- module: 1
+  minutes: 40
+  plan: '10 teach (scales and anchors), 20 lab (collect range facts, draft the impact scale), 10 quiz'
+- module: 2
+  minutes: 40
+  plan: '10 teach (criticality and dependencies), 20 lab (dependency table and tiering), 10 quiz'
+- module: 3
+  minutes: 40
+  plan: '10 teach (cause, event, consequence), 20 lab (three statements from range facts), 10 quiz'
+- module: 4
+  minutes: 40
+  plan: '10 teach (scoring and ranking), 20 lab (re-confirm facts, score, rank, break ties), 10 quiz'
+- module: 5
+  minutes: 40
+  plan: '10 teach (outcomes and cadence), 20 lab (review every entry against the range), 10 quiz'
+- module: 6
+  minutes: 40
+  plan: '10 teach (acceptance and its parts), 20 lab (draft the acceptance, void condition), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: anchor examples show which observations fall in which band, which is what the debate
+    lacked; A buys resolution nobody can define, C adds people but not definitions, D automates
+    arithmetic that was never the problem. Q2 C: patient-noticed measures visibility, not harm, so
+    two reviewers score differently; A overstates, B invents a rule, D assumes money is the only
+    impact measure. Q3 A: anchors fix the cause, blank bands; B hides the problem, C biases the
+    register upward, D waits for an incident instead of defining bands. Q4 D: a defensible review
+    keeps the reasons and the settling evidence, not the number alone; A averages opinions, B
+    substitutes rank for evidence, C dodges the decision. Q5 B: "bad" cannot be checked against a
+    band, so scores diverge; A is a tooling complaint, C wrongly narrows impact to money, D denies
+    the single-point-of-failure risk the lab shows.'
+- module: 2
+  notes: 'Q1 C: the rating came from the role label and the review never tested dependencies, which
+    the outage exposes; A and B shrink the register, D overcorrects by rating by class. Q2 D: the
+    price list is low-sensitivity but high-criticality, the salary data the reverse, so the two
+    judgements cannot be merged; A-C are unrelated comparisons. Q3 A: the failed lookup evidences
+    the sign-in depends on the name service; B contradicts the symptom, C invents file hosting, D
+    reverses the dependency. Q4 B: the paths that close when fw-01 stops routing are the dependency
+    evidence; A, C and D are cost, marketing and familiarity, none of which measures dependency. Q5
+    C: tiers put a workstation loss and a domain-controller loss on one comparable scale; A lets
+    assets go unexamined, B drops impact, D erases the differences tiers exist to record.'
+- module: 3
+  notes: 'Q1 B: the dated rule-set reading is re-checkable, which is the definition of testable; A,
+    C and D are opinion entries no observation can settle. Q2 D: cause, event and consequence are
+    the three parts the statement lacks; A adds words without structure, B is filing, C imports an
+    external score instead of the statement''s own logic. Q3 A: a working control is the absence of
+    a risk, not a risk entry; B overstates, C confuses control with audit, D misstates authorship.
+    Q4 C: "probably" is unverifiable hedging; annually, workstation and administrator are all
+    checkable words. Q5 B: the current lockout settings read from the domain controller, dated, are
+    the only evidence of the condition today; A is another organisation''s story, C is a
+    recommendation not an observation, D is another environment entirely.'
+- module: 4
+  notes: 'Q1 C: dependency evidence is the stated tie-break in the topics, because it measures harm
+    scope; A is recency, B is length, D is age of the entry. Q2 A: record the score and name the
+    unevidenced band as a gap; B delegates, C bends the score to stop questions, D labels the
+    assumption but leaves nothing to close. Q3 B: bands on the line let a reviewer re-derive the
+    score and challenge the bands rather than the arithmetic; A is tooling, C is optics, D is
+    automation that never happened. Q4 D: the workstation sign-in dependency is the anchor for the
+    impact band; A, B and C are counts, age and cost. Q5 C: score order ignores that equal scores
+    differ in treatment effort and dependency scope; A is presentation, B and D are register facts
+    that do not order treatment.'
+- module: 5
+  notes: 'Q1 A: a review that only re-reads never re-tests, which is the module''s first point; B,
+    C and D are admin tasks that prove nothing. Q2 D: the entry no longer matches the environment,
+    so it is wrong and the risk must be rewritten; A mistakes existence for match, B confuses
+    cadence with outcome, C misreads the naming convention. Q3 C: the rule the network team edits
+    monthly changes fastest, so it needs the shortest interval; A and B change slowly or never, D
+    is a defect to fix, not a cadence. Q4 B: a stale marking needs the observation and its date;
+    A confuses correction with approval, C games the score, D is the outcome for a vanished
+    condition, not a stale one. Q5 A: retirement is for a condition that no longer exists; B is a
+    quality problem, C is workload, D is a rescore that leaves the risk alive.'
+- module: 6
+  notes: 'Q1 D: without an expiry the acceptance is never revisited, so it outlives its conditions;
+    A is style, B splits one defect into wording, C is false. Q2 B: raising the lockout threshold
+    weakens the compensating control the acceptance rests on, so it voids first; A, C and D change
+    nothing about the control. Q3 C: insurance pays the loss while the risk stays with the
+    organisation, which is transfer; avoidance ends the activity, acceptance keeps it knowingly,
+    ignoring means no decision. Q4 A: level, compensating control, expiry and named approver are
+    the four parts of a defensible acceptance; B, C and D each record a reason no reviewer could
+    defend. Q5 D: ignoring means nobody decided, so it is not acceptance; A, B and C all name a
+    decision the department never made.'
+lab_setup:
+- module: 1
+  setup: >-
+    Revert the range to baseline and confirm the Student can SSH to jump-box as the analyst
+    account. Confirm from jump-box that dc-01 answers the domain password policy query and that
+    ws-01 resolves dc-01. Values the Student should find: fw-01 lists two rules (user-to-srv-ad
+    allowing the AD ports from the user network, mgmt-to-all allowing everything from the
+    management network, everything else default deny); the dc-01 minimum password length and
+    lockout threshold are whatever the baseline holds, so mark them from the range before class.
+- module: 2
+  setup: Revert the range to baseline. Confirm dc-01 answers a directory query and a DNS lookup
+    from jump-box, and that ws-01 resolves the name of dc-01; if either fails, the dependency
+    table has nothing to rest on. The Student should find that every workstation depends on dc-01
+    for name resolution and sign-in, and that all inter-network paths run through fw-01.
+- module: 3
+  setup: Revert the range to baseline. Confirm the mgmt-to-all rule on fw-01 is present, note the
+    dc-01 minimum password length and lockout threshold, and confirm from ws-01 that a service on
+    dc-01 not listed in user-to-srv-ad (for example remote desktop on 3389) is refused by the
+    default deny. Give the Student the standard analyst account on jump-box.
+- module: 4
+  setup: >-
+    Revert the range to baseline. The lab re-confirms module 3 facts, so the same values must
+    hold: mgmt-to-all present on fw-01, and the dc-01 lockout threshold unchanged. Have each
+    Student's module 3 statements available, since the scoring is done against those entries.
+- module: 5
+  setup: Revert the range to baseline and deliberately leave it unmodified from module 4, so every
+    entry reviews as current on a first pass; if you want a stale or wrong outcome for teaching,
+    change one value (for example the lockout threshold) after the module 4 lab and keep that a
+    staff-only note. Confirm ws-01 can run the default-deny connection test again.
+- module: 6
+  setup: Revert the range to baseline. Confirm the mgmt-to-all rule name and the dc-01 password
+    policy values, since the acceptance must cite them as compensating-control evidence. Decide
+    before class which role on the course accepts the risk (Head of IT or equivalent) so every
+    Student names the same approver role and the markable parts of the acceptance match.
+common_faults:
+- module: 1
+  fault: The Student writes impact bands as feelings ("serious", "catastrophic") with no anchor
+    naming a host and a harm.
+  remedy: Send them back to the fw-01 and dc-01 evidence; each band must name a real host from the
+    range and what stops when it fails, then re-read their own band as a second reviewer would.
+- module: 1
+  fault: The Student treats the debate question as a request for a better number rather than a
+    better definition.
+  remedy: Have them argue one scoring disagreement with the anchors only; when the anchors settle
+    it, the point about definitions over arithmetic lands.
+- module: 2
+  fault: The tier table rates by role label (domain controller equals critical) with no dependency
+    sentence.
+  remedy: Require the sentence to name what else stops; if the Student cannot say it for ws-03,
+    the tier for ws-03 should drop, and that contrast teaches the difference.
+- module: 2
+  fault: Data sensitivity and asset criticality are merged into one rating.
+  remedy: Ask where the price list and the salary file sit in their table; the two judgements must
+    separate before the tiering is accepted.
+- module: 3
+  fault: Statements come back as causes only ("the management network can reach everything") with
+    no event and consequence.
+  remedy: >-
+    Make them finish the sentence: what event follows, and what harm it causes; a statement
+    without a consequence cannot be scored in module 4.
+- module: 3
+  fault: The evidence source is named vaguely ("the firewall") with no rule, host or date.
+  remedy: >-
+    Insist on the re-check test: could a reviewer find this fact again from the entry alone;
+    if not, add the rule name and the date.
+- module: 4
+  fault: Bands are assigned with no anchoring fact, so the score floats.
+  remedy: For each band ask which lab observation supports it; an unsupported band is recorded as
+    a gap, not quietly passed.
+- module: 4
+  fault: Ties are broken by feel or by register order.
+  remedy: Point at the dependency table from module 2; the tie-break must cite it.
+- module: 5
+  fault: Every entry is marked current without an observation, because the Student re-read instead
+    of re-testing.
+  remedy: Require the observation column to hold today's fact (the rule list, the policy values,
+    the ws-01 test result) before the outcome is accepted.
+- module: 5
+  fault: The outcome words current, stale and wrong are used interchangeably.
+  remedy: Drill the three outcomes on the deliberately changed value (if you set one) and on an
+    unchanged one, so the difference is seen rather than told.
+- module: 6
+  fault: The acceptance lists a compensating control the range does not show.
+  remedy: Send them back to the dc-01 policy output; only a control observed on the range may be
+    cited, which is the same testability rule as module 3.
+- module: 6
+  fault: The expiry is open-ended or set far beyond the acceptance's conditions.
+  remedy: Ask what would have to be re-decided at expiry; if the answer is nothing, the expiry is
+    decorative and must be tightened.

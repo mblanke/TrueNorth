@@ -1,0 +1,549 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C526
+title: Memory Forensics with Volatility
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C525
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Forensics Analyst (IN-FOR-002); Malware Reverse Engineer (IN-FOR-002).'
+  - 'NIST CSF 2.0: RS.AN (Analysis); DE.AE (Adverse Event Analysis).'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Acquisition Strategies
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select the acquisition method that fits the constraints of a stated incident and preserves volatile state
+  - Verify the integrity of a memory image with cryptographic digests and a chain of custody
+  - Explain what volatile memory holds that disk evidence no longer holds after a reboot
+  topics:
+  - The order of volatility and what a first responder collects first.
+  - Live acquisition, hibernation files, crash dumps and full physical memory images.
+  - Acquisition tooling and the footprint it leaves on the system being captured.
+  - Digest verification and the chain of custody for a memory image.
+  - Choosing between acquiring on the host and sending the image over the network.
+  source_gaps:
+  - A dedicated memory forensics handbook is not in the reference library; teach from the Volatility 3
+    documentation and NIST SP 800-86.
+  lab: >-
+    Lab: On the soc-training range, acquire a memory image from the workstation v-ws01 through Velociraptor
+    and verify it reaches dfir-ws01 unchanged. Evidence: the Velociraptor collection identifier and its
+    finish time, the image size and digest the collection reports, the digest recomputed on dfir-ws01 after
+    the export, and the four chain-of-custody lines. Pass: both digests recorded and identical; the chain of custody names
+    the source host, collection time, digest and analyst; each custody line marked complete or missing with
+    a one-sentence reason.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH with the analyst account the instructor assigned, open a terminal
+        and record the start time.
+    - hosts: [velociraptor01, v-ws01]
+      action: Open the Velociraptor console on velociraptor01, start a memory acquisition collection against
+        v-ws01 and record the collection identifier and finish time.
+    - hosts: [velociraptor01]
+      action: In the Velociraptor console on velociraptor01, open the finished collection and record the image
+        size in bytes and the digest the collection reports for the image.
+    - hosts: [dfir-ws01]
+      action: From the same collection in the Velociraptor console, export the memory image to dfir-ws01,
+        recompute its digest there with the standard checksum utility and record whether the two values match.
+    - hosts: [dfir-ws01]
+      action: Write the four chain-of-custody lines for the image, mark each complete or missing and give one
+        sentence of reason for every line marked missing.
+  refs:
+  - volatility3
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A first responder reaches a running file server that may hold malware active only in memory.
+        Following the order of volatility, what should be collected first?
+      options:
+      - A) The server's latest full disk backup
+      - B) The physical memory of the running server
+      - C) The temporary internet files on disk
+      - D) The archive of rotated application logs
+      answer: B
+    - question: An analyst images the memory of a suspect laptop, then copies the image to an evidence server
+        before analysis. What proves the copy arrived unchanged?
+      options:
+      - A) The file size matches the laptop's installed memory
+      - B) The image opens without errors in the analysis tool
+      - C) A cryptographic digest computed before the copy matches one computed after
+      - D) The copy finished faster than the first transfer
+      answer: C
+    - question: A triage team must choose between rebooting a compromised workstation now to run disk tools
+        and capturing its memory first. What does rebooting most directly destroy?
+      options:
+      - A) Malware that exists only in memory
+      - B) The configuration registry stored on disk
+      - C) The browser history of the local user
+      - D) The index of files on the disk
+      answer: A
+    - question: A team must acquire memory from a system whose local disk is nearly full and cannot hold the
+        image. Which action fits best?
+      options:
+      - A) Write the image to the same disk and delete it after analysis
+      - B) Skip acquisition and rely on a later antivirus scan
+      - C) Reboot the system and image it from a clean state
+      - D) Send the image over the network to the evidence server
+      answer: D
+    - question: A supervisor asks why the chain of custody for a memory image records everyone who handled it.
+        The strongest reason is that the record
+      options:
+      - A) speeds up the analysis work that follows
+      - B) shows the image was not altered between collection and analysis
+      - C) proves the malware is still running on the source host
+      - D) reduces the number of pages in the final report
+      answer: B
+- ordinal: 2
+  title: Process Artefact Extraction
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Run the process listing and process tree plugins and compare their output for hidden processes
+  - Trace a suspect process to its parent, command line and start time from process metadata
+  - Judge whether a process is routine or unexplained against a documented baseline
+  topics:
+  - Process listing, process tree and how each plugin enumerates running processes.
+  - Parent and child relationships, exit times and orphaned processes.
+  - Command lines, loaded libraries and process start times.
+  - Pool scanning and other techniques that find processes hidden from the active list.
+  - Comparing plugin output against a documented baseline of routine processes.
+  lab: >-
+    Lab: On the soc-training range, list the processes in the v-ws01 memory image, build the process tree and
+    judge each unexplained process against the instructor's baseline of routine processes. Evidence: the
+    operating system version and process count the listing reports, the process with the most children and its
+    parent, and the full command line of every process absent from the baseline. Pass: every baseline-absent
+    process recorded with its command line and start time; each marked routine or unexplained with a
+    one-sentence reason; every unexplained process carried forward for the next module.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [dfir-ws01]
+      action: Log on to dfir-ws01 with the analyst account, open a terminal and record the name of the v-ws01
+        memory image the instructor placed in the evidence folder.
+    - hosts: [dfir-ws01]
+      action: Run the process listing plugin on the image and record the operating system version it reports
+        and the number of processes listed.
+    - hosts: [dfir-ws01]
+      action: Produce the process tree and record which process holds the most children, together with the
+        identifier of its parent.
+    - hosts: [dfir-ws01]
+      action: Run the command-line plugin and record the full command line and start time of every process
+        whose name is absent from the baseline.
+    - hosts: [dfir-ws01]
+      action: Mark each recorded process routine or unexplained against the baseline, give one sentence of
+        reason and list the unexplained ones for the next module.
+  refs:
+  - volatility3
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A memory image lists a process whose named parent is absent from the same listing. What is
+        this most consistent with?
+      options:
+      - A) The process is the system idle process
+      - B) The image was captured before any process had started on the host
+      - C) The parent exited, leaving an orphaned process in the listing
+      - D) The process tree tool failed and must be rerun
+      answer: C
+    - question: An analyst suspects a process is hidden by unlinking it from the active list. Which comparison
+        helps most?
+      options:
+      - A) Comparing the process list with a pool scan that walks raw structures
+      - B) Sorting the process list alphabetically by name
+      - C) Counting how many processes share one parent
+      - D) Rerunning the same listing tool a second time and hoping the output changes
+      answer: A
+    - question: On a compromised workstation, a routine utility name was started with a command line the
+        baseline never shows. What does the analyst record as evidence?
+      options:
+      - A) A conclusion that the process is ransomware
+      - B) An assumption that the local user typed the command
+      - C) Nothing until a second analyst confirms the tool works
+      - D) The command line, the parent and the start time
+      answer: D
+    - question: Two processes on one workstation carry the same image name but different parents and start
+        times. What does this pattern suggest?
+      options:
+      - A) Both are certainly legitimate system processes
+      - B) One process may be hiding behind the routine name of the other
+      - C) The operating system duplicated the executable
+      - D) Memory corruption has made the listing unreliable
+      answer: B
+    - question: Why does a documented baseline of routine processes make process analysis on a memory image
+        faster and stronger?
+      options:
+      - A) It replaces the need to examine command lines
+      - B) It guarantees that no malicious process is present
+      - C) It lets the analyst mark routine processes as expected and focus on the unexplained
+      - D) It removes processes that exited before the image was taken
+      answer: C
+- ordinal: 3
+  title: Network Artefact Extraction
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Extract established connections and listening sockets from a memory image with the network scan plugin
+  - Attribute each network artefact in memory to the process that owns it
+  - Corroborate a memory network artefact against network monitoring records before acting on it
+  topics:
+  - Connection records, listening sockets and connection states held in volatile memory.
+  - Attributing a socket to its owning process.
+  - Artefacts that survive after a connection closes and artefacts that vanish.
+  - Reading a network scan's output alongside the process listing.
+  - Corroborating memory network output with network monitoring records.
+  lab: >-
+    Lab: On the soc-training range, extract the network artefacts from the v-ws01 memory image, attribute each
+    to its owning process and corroborate one finding against network monitoring. Evidence: every connection
+    and listening socket the network scan reports, the owning process of each, and the network monitoring
+    result for one recorded remote address. Pass: each artefact listed with its owning process; each marked
+    expected or unexplained against the instructor's baseline with a one-sentence reason; one unexplained
+    artefact checked in network monitoring with its result recorded.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [dfir-ws01]
+      action: Open a terminal on dfir-ws01 and run the network scan plugin on the v-ws01 memory image.
+    - hosts: [dfir-ws01]
+      action: Record every connection the scan reports with its remote address, remote port, state and owning
+        process.
+    - hosts: [dfir-ws01]
+      action: Record every listening socket the scan reports with its local port, protocol and owning process.
+    - hosts: [siem01]
+      action: On the SIEM on siem01, search the records for the same time window and one recorded remote
+        address, and record whether the network saw it.
+    - hosts: [dfir-ws01]
+      action: Mark each artefact expected or unexplained against the instructor's baseline, give one sentence
+        of reason and record the corroboration result for the checked remote address.
+  refs:
+  - volatility3
+  - mitre-attack
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A memory image shows a workstation connection to an unfamiliar internet address. Which
+        artefact most directly names the process behind it?
+      options:
+      - A) The owning process named with the socket in the scan output
+      - B) The media access control address recorded for the network interface
+      - C) The size of the packet capture held on the sensor
+      - D) The connection's position in the routing table
+      answer: A
+    - question: A connection closed minutes before the image was taken does not appear in the scan output.
+        What explains its absence?
+      options:
+      - A) The scan tool only runs on server operating systems
+      - B) The live table removed the connection once it closed
+      - C) The image was corrupted during the acquisition process
+      - D) Closed connections are stored only on disk
+      answer: B
+    - question: Before isolating a workstation on the strength of a memory network artefact, what should the
+        analyst do first?
+      options:
+      - A) Wait for the next scheduled image acquisition
+      - B) Ask the workstation owner to confirm the traffic
+      - C) Delete the network artefact from the case notes to avoid bias in the review
+      - D) Check the same destination and time window in network monitoring records
+      answer: D
+    - question: A memory image shows a listening socket on a port the documented baseline never uses, owned
+        by a process started hours earlier. What is the best reading?
+      options:
+      - A) An unexplained listening service that warrants escalation
+      - B) Proof the workstation is part of a criminal network
+      - C) A duplicate record of the operating system's own listener
+      - D) Evidence the image was taken twice
+      answer: A
+    - question: A memory connection record and a firewall record disagree about the destination port in the
+        same time window. Which source carries more weight for attribution?
+      options:
+      - A) The firewall record, because the firewall never misreports a destination port
+      - B) The memory record, because memory cannot be altered
+      - C) The memory record, because it ties the socket to its owning process
+      - D) Neither; only the packet capture can name a port
+      answer: C
+- ordinal: 4
+  title: Code Injection and Hollowing Signatures
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Run the injection detection plugin on a memory image and read the memory protections it reports
+  - Distinguish injected code from a hollowed process using memory region evidence
+  - Recommend containment for a confirmed injection finding and state what the evidence does not prove
+  topics:
+  - Why injected code needs a region that is writable and executable.
+  - Private committed regions and the protection values a scanner reports.
+  - Process hollowing, with the executable image replaced while the process keeps its name.
+  - False positives in injection scanning, from packed legitimate code to file-backed executable regions.
+  - YARA scanning of memory regions to confirm a finding.
+  lab: >-
+    Lab: On the soc-training range, run the injection detection plugin over the v-ws01 memory image, read its
+    findings and confirm one with YARA. Evidence: each finding with its process, identifier and protection
+    value, the YARA match for one finding, and the classification of every finding. Pass: every finding
+    recorded with its process and protection value; each classified injected code, hollowed process or likely
+    false positive with a one-sentence reason; the process to isolate first named with the finding that
+    justifies it.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [dfir-ws01]
+      action: Log on to dfir-ws01 and run the injection detection plugin on the v-ws01 memory image.
+    - hosts: [dfir-ws01]
+      action: Record every finding with its process name, process identifier and the memory protection value
+        the plugin reports.
+    - hosts: [dfir-ws01]
+      action: Scan the image with the YARA rules the instructor supplied and record which processes matched
+        which rules.
+    - hosts: [dfir-ws01]
+      action: For one flagged region, record its protection value and whether the plugin output shows a mapped
+        file behind it.
+    - hosts: [dfir-ws01]
+      action: Classify each finding as injected code, hollowed process or likely false positive with one
+        sentence of reason, and name the process to isolate first.
+  refs:
+  - volatility3
+  - yara
+  - mitre-attack
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: Why does injected code usually live in a region that is writable as well as executable?
+      options:
+      - A) The operating system compresses code before running it
+      - B) Writable regions are ignored by memory scanners
+      - C) Executable regions cannot be freed once allocated
+      - D) The region must both receive the new code and run it
+      answer: D
+    - question: An injection scanner flags a private committed region with an executable protection inside a
+        routine office application. What is the finding?
+      options:
+      - A) Normal behaviour for every user application
+      - B) An injected-code signature worth investigating
+      - C) A swapped-out page the scanner misread
+      - D) Proof the application was installed without a licence
+      answer: B
+    - question: Process hollowing differs from simple code injection because the intruder
+      options:
+      - A) adds a new library to every process on the system
+      - B) encrypts the memory pages of the process it targets
+      - C) replaces the executable image of a legitimate process while keeping its name
+      - D) copies the process table from another machine
+      answer: C
+    - question: Malware unlinks its process from the active list to hide from the standard listing. Which
+        technique still finds it?
+      options:
+      - A) Pool scanning, which walks the raw memory structures directly
+      - B) Rerunning the standard process listing after a delay
+      - C) Reading the security log for sign-in events
+      - D) Checking the file system for recently changed files
+      answer: A
+    - question: A YARA scan of the image matches one rule inside one process. Which record makes the finding
+        usable?
+      options:
+      - A) The licence terms of the rule file
+      - B) The total size of the memory image
+      - C) The number of rules that did not match
+      - D) The matching process, the rule name and where the match sits
+      answer: D
+- ordinal: 5
+  title: Timeline Reconstruction from Memory
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Build a chronology of process, network and file activity from a memory image with the timeline plugin
+  - Order memory events against network monitoring and system log records, allowing for clock skew
+  - State what an ordered timeline establishes about a case and what it leaves unproven
+  topics:
+  - The timeline plugin and the event sources it draws from a memory image.
+  - Time zones, clock skew and putting timestamps on one scale.
+  - Reading a timeline for sequence, not for single events.
+  - Corroborating memory events with network monitoring and system log records.
+  - What a memory-only timeline cannot show, before capture and after reboot.
+  lab: >-
+    Lab: On the soc-training range, build a timeline from the v-ws01 memory image and place one network event
+    from monitoring into the same chronology. Evidence: the number of timeline events with the first and last
+    timestamps, the first five process events in order, and the monitoring timestamp for the v-ws01 event
+    chosen. Pass: both sources normalised to one time zone with the offset stated; the network event placed in
+    the sequence with its source named; one sentence stating what the ordering suggests and one stating what
+    it leaves unproven.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [dfir-ws01]
+      action: Log on to dfir-ws01 and run the timeline plugin on the v-ws01 memory image, recording the number
+        of events it produces.
+    - hosts: [dfir-ws01]
+      action: Record the first and last timestamps in the timeline and the time zone they carry.
+    - hosts: [dfir-ws01]
+      action: Record the first five process events in order with their timestamps and the process names
+        involved.
+    - hosts: [siem01]
+      action: On the SIEM on siem01, find the first network record for v-ws01 in the same window and record
+        its timestamp, destination and time zone.
+    - hosts: [dfir-ws01]
+      action: Place the network record into the chronology with both sources on one time zone, and write one
+        sentence on what the ordering suggests and one on what it leaves unproven.
+  refs:
+  - volatility3
+  - nist-sp-800-86
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A memory timeline places a suspicious process start several minutes before the workstation's
+        first outbound connection to an unknown address. What does this ordering support?
+      options:
+      - A) The connection caused the suspicious process to start on the workstation
+      - B) The process started before the workstation reached the unknown address
+      - C) The clock on the workstation was wrong
+      - D) The timeline tool duplicated one event
+      answer: B
+    - question: Events from a memory image and from a monitoring sensor disagree by exactly one hour across a
+        case. What should the analyst check first?
+      options:
+      - A) Whether the image was captured twice
+      - B) Whether the monitoring sensor lost network access during the case
+      - C) Whether either tool needs a licence renewal
+      - D) Time zone settings and clock skew between the two sources
+      answer: D
+    - question: What does the timeline plugin in a memory toolkit draw its events from?
+      options:
+      - A) Process, network and file activity held in the memory image
+      - B) A separate log file the tool writes during acquisition
+      - C) The packet records stored on the monitoring sensor for the window
+      - D) The file system index read from the disk
+      answer: A
+    - question: A memory timeline ends at the moment of acquisition. What does the gap after it mean for the
+        case?
+      options:
+      - A) The system stopped running entirely at the moment of acquisition
+      - B) All later events were deliberately hidden
+      - C) Later activity must be reconstructed from other record sources
+      - D) The timeline tool needs rerunning to fill the gap
+      answer: C
+    - question: An ordered timeline shows one process writing a file, then opening a network connection, then
+        a second process reading the same file. What does the sequence give the analyst?
+      options:
+      - A) Proof that data left the organisation
+      - B) A chain of events to corroborate with other records before acting
+      - C) The name of the person who ran the process
+      - D) Confirmation that both processes involved were legitimate applications
+      answer: B
+- ordinal: 6
+  title: Case Reconstruction and Escalation
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select the findings from a complete memory analysis that warrant escalation and justify each choice
+  - Write an escalation note that states a finding, its evidence with source and timestamp, and a recommended action
+  - Choose a containment action for a live workstation and state the evidence trade-off it carries
+  topics:
+  - Drawing process, network and injection findings into one case view.
+  - Deciding what to escalate, weighing confidence, impact and the evidence behind each finding.
+  - The escalation note with finding, evidence and source, and recommended action.
+  - Containment options for a live workstation and their evidence trade-offs.
+  - Handing a memory case to disk forensics and malware analysis.
+  lab: >-
+    Lab: On the soc-training range, close the v-ws01 case, drawing the findings of the earlier modules into
+    one view, checking the live state of the workstation and writing the escalation note. Evidence: the short
+    list of escalated findings with evidence and source for each, the Velociraptor status of the agent on
+    v-ws01, and a three-line escalation note. Pass: each escalated finding carries evidence with timestamp and
+    source; the note states finding, evidence and recommended containment; one sentence states the evidence
+    trade-off of the containment chosen.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [dfir-ws01]
+      action: Log on to dfir-ws01 and bring together the process, network and injection findings for the
+        v-ws01 image in one table.
+    - hosts: [dfir-ws01]
+      action: Mark each finding escalate or monitor, with one sentence stating the confidence and impact
+        behind the choice.
+    - hosts: [velociraptor01, v-ws01]
+      action: On velociraptor01, check the agent status for v-ws01 and record whether the process behind the
+        top finding is still running.
+    - hosts: [dfir-ws01]
+      action: Write the escalation note in three lines, giving the finding, the evidence with timestamp and
+        source, and the recommended containment.
+    - hosts: [dfir-ws01]
+      action: State in one sentence the evidence trade-off of the containment choice and record which
+        specialist hand-off the case needs next.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-83r1
+  - volatility3
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: Memory analysis of a workstation ends with one injection finding, one unexplained connection
+        and everything else routine. What belongs in the escalation note?
+      options:
+      - A) Every process observed, listed in full
+      - B) Only the analyst's conclusion, with no evidence
+      - C) The two escalated findings, each with its evidence and source
+      - D) The raw plugin output pasted in order
+      answer: C
+    - question: A team with confirmed injected code in a workstation's memory debates rebooting at once. What
+        does an immediate reboot cost the case?
+      options:
+      - A) Volatile evidence the analysis still needs
+      - B) The workstation's installed applications
+      - C) The cached domain credentials on disk
+      - D) The configuration of the monitoring sensor
+      answer: A
+    - question: A colleague argues the memory case can close because injected code was found and contained.
+        What does the memory evidence alone not establish?
+      options:
+      - A) That the code existed in the workstation's memory
+      - B) Every file and account the activity touched on disk
+      - C) That the workstation should be treated as compromised
+      - D) That the timeline begins at acquisition
+      answer: B
+    - question: An escalation note reads that a suspicious process was seen on the finance workstation and
+        asks for advice. What is the note missing?
+      options:
+      - A) A shorter summary sentence
+      - B) The analyst's opinion of the malware author
+      - C) A request for a budget code
+      - D) The timestamp and source of the evidence behind the finding
+      answer: D
+    - question: After memory analysis confirms injected code inside one process, which hand-off matches the
+        finding?
+      options:
+      - A) Close the case because injection was contained in memory
+      - B) Re-image the workstation and keep no further records
+      - C) Malware analysis of the injected code and disk forensics for impact
+      - D) Network monitoring only, to watch for the same signature
+      answer: C

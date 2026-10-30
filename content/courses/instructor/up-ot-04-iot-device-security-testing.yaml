@@ -1,0 +1,191 @@
+# Instructor pack for C552 IoT Device Security Testing (up-ot-04). Unsourced draft -- not
+# validated by Standards. TAZ upskilling catalogue v1 (GLM draft). Keyed letters match the
+# course file's quiz answers; the notes say why the keyed option is right and what each
+# distractor tests.
+course_code: C552
+audience: staff_only
+overview: 'IoT Device Security Testing is a hands-on course of six 50-minute modules (300 minutes, 5
+  hours) for one advanced Student working alone; there is no team work, pairing or role play. Modules
+  1 and 2 acquire and unpack device firmware, module 3 maps physical entry points from vendor
+  documentation (the range has no physical embedded board, so module 3''s lab is board reconnaissance
+  on ws01 only), module 4 enumerates and ranks network entry points, module 5 captures and judges
+  device traffic, and module 6 turns the findings into a hardening checklist verified on a live
+  device. Every lab runs on the greyspace-internet range: ws01 is the testing workstation, ws02
+  carries the firmware analysis toolkit the instructor installs, and edge01 is the office router the
+  later labs enumerate, capture and harden. Each module ends with a five-item quiz passed at 70
+  percent. Say ''Student'' throughout and keep every description defensive and observable.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 teach (firmware locations and acquisition paths), 30 lab (acquire the router package from
+    the vendor update page and verify it), 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '10 teach (packing formats and unpacking), 30 lab (run binwalk, extract the filesystem, walk
+    it for versions and boot services), 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '10 teach (UART, JTAG and SPI flash), 30 lab (read the router''s vendor hardware documentation
+    on ws01 and classify the entry points it names), 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '10 teach (interface binding, shared accounts, ranking and containment), 30 lab (enumerate
+    edge01''s services, attempt one sign-in, read the firewall rules and rank), 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '10 teach (baselines, capture points, beaconing and evidence), 30 lab (capture on edge01
+    while ws01 browses, then classify each destination), 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '10 teach (baselines NIST SP 800-213 and NIST IR 8259, ordering and handover), 30 lab (draft
+    the checklist, apply its first item on edge01 and re-scan), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B, M01-O01: A channel that publishes a signature comes before any copy of unknown
+    standing; the forum copy (A) may be modified, flash reading (C) needs the device opened and is
+    not the first path when packages are signed, and a rebuild (D) is not the device''s firmware. Q2
+    C, M01-O02: A checksum of any kind proves byte-for-byte agreement with the page, nothing about
+    who produced the file (A) or its safety (B, D). Q3 A, M01-O03: Uniform high entropy means
+    compressed or encrypted content; bootloaders are not always encrypted (B), unused flash often
+    reads as zeros or erased blocks (C), and config files are small and structured (D). Q4 D,
+    M01-O03: The root filesystem holds the running operating system''s files. Q5 B, M01-O02: The
+    saved file with its hash and the publishing page answers ''how was it obtained''; the other
+    options record the surroundings, not the acquisition.'
+- module: 2
+  notes: 'Q1 C, M02-O01: A reported signature names an offset, so extract that offset and examine
+    what it contains; re-running (A) or patching (B) adds nothing, and one squashfs signature is not
+    grounds for emulation (D). Q2 D, M02-O03: An undocumented daemon is a finding, not a verdict:
+    record what it is, where it is configured and what it binds. Q3 B, M02-O02: An eight-year-older
+    kernel dates the build and implies missed security fixes; it does not prove tampering (A),
+    corruption (C) or silent updates (D). Q4 A, M02-O03: A finding is actionable when it names the
+    component, the version and what to do; the other three restate the concern. Q5 C, M02-O01:
+    squashfs is the common read-only compressed root on small embedded Linux devices; NTFS, ext4 and
+    FAT32 are writable general-purpose filesystems.'
+- module: 3
+  notes: 'Q1 D, M03-O01: A four-pin header with a scrolling boot log and an early prompt is a UART
+    console; JTAG (B) talks to debug hardware, not a log, and SPI (A) is a storage chip. Q2 A,
+    M03-O01: JTAG halts and steps the processor, which a console cannot do; the other options
+    describe console, flash or network access. Q3 B, M03-O03: Reading a soldered chip in circuit is
+    in-circuit reading. Q4 C, M03-O02: Confirm the pin purpose from documentation before connecting;
+    probing (A), powering (B) or shorting (D) an unidentified header can destroy the board. Q5 D,
+    M03-O02: Because the password check starts only after the operating system finishes booting,
+    early boot messages and, on many devices, the bootloader prompt are reachable first; A
+    contradicts the stated premise by assuming the check covers all of boot, B confuses console
+    access with physical flash reading, and C invents break signals as a route to the network
+    configuration.'
+- module: 4
+  notes: 'Q1 A, M04-O01: Binding management to the internal network removes the widest exposure;
+    changing the port (B) hides rather than restricts, a second account (C) does not shrink
+    reachability, and HTTPS (D) protects the session, not the exposure. Q2 B, M04-O02: A shared
+    account''s secret is often printed, shipped or extractable from firmware, so its length does not
+    save it. Q3 D, M04-O02: Password-only authentication reachable from the internet scores highest
+    on all three axes; the others need physical or internal access first. Q4 C, M04-O02: The agent''s
+    control channel is a path to the device regardless of who initiated the connection. Q5 A,
+    M04-O03: A dedicated management network keeps remote management without exposing it to the ward;
+    disabling it (B) breaks the stated need, reinstalls (C) are not containment, and publishing it
+    (D) increases exposure.'
+- module: 5
+  notes: 'Q1 C, M05-O02: Fixed interval, tiny payloads, continuous operation is the beaconing
+    signature; time sync (A) and update checks (B) do not run every 60 seconds around the clock, and
+    streaming (D) carries sustained volume, not a few bytes. Q2 A, M05-O01: Vendor update and time
+    server lookups are expected baseline; the rest are the anomalies the module teaches. Q3 D,
+    M05-O02: Traffic that stays on the internal segment is visible at the switch or gateway carrying
+    it; the upstream edge never sees it. Q4 B, M05-O02: A brand-new registration plus a self-signed
+    certificate is the combination worth priority investigation; it is a signal, not yet proof of
+    compromise (D). Q5 D, M05-O03: Times, addresses, ports and counts make a line reusable; the
+    others are interpretation or assertion.'
+- module: 6
+  notes: 'Q1 D, M06-O01: Exposure first: close management to the management network before anything
+    else; logging (A) and updates (B) do not reduce the entry point, and a renamed account (C) keeps
+    the exposure. Q2 C, M06-O02: Verification means recording the state before and after and showing
+    the service no longer answers; documentation, a command screenshot or an agreement verify
+    nothing on the device. Q3 A, M06-O01: Unique credentials per device at deployment remove the
+    shared-secret entry point; a longer shared password (B) keeps the sharing, a moved port (C)
+    hides it, and documenting it (D) preserves it. Q4 B, M06-O01: NIST SP 800-213 is the recognised
+    IoT deployment baseline the module teaches; datasheets, community threads and current defaults
+    are not baselines. Q5 C, M06-O03: Handover means each applied item with its verified state and
+    date; raw output (A), vendor defaults (B) and unfixed findings alone (D) are not the checklist.'
+lab_setup:
+- module: 1
+  setup: Revert the greyspace-internet range to its baseline and confirm ws01, ws02 and edge01 are
+    reachable. Install the firmware analysis toolkit on ws02. Publish the vendor update page for the
+    office router on the greyspace internet with a package, its size and a published checksum, and
+    know the expected values so the Student's evidence can be marked.
+- module: 2
+  setup: Confirm the package the Student saved in module 1 is still present on ws02 and that the
+    firmware analysis toolkit runs there. Know the signatures, offsets, version strings and boot
+    services the image actually contains so recorded evidence can be checked line by line.
+- module: 3
+  setup: Revert the range to its baseline if module 2 changed it. Publish the router's hardware
+    documentation pages on the greyspace internet, covering each entry point's pin count and
+    silkscreen label and any protective control. Know which entry points the documentation names,
+    the access each grants and which controls it states, so the Student's evidence can be marked
+    against the pages. The lab does not touch edge01; no edge01 configuration is read in module 3.
+- module: 4
+  setup: Revert the range to its baseline. Know the services and ports edge01 exposes, the
+    interfaces they bind and the source networks its firewall rules allow, and have the standard
+    operator account the instructor assigned ready for the one sign-in attempt.
+- module: 5
+  setup: Revert the range to its baseline. Confirm edge01 can capture corporate-to-greyspace traffic
+    and that the news and webmail sites answer. Know the external destinations, ports and counts the
+    capture will show, and which destination is deliberately anomalous, so the Student's
+    classification can be marked.
+- module: 6
+  setup: Revert the range to its baseline so edge01's services match the state the earlier modules
+    found. Know the configuration line the first checklist item changes and the expected re-scan
+    result, and confirm edge01 can be restored afterwards if the disabled service is needed by later
+    sessions.
+common_faults:
+- module: 1
+  fault: The Student treats the published checksum as proof that the vendor authorised the file.
+  remedy: Point back to the module 1 topics on what a checksum establishes, byte-for-byte agreement
+    with the page, not origin or safety, and ask what the signature on the channel adds.
+- module: 1
+  fault: The Student reads a high-entropy region as corruption and wants to re-download.
+  remedy: Show the entropy topic again and ask what else produces uniform high entropy; have the
+    Student name compressed and encrypted content before re-attempting the lab.
+- module: 2
+  fault: The Student lists binwalk signatures as findings without offsets or extraction.
+  remedy: Insist each recorded signature carries its offset and that the filesystem is actually
+    extracted before any finding is written.
+- module: 2
+  fault: Findings read as verdicts ("backdoor present") instead of evidence with paths.
+  remedy: Require the format from the topics, component, version or behaviour, file path, and one
+    actionable sentence; an undocumented daemon is a finding, not a conviction.
+- module: 3
+  fault: The Student confuses what UART and JTAG expose, or probes an unlabelled header before
+    reading the documentation.
+  remedy: Have the Student state, per entry point, what it exposes and what it costs, and hold the
+    rule that no connection happens to a header whose purpose is unconfirmed.
+- module: 3
+  fault: The Student records an entry point or pin detail the documentation does not state, or
+    ignores a protective control the documentation names before marking something usable.
+  remedy: Require every recorded entry point to carry the page that names it, and have the Student
+    re-read the documentation for lockdown, fuse or signed-boot statements before marking an entry
+    point "usable as shipped".
+- module: 4
+  fault: The Student ranks entry points by port number or service name rather than reachability,
+    authentication and impact.
+  remedy: Take each of the three ranking axes in turn and ask the Student to score every entry
+    point against all three before ranking.
+- module: 4
+  fault: The sign-in attempt is skipped, so authentication strength is guessed.
+  remedy: Require the recorded result of the one assigned sign-in attempt; the ranking reason for
+    the management entry point must cite it.
+- module: 5
+  fault: Expected baseline traffic is marked as beaconing, or the real beacon is excused as time
+    sync.
+  remedy: Compare the candidate against the beaconing signature (fixed interval, small repeated
+    payloads, continuous) and against the baseline list before classifying.
+- module: 5
+  fault: Evidence lines lack times, addresses, ports or counts.
+  remedy: Reject any needs-investigation line missing one of the four elements and have the Student
+    re-read it from the capture on edge01.
+- module: 6
+  fault: Checklist items do not name the finding they came from.
+  remedy: Have the Student walk the list backwards, from each item to its finding in modules 1 to 5,
+    and delete or rewrite items with no source.
+- module: 6
+  fault: The live change on edge01 breaks the greyspace hand-off and the Student does not record it.
+  remedy: Require the before and after configuration lines and the re-scan result; if the range
+    needs restoring afterwards, the Student records that the change was reverted and why.

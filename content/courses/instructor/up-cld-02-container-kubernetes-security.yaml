@@ -1,0 +1,193 @@
+# Instructor pack for C544 - Container & Kubernetes Security (DRAFT, unsourced).
+# Staff-only material: timings, answer key notes, range setup and common faults.
+# The Student works alone on the cloud-security range (content/ranges/cloud-security).
+course_code: C544
+audience: staff_only
+overview: 'Container & Kubernetes Security is an intermediate self-paced course of six 50-minute modules
+  (300 minutes, 5 hours) on the cloud-security range. The Student works alone. Modules 1 to 5 build in
+  order: container isolation fundamentals, image hygiene and scanning, pod security and RBAC, runtime
+  detection, then escape conditions and controls. Module 6 combines the earlier findings into one ranked
+  hardening plan. Every module ends with a five-item quiz passed at 70 percent, and every lab produces
+  recorded evidence the instructor marks pass or fail against the Pass items in the lab brief. Say
+  ''Student'' throughout and keep every description defensive and observable.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 teach (isolation model), 30 lab (cluster inventory on jump01), 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '10 teach (image hygiene), 30 lab (image and registry audit), 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '10 teach (pod security and RBAC), 30 lab (bindings and securityContext review), 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '10 teach (runtime detection), 30 lab (sensor alert and forwarding check), 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '10 teach (escape conditions), 30 lab (control testing across the pods), 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '10 teach (hardening review), 30 lab (ranked plan and evidence design), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (shared kernel), M01-O02: Containers isolate with namespaces and control groups on one
+    host kernel, so a kernel flaw touches the host. Distractors: A and C claim the image or namespaces
+    supply a separate kernel; D adds a virtual machine that the claim never mentions. Q2 C
+    (namespaces), M01-O02: Namespaces give a process its own view of process IDs and interfaces.
+    Distractors: A is the virtualisation layer containers do not use; B limits resource shares; D
+    layers the root filesystem. Q3 A (control groups), M01-O02: Control groups enforce CPU and memory
+    shares. B gives views, not limits; C and D are image-side objects. Q4 D (one shared host kernel),
+    M01-O01: Many containers on a node share its kernel, so kernel isolation mechanisms carry the
+    whole boundary. A, B and C assert size, speed or logging effects that are not the isolation risk.
+    Q5 B (image layers), M01-O01: The immutable root filesystem is assembled from the image layers.
+    Distractors: A confuses the node disk with the container mount; C repeats the guest-OS claim of
+    Q1; D measures resources, not filesystems.'
+- module: 2
+  notes: 'Q1 D (deploy drift), M02-O02: A mutable tag can resolve to a different build at any pull, so
+    the running workload may not match the reviewed code. A, B and C invent growth, scan-cost and
+    refusal effects a tag cannot cause. Q2 A (minimal base image), M02-O01: Fewer libraries and tools
+    mean a smaller attack surface and fewer scanner findings. B keeps a full distribution; C adds
+    tools; D multiplies layers. Q3 B (fix at next rebuild), M02-O02: An unused-library finding is not
+    an emergency, but accepting it permanently or disabling scanning leaves it unverified; a rebuild
+    with a fixed base plus a verified scan is the defensible choice. A accepts risk without review; C
+    changes nothing; D blinds the pipeline. Q4 C (immutable build identity), M02-O03: A digest names
+    one immutable image build, so what was scanned is what runs. A, B and D claim effects digests do
+    not have. Q5 A (unauthenticated image access), M02-O03: Anonymous pull lets anyone who reaches the
+    registry retrieve images that may embed configuration details. B, C and D invent performance,
+    scanning and digest effects.'
+- module: 3
+  notes: 'Q1 D (runAsNonRoot), M03-O01: runAsNonRoot makes the kubelet refuse a container that would
+    run as root. A releases the privileged flag but says nothing about identity; B concerns the host
+    process namespace; C protects the filesystem, not the identity. Q2 C (read in one namespace),
+    M03-O02: get and list on pods in one namespace, bound by a Role, grant exactly that read. A and B
+    need verbs and scopes the Role lacks; D needs the create verb. Q3 A (full compromise path), M03-O03:
+    cluster-admin bypasses RBAC restrictions, so a compromised dashboard pod yields full cluster
+    control. B, C and D are false statements about dashboards, expiry and auditability. Q4 B (host
+    process table), M03-O01: hostPID true puts the container in the host process namespace, so it sees
+    the node''s processes. A, C and D describe settings that do not exist. Q5 D (restricted profile),
+    M03-O01: The restricted profile adds limits the baseline lacks, above all forbidding root and most
+    privilege escalation. A reverses the direction; B and C misstate the profile''s scope.'
+- module: 4
+  notes: 'Q1 C (system call observation), M04-O01: A runtime sensor watches system call behaviour of
+    running processes, which needs no image scan. A, B and D are pre-runtime or registry-side sources.
+    Q2 B (baseline anomaly), M04-O02: A shell in a long-running web container departs from the
+    container''s baseline, so it merits triage without asserting compromise. A treats it as expected; C
+    mislabels it; D overstates the conclusion. Q3 D (API server requests), M04-O01: The audit log
+    records API server requests, including the requesting identity and denials, which host sensors
+    cannot see. A, B and C belong to other sources. Q4 A (correlation and retention), M04-O03:
+    Forwarding enables correlation with other sources and retention beyond the sensor host. B, C and D
+    name effects forwarding does not have. Q5 B (narrow, documented, reviewed), M04-O03: A safe
+    suppression is narrow, documented and reviewed on a schedule. A and C discard real coverage; D
+    weakens everything at once.'
+- module: 5
+  notes: 'Q1 A (privileged true), M05-O01: Privileged mode removes most of the container boundary in
+    one setting. B, C and D are neutral or hardening settings. Q2 B (shared host process namespace),
+    M05-O01: Seeing every process on the node means the container shares the host process namespace. A
+    exposes mounts, not the process view; C and D are hardening settings. Q3 D (smaller changeable
+    surface), M05-O02: Both controls reduce what a compromised process can change, which narrows the
+    escape path. A, B and C describe effects neither control has. Q4 C (records what config missed),
+    M05-O02: Runtime detection records behaviour the configuration should have blocked, so gaps become
+    visible. A overstates prevention; B reverses the relationship; D is patching, not detection. Q5 B
+    (isolate the node), M05-O03: When a container may have reached the node, the host is suspect, so
+    containment begins by isolating that node''s workloads. A and C destroy evidence sources; D resumes
+    the risk.'
+- module: 6
+  notes: 'Q1 D (cluster-admin binding), M06-O02: Impact decides order: a compromised over-broad binding
+    grants full cluster control, outranking tags, scanning gaps and visible misconfigurations. A, B and
+    C rank by churn, cost or visibility instead of impact. Q2 C (finding gone, no new violation),
+    M06-O03: A re-test after one change proves that finding is gone and that the change introduced no
+    new violation, nothing broader. A, B and D claim effects a single re-test cannot show. Q3 A
+    (improvement or regression), M06-O03: A baseline gives the next review something to compare
+    against. B, C and D assign powers a baseline does not have. Q4 B (observable pod list), M06-O03:
+    Enforcement is shown by observable state, and a pod list showing every image referenced by digest
+    is direct evidence. A, C and D are not evidence of enforcement. Q5 D (risk against effort),
+    M06-O02: Sequencing weighs risk reduction against effort, highest-risk first. A, B and C order by
+    irrelevant attributes.'
+lab_setup:
+- module: 1
+  setup: 'Revert the cloud-security range to its baseline. Confirm the Student reaches jump01 over SSH
+    and that kubectl on jump01 reaches the k3s API on k3s-master. Expected baseline: the web-app pod and
+    the privileged-debug pod running on k3s-worker01; k3s-worker02 holds the crypto-miner-sim and
+    exposed-dashboard pods; kubectl describe on web-app shows no privileged flag set.'
+- module: 2
+  setup: 'Revert the cloud-security range to its baseline. Confirm registry01 serves the images the
+    cluster runs, its vulnerability scanner is initialised, and the anonymous pull setting for the
+    project is enabled at baseline. Expected baseline: at least one image referenced by a mutable tag
+    in the pod list; the scanner returns a non-zero Critical or High count on a cluster image.'
+- module: 3
+  setup: 'Revert the cloud-security range to its baseline. Confirm the cluster role bindings list on
+    k3s-master shows at least one subject holding cluster-admin, and that the privileged-debug pod on
+    k3s-worker01 runs with privileged true and hostPID true. Assign the Student a limited service
+    account whose only right is listing pods in one namespace, and record which namespace.'
+- module: 4
+  setup: 'Revert the cloud-security range to its baseline. Confirm the runtime sensor on falco01 is
+    running with its rule set loaded, falcosidekick forwards to cloud-siem01, and the OpenSearch index
+    on cloud-siem01 receives events. Expected baseline: the sensor reports a non-zero rules-loaded
+    count; opening a shell in the web-app pod produces one alert naming that pod.'
+- module: 5
+  setup: 'Revert the cloud-security range to its baseline. Confirm the privileged-debug pod on
+    k3s-worker01 runs with privileged true and hostPID true, and that the web-app container mounts a
+    read-only root filesystem so the write attempt fails. Expected baseline: the process list inside
+    privileged-debug extends to the node''s processes; the write to a system path in web-app returns a
+    read-only error.'
+- module: 6
+  setup: 'Revert the cloud-security range to its baseline and keep every earlier module''s targets in
+    their unhardened state: the over-broad cluster-admin binding present, at least one mutable image
+    tag in use, anonymous pull enabled on registry01, and the sensor on falco01 forwarding to
+    cloud-siem01. Expected baseline: all four finding sets from modules 2 to 5 are observable without
+    reconfiguration.'
+common_faults:
+- module: 1
+  fault: The Student describes isolation from memory instead of reading the running cluster, so the
+    recorded pod list or describe output never appears in the evidence.
+  remedy: Require the exact pod names, namespaces and nodes from the kubectl output before the
+    judgement sentences are accepted.
+- module: 1
+  fault: The Student confuses namespaces with control groups, crediting namespaces with enforcing CPU
+    and memory limits.
+  remedy: 'Re-run the two quiz scenarios live: which mechanism gives views, which enforces shares.'
+- module: 2
+  fault: The Student marks every image pinned without checking the tag, because the digest column
+    looks authoritative.
+  remedy: Point at the image reference as written in the pod list; anything ending in a mutable tag is
+    mutable, whatever the digest column shows.
+- module: 2
+  fault: The Student reads the scanner counts for an image the cluster does not run.
+  remedy: Have them name the cluster image first, then scan exactly that reference on registry01.
+- module: 3
+  fault: The Student lists role bindings but records only role names, losing the subjects that hold
+    them.
+  remedy: Ask for the subject column of the binding output; the finding is who holds cluster-admin,
+    not that the role exists.
+- module: 3
+  fault: The limited service account test is skipped or the error text is paraphrased.
+  remedy: Require the exact output or error text; the RBAC boundary is proven by what the API server
+    returned, not by expectation.
+- module: 4
+  fault: The Student treats the benign shell alert as proof of a compromise and escalates it.
+  remedy: 'Walk the baseline reasoning: the Student opened the shell, the container had never run one
+    before, so the alert is expected administration and the right output is a narrow suppression.'
+- module: 4
+  fault: The forwarding check stops at falco01 and the cloud-siem01 copy is never confirmed.
+  remedy: The Evidence list names both hosts; the pass mark needs the forwarded copy confirmed present
+    or absent.
+- module: 5
+  fault: The Student reads the privileged-debug specification from the wrong node or namespace and
+    records settings from a different pod.
+  remedy: Require the pod name and node in the evidence line before the settings are accepted.
+- module: 5
+  fault: The write attempt is reported as blocked without the exact error output, or attempted on the
+    privileged pod where it would succeed.
+  remedy: The lab names the web-app container as the target because its root filesystem is read-only;
+    ask for the verbatim read-only error text.
+- module: 6
+  fault: The ranked list orders findings by scanner severity label instead of by impact on the
+    cluster.
+  remedy: Compare the cluster-admin binding against a Critical image finding and ask which compromise
+    costs more; impact, not the label, sets the order.
+- module: 6
+  fault: The evidence statement for the top change is a plan to re-run everything rather than one
+    named check.
+  remedy: Push for one observable check, such as a pod list showing every image referenced by digest,
+    and what absence of the finding in it would prove.

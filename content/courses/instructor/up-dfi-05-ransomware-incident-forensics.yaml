@@ -1,0 +1,197 @@
+# Instructor pack for C529 - Ransomware Incident Forensics. Staff only; never shown to Students.
+course_code: C529
+audience: staff_only
+overview: >-
+  Ransomware Incident Forensics is an advanced course of six 50-minute modules (300 minutes,
+  5 hours) for Students who have completed C526 and C212. Each module teaches three objectives,
+  runs a lab on the small-enterprise range around the ransomware-lite exercise, and ends with a
+  five-item quiz passed at 70 percent. Students hand in a per-module evidence sheet: stage
+  assignments, record extracts with times, timelines and decision lists. The labs chain across
+  the modules: the same incident is examined for its stages, its access route, its encryption
+  timeline, the extortion demand, the recovery decisions, and finally handed off to responders.
+timings:
+- module: 1
+  minutes: 50
+  plan: '15 teach, 25 lab, 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '15 teach, 25 lab, 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '15 teach, 25 lab, 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '15 teach, 25 lab, 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '15 teach, 25 lab, 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: >-
+    Q1 B: credential theft and lateral movement are pre-encryption staging; A reads any breach
+    start as phishing (no mail record is cited), C mistakes the order, D is the last stage, not
+    the one reached. Q2 C: shadow-copy deletion and cleared logs are defence inhibition before
+    encryption; A and B are earlier stages with different artefacts, D has no artefacts yet.
+    Q3 A: staging behaviour aimed at many hosts is what separates a ransomware campaign from an
+    ordinary single-host infection; B is an overstatement, C answers the wrong question, D is
+    an absolute claim. Q4 D: notes plus new extensions mark the encryption stage; A and B are
+    pre-encryption, C is not marked by notes. Q5 B: a payment demand with a deadline and a leak
+    threat is extortion; A and D ended before encryption completed, C is the first stage.
+- module: 2
+  notes: >-
+    Q1 C: an exposed remote access service with a reused password is the route the stem names;
+    A and B are real routes the evidence does not mention, D is rare and unsupported. Q2 A: a
+    mail record proves delivery time and nothing later; B and C need endpoint records, D is
+    intent, which no delivery record shows. Q3 D: name resolution followed by a firewall
+    connection shows the network follow-through; A only covers the first step, B and C are
+    unrelated sources. Q4 B: one missing message weakens the phishing route but a mail record
+    gap alone cannot exclude it; A and C overstate a negative, D dismisses evidence. Q5 A: clock
+    offset between sources is the first check for contradictory times; B, C and D do not affect
+    the comparison.
+- module: 3
+  notes: >-
+    Q1 D: ordered file times plus a note time give an encryption timeline; A, B and C are counts
+    and measures, not an ordering. Q2 B: a time earlier than the system install is timestomping
+    that misleads the timeline; A is possible but weaker, C invents a backup behaviour, D does
+    not explain the mismatch. Q3 C: a gap between dates other records contradict is a cleared
+    event log; A and D are hardware events, B would not span days. Q4 A: offline backups taken
+    before the incident are the option the state supports; B is impossible once copies are
+    deleted, C and D are not evidence-backed options. Q5 D: an unconfirmed, unlocated job entry
+    leaves the option unknown until a record proves it; A and B assume completion, C overstates
+    the conclusion.
+- module: 4
+  notes: >-
+    Q1 A: encryption plus a publication threat is double extortion; B has no theft claim, C
+    would add harassment of people, D denies the model the stem describes. Q2 D: samples that
+    match a public site leave the claim unproven; A and B treat the countdown and existence of
+    samples as proof, C accepts naming as evidence. Q3 B: checking a sanctions list is sanctions
+    screening inside the payment decision; A, C and D are other parts of the response. Q4 C:
+    engaging law enforcement and reporting the demand belongs early; A is publicity, B concedes
+    before screening, D is not the firm's action to take. Q5 A: exposed personal data raises
+    breach notification duties; B, C and D are technical or publicity actions, not duties.
+- module: 5
+  notes: >-
+    Q1 C: a week-old image taken from the running system cannot be trusted for a domain
+    controller, so rebuild and restore data only from verified sources; A and B trust the image,
+    D skips validation. Q2 B: a restored host that revives an old task carried persistence the
+    verification missed; A dismisses the event, C assumes a benign cause, D misses the point.
+    Q3 D: the offline copy predates the intrusion and was unreachable, so it is trusted; A and
+    B prefer the compromised host copy, C is an absolute rule the evidence should decide. Q4 A:
+    account review plus patch state against the baseline is the validation pair; B is a single
+    observation, C proves reachability only, D is one scan. Q5 C: mail filtering and awareness
+    training address the phishing access route; A, B and D are useful controls that answer a
+    different question.
+- module: 6
+  notes: >-
+    Q1 D: the first artefact to build is one ordered timeline across all sources; A, B and C are
+    later deliverables. Q2 A: each line needs the record, its time and its source, with
+    inference marked as inference; B strengthens wording, C asserts attribution, D attaches
+    material without separating fact from reading. Q3 B: rank by evidence strength, so the
+    rebuild with strong evidence leads; A puts budget first, C prefers speed over evidence,
+    D refuses to rank. Q4 D: scope leads a handoff so the responder knows what is affected;
+    A buries the scope, B and C do not belong at the head. Q5 C: the handoff names the access
+    route with its strongest record so a responder can start; A and B dump material, D repeats
+    the demand without analysis.
+lab_setup:
+- module: 1
+  setup: >-
+    Revert the small-enterprise range to its baseline and confirm from jump-box that dc-01 and
+    fw-01 are reachable. Start the ransomware-lite exercise and note its start time. Stage the
+    instructor-supplied endpoint export for the affected workstation. Expected values the Student
+    should find: name-resolution queries from ws-01 to the exercise's external domain in dc-01's
+    records, workstation connections to dc-01 and blocked outbound attempts in fw-01's records
+    (the range permits nothing outbound but depot traffic), and process creations followed by
+    file changes in the endpoint export.
+- module: 2
+  setup: >-
+    Revert the range to its baseline and rerun ransomware-lite with a fresh start time. Stage the
+    instructor-supplied mail record for ws-01 (sender, subject 'Payroll update', delivery time) and
+    the ws-01 endpoint export. Confirm fw-01 shows no inbound remote-access attempts to the user
+    network in the run window, so the phishing route is the one the records support. Expected values:
+    delivery time about two minutes before the first process creation, queries from ws-01 to the
+    exercise's external domain, no inbound remote-access records.
+- module: 3
+  setup: >-
+    Revert the range to its baseline; no scenario run is needed. Stage the instructor-supplied
+    ws-02 file listing, the ws-02 shadow-copy state (zero copies remaining) and the backup record
+    (nightly offline backup, last one taken before the incident, completed). Expected values: first
+    and last encrypted file modification times a few minutes apart, one file time earlier than the
+    operating system install date, empty shadow-copy list, one completed offline backup entry.
+- module: 4
+  setup: >-
+    Revert the range to its baseline and rerun ransomware-lite. Stage the instructor-supplied
+    ransom demand (72-hour deadline, claim that customer records were stolen). Confirm fw-01's
+    outbound records for the run window show the exercise's external domain as blocked outbound
+    attempts, with no completed outbound transfer from the user network; the small-enterprise
+    range permits nothing outbound but depot traffic. Expected values the Student should find:
+    every fw-01 outbound record marked blocked, name-resolution queries to the exercise's
+    external domain in dc-01's records, and the demand's deadline and claim quoted exactly.
+    Marking note: the range cannot support the data-theft claim, so accept contradict or unsure
+    with the deciding fw-01 record named; any mark of support fails.
+- module: 5
+  setup: >-
+    Revert the range to its baseline and confirm every host is reachable from jump-box. Stage the
+    instructor's incident summary (which hosts each stage touched: ws-01 phished, ws-02 encrypted,
+    dc-01 untouched by encryption but holding the name-resolution records) and the backup inventory
+    (restore points with dates and locations). Expected values: host inventory of jump-box, dc-01,
+    ws-01 to ws-03 and fw-01; one offline restore point predating the intrusion; one host-based image
+    taken during the incident.
+- module: 6
+  setup: >-
+    Revert the range to its baseline and rerun ransomware-lite. Confirm dc-01 name-resolution
+    records, fw-01 connection records and the ws-02 endpoint export cover the same run window, and
+    note the clock offset between the sources. Stage a blank handoff template. Expected values: the
+    same incident window across all three sources, queries to the exercise's external domain, and
+    process creations on ws-02 matching the fw-01 connection times within the stated clock offset.
+common_faults:
+- module: 1
+  fault: Students label the whole incident by its headline ('it was ransomware') instead of assigning
+    each event to a stage.
+  remedy: Put the collected event list on the board and classify it event by event, asking what the
+    record shows at that moment, before they fill in the evidence sheet.
+- module: 1
+  fault: The transition into encryption is placed at the first file change with no artefact named.
+  remedy: Ask for the exact record and its time; the earliest ransom note or first extension change
+    is the artefact, not a summary judgement.
+- module: 2
+  fault: Students mark the phishing route 'excluded' because one mail record is missing.
+  remedy: Re-run the exercise of module 2 question 4 - one missing record weakens a route but does not
+    exclude it; ask what other record would settle it.
+- module: 2
+  fault: Times from mail and endpoint records are compared without checking the clock offset.
+  remedy: Have each Student write the source and its offset next to every time before comparing them.
+- module: 3
+  fault: The timestomped file time is copied into the timeline as reliable.
+  remedy: Ask whether the time is consistent with the other records; mark altered times in a distinct
+    colour and keep them out of the ordering.
+- module: 3
+  fault: Recovery options are marked 'usable' because they exist in the textbook, not because a
+    record supports them.
+  remedy: Insist on one mark per option with the deciding record named; 'unknown' is a valid answer.
+- module: 4
+  fault: Students accept the demand's theft claim at face value and skip the fw-01 record check.
+  remedy: Make the fw-01 record listing come before the claim mark; on this range no outbound
+    transfer completes, so the records can only support contradict or unsure, never support.
+- module: 4
+  fault: The response decision list is unordered, or payment is listed before sanctions screening.
+  remedy: Ask for a one-line reason per decision; screening comes before any payment consideration.
+- module: 5
+  fault: Every host is marked 'restore' because it is cheaper, regardless of image trust.
+  remedy: Have Students state where the restore point came from and whether it predates the
+    intrusion; a host-based image taken during the incident fails that test.
+- module: 5
+  fault: Validation is written as 'test the host' with no named check.
+  remedy: Require two named checks per host from the topics (accounts, patch state, monitoring);
+    'test' alone does not pass.
+- module: 6
+  fault: The merged timeline duplicates events that two sources recorded, inflating the count.
+  remedy: Ask for the source per entry; one event seen in two records is one timeline entry with two
+    sources.
+- module: 6
+  fault: The handoff states inferences ('the intruder moved sideways') as observations with no
+    record named.
+  remedy: Have Students mark each handoff line observation or inference; an inference line must name
+    the record it rests on.

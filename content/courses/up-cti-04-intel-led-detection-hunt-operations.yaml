@@ -1,0 +1,560 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C558
+title: Intel-Led Detection & Hunt Operations
+version: '1.0'
+difficulty: advanced
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C556
+- C557
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Threat Analyst; Cyber Defense Analyst (PR-CDA-001).'
+  - 'NIST CSF 2.0: DE.CM, DE.AE, ID.IM.'
+  - 'Self-paced upskilling, outside DP1/DP2.'
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Intelligence Requirements and Hunt Planning
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Formulate priority intelligence requirements from a stated organisation profile and sector threat picture
+  - Classify intelligence products as strategic, operational or tactical and select the level a hunt needs
+  - Select collection sources that can answer a stated intelligence requirement
+  topics:
+  - 'The intelligence cycle: direction, collection, processing, analysis and dissemination.'
+  - Priority intelligence requirements and what makes one answerable.
+  - Strategic, operational and tactical intelligence levels.
+  - Indicator feeds, behavioural reporting and their differences.
+  - 'Collection sources: vendor reporting, open sources, internal telemetry and shared communities.'
+  lab: >-
+    Lab: On the SOC training range, survey the campaign events held on the threat intelligence
+    platform and judge which of them carry the behavioural context a hunt needs. Evidence: the
+    total number of events and the tags of the three most recent; the attribute types and counts
+    of the most recent campaign event; the adversary behaviours, if any, that its description and
+    galaxy tags describe; a mark of "indicator only" or "carries behaviour context" for each
+    surveyed event. Pass: every surveyed event is marked with a one-sentence reason; the one event
+    a hunt should start from is named; each mark agrees with what the event actually contains.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH as the analyst account, open a browser to the threat intelligence
+        platform on misp01 and record the login time.
+    - hosts: [misp01]
+      action: List the campaign event titles and tags on misp01 and record the total number of events and
+        the tags of the three most recent.
+    - hosts: [misp01]
+      action: Open the most recent campaign event on misp01 and record how many of its attributes are file
+        hashes, network indicators and free-text comments.
+    - hosts: [misp01]
+      action: Read that event's description and galaxy tags on misp01 and record each adversary behaviour
+        the text describes, or record that it names indicators only.
+    - hosts: [jump01]
+      action: Mark each surveyed event "indicator only" or "carries behaviour context" with a one-sentence
+        reason, and name the one event a hunt should start from.
+  refs:
+  - oasis-cti
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A hospital's security team must decide where to start hunting after a sector advisory
+        describes a campaign against hospital data services. What should the team define first?
+      options:
+      - A) A complete inventory of every hospital device
+      - B) A priority intelligence requirement that states what the hunt must decide
+      - C) A purchase request for a larger intelligence feed
+      - D) A public disclosure of the advisory to patients
+      answer: B
+    - question: A vendor report explains a criminal group's business model, victim selection and payment
+        demands observed over two years. Which intelligence level does this report represent?
+      options:
+      - A) Tactical
+      - B) Technical
+      - C) Operational
+      - D) Strategic
+      answer: D
+    - question: An analyst receives a daily feed of file hashes and domains with no context about attacker
+        behaviour. What is the main limitation of this feed for hunting?
+      options:
+      - A) It ages quickly and describes no behaviour the hunt can test
+      - B) It cannot be stored in a threat intelligence platform
+      - C) It is restricted to malware that antivirus already detects
+      - D) It replaces the need for internal telemetry
+      answer: A
+    - question: A bank joins a sector community where members exchange campaign reports under agreed
+        sharing rules. What is the main benefit of joining this community?
+      options:
+      - A) Free replacement for the bank's own telemetry
+      - B) Guaranteed protection against every campaign described
+      - C) Early sight of campaign techniques other institutions observed
+      - D) A list of employee usernames held by other banks
+      answer: C
+    - question: Before any collection begins, a hunt team writes down the three questions its leadership
+        needs answered about ransomware operators. In intelligence terms what are these questions?
+      options:
+      - A) Direction for the cycle's collection and analysis work
+      - B) Dissemination products sent to external partners and shared communities
+      - C) Processed indicators ready for detection rules
+      - D) Tactical telemetry from internal logs
+      answer: A
+- ordinal: 2
+  title: Hypothesis-Driven Hunt Design
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a testable hunt hypothesis from a stated intelligence requirement
+  - Decompose a hypothesis into the observable behaviours and expected artefacts that would confirm it
+  - Define the scope, data sources, time window and stop criteria of a hunt before execution
+  topics:
+  - 'The statement of a testable hypothesis: actor, behaviour and expected evidence.'
+  - Decomposing a hypothesis into observable behaviours and expected artefacts.
+  - Scope, time window and stop criteria defined before execution.
+  - The difference between hunting, alert triage and penetration testing.
+  - Documenting assumptions so negative results stay usable.
+  lab: >-
+    Lab: On the SOC training range, turn the campaign event chosen in Module 1 into two written
+    hunt hypotheses with scope, sources and stop criteria. Evidence: the one-sentence intelligence
+    requirement; for each hypothesis, its actor, behaviour, expected evidence, named range source
+    and time window; each hypothesis' stop criterion and assumption; a testable or not-testable
+    mark with a reason. Pass: each hypothesis states one behaviour the recorded telemetry could
+    confirm or refute; each names a source that exists on the range; each carries a stop criterion
+    and a written assumption.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and write, in one sentence, the intelligence requirement the chosen
+        campaign event supports.
+    - hosts: [misp01, jump01]
+      action: Reread the chosen event on misp01 and record the two behaviours in it that the victim
+        network's telemetry could confirm.
+    - hosts: [jump01, siem01]
+      action: From jump01, open the SIEM on siem01 and record the index names that hold endpoint and
+        authentication telemetry.
+    - hosts: [jump01]
+      action: Write two hunt hypotheses, each naming the actor, one behaviour, the expected evidence, a
+        named source index and a 30-day window.
+    - hosts: [jump01]
+      action: For each hypothesis record one stop criterion and one assumption, then mark it testable or
+        not testable with a one-sentence reason.
+  refs:
+  - mitre-attack
+  - nist-sp-800-94
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A hunt hypothesis says an intruder who reaches a workstation will create a scheduled task
+        to persist. Why is a hypothesis of this kind testable?
+      options:
+      - A) Every intruder behaves in exactly this way
+      - B) Each predicted behaviour leaves records the telemetry can confirm or refute
+      - C) Persistence tools never appear on healthy workstations
+      - D) The hypothesis cannot be revised once execution starts
+      answer: B
+    - question: A team plans a hunt for remote-access tool use. Which scope statement best fits a
+        hypothesis-driven hunt?
+      options:
+      - A) Search everything in the platform for anything unusual
+      - B) Rerun last year's hunt unchanged across all hosts
+      - C) One behaviour, a stated 30-day window and named log sources
+      - D) Whatever data the largest vendor feed happens to include this month
+      answer: C
+    - question: A hypothesis about credential theft is decomposed for hunting. Which product of that
+        decomposition states what the analyst expects to find?
+      options:
+      - A) A list of firewalls to reconfigure
+      - B) The organisation's annual loss forecast
+      - C) A new password policy draft
+      - D) The expected artefacts each behaviour leaves in telemetry
+      answer: D
+    - question: Midway through a hunt, the data shows none of the predicted behaviours anywhere in scope.
+        What conclusion should the hunt record?
+      options:
+      - A) The hypothesis was not confirmed within the stated scope and window
+      - B) The network is proven free of the adversary forever
+      - C) The telemetry platforms are certainly broken
+      - D) The hypothesis must be kept open with no end date and no stop criterion
+      answer: A
+    - question: During design, an analyst writes down that the vendor report naming the tool may be
+        outdated. Why does recording assumptions like this matter?
+      options:
+      - A) Assumptions excuse the team from documenting scope
+      - B) Unstated assumptions make a negative result impossible to interpret
+      - C) Assumptions replace the need for stop criteria
+      - D) Vendors require assumption lists before sharing reports
+      answer: B
+- ordinal: 3
+  title: Intel-to-Telemetry Mapping
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Map a stated adversary behaviour to the telemetry that would record it
+  - Identify which log sources in a described network capture each behaviour
+  - Record the field names a hunt query must use for a chosen telemetry source
+  topics:
+  - 'Behaviour-to-telemetry mapping: action, sensor and resulting record.'
+  - Endpoint, network, identity and cloud telemetry families.
+  - Mapping gaps where no collected source records a behaviour.
+  - Field names, event codes and normalised schemas in hunt queries.
+  - Validating a mapping against a live record before hunting.
+  lab: >-
+    Lab: On the SOC training range, map the two hypothesised behaviours to the telemetry the range
+    actually produces and validate each mapping against a live record. Evidence: the available
+    indices with their event counts; the log types on the network sensor and one field name from
+    each; the field names and values of one authentication event and one endpoint process event; a
+    source, event type and field list for each behaviour; a validated or blind-spot mark for each
+    mapping. Pass: each behaviour is mapped to a source the range collects or marked a blind spot;
+    each mapping names real fields taken from a live record; each blind spot names the missing
+    sensor.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, siem01]
+      action: From jump01, open the SIEM on siem01 and record each available index with its event count.
+    - hosts: [jump01, seconion01]
+      action: From jump01, open the Security Onion console on seconion01 and record the Zeek log types
+        it holds for the monitored network and one field name from each type.
+    - hosts: [siem01]
+      action: In the SIEM on siem01, open one recent authentication event and one endpoint process event
+        and record their field names and values.
+    - hosts: [jump01]
+      action: For each hypothesised behaviour, write the source, event type and field names a confirming
+        record would carry, and mark whether the range collects it.
+    - hosts: [jump01]
+      action: Mark each mapping validated or a blind spot, and for each blind spot name the sensor the
+        range would need.
+  refs:
+  - nist-sp-800-92
+  - mitre-attack
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: An advisory says an intruder clears security event logs on workstations. Which telemetry
+        would record that action?
+      options:
+      - A) The DHCP server's lease history
+      - B) The web proxy's outbound request log
+      - C) The logging service's own audit records on each endpoint
+      - D) The switched network's port counters
+      answer: C
+    - question: A hunt needs evidence of lateral remote sign-ins between workstations. Which source most
+        directly records those sign-ins?
+      options:
+      - A) Domain controller authentication event logs
+      - B) The perimeter firewall's internet-facing rules
+      - C) Workstation screen-lock settings
+      - D) The wireless controller's client list
+      answer: A
+    - question: Mapping shows an adversary behaviour that no deployed sensor records. What does this gap
+        represent?
+      options:
+      - A) Proof the behaviour never occurred
+      - B) A detection that will fire reliably
+      - C) A reason to delete the hypothesis
+      - D) A blind spot the hunt cannot close with current telemetry
+      answer: D
+    - question: A mapping query returns zero events because the analyst used a vendor's field name
+        instead of the normalised schema's. What does this show?
+      options:
+      - A) The behaviour left no record anywhere
+      - B) Field names must be validated against the actual schema before the hunt
+      - C) Normalisation removes security events
+      - D) The mapping table was wrong about the sensor
+      answer: B
+    - question: Before hunting on a new mapping, an analyst opens one raw event and confirms each mapped
+        field holds the expected value. What does this step establish?
+      options:
+      - A) That every host in the estate runs the newest agent version available
+      - B) That the vendor feed is current for the month
+      - C) That the mapping matches real records, not documented ones
+      - D) That the behaviour occurred during the event
+      answer: C
+- ordinal: 4
+  title: Hunt Execution on the Range
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Execute a prepared hunt on range telemetry using stacked and filtered queries
+  - Record each query, its result counts and the hosts involved so execution is repeatable
+  - Classify each finding as expected, needing enrichment or a candidate detection
+  topics:
+  - Running prepared queries against SIEM and endpoint telemetry.
+  - Stacking values and filtering to surface rare outliers.
+  - Recording queries, counts and hosts so execution is repeatable.
+  - 'Classifying findings: expected, needs enrichment, candidate detection.'
+  - When to stop a hunt and hand a finding to response.
+  lab: >-
+    Lab: On the SOC training range, execute the stronger hypothesis from Module 2: stack service
+    and task creation across the victim workstations, then classify what the stack shows.
+    Evidence: the number of workstation clients checking in; the total count of service and task
+    creation results; every account that appears only once in the stack; the sign-in counts and
+    hosts for each rare account; an expected, needs enrichment or candidate detection mark with a
+    reason for each rare item. Pass: every rare account is traced to the hosts it signed in to;
+    every rare item carries one of the three marks with a one-sentence reason; the one finding to
+    hand to response is named.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, velociraptor01]
+      action: Log on to jump01, open the endpoint console on velociraptor01 and record how many
+        workstation clients are checking in.
+    - hosts: [velociraptor01, v-ws01]
+      action: From velociraptor01, collect service and scheduled task creation events across the victim
+        workstations, including v-ws01, and record the total result count.
+    - hosts: [velociraptor01]
+      action: Stack the collected results by the account that created each item and record every account
+        that appears exactly once.
+    - hosts: [jump01, siem01]
+      action: From jump01, search the SIEM on siem01 for sign-in events for each rare account and record
+        the count and the hosts involved.
+    - hosts: [jump01]
+      action: Mark each rare item expected, needs enrichment or candidate detection with a one-sentence
+        reason, and name the one finding to hand to response.
+  refs:
+  - mitre-attack
+  - sigma
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A hunt on endpoint telemetry lists every parent process that spawned a shell on the
+        workstations and counts occurrences. Why does a rare entry in that stack deserve attention?
+      options:
+      - A) Rare values are always malicious activity
+      - B) Counting is slower than reading each event
+      - C) The behaviour is uncommon where the rest of the estate is uniform
+      - D) Stacking deletes the common values from the index
+      answer: C
+    - question: Halfway through execution, a new data source comes online and its records change the
+        counts. What should the analyst running the hunt do?
+      options:
+      - A) Record the change and rerun the affected queries
+      - B) Ignore it because the scope was fixed at design time
+      - C) Declare the hunt failed and abandon the window
+      - D) Expand the hunt to every new source without a stop point
+      answer: A
+    - question: A stack shows one workstation where a service account ran an interactive session once in
+        thirty days. What is the correct classification?
+      options:
+      - A) Expected, because service accounts may do anything
+      - B) A candidate detection, because one event is always an intrusion
+      - C) A false record that should be deleted from the notes
+      - D) Needs enrichment, because context decides whether it is expected
+      answer: D
+    - question: Two analysts run the same hunt and one cannot reproduce the other's counts. Which
+        practice prevents this?
+      options:
+      - A) Saving results only in each analyst's local folder
+      - B) Recording every query, its parameters and the time window used
+      - C) Renaming the queries after each run
+      - D) Relying on memory of which hosts were searched
+      answer: B
+    - question: A finding is confirmed as genuinely anomalous and beyond the hunt's purpose to analyse
+        further. What is the right next step?
+      options:
+      - A) Quietly delete the finding to keep the metrics clean
+      - B) Wait for the same behaviour to appear several more times
+      - C) Stop the hunt and hand the finding to incident response
+      - D) Broaden the hunt until the finding looks ordinary
+      answer: C
+- ordinal: 5
+  title: Turning Findings into Detections
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Convert a confirmed hunt finding into a detection rule with explicit conditions
+  - Test a new detection against both matching and benign lookalike events
+  - Tune a detection that fires on benign activity without losing the true match
+  topics:
+  - 'From finding to rule: explicit conditions, thresholds and time windows.'
+  - Sigma as a vendor-neutral detection rule format.
+  - Testing against true matches and benign lookalikes.
+  - 'Tuning: narrowing conditions and allow-listing known-good activity.'
+  - Registering the rule, its owner and its review date.
+  lab: >-
+    Lab: On the SOC training range, convert the finding confirmed in Module 4 into a Sigma rule,
+    test it against the stored telemetry and tune out the benign matches. Evidence: the rule's
+    title, selection fields and time window; how many stored events match and on which hosts; for
+    two sampled matches, whether each is the hunted behaviour or benign lookalike activity; any
+    condition change made and the new match count. Pass: the rule states explicit conditions
+    rather than a general suspicion; every benign match is removed by a recorded condition change
+    without losing the true match; the rule is marked ready or needing further tuning with a
+    reason.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, siem01]
+      action: Log on to jump01, open the detection rule editor on siem01 and record the date and the
+        rule set's current rule count.
+    - hosts: [siem01]
+      action: Write a Sigma rule for the confirmed finding and record its title, its selection field
+        conditions and its time window.
+    - hosts: [siem01]
+      action: Run the rule against the past 30 days of stored telemetry and record how many events match
+        and on which hosts.
+    - hosts: [siem01]
+      action: Open two matching events and record for each whether it shows the hunted behaviour or
+        benign lookalike activity.
+    - hosts: [jump01, siem01]
+      action: For every benign match, narrow the rule's conditions, record each change and the new match
+        count, then mark the rule ready or needing further tuning.
+  refs:
+  - sigma
+  - mitre-attack
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A hunt finding becomes a durable detection only when the rule's conditions are explicit.
+        Which rule statement meets that standard?
+      options:
+      - A) Detect suspicious service creation whenever it happens
+      - B) Watch for anything the analysts consider strange
+      - C) Alert on activity that resembles intruder behaviour
+      - D) Alert on a service created from a temp path outside change windows
+      answer: D
+    - question: A team wants a hunt finding's detection logic to survive a future platform replacement.
+        Why write the rule in Sigma?
+      options:
+      - A) Sigma rules execute faster than native queries
+      - B) Sigma is vendor-neutral, so the logic ports between platforms
+      - C) Sigma hides the rule's logic from other teams
+      - D) Sigma replaces the need to test the rule
+      answer: B
+    - question: A new rule fires on the intruder behaviour and also on the software inventory job that
+        runs nightly. What does the second match show?
+      options:
+      - A) The rule needs tuning before deployment because it matches benign activity
+      - B) The inventory job is malicious and must be blocked
+      - C) The rule is perfect and the job should be silenced forever
+      - D) The finding was wrong and the hunt must restart
+      answer: A
+    - question: A rule's one real match in thirty days also fires four hundred times on a known
+        maintenance task. What is the best tuning move?
+      options:
+      - A) Raise the alert threshold above a thousand matching events before anyone looks
+      - B) Delete the rule and return to manual hunting
+      - C) Exclude the maintenance task's known account and keep the match logic
+      - D) Widen the time window so both fit one alert
+      answer: C
+    - question: After tuning, a detection is ready for deployment. Which record makes the rule
+        maintainable rather than orphaned?
+      options:
+      - A) The processing cost of its queries on the platform
+      - B) Its owner, purpose and scheduled review date
+      - C) The number of false positives it had on day one
+      - D) The name of the vendor feed that inspired it
+      answer: B
+- ordinal: 6
+  title: From Hunt Findings to Response and Coverage
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Document a completed hunt so its scope, method and negative results are auditable
+  - Triage a confirmed hunt finding into an incident response decision with supporting evidence
+  - Report the detection coverage a hunt campaign added and the gaps that remain
+  topics:
+  - 'The hunt report: scope, method, findings and negative results.'
+  - Handing a confirmed finding to incident response with evidence.
+  - 'Detection coverage: behaviours now detected and gaps that remain.'
+  - Feeding new intelligence requirements from what a hunt could not answer.
+  - 'Metrics for hunt programmes: hypotheses tested and rules deployed.'
+  lab: >-
+    Lab: On the SOC training range, hand the confirmed finding to the case platform, write the
+    handover record and state the detection coverage the hunt added. Evidence: the case number and
+    severity on the case platform with a one-sentence justification; each observable added with
+    its type and value; the coverage statement listing behaviours now detected, behaviours mapped
+    but undetected and the telemetry gaps behind them; the new intelligence requirement the hunt
+    raised. Pass: the case carries every observable from the confirmed finding; the severity
+    justification cites recorded evidence rather than opinion; the coverage statement separates
+    detected behaviours from gaps; the hunt report records scope, method and negative results.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, thehive01]
+      action: Log on to jump01, open the case platform on thehive01, create a case for the confirmed
+        finding and record its case number.
+    - hosts: [thehive01]
+      action: Add the confirmed finding's observables to the case and record each observable's type and
+        value.
+    - hosts: [thehive01]
+      action: Set the case severity and record a one-sentence justification drawn from the finding's
+        supporting records.
+    - hosts: [jump01]
+      action: Write the hunt's coverage statement, separating behaviours now detected, behaviours mapped
+        but undetected and the telemetry gaps behind them.
+    - hosts: [jump01]
+      action: Write the intelligence requirement the hunt raised, and mark the hunt report complete with
+        its scope, method and negative results.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A hunt closes with no finding after searching four log sources for thirty days. What
+        makes that result usable?
+      options:
+      - A) Reporting that the organisation has no intruders
+      - B) Closing the matter without written output
+      - C) Stating exactly which sources, hosts and window the search covered
+      - D) Deleting the queries so the storage space is reused
+      answer: C
+    - question: A hunt confirms an intruder-controlled channel on one workstation. What is the most
+        important content of the handover to response?
+      options:
+      - A) The hunt team's opinions about the intruder's nationality
+      - B) A promise that the hunt team will fix the host themselves
+      - C) The full raw log archive of the whole network
+      - D) The finding, its supporting records and the time it was observed
+      answer: D
+    - question: A campaign of six hunts produced four new rules covering two behaviours. Which statement
+        reports coverage honestly?
+      options:
+      - A) The estate is now fully covered against the adversary
+      - B) Two of the mapped behaviours are now detected; the rest remain gaps
+      - C) Coverage cannot be measured until an incident happens
+      - D) The rules will cover every future version of the behaviour
+      answer: B
+    - question: A hunt cannot answer its requirement because no source holds the needed records. What
+        should the team do next?
+      options:
+      - A) Raise a new intelligence requirement and request the missing telemetry
+      - B) Rewrite the requirement again and again until the current data happens to fit
+      - C) Assume the behaviour is not happening
+      - D) Repeat the same hunt monthly without changes
+      answer: A
+    - question: Leadership asks whether the hunt programme is worth its cost. Which pair of metrics
+        answers them most honestly?
+      options:
+      - A) Hypotheses tested and detections deployed from them
+      - B) Total alerts closed by the response team
+      - C) The number of vendors represented in the feeds
+      - D) The size of the log storage the organisation purchased this year
+      answer: A

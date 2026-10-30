@@ -1,0 +1,570 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+
+course_code: C516
+title: Resilient Network Architecture
+version: '1.0'
+difficulty: advanced
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C514
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Infrastructure Support Specialist; Systems Security Analyst.'
+  - 'NIST CSF 2.0: PR.IR; ID.RA.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Single Points of Failure Analysis
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Map the network path a named service uses and list every component along it
+  - Identify which components in a design are single points of failure for each service
+  - Classify each single point of failure by the blast radius its failure would produce
+  topics:
+  - 'A single point of failure: one component whose failure stops a service outright.'
+  - Mapping a service path from the client through every hop to the data.
+  - 'Blast radius: how much of the estate one failure takes with it.'
+  - 'Correlated failure: components that share a chassis, a power feed or an administrator.'
+  - Recording each finding with its evidence and a proposed fix.
+  lab: >-
+    Lab: On the large-enterprise range, trace the path a workstation uses to reach the database
+    server, name every component on that path, and judge each one a single point of failure or
+    redundant. Evidence: the firewall rule permitting the workstation network to reach the server
+    network and its ports; the result of a port-1433 test from the workstation to sql01 and the
+    fw01 hops the path crosses; the DHCP and DNS servers the workstation is configured to use;
+    each path component marked "single point of failure" or "redundant" with a reason.
+    Pass: all four items recorded as the range shows them; every component on the path accounted
+    for; one proposed change for each single point of failure.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and write the start time in the lab notes.
+    - hosts: [jump01, fw01]
+      action: From jump01, read the rules on fw01 that permit traffic from the corporate LAN to
+        the server VLAN, and record the ports each rule allows.
+    - hosts: [ws01]
+      action: Open a remote session on ws01, test sql01 over TCP port 1433 with
+        Test-NetConnection, and record whether the test succeeds and the result text.
+    - hosts: [jump01, fw01]
+      action: Read fw01's corp-to-server rules and its route between the corporate LAN and the
+        server VLAN, and record the hops a connection from ws01 to sql01 crosses.
+    - hosts: [ws01]
+      action: In the same session on ws01, record the DHCP server and the DNS servers the
+        workstation is configured to use.
+    - hosts: [jump01]
+      action: For every component on the recorded path, write "single point of failure" or
+        "redundant" with one sentence of reason, and propose one change for each single point of
+        failure.
+  refs:
+  - nist-sp-800-30r1
+  - nist-cswp-29
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: An enterprise design routes every zone through one core firewall. Which component's
+        failure would take the largest blast radius with it?
+      options:
+      - A) A single workstation, because one user loses one machine
+      - B) The core firewall, because every zone's traffic crosses it
+      - C) One database server, because one application loses its data
+      - D) One patch cable, because one link flaps and recovers
+      answer: B
+    - question: What decides whether a component on a service's path is a single point of failure?
+      options:
+      - A) How much the component costs to replace
+      - B) How many users are named in its logs
+      - C) Whether another component can carry the flow if it fails
+      - D) Whether the vendor still supports it
+      answer: C
+    - question: A design uses one time server for the whole estate. If it fails, which statement
+        best describes the blast radius?
+      options:
+      - A) One subnet, because only hosts that poll it directly drift
+      - B) One application, because only scheduled jobs slip
+      - C) Nothing, because time resynchronises when it returns
+      - D) The whole estate, because every host depends on the time source
+      answer: D
+    - question: Two database servers replicate to each other but share one power feed. How should
+        the reviewer classify that weakness?
+      options:
+      - 'A) A correlated failure: one event removes both members at once'
+      - B) A load-balancing pair, because the members share work
+      - C) An availability gain, because two servers beat one
+      - D) A capacity problem, not a resilience problem
+      answer: A
+    - question: A review records "the core firewall is a single point of failure" with no
+        supporting detail. Which addition makes the finding usable?
+      options:
+      - A) The firewall's model and firmware version
+      - B) The number of rules the firewall holds
+      - C) The paths that stop when the firewall fails
+      - D) The cost of a second firewall set against the outage it prevents
+      answer: C
+- ordinal: 2
+  title: Redundancy
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish redundancy that removes a single point of failure from spare capacity that does not
+  - Enumerate the redundant pairs and the single-instance services in a live design
+  - Design redundancy for one single-instance service using components the design already holds
+  topics:
+  - Active-active and active-passive pairs, and what each does in normal operation.
+  - 'Shared fate: redundancy defeated by a common chassis, power feed or administration error.'
+  - Domain controllers run in pairs, while DHCP and the operations master roles stay single-homed.
+  - 'Replicated databases: data redundancy is not the same as service redundancy.'
+  - 'Choosing what to make redundant first: service criticality against effort.'
+  lab: >-
+    Lab: On the large-enterprise range, enumerate which domain services run as redundant pairs and
+    which are single-homed, then design redundancy for one single-instance service from hosts the
+    design already holds. Evidence: the services each domain controller runs, with the one that is
+    single-homed named; the replication relationship between the two database servers and which
+    member holds the primary copy; whether a second time server or certificate authority answers on
+    the management or server networks; the design for one single-instance service and the shared
+    dependency it still leaves. Pass: all four items recorded as the range shows them; the design
+    names the exact hosts it uses; the remaining shared dependency is stated.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and write the start time in the lab notes.
+    - hosts: [jump01, dc01, dc02]
+      action: Query both dc01 and dc02 for the services each one runs, and record which domain
+        service is single-homed.
+    - hosts: [jump01, sql01, sql02]
+      action: Confirm on sql02 that it lists sql01 as its replication partner, and record which
+        member holds the primary copy.
+    - hosts: [jump01]
+      action: Check whether a second time server or certificate authority answers on the management
+        or server networks, and record the answer for each.
+    - hosts: [jump01]
+      action: Choose one single-instance service, design a redundant pair for it from hosts the
+        design already holds, and record the shared dependency the design still leaves.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: Two web servers share incoming requests evenly all day, and when one is taken
+        offline the other keeps serving every client. What is this?
+      options:
+      - A) Active-active redundancy with load sharing
+      - B) A hot standby that waits offline to take over the whole service
+      - C) A backup restored after the failure
+      - D) Spare capacity held for peak load
+      answer: A
+    - question: A redundant file-server pair keeps both members in the same rack on one power feed.
+        What defeats the redundancy?
+      options:
+      - A) The members run different operating systems and need separate patching
+      - B) The members hold unequal amounts of data
+      - C) The members are licensed separately
+      - D) The shared power feed, because one event removes both
+      answer: D
+    - question: A domain has two domain controllers, but only the first answers DHCP requests. How
+        should the reviewer record this?
+      options:
+      - A) A fully redundant domain service
+      - B) A single point of failure inside an otherwise redundant pair
+      - C) A load-balanced address pool
+      - D) A configuration difference that needs no action
+      answer: B
+    - question: A database keeps a live replica on a second server and offline copies on tape.
+        Which need does the offline copy meet that the replica does not?
+      options:
+      - A) Faster answers to everyday queries
+      - B) Lower latency between the sites
+      - C) Recovery when a fault or an error is copied to both members
+      - D) A shorter maintenance window each month
+      answer: C
+    - question: A design document shows a redundant pair, but the second member has never been
+        powered on. How does the reviewer class the service?
+      options:
+      - A) A single point of failure, because failover has never been proven
+      - B) Redundant, because the document shows two members
+      - C) Load-balanced, because the members could share work
+      - D) Unavailable, because the second member is offline
+      answer: A
+- ordinal: 3
+  title: Failover and Load Balancing
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish failover from load balancing by what each does before and during a failure
+  - Select a failover or load-balancing pattern for a named service and justify the choice
+  - Predict how client sessions behave when a balancer or a standby removes a member
+  topics:
+  - 'Failover: a standby takes the service after a health check confirms the active member failed.'
+  - 'Load balancing: active members share the work and the balancer withdraws unhealthy ones.'
+  - 'Health checks: what to probe, how often, and what a shallow check misses.'
+  - Session state, affinity and client reconnection during a member change.
+  - Round-robin distribution and why members of unequal size need weights.
+  lab: >-
+    Lab: On the large-enterprise range, examine the two DMZ web servers and judge which pattern
+    they form as built: failover pair, load-balanced set, or neither. Evidence: the HTTPS status
+    code and server header each web server returns; the firewall rules showing whether any balancer
+    or distribution address stands in front of them; the web stack each member runs and whether
+    either could serve as the other's standby unchanged; the verdict, the pattern chosen to move
+    the pair to, one health check it needs, and what a member change would do to open sessions.
+    Pass: all four items recorded as the range shows them; the verdict gives a reason; the session
+    effect states what a client would see.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and write the start time in the lab notes.
+    - hosts: [jump01, web01, web02]
+      action: Open an SSH session on web01 from jump01, request the home page over HTTPS from the
+        server itself, and record the status code and server header; repeat on web02.
+    - hosts: [jump01, fw01]
+      action: Read the rules on fw01 that face the DMZ, and record whether any balancer or
+        distribution address stands in front of the web servers.
+    - hosts: [jump01, web01, web02]
+      action: Record which web stack each of web01 and web02 runs, and whether either could act as
+        the other's standby unchanged.
+    - hosts: [jump01]
+      action: Record which pattern the pair forms as built and why; if neither applies, choose the
+        pattern to move it to, one health check it needs, and what happens to open sessions when a
+        member leaves.
+  refs:
+  - nist-cswp-29
+  source_gaps:
+  - A dedicated guide to load balancing is not in the reference library yet.
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A standby server sits idle until a health check declares the active member failed,
+        and then takes the service alone. What is this pattern?
+      options:
+      - A) Round-robin load balancing
+      - B) Active-active load sharing
+      - C) Hot standby failover
+      - D) A scheduled maintenance window
+      answer: C
+    - question: A balancer checks only that the web port answers, while the page behind it fails
+        because its database is unreachable. What does the check actually test?
+      options:
+      - A) The port, not the service the client needs
+      - B) The full page the client receives
+      - C) The database connection the page uses
+      - D) The balancer's own health, not the member's
+      answer: A
+    - question: A shopping cart is pinned to one balancer member, and the balancer withdraws that
+        member mid-session. What lets the client continue?
+      options:
+      - A) A shorter health-check interval on the balancer
+      - B) A weight that favours the remaining member
+      - C) A round-robin reset for new requests
+      - D) Shared session state or affinity that survives the change
+      answer: D
+    - question: An architect compares a design whose active members share the work with one whose
+        standby stays idle until the active member fails. What separates load balancing from failover?
+      options:
+      - A) Load balancing needs a standby; failover needs a balancer
+      - B) Load balancing shares work among active members; failover switches to a standby
+      - C) Failover improves throughput; load balancing removes single points of failure
+      - D) The two are the same pattern under different names
+      answer: B
+    - question: A balancer withdraws an unhealthy member while a client is halfway through an
+        upload, and no session persistence is configured. What does the client see?
+      options:
+      - A) The upload continues on the remaining member
+      - B) The upload resumes from the start automatically
+      - C) A broken connection, because the new member holds no session state
+      - D) A slower upload while the member recovers
+      answer: C
+- ordinal: 4
+  title: Out-of-Band Management
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish in-band from out-of-band management by the path each uses
+  - Trace the management path to a named host and identify where it shares the production path
+  - Design an out-of-band path that reaches every zone when the production network is down
+  topics:
+  - 'In-band management: management traffic rides the same network it manages.'
+  - 'Out-of-band management: a separate path with its own interfaces, consoles or links.'
+  - 'The management VLAN and the core firewall: where in-band dependence concentrates.'
+  - Jump hosts and automation controllers on a dedicated management network.
+  - 'Proving an out-of-band path: drill it with the production path disabled.'
+  lab: >-
+    Lab: On the large-enterprise range, trace the management path to the corporate LAN, decide
+    whether it is in-band or out-of-band, and propose one change that gives each zone a true
+    out-of-band path. Evidence: the network the jump host sits on and its gateway address; the
+    zones the core firewall alone connects; the route the automation controller's traffic to a
+    workstation takes; the count of other devices or links that reach the corporate LAN; the
+    in-band or out-of-band marking with a reason and one proposed change per zone. Pass: all five
+    items recorded as the range shows them; the marking carries a reason; the proposed change names
+    the zone it serves.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH and record the management network it sits on and its
+        gateway address.
+    - hosts: [jump01, fw01]
+      action: List the interfaces on fw01 and record which zones fw01 alone connects to the rest of
+        the estate.
+    - hosts: [jump01, ansible01]
+      action: Confirm that ansible01 answers on the management network, and record the route its
+        traffic to a workstation takes.
+    - hosts: [jump01]
+      action: Record whether any second device or link besides fw01 reaches the corporate LAN, and
+        name it if one does.
+    - hosts: [jump01]
+      action: Mark the management path in-band or out-of-band with one sentence of reason, and
+        propose one change that gives each zone a true out-of-band path.
+  refs:
+  - nist-cswp-29
+  source_gaps:
+  - A dedicated guide to out-of-band management is not in the reference library yet.
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: Network switches are administered over the same links that carry user traffic.
+        What is this practice?
+      options:
+      - A) A dedicated management VLAN
+      - B) A console server on a serial link
+      - C) Out-of-band management
+      - D) In-band management
+      answer: D
+    - question: A contractor administers a switch from a laptop plugged into its console port while
+        the production network is down. Why is the path out-of-band?
+      options:
+      - A) It uses encrypted protocols for the session while riding the production network
+      - B) It reaches the device without crossing the network it manages
+      - C) It requires a licence from the vendor
+      - D) It runs only during agreed maintenance windows
+      answer: B
+    - question: A jump host reaches every zone through the one core firewall that also carries
+        production traffic. Why does this concentrate risk?
+      options:
+      - A) The production path's central component carries both, so one failure removes both
+      - B) The jump host holds the only administrator accounts
+      - C) The firewall logs grow too large to review
+      - D) The zones cannot reach each other for testing
+      answer: A
+    - question: What is the purpose of a jump host on a dedicated management network?
+      options:
+      - A) To terminate user sessions at the perimeter
+      - B) To hold the only copy of the configuration backups
+      - C) To give administrators one controlled entry to every zone
+      - D) To balance management traffic across the zones
+      answer: C
+    - question: After a new out-of-band path is built for the core switches, the team must show it
+        works before sign-off. Which evidence is best?
+      options:
+      - A) The vendor's data sheet for the console server
+      - B) The network diagram that marks the second path
+      - C) The purchase record for the serial cards
+      - D) A drill that disables the production path and reaches the device anyway
+      answer: D
+- ordinal: 5
+  title: Chaos Drills on the Range
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Plan a failure drill that states a hypothesis, a predicted blast radius and a measure
+  - Execute a controlled drill on a redundant pair and record the observed behaviour
+  - Compare the prediction with the observation and name the design change it justifies
+  topics:
+  - 'A chaos drill: a deliberate, bounded failure run to test a resilience claim.'
+  - Hypothesis, blast-radius prediction and success measure, written before anything is stopped.
+  - 'Guardrails: drill a pair member, never the last instance of a service.'
+  - 'Recording timelines: when the failure started, what clients saw, when service returned.'
+  - Turning drill results into design changes and retests.
+  lab: >-
+    Lab: On the large-enterprise range, run a bounded failure drill against the DNS service of one
+    domain controller in the redundant pair, and compare the predicted blast radius with what
+    clients actually see. Evidence: the hypothesis, predicted blast radius and success measure
+    written before anything is stopped; the DNS servers ws02 is configured to use and one
+    successful name lookup against the drilled controller; the time the DNS Server service was
+    stopped and the result and elapsed time of the retry; the time the service was restored; the
+    comparison with one design change it justifies. Pass: the plan recorded before the service was
+    stopped; every timing recorded; the comparison names one design change and how a retest proves
+    it.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, and write the hypothesis, the predicted blast radius and
+        the success measure in the lab notes before anything is stopped.
+    - hosts: [jump01, ws02]
+      action: Open a session on ws02, record the DNS servers it is configured to use, and record
+        one successful name lookup against dc02.
+    - hosts: [jump01, dc02]
+      action: Open a session on dc02, stop its DNS Server service, and record the exact time.
+    - hosts: [ws02]
+      action: From ws02, retry the name lookup against dc02 and record the result and the elapsed
+        time.
+    - hosts: [jump01, dc02]
+      action: Start the DNS Server service on dc02 again and record the time it takes to recover.
+    - hosts: [jump01]
+      action: Compare the prediction with the observation, and record one design change the
+        difference justifies and how a retest would show it worked.
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: An operator prepares to stop one member of a redundant pair for a drill. What must
+        the plan state before anything is stopped?
+      options:
+      - A) A hypothesis, a predicted blast radius and a success measure
+      - B) The cost of the servers and the downtime each one can tolerate
+      - C) The names of the vendors involved
+      - D) The change number for the next release
+      answer: A
+    - question: A drill stops the estate's only time server. Which guardrail does that break?
+      options:
+      - A) Never drill during working hours
+      - B) Never drill a host the monitor does not watch
+      - C) Never drill the last instance of a service
+      - D) Never drill without the vendor present
+      answer: C
+    - question: During a drill on a file-server pair, clients see errors for several minutes. Which
+        record measures how long they lost the service?
+      options:
+      - A) The configuration export taken before the drill
+      - B) Timestamps for the failure, the client errors and the recovery
+      - C) The count of hosts in the affected VLAN
+      - D) The ticket number raised for the drill
+      answer: B
+    - question: A drill predicts that sign-in continues, but clients cannot sign in while the
+        drilled member is down. What does the process require next?
+      options:
+      - A) Accept the prediction, because the design is documented
+      - B) Repeat the drill until the clients succeed
+      - C) Restore the member and close the drill record
+      - D) Investigate why the observation differs and record the design change it justifies
+      answer: D
+    - question: A drill found that a shallow health check passed a broken member, and the check was
+        widened. What proves the fix?
+      options:
+      - A) A retest drill whose observation matches the prediction this time
+      - B) The vendor's note that the check was updated, filed with the record
+      - C) A second balancer added beside the first
+      - D) The design document updated with the new check
+      answer: A
+- ordinal: 6
+  title: Resilience Review of the Whole Design
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Produce a resilience review of a whole design that lists its single points of failure with their blast radii
+  - Propose redundancy, failover and out-of-band changes that remove the highest-blast-radius findings first
+  - Plan the drills that prove each proposed change before the design is accepted
+  topics:
+  - 'A resilience review: the whole-design pass that turns findings into a prioritised change list.'
+  - Ranking single points of failure by blast radius and by removal effort.
+  - 'Grouping changes: redundancy, failover, load balancing and out-of-band paths in one plan.'
+  - 'Proving the plan: which drill retires which risk, and in what order.'
+  - Recording the review so the next change starts from evidence, not memory.
+  lab: >-
+    Lab: On the large-enterprise range, carry out a resilience review of the whole design: map the
+    components two named services depend on, mark every single point of failure, and turn the
+    findings into a ranked change plan with the drill that proves each change. Evidence: the
+    services chosen for the review, the components each depends on and the test that shows each
+    still answers; each component marked "single point of failure" or "redundant"; the findings
+    ranked by blast radius with one proposed change each; the drill that proves the top change and
+    its prediction. Pass: two services reviewed end to end; every finding carries a proposed
+    change; the plan names one drill with its prediction.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open the lab notes and write the two services the review
+        will cover.
+    - hosts: [jump01, fw01]
+      action: Read the zones and rules on fw01, and record which services depend on fw01 to cross
+        between zones.
+    - hosts: [jump01, dc01, dc02]
+      action: Query dc01 and dc02 for the services each runs, and record which domain services have
+        no second member.
+    - hosts: [jump01, ws01]
+      action: From a session on ws01, confirm the first reviewed service still answers, and record
+        what its path depends on.
+    - hosts: [jump01, ws01]
+      action: In the same session on ws01, confirm the second reviewed service still answers, and
+        record what its path depends on.
+    - hosts: [jump01]
+      action: Rank the single points of failure found by blast radius, and record one proposed
+        change for each of the top two.
+    - hosts: [jump01]
+      action: Name the drill that would prove the top change, and record the prediction the drill
+        tests.
+  refs:
+  - nist-sp-800-30r1
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A consultant completes a resilience review of a warehouse design and reports to the
+        design owner. What does the owner receive?
+      options:
+      - A) A list of every device in the design with its firmware version
+      - B) A ranked list of single points of failure and their fixes
+      - C) A purchase order for the next budget cycle
+      - D) A copy of the network diagram as built
+      answer: B
+    - question: 'Two findings remain: one core firewall whose failure stops every zone, and one
+        printer queue whose failure stops printing on one floor. Which ranks first?'
+      options:
+      - A) The firewall, because its blast radius is the whole estate
+      - B) The printer, because users notice it every day and complain
+      - C) The firewall, because it costs more to replace
+      - D) The printer, because it is quicker to fix
+      answer: A
+    - question: A change plan groups its fixes. Which grouping puts a second path to every zone and
+        a standby for one database together?
+      options:
+      - A) Monitoring improvements
+      - B) Resilience changes to the design's single points of failure
+      - C) End-user productivity work
+      - D) Scheduled maintenance tasks
+      answer: B
+    - question: The top change removes a single-homed service by adding a standby. Which drill
+        proves it?
+      options:
+      - A) A scan that lists the open ports on both members
+      - B) A review of the configuration files side by side
+      - C) A drill that stops the active member and measures what clients see
+      - D) A survey that asks staff how the service feels
+      answer: C
+    - question: A reviewer records findings from memory a week after the walk-through. What does
+        the review lose?
+      options:
+      - A) Nothing, because the design will not change before the report
+      - B) Only the formatting, not the substance
+      - C) The confidential parts of the design that never reached the written record
+      - D) The evidence, so the next change starts from memory instead of record
+      answer: D

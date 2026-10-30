@@ -1,0 +1,208 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# Instructor pack for C554 - Emerging Tech Risk Clinic - AI, SaaS & Edge.
+# Every answer letter below is the course's key; each note says why the keyed option is
+# right and what each distractor tests. Key your notes to the module's objectives.
+course_code: C554
+audience: staff_only
+overview: 'Emerging Tech Risk Clinic — AI, SaaS & Edge is an advanced six-module course of six
+  60-minute modules (360 minutes, 6 hours) for Cybersecurity Risk Managers and Systems Security
+  Analysts. Each module has the same split: 15 minutes teaching, 35 minutes lab on the
+  small-enterprise range (the Student audits the range as a client environment), and 10 minutes
+  quiz, passed at 70 percent. Modules 1 to 3 build three findings inventories (AI systems, shadow
+  SaaS, edge exposure); module 4 turns findings into scored risk statements; module 5 judges
+  controls for proportion and attaches review triggers; module 6 runs the clinic end to end and
+  hands over one consolidated register. The Student works alone; every deliverable is written
+  evidence, not discussion.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (AI systems as assets, exposure paths, failure modes), 35 lab (inventory rows
+    from jump-box and ws-01), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (shadow SaaS, discovery evidence, control options), 35 lab (egress rules on
+    fw-01, policy judgement against the approved list), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (edge device targeting, management exposure, firmware currency), 35 lab (fw-01
+    exposure map and management-page tests from jump-box and ws-01), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (risk statements, thin-history likelihood, treat/tolerate/terminate), 35 lab
+    (scored statements from dc-01, fw-01 and ws-01 evidence), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (proportionality, approval pathway, review triggers), 35 lab (proportion
+    judgement of fw-01, dc-01 and ws-01 controls), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (clinic process, consolidation, handover), 35 lab (one register from three
+    re-collected findings, ranked treatments), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B, M01-O03: A bought-in product that processes organisational documents is an embedded
+    vendor feature with a vendor data flow. A is wrong because first-party means the organisation
+    trained or operates the model; C is wrong because staff do not choose the feature, the product
+    ships with it; D is wrong because operating the model is not required for AI exposure. Q2 C,
+    M01-O02: The customer list left the organisation''s control — confidentiality. A and B name
+    real but secondary harms, not the primary one; D is wrong because one disclosure is still a
+    disclosure. Q3 A, M01-O03: Both are first-party — built or trained by the organisation. B mixes
+    first-party with vendor-embedded; C mixes vendor-embedded with employee-used; D mixes
+    employee-used with first-party. Q4 D, M01-O01: Vendor retention and reuse of submitted
+    recordings is the data flow to record. A and B are service-quality issues, not inventory risks;
+    C is a productivity note, not a failure mode. Q5 B, M01-O01: Unverified generated output
+    reaching customers is over-trust. A is a different failure (leakage through prompts) that did
+    not occur here; C needs vendor retention, which the stem does not state; D is availability,
+    which the stem does not raise.'
+- module: 2
+  notes: 'Q1 C, M02-O01: Staff adopted an unapproved cloud service — the definition of shadow SaaS.
+    A presumes an approval that does not exist; B is wrong because nobody built it; D confuses an
+    edge device with a cloud service. Q2 D, M02-O01: Egress logs and DNS queries record what the
+    workstation actually contacted. A and C show intent or spend, not use; B is self-reported and
+    stale. Q3 A, M02-O02: The ban moved identical use onto unmonitored personal accounts — the
+    outcome ARC2-style teaching warns about. B is falsified by the stem; C misuses "sanction"; D
+    is backwards, the activity left the logged perimeter. Q4 B, M02-O03: Sanction the approved
+    tool, migrate and monitor — proportionate and durable. A tolerates an unnecessary duplicate
+    risk with no record; C is disproportionate and drives the use underground; D leaves the
+    finding untreated. Q5 C, M02-O02: The personal drive sync is its own finding even though the
+    primary service is approved. A punishes the wrong asset; B misses the exposure; D mislabels
+    managed workstation as first-party service.'
+- module: 3
+  notes: 'Q1 A, M03-O02: Reachability from a user network raises likelihood — more actors can
+    attempt the device. B overstates impact, nothing becomes public; C narrows the harm to one
+    network; D is wrong because a login page reachable is a target regardless of credentials. Q2
+    B, M03-O02: Published defaults raise likelihood because the credential is public knowledge. A
+    is falsified by the vendor''s own documentation; C mistakes insideness for safety; D invents
+    a confidentiality-only frame. Q3 D, M03-O02: End-of-support with no update path is recorded as
+    end-of-support and scored as likelihood-raising. A and B ignore patch state; C separates
+    compliance from security, which the course does not. Q4 C, M03-O03: Restricting management to
+    the management network contains the exposure while preserving the administration the client
+    still needs. A destroys the administration path; B worsens the exposure; D changes nothing
+    about reachability. Q5 A, M03-O01: Model, firmware state and reaching networks are the minimum
+    usable entry. B to D record procurement or cosmetic facts no triage can act on.'
+- module: 4
+  notes: 'Q1 D, M04-O01: Threat (threat actor), vulnerability (unpatched firmware) and impact
+    (client data exposed) — a complete statement. A to C are sentiment, reputation and anecdote:
+    none names the three elements. Q2 B, M04-O02: Observed usage, recorded exposure and known
+    failure modes substitute for missing incident history. A is authority, not evidence; C is
+    marketing; D is a single anecdote about someone else. Q3 C, M04-O03: Tolerate — with recorded
+    acceptance naming the accepter and a review date; otherwise the risk is unmanaged, not
+    accepted. A and B leave the register lying; D relabels without treating. Q4 A, M04-O03: When
+    no control can bring the processing in line, terminate is the only sound response. B records
+    an untreatable risk; C does not change the processing; D is not a risk response the course
+    teaches. Q5 D, M04-O02: The firewall exposure combines the highest likelihood (any local user)
+    with a direct administration path. A ranks by attention; B by age; C refuses to rank.'
+- module: 5
+  notes: 'Q1 A, M05-O02: A 40-page assessment and a penetration test for a three-seat, no-personal-data
+    app is the textbook proportionality failure. B misstates appetite, which is about which risks
+    are unacceptable, not about volume; C reads the failure backwards; D would remove the record
+    entirely. Q2 C, M05-O01: A triaged fast lane with a stated turnaround serves low-risk requests
+    in three days. A cannot meet the clock; B abandons governance; D misses every deadline. Q3 B,
+    M05-O02: A time-boxed approval with sunset clause matches a service whose vendor and terms
+    churn. A outlives the facts; C is disproportionate; D approves vendors nobody assessed. Q4 D,
+    M05-O03: A vendor or sub-processor change is a named review trigger — reassess before further
+    use. A ignores the trigger; B is disproportionate to an announcement; C waits past the risk
+    change. Q5 A, M05-O03: Appetite states the tolerated/unacceptable line so fast choices align
+    without a meeting. B is a block-list, not an appetite; C and D are finance documents.'
+- module: 6
+  notes: 'Q1 B, M06-O01: One consolidated inventory with an owner per entry is what a treatment
+    plan can be ordered from. A defeats the single budget; C drops the findings; D drops the
+    evidence. Q2 D, M06-O02: The firewall exposure wins on likelihood (any local user) and reach
+    (administration path) — the defensible first spend. A ranks by attention; B by novelty; C
+    refuses to prioritise. Q3 A, M06-O02: Time, action, source asset and exact outcome — clinic
+    grade. B is an interpretation stated as fact; C is hearsay; D is a vendor claim, not an
+    observation. Q4 C, M06-O03: Without a named owner nobody is accountable, so the risk stays
+    untreated whatever the register says. A and B close a live finding; D wrongly makes the
+    analyst accountable. Q5 B, M06-O03: A scheduled reassessment with a named review trigger keeps
+    the risk visible after the fix. A deletes the control; C is unread; D outsources judgement to
+    the vendor.'
+lab_setup:
+- module: 1
+  setup: Revert the small-enterprise range to its baseline and confirm jump-box is reachable over
+    SSH with the student analyst account. Supply the ws-01 standard user account to each Student.
+    The baseline documents no AI assistant or cloud-syncing applications on ws-01, so the expected
+    marking for step 3 is none observed unless the instructor installs such a feature before the
+    lab. Expected values to mark against — the hosts reachable from jump-box, the services
+    documented on dc-01 and fw-01, and any feature the instructor added; Students hand in
+    inventory rows with owner role, classification, data flow and failure mode.
+- module: 2
+  setup: Revert the range to baseline and confirm the fw-01 rule set and default action are in
+    their generated state. Prepare and distribute the instructor-supplied approved services list
+    before the lab; without it the approved/unapproved/unknown marking cannot be marked. Expected
+    values — the two documented fw-01 rules (user-to-srv-ad, mgmt-to-all) in order with their
+    source networks, destinations and services, and the default action for traffic no rule names.
+- module: 3
+  setup: Revert the range to baseline and confirm fw-01 serves its three networks with the
+    management page as generated. Expected values — the interface and address table, the services
+    fw-01 exposes, a management-page load from jump-box on the management network, the observed
+    outcome of the same test from ws-01 on the user network whatever the range shows, and the
+    version information on the status page.
+- module: 4
+  setup: Revert the range to baseline. Confirm dc-01 answers the administrative-group query from
+    jump-box, the mgmt-to-all rule is present on fw-01 and the management page loads from
+    jump-box. Expected values — the administrative group names and member counts, the rule's
+    source networks and services, and the observed ws-01 management-page outcome whatever the
+    range shows.
+- module: 5
+  setup: Revert the range to baseline. Confirm the fw-01 rule set and default action, the dc-01
+    domain password policy, an administrative share on dc-01 and a standard user account on ws-01
+    are in their generated state. Expected values — default action for unnamed traffic, minimum
+    password length, lockout threshold and duration, and the exact outcome when the ws-01 standard
+    user opens the administrative share, whatever the range shows.
+- module: 6
+  setup: Revert the range to baseline; Students bring their own notes from modules 1 to 5, so no
+    handout is needed. Confirm the three evidence points answer — administrative groups on dc-01
+    (via jump-box), the installed-application check on ws-01 (none observed is a valid result),
+    and the management-page test from ws-01 recorded as observed.
+    Expected deliverable — one register, three rows, each with evidence, owner role, scores,
+    treatment and review trigger.
+common_faults:
+- module: 1
+  fault: Students classify every AI capability as "first-party" because it runs on managed hardware.
+  remedy: Drill the three categories against the range's own features — who trained or operates
+    the model decides, not where it runs — before they write their rows.
+- module: 1
+  fault: Inventory rows name the tool but no owner role or data flow.
+  remedy: Refuse rows without an owner role; have each Student read one row aloud and name who in
+    the client organisation would carry it.
+- module: 2
+  fault: Students mark a service "unapproved" from memory instead of against the supplied list.
+  remedy: The list is the policy artefact; ask each marking to cite the line of the list or the
+    word unknown when the list does not name the service.
+- module: 2
+  fault: The proposed control is always "block", whatever the risk.
+  remedy: Point back to the four control options and ask what the sanctioned alternative for this
+    service is before accepting any recommendation.
+- module: 3
+  fault: Students record the management page as internal and stop testing reachability.
+  remedy: Have them run the ws-01 test anyway and record the exact outcome; the finding is the
+    reachability, not the intention.
+- module: 3
+  fault: Containment proposals remove the administration the client still needs.
+  remedy: Ask of every proposal "can the administrator still reach the device after this change?"
+    before it counts as proportionate.
+- module: 4
+  fault: Risk statements name a tool and an adjective ("the AI tool is risky") with no threat,
+    vulnerability or impact.
+  remedy: Make them fill a four-column skeleton — threat, vulnerability, likelihood, impact — and
+    strike any cell that is a feeling rather than a fact.
+- module: 4
+  fault: Likelihood scores copied from news coverage instead of recorded evidence.
+  remedy: Every score must carry a one-sentence reason quoting something the Student recorded in
+    the lab; unsourced scores are returned.
+- module: 5
+  fault: Students judge proportionality by the size of the organisation alone, not the risk.
+  remedy: Pair each judgement with the observed evidence — what the rule or policy actually
+    permits — before asking whether the burden fits.
+- module: 5
+  fault: Review triggers written as "review annually" regardless of the control.
+  remedy: Require the trigger to name the change that fires it (vendor change, data change,
+    incident, renewal) and the control it belongs to.
+- module: 6
+  fault: Register rows cite the earlier labs' conclusions instead of re-collected evidence.
+  remedy: The lab requires re-collection from dc-01, ws-01 and fw-01; check each row cites what
+    the range showed today, with the asset named.
+- module: 6
+  fault: The ranked plan is argued by attention or novelty rather than by likelihood and impact.
+  remedy: Ask for the scores and one sentence per position; a ranking that cannot cite its own
+    scores is returned to triage.

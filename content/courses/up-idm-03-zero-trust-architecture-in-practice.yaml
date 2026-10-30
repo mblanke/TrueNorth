@@ -1,0 +1,548 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# C509 - Zero Trust Architecture in Practice - DRAFT course content.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C509
+title: Zero Trust Architecture in Practice
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C507
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Systems Security Analyst; Cyber Defense Infrastructure Support Specialist.'
+  - 'NIST CSF 2.0: PR.AA, PR.IR, ID.AM.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: ZTA Tenets and Maturity Models
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Define zero trust and state the tenets that separate it from perimeter-based network defence
+  - Distinguish implicit trust granted by network location from explicit verification granted per request
+  - Score a described environment against zero trust maturity stages and justify each score with recorded evidence
+  topics:
+  - 'Zero trust: no implicit trust granted to any network location or asset.'
+  - 'The core tenets: per-session access decisions, least privilege and dynamic policy.'
+  - 'The perimeter model versus zero trust: what each assumes about the inside network.'
+  - 'Maturity models: stages from traditional through optimal and the evidence each stage demands.'
+  - Placing an environment on a maturity scale with recorded evidence rather than aspiration.
+  lab: >-
+    Lab: On the medium-enterprise range, inventory where the network grants implicit trust and judge each finding
+    against the zero trust tenets. Evidence: each fw01 zone with its subnet; the fw01 rules that allow corporate
+    workstations to reach the servers network; the result of opening a share on fs01 from ws01 without a second
+    sign-in; one path in the range where trust follows network location. Pass: all four items recorded as the range
+    shows them; each finding marked 'grants implicit trust' or 'verifies explicitly' with a one-sentence reason;
+    one change proposed for each finding marked 'grants implicit trust'.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01 as the standard user your instructor assigned and open a terminal.
+    - hosts: [fw01]
+      action: From the management network, open the fw01 rule list and record each zone with its subnet.
+    - hosts: [fw01, ws01]
+      action: List the fw01 rules that allow the corporate zone to reach the servers zone and record what each rule
+        permits.
+    - hosts: [ws01, fs01]
+      action: From ws01, open a file share on fs01 and record whether any second sign-in is requested.
+    - hosts: [ws01]
+      action: Mark each recorded finding 'grants implicit trust' or 'verifies explicitly' with one sentence of reason,
+        and propose one change for each finding that grants implicit trust.
+  refs:
+  - nist-sp-800-207
+  - nist-cswp-29
+  source_gaps:
+  - 'CISA Zero Trust Maturity Model: not in the reference library; maturity stages are taught generically.'
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A university treats every host inside its campus network as trusted and requires no re-verification
+        for internal requests. Which zero trust tenet does this violate first?
+      options:
+      - A) Least privilege for administrators only
+      - B) Encryption of all traffic
+      - C) No implicit trust based on network location
+      - D) Single sign-on for every service
+      answer: C
+    - question: A contractor's account keeps full access to every file share two years after the project ended. Which
+        zero trust tenet does this most directly violate?
+      options:
+      - A) Access is scoped per session to least privilege
+      - B) Security monitoring runs continuously in the background
+      - C) Data is backed up to a second region
+      - D) Networks are segmented by physical building
+      answer: A
+    - question: An organisation asserts it has reached the optimal zero trust stage, but administrators still share
+        one privileged account and no session records exist. What does honest scoring require?
+      options:
+      - A) The stage the policy documents describe
+      - B) The stage the newest vendor product implies
+      - C) Not scored, because shared accounts fall outside the model
+      - D) The stage the recorded evidence supports
+      answer: D
+    - question: A bank's internal application accepts any request that arrives from the server network without checking
+        who sent it. Which comparison explains the risk best?
+      options:
+      - A) Zero trust removes the need for network segmentation
+      - B) The perimeter model assumes the inside of the network is trustworthy
+      - C) Zero trust requires all servers to run identical software
+      - D) The perimeter model requires encryption of every internal flow
+      answer: B
+    - question: 'A team scores its environment at the advanced segmentation stage but can show no rule review or
+        reachability test. According to the maturity approach taught, the score is:'
+      options:
+      - A) Unsupported, because each stage demands evidence of practice
+      - B) Valid, because segmentation tools are purchased
+      - C) Valid, because the score records intent
+      - D) Too low, because documented plans count as practice
+      answer: A
+- ordinal: 2
+  title: Identity as the Perimeter
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select authentication and authorisation controls that bind an access decision to a verified identity
+  - Enumerate the privileged identities in a domain directory and judge each grant against least privilege
+  - Write an identity-centric access rule that names its subject, its conditions and the resource in scope
+  topics:
+  - 'Identity as the control plane: access follows the verified subject, not the network address.'
+  - Authentication strength, phishing-resistant multi-factor and re-verification for risky sign-ins.
+  - Privileged identities, administrative groups and the standing access they grant.
+  - 'Conditional access rules: subject, resource, device state and session conditions.'
+  - Directory groups and password policy read as evidence of identity hygiene.
+  lab: >-
+    Lab: On the medium-enterprise range, establish which identities hold privileged access and what a standard
+    identity can reach, then judge each grant against least privilege. Evidence: the domain groups that hold
+    administrative rights with a member count for each; the domain password policy's minimum length and lockout
+    threshold; the exact result when the standard user opens the administrative share on fs01; whether the same
+    account receives the same access from a second workstation. Pass: all four items recorded as the range shows
+    them; each grant marked 'least privilege' or 'over-granted' with a one-sentence reason; one change proposed
+    for each over-granted identity.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01 as the standard user your instructor assigned and note the account name.
+    - hosts: [ws01, dc01]
+      action: From ws01, query dc01 for the domain groups that hold administrative rights and record each group name
+        and its member count.
+    - hosts: [dc01]
+      action: Read the domain password policy on dc01 and record the minimum password length and the lockout threshold.
+    - hosts: [ws01, fs01]
+      action: From ws01, try to open the administrative share on fs01 and record the exact result the host shows.
+    - hosts: [ws02, fs01]
+      action: Sign in to ws02 with the same standard account, repeat the share test against fs01 and record whether
+        the access matches.
+    - hosts: [ws01]
+      action: Mark each grant 'least privilege' or 'over-granted' with one sentence of reason and propose one change
+        for every over-granted identity.
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A clinic gives access to patient records only when the sign-in passes multi-factor authentication and
+        comes from a managed device. Which idea is the clinic applying?
+      options:
+      - A) Perimeter trust granted by the office network location
+      - B) Identity-centric access decided per request
+      - C) Password rotation every ninety days
+      - D) Access inherited from the file server
+      answer: B
+    - question: A domain keeps one account that is both a domain administrator and used for daily email. What is the
+        cleanest identity fix?
+      options:
+      - A) Lengthening that account's password each quarter
+      - B) Moving the mailbox to a personal laptop
+      - C) Hiding the account from address lists
+      - D) Splitting daily sign-in and administration into separate accounts
+      answer: D
+    - question: A zero trust policy lets a finance identity reach the payment system only during stated shift hours
+        from a managed device. Which rule elements does this policy state?
+      options:
+      - A) Subject, conditions and the resource in scope
+      - B) Source address ranges alone
+      - C) The application version installed on the server
+      - D) The organisation's insurance requirements
+      answer: A
+    - question: An auditor finds that every member of the help desk group also holds domain administration rights.
+        Which identity-hygiene finding does this support?
+      options:
+      - A) Multi-factor authentication is deployed correctly
+      - B) The password policy meets the standard
+      - C) Standing privilege is broader than the role requires
+      - D) Conditional access is enforced on every resource
+      answer: C
+    - question: A housing association replaces 'the office network may reach the rent system' with a rule about the
+        signed-in officer and the tenancy. What principle does the new rule express?
+      options:
+      - A) Trust assigned by physical floor
+      - B) Authorisation bound to verified identity and context
+      - C) Encryption required for internal traffic
+      - D) Access granted once per academic year
+      answer: B
+- ordinal: 3
+  title: Device Trust and Resource Access Policy
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe how device posture and resource sensitivity enter a zero trust access decision
+  - Read a firewall rule set and classify each rule as per-resource least privilege or zone-wide allow
+  - Draft a per-resource access rule for a stated flow that names what it admits and what it excludes
+  topics:
+  - 'Device trust: managed state, posture and health as conditions for access.'
+  - 'Resource-level policy: one rule per protected service, not one rule per zone.'
+  - Reading a rule set against a resource policy to find zone-wide allows.
+  - 'What a broad allow conceals: services reachable that the resource policy never intended.'
+  - Drafting replacement rules that name service, source and destination.
+  lab: >-
+    Lab: On the medium-enterprise range, find which host-to-resource flows the firewall allows and judge each
+    against a per-resource least privilege policy. Evidence: each fw01 rule that allows the DMZ to reach the
+    servers zone, with its ports; the result of a name lookup from web01 to dc01; the result of an attempt from
+    web01 to open a file share on fs01; the result of one allowed web request from ws01 to web01 and one attempt
+    on a port the rule does not list. Pass: all results recorded exactly as the range shows them; each rule marked
+    'per-resource least privilege' or 'zone-wide allow' with a one-sentence reason; one replacement rule drafted
+    for each zone-wide allow.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [fw01]
+      action: From the management network, open the fw01 rule list and record the rules that allow the DMZ to reach
+        the servers zone, with ports.
+    - hosts: [web01, dc01]
+      action: From web01, resolve a name against dc01 and record whether the lookup succeeds and which address it
+        returns.
+    - hosts: [web01, fs01]
+      action: From web01, attempt to open a file share on fs01 and record whether the connection is refused.
+    - hosts: [ws01, web01]
+      action: From ws01, request the web01 home page over HTTPS and record the result; then attempt one port the
+        rule does not list and record that result too.
+    - hosts: [fw01]
+      action: Mark each recorded rule 'per-resource least privilege' or 'zone-wide allow' with one sentence of reason,
+        and draft one replacement rule for each zone-wide allow.
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A school laptop is fully patched and enrolled in management, and the policy checks that before it may
+        open the exam system. Which access condition is the school using?
+      options:
+      - A) Network location of the classroom the device sits in
+      - B) Age of the student account
+      - C) Time of the school term
+      - D) Device posture verified before access
+      answer: D
+    - question: A rule allows the whole workstation zone to reach every port on one database server. What does a
+        per-resource policy ask instead?
+      options:
+      - A) Moving the database onto the workstation zone
+      - B) Disabling logging on the database server
+      - C) Naming the one service the workstation zone needs
+      - D) Allowing every zone for consistency
+      answer: C
+    - question: 'Two rules exist: one opens a file share to one server group, and one opens every port on that share''s
+        host to everyone. Which statement is right?'
+      options:
+      - A) Both rules carry the same risk
+      - B) The port-wide rule grants access the share rule never intended
+      - C) The share rule is broader than the port-wide rule
+      - D) Rule order makes both rules unreachable
+      answer: B
+    - question: A hospital device fails its health check and the policy denies it access to the records system until
+        it is remediated. What does the device's state act as?
+      options:
+      - A) A condition in the access decision
+      - B) A replacement for authentication
+      - C) A reason to skip logging
+      - D) An exemption from the password policy
+      answer: A
+    - question: An administrator widens a blocked rule to a whole-zone allow because one application 'sometimes fails'.
+        In per-resource terms, what has the administrator done?
+      options:
+      - A) Improved the rule's performance
+      - B) Made the resource easier to audit
+      - C) Removed the need for monitoring
+      - D) Replaced a resource rule with a location rule
+      answer: D
+- ordinal: 4
+  title: Microsegmentation Lab
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Classify the east-west paths a rule set allows as segmented or flat, with reasons
+  - Design microsegmentation rules that keep named business flows and default deny the rest
+  - Predict the lateral paths a compromised workstation keeps after a segmentation change
+  topics:
+  - East-west traffic, lateral movement and why a flat zone defeats the perimeter.
+  - 'Microsegmentation versus zone segmentation: workload-level rules instead of zone-level rules.'
+  - Recording every allowed east-west path in a rule set before changing it.
+  - Workload rules that name the application flow, the source and the destination.
+  - Residual paths after segmentation and the monitoring that must cover them.
+  lab: >-
+    Lab: On the medium-enterprise range, classify the east-west paths the firewall allows, then design a
+    microsegmentation rule set that keeps the stated business flows and drops the rest. Evidence: the fw01 rules
+    that allow corporate workstations to reach the servers zone and the DMZ, in order; the result of connecting
+    from ws01 to ws02, and whether any fw01 rule governs it; one proposed rule list that keeps sign-in, name lookup
+    and file sharing and drops everything else. Pass: every allowed east-west path recorded in order; each path
+    marked 'segmented' or 'flat' with a one-sentence reason; the proposed rule list names the flow, source and
+    destination for each rule and sets a default deny.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [fw01]
+      action: Open the fw01 rule list and record every rule that allows the corporate zone to reach other zones, in
+        order, with its ports.
+    - hosts: [ws01, ws02]
+      action: From ws01, connect to a share on ws02 and record whether it succeeds and which fw01 rule, if any, would
+        govern it.
+    - hosts: [ws01, fs01, dc01]
+      action: From ws01, confirm the file share on fs01 and name resolution against dc01 both succeed, and record each.
+    - hosts: [ws01]
+      action: Mark each recorded path 'segmented' or 'flat' with one sentence of reason, citing the rule that
+        governs it or noting that no rule does.
+    - hosts: [fw01]
+      action: Draft a microsegmentation rule list that keeps workstation sign-in, name lookup and file sharing to fs01
+        and dc01 only, ends in a default deny, and records what it drops.
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-41r1
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A ransomware outbreak on one workstation reaches every other workstation in the same zone without
+        crossing any firewall. Which condition made this possible?
+      options:
+      - A) A flat zone with unfiltered east-west traffic
+      - B) Absence of a honeypot on the server zone
+      - C) Encryption of the management network with modern ciphers
+      - D) Use of dynamic addressing on workstations
+      answer: A
+    - question: A team replaces 'the workstation zone may reach the server zone' with rules naming sign-in, name
+        lookup and file sharing. Which design is this?
+      options:
+      - A) Zone-level segmentation by address range
+      - B) Microsegmentation at the level of named flows
+      - C) Application whitelisting on endpoints
+      - D) Virtual private network access for remote staff
+      answer: B
+    - question: After microsegmentation, a compromised workstation can still reach the file server it was allowed to
+        use. What does this residual path require?
+      options:
+      - A) Nothing, because segmentation removes all risk
+      - B) A rebuild of the whole zone
+      - C) Monitoring and blast-radius limits on the allowed flow
+      - D) Removal of the file server from the network
+      answer: C
+    - question: A rule allows the workstation zone to reach the server zone for domain services with no port list.
+        From a microsegmentation view, what is the weakness?
+      options:
+      - A) The rule lacks a written owner
+      - B) Every service on those servers is reachable, not only the named ones
+      - C) The rule blocks the mail server
+      - D) Dynamic ports make the rule impossible to log
+      answer: B
+    - question: A planner proposes segmenting by creating one new VLAN per floor. Compared with microsegmentation,
+        what does this deliver?
+      options:
+      - A) The same protection at lower cost
+      - B) Stronger isolation than workload-level rules
+      - C) Faster detection of lateral movement
+      - D) Zone separation while lateral paths inside each zone remain
+      answer: D
+- ordinal: 5
+  title: Continuous Evaluation and Policy Engines
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain how a policy engine reaches an access decision and where an enforcement point applies it
+  - Trace the access signals a continuous evaluation loop consumes on a working network
+  - Select the access signals a given telemetry set supplies and name those it cannot
+  topics:
+  - The policy engine, policy administrator and policy enforcement point in a zero trust design.
+  - 'Decision signals: identity, device state, telemetry and threat information.'
+  - 'Continuous evaluation: re-deciding an active session as its signals change.'
+  - Reading monitoring telemetry to confirm which decision signals the design actually receives.
+  - 'Decision logs: what was decided, on what evidence, and when.'
+  lab: >-
+    Lab: On the medium-enterprise range, establish which access signals the monitoring stack actually receives and
+    judge whether a policy engine could decide from them. Evidence: the host logs visible on siem01 with the newest
+    timestamp for each; the fields a sign-in event from ws01 carries; one access signal the telemetry supplies and
+    one it does not; a draft decision log line for one observed sign-in stating subject, resource, signal and
+    outcome. Pass: the visible log sources listed with timestamps; each candidate signal marked 'supplied' or
+    'missing' with the field or gap that shows it; the decision log line names a real observed event.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account your instructor assigned and open the monitoring interface.
+    - hosts: [siem01]
+      action: List the log sources visible on siem01 and record each host with the newest event timestamp it shows.
+    - hosts: [siem01, ws01]
+      action: Find a sign-in event from ws01 in the telemetry and record the fields it carries, including the account,
+        source and outcome.
+    - hosts: [siem01]
+      action: Mark candidate access signals 'supplied' or 'missing' for the policy engine, with the field or gap that
+        shows each.
+    - hosts: [siem01]
+      action: Write one decision log line for an observed sign-in stating subject, resource, signal and outcome.
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: In a zero trust design, one component decides whether a request proceeds and a second component blocks
+        or allows it at the resource. Which pair names them?
+      options:
+      - A) Policy administrator and data portal
+      - B) Control plane and management VLAN
+      - C) Policy engine and policy enforcement point
+      - D) SIEM and log forwarder
+      answer: C
+    - question: A granted session continues after the device stops meeting the compliance conditions. What does
+        continuous evaluation require the policy engine to do?
+      options:
+      - A) Leave the session until the next sign-in
+      - B) Extend the session as a courtesy
+      - C) Delete the device's inventory record
+      - D) Re-decide the session and withdraw access
+      answer: D
+    - question: An access decision needs the health of the connecting device. Which signal source supplies it?
+      options:
+      - A) Device posture reporting from the endpoint
+      - B) The building's door access records
+      - C) The resource's backup schedule
+      - D) The help desk's ticket backlog
+      answer: A
+    - question: A policy engine grants a request, and six months later nobody can say which rule or evidence produced
+        that decision. Which artefact is missing?
+      options:
+      - A) The resource's data classification
+      - B) The decision log for that request
+      - C) The network's physical diagram
+      - D) The endpoint's antivirus version
+      answer: B
+    - question: A SIEM receives firewall logs but nothing from the workstations themselves. Which policy-engine signal
+        is missing?
+      options:
+      - A) The rules the firewall applied
+      - B) The destination each flow reached
+      - C) Device posture from the endpoints
+      - D) The timestamp of each connection
+      answer: C
+- ordinal: 6
+  title: Piloting and Measuring Zero Trust
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Design a zero trust pilot for one segment with scope, success measures and a rollback step
+  - Score a piloted environment across identity, segmentation and monitoring, citing recorded evidence for each
+  - Identify claims that overstate zero trust progress and restate each with the evidence that holds
+  topics:
+  - 'Pilot design: one segment, named flows, success measures and a rollback step.'
+  - 'Baseline before change: recording current access and telemetry before restricting anything.'
+  - Scoring maturity across identity, segmentation and monitoring with per-area evidence.
+  - 'Overstatement patterns: counting purchases as progress and pilot scope as coverage.'
+  - Reporting pilot results honestly to choose and sequence the next segment.
+  lab: >-
+    Lab: On the medium-enterprise range, plan a zero trust pilot for the workstation-to-server path and score the
+    range's maturity honestly. Evidence: the fw01 rule that today allows the corporate zone to reach the servers
+    zone; the flows that rule must keep, each with a business reason; the pilot's first restricted flow, its success
+    measure and its rollback step; a maturity score for identity, segmentation and monitoring, each with one sentence
+    of evidence from the range. Pass: the baseline rule recorded as the range shows it; every kept flow carries a
+    reason; the score for each area cites evidence recorded in this course; one overstatement the range's evidence
+    does not support is named and corrected.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [fw01]
+      action: Open the fw01 rule list and record the rule that today allows the corporate zone to reach the servers
+        zone.
+    - hosts: [ws01, dc01, fs01]
+      action: From ws01, confirm which of sign-in and name lookup on dc01 and file sharing on fs01 the
+        workstation genuinely needs, and
+        record one business reason for each.
+    - hosts: [ws01]
+      action: 'Write the pilot''s scope: the first flow to restrict, the success measure that shows the flow still
+        works, and the rollback step if it fails.'
+    - hosts: [siem01]
+      action: On siem01, record whether telemetry covers the pilot flow and note the newest event it shows.
+    - hosts: [ws01]
+      action: Score the range's maturity for identity, segmentation and monitoring, cite the evidence recorded in this
+        course for each, and name one claim the evidence does not support.
+  refs:
+  - nist-sp-800-207
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A team wants to pilot zero trust across its whole 4,000-host estate in one change window. What does
+        pilot design teach?
+      options:
+      - A) Proceed, because zero trust must be adopted at once
+      - B) Start with one segment and named flows
+      - C) Adopt the vendor's largest licence first
+      - D) Skip the baseline to move faster
+      answer: B
+    - question: Before restricting a flow, the team records which sign-ins use it and what the monitoring already
+        sees. What is this step called?
+      options:
+      - A) Establishing the pilot's baseline
+      - B) Writing the rollback plan
+      - C) Extending the pass threshold
+      - D) Publishing the maturity score
+      answer: A
+    - question: A pilot restricts workstation-to-server access and sign-in failures double for one application. What
+        should the success measure do?
+      options:
+      - A) Ignore failures until the next quarter
+      - B) Declare the pilot complete regardless
+      - C) Widen the rule back to the whole zone
+      - D) Treat the failures as evidence against that flow's rule
+      answer: D
+    - question: A report states 'we have achieved zero trust' after installing one identity product. Which overstatement
+        pattern is this?
+      options:
+      - A) Reporting a pilot's scope as estate-wide coverage
+      - B) Hiding the monitoring gap from the report
+      - C) Counting a purchased product as achieved practice
+      - D) Scoring without any recorded evidence
+      answer: C
+    - question: A monitoring area shows sign-in telemetry collected but endpoint posture absent. Which maturity score
+        rests on the strongest evidence?
+      options:
+      - A) Intermediate, because sign-in telemetry exists but endpoint posture does not
+      - B) Optimal, because the SIEM is licensed
+      - C) Traditional, because logs were never collected
+      - D) Advanced, because the firewall is new
+      answer: A

@@ -1,0 +1,198 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# Instructor pack for C520: Alert Triage Under Pressure (individual training, one Student per
+# range session; no pairs, teams or role play). Staff only.
+course_code: C520
+audience: staff_only
+overview: 'Alert Triage Under Pressure is an individual course of six 50-minute modules (300 minutes,
+  5 hours) run entirely on the soc-training range. Every module has the same split: 10 minutes
+  briefing on the objectives and topics, 25 minutes working the range lab alone, and 15 minutes
+  assessment (10 minutes for the five-item quiz passed at 70 percent, 5 minutes debriefing the
+  evidence the Student recorded). The Student works one alert queue per session as the sole
+  analyst; say ''Student'' throughout and keep every instruction defensive and observable.
+  Revert the range to its baseline snapshot before each module so the queue contents match the
+  lab briefs below.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 briefing (objectives and topics, queue layout on siem01), 25 lab (order the queued
+    alerts, collapse duplicates, choose the first two), 15 assessment (10 quiz, 5 debrief of the
+    numbered review order)'
+- module: 2
+  minutes: 50
+  plan: '10 briefing (disposition categories and the two drills), 25 lab (scheduled-task drill on
+    v-ws02, share-read drill on v-fs01), 15 assessment (10 quiz, 5 debrief of the two
+    dispositions)'
+- module: 3
+  minutes: 50
+  plan: '10 briefing (internal context first, then indicators), 25 lab (context pull on siem01,
+    indicator searches on misp01), 15 assessment (10 quiz, 5 debrief of the recorded verdicts)'
+- module: 4
+  minutes: 50
+  plan: '10 briefing (note anatomy, facts versus interpretation), 25 lab (two cases written in
+    thehive01, closing fields chosen), 15 assessment (10 quiz, 5 debrief of one note read aloud)'
+- module: 5
+  minutes: 50
+  plan: '10 briefing (criteria of scope, impact, confidence), 25 lab (scope re-check on siem01,
+    escalation note in thehive01), 15 assessment (10 quiz, 5 debrief of the criteria marks)'
+- module: 6
+  minutes: 50
+  plan: '10 briefing (the full pass and the fresh batch), 25 lab (order, enrich, disposition,
+    escalate or close all five alerts), 15 assessment (10 quiz, 5 debrief of the batch review)'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (work the domain controller alert first), M1-O02: asset exposure outranks arrival
+    order; A tests queue-shortening bias, C tests escalating everything, D tests avoidance. Q2 C
+    (one incident, duplicates recorded), M1-O01: forty identical firings are one event to review;
+    A tests volume escalation, B tests unread closure, D tests tuning as a triage substitute. Q3
+    A (asset exposure and impact), M1-O02: equal severity is broken by asset value; B tests
+    first-in-first-out, C and D test non-criteria. Q4 D (acknowledge criticals first), M1-O03:
+    the target binds critical alerts only; A, B and C test orders that leave criticals waiting.
+    Q5 B (alert fatigue caused by rule noise), M1-O01: nightly low-value volume trains reviewers
+    to skim; A, C and D are related but name other failures.'
+- module: 2
+  notes: 'Q1 D (benign true positive), M2-O03: the rule matched real activity and the activity
+    was authorised; A is the classic confusion, B ignores the change window, C invents work. Q2
+    A (false positive), M2-O01: the rule misfired on traffic it was never meant to catch; B and
+    C test the real-transfer confusion, D defers unnecessarily. Q3 C (true positive), M2-O01:
+    failed-then-successful logons outside hours with no maintenance scheduled is the pattern the
+    rule exists for; A and B reason from frequency alone, D tests duplicate confusion. Q4 B
+    (recorded fields plus written justification), M2-O02: that is what survives six months; A, C
+    and D test trust substitutes. Q5 D (rule-name bias with premature closure), M2-O03: the
+    title was read, the event was not; A, B and C name other queue failures.'
+- module: 3
+  notes: 'Q1 C (internal context first), M3-O01: local context is authoritative and cheap; A and
+    D invert the order, B is not enrichment. Q2 B (record with age, weigh locally), M3-O02: an
+    old sighting is data, not a verdict; A accepts stale proof, C discards signal, D delegates
+    the triage. Q3 D (cite and escalate with both sources), M3-O03: a malware-tagged hash plus
+    alert context clears the confidence bar; A under-reacts, B over-reacts, C loses the source.
+    Q4 A (active contact can warn the intruder), M3-O02: the defender may reach attacker
+    infrastructure and reveal the investigation; B, C and D invent advantages. Q5 A (local
+    evidence of the documented feed), M3-O03: intelligence is weighed, never obeyed over local
+    fact; B, C and D test deference to the wrong signals.'
+- module: 4
+  notes: 'Q1 A (quoted fields), M4-O01: a note is built from the event record; B, C and D are
+    impressions and reminders. Q2 D (interpretation without facts), M4-O02: "probably" carries
+    no quoted field; A, B and C misname the line. Q3 B (one stated zone at observation), M4-O01:
+    times captured once in one zone survive shift changes; A, C and D test lax alternatives. Q4
+    C (evidence lines naming their source), M4-O03: reconstruction needs provenance, not volume;
+    A hides, B distracts, D floods. Q5 C (rewrite with cited evidence), M4-O02: the remedy for a
+    bare impression is evidence, not deletion; A destroys the record, B and D leave the fault in
+    place.'
+- module: 5
+  notes: 'Q1 B (scope), M5-O01: scope is the asset and identity count, which doubled; A and C
+    restate the other criteria, D denies change. Q2 A (verified two-account sentence), M5-O02:
+    it states fact, verification and time; B, C and D are the note failures the module warns
+    against. Q3 D (the next tier drowns), M5-O01: over-escalation delays genuine cases; A, B and
+    C are invented costs. Q4 C (decline and close with reasons), M5-O01: contained scope, low
+    impact and high confidence miss every criterion; A and D ignore the check, B is rule work,
+    not escalation. Q5 B (assets, evidence, requested action), M5-O03: an authoriser acts on
+    those three; A is persuasion, C and D test wrong authorities.'
+- module: 6
+  notes: 'Q1 D (order the batch first), M6-O01: module one applied under load; A, B and C skip
+    the ordering step. Q2 C (finish each case to a recorded decision), M6-O02: open notes are
+    the quality killer; A, B and D are the pressure responses the module drills against. Q3 A
+    (internal context first), M6-O02: module three applied; B, C and D are not enrichment. Q4 B
+    (escalate with the verified note), M6-O02: two accounts, rising impact and high confidence
+    meet every criterion; A and C wait on arbitrary thresholds, D inverts the evidence. Q5 A
+    (re-checkable evidence lines), M6-O03: defensibility lives in the record, not the analyst;
+    B, C and D are popularity, manner and speed.'
+lab_setup:
+- module: 1
+  setup: 'Revert the soc-training range to its baseline snapshot. Confirm the Student can reach
+    jump01 over SSH and that the analyst login opens OpenSearch Dashboards on siem01 at
+    10.60.202.10. Seed the queue with about ten alerts from the past twelve hours, including at
+    least one duplicate group from a single rule, one critical alert naming v-dc01 and one alert
+    naming v-web01. The Student should find the rule-name counts, the per-alert severity and
+    destination, and the source address and destination port behind the v-web01 event.'
+- module: 2
+  setup: 'Revert the baseline snapshot. Seed two alerts: a scheduled-task alert for v-ws02 whose
+    task matches a documented maintenance schedule, and a share-read alert for v-fs01 showing a
+    large file count from one account. Confirm the velociraptor01 console answers the analyst
+    login and that the agent on v-ws02 reports. The Student should find the task name, trigger
+    time and schedule behind the first drill, and the source account, share path and file count
+    behind the second.'
+- module: 3
+  setup: 'Revert the baseline snapshot. Keep the share-read case from module 2 open in the queue
+    on siem01. On misp01, preload two indicators from the case (source address and file hash),
+    one with a malware tag and a confidence value, one stale by several years, so the verdicts
+    differ. The Student should find the account event history on siem01 over seven days and,
+    on misp01, each verdict with its confidence, age and tags.'
+- module: 4
+  setup: 'Revert the baseline snapshot. Confirm thehive01 answers the analyst login and that no
+    cases exist yet. Keep both module 2 alerts available in the siem01 queue with their
+    identifiers visible, so the Student can attach them. The Student should produce two cases,
+    two notes with quoted fields and a marked reasoning line, and two closing fields; the
+    share-read note must carry the escalation status and one stated time zone.'
+- module: 5
+  setup: 'Revert the baseline snapshot. Extend the seeded history so a second account touched the
+    v-fs01 share overnight; the case on thehive01 still shows only the first account. The
+    Student should find both accounts and both hosts in the siem01 re-query, mark each criterion
+    met or not met in thehive01, and write the escalation note; check the note against the
+    stored events before the case is handed on.'
+- module: 6
+  setup: 'Revert the baseline snapshot. Seed a fresh batch of five alerts mixing the module
+    patterns: one critical on a server, one duplicate pair, one scheduled-task benign case and
+    one share-read case carrying indicators already preloaded on misp01. Confirm the
+    velociraptor01 agent reports for any workstation in the batch. The Student should finish
+    with a numbered review order, enrichment results with confidence, and five cases either
+    closed with notes or escalated in thehive01.'
+common_faults:
+- module: 1
+  fault: The Student orders the queue by arrival time and calls it triage, leaving the critical
+    alert buried behind low-severity noise.
+  remedy: Point at the response target in the briefing and ask which alert breaches first; have
+    the Student re-order with the critical alert on top and justify each position from a field
+    in the alert.
+- module: 1
+  fault: The duplicate group is reviewed forty separate times or closed without recording the
+    rule that generated it.
+  remedy: Show the rule-name grouping in the Dashboards view and require one incident entry
+    naming the rule and the duplicate count.
+- module: 2
+  fault: The scheduled-task drill is closed as a false positive because no attack occurred,
+    losing the distinction the module teaches.
+  remedy: Ask two questions in order; did the rule match real activity, and was the activity
+    authorised. Both yes means benign true positive, and the note must say so.
+- module: 2
+  fault: The share-read drill is dispositioned from the alert title alone, with no event fields
+    recorded.
+  remedy: Require two recorded observations per disposition before the justification is read;
+    send the Student back to the event view on siem01 if either is missing.
+- module: 3
+  fault: The Student searches misp01 first and treats any tag as a verdict, skipping the
+    internal context on siem01.
+  remedy: Hold the external searches until the account history and asset role are written in
+    the notes; then ask what the local evidence adds to each tag.
+- module: 3
+  fault: The stale indicator (several years old) is accepted as current proof of malice.
+  remedy: Ask for the age field next to the confidence value and have the Student state aloud
+    what could have changed since the sighting.
+- module: 4
+  fault: The note mixes facts and interpretation in one line, for example the logons are
+    probably patches, with nothing quoted.
+  remedy: Have the Student mark each line fact or interpretation; every fact line must name its
+    field or source, and interpretation moves to the marked reasoning line.
+- module: 4
+  fault: Timestamps are written from memory at the end with no zone stated.
+  remedy: Require the zone once per note and each time at the moment it was observed; the
+    debrief re-reads the note as a reviewer from the next shift would.
+- module: 5
+  fault: The scope re-query is skipped and the escalation note still names one account, so the
+    criteria are marked against stale evidence.
+  remedy: Compare the note against the siem01 re-query line by line; the second account must
+    appear before any criterion is marked.
+- module: 5
+  fault: The escalation note reads as a plea (someone should look soon) with no verified facts
+    and no requested action.
+  remedy: Rewind to the four questions; what happened, what was verified, what was done, what
+    is needed. Rewrite the note until each has one sentence.
+- module: 6
+  fault: Under batch pressure the Student skims alerts and marks them reviewed without
+    dispositions.
+  remedy: Check the case system against the batch; every alert must map to a case with a note.
+    If any is missing, the Student closes the batch properly before the debrief starts.
+- module: 6
+  fault: The final re-read step is dropped and a note keeps a line the stored events do not
+    support.
+  remedy: In the debrief, pick one note at random and challenge one line; the Student must
+    produce the event that supports it or correct the note on the spot.

@@ -1,0 +1,578 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+
+course_code: C551
+title: OT Risk Assessment & Zone Conduit Design
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C549
+- C502
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Systems Security Analyst; Cybersecurity Risk Manager.'
+  - 'NIST CSF 2.0: ID.RA; PR.IR; GV.RM.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Consequence-Driven Threat Modeling
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Classify candidate threat events for an OT segment by their worst credible consequence rather than by attacker tooling
+  - Identify the adverse consequences that matter for a SCADA segment, from process shutdown to manipulated historian records
+  - Select the threat scenarios that merit assessment attention using reachability, impact and likelihood criteria
+  topics:
+  - Threat identification as the search for credible adverse consequences, not an inventory of attacks.
+  - Likelihood, impact and the worst credible outcome as the axes of a risk statement.
+  - Adapting IT threat modelling assumptions to processes whose failure harms production and safety.
+  - Using adversary behaviour knowledge to describe how a consequence could be reached.
+  - Recording a threat event so a reviewer can challenge its reachability and impact.
+  lab: >-
+    Lab: On the large-enterprise range, turn raw vulnerability and exposure findings for the server VLAN
+    into consequence-driven threat events. Evidence: the identifier and severity of three findings from the
+    vuln01 scanner for hosts in the server VLAN; the fw01 rules that expose each affected host to other
+    zones; for each finding, one sentence naming the worst credible consequence if it were exploited.
+    Pass: all three findings recorded with their scanner severity; each consequence sentence names a
+    business or process effect, not a tool or technique; each finding marked reachable or not reachable
+    from outside its own zone, with the fw01 rule cited.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01, vuln01]
+      action: Log on to jump01 and open the vuln01 scanner console; confirm a scan of the server VLAN hosts
+        completed recently and record its date.
+    - hosts: [vuln01]
+      action: Select the three highest-severity findings for hosts in the server VLAN and record the host, the
+        finding identifier and the severity of each.
+    - hosts: [fw01]
+      action: List the fw01 rules that carry traffic between the server VLAN and any other zone, and record
+        which rules touch each affected host.
+    - hosts: [jump01]
+      action: For each finding, write one sentence naming the worst credible consequence for the enterprise if
+        the finding were exploited.
+    - hosts: [fw01, jump01]
+      action: Mark each finding reachable or not reachable from outside its own zone, citing the fw01 rule that
+        decides it, and rank the three findings by consequence.
+  refs:
+  - nist-sp-800-30r1
+  - mitre-attack
+  - nist-cswp-29
+  source_gaps:
+  - No OT-specific threat modelling guide in the reference library; consequence framing drawn from general
+    risk guidance instead.
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A plant assessment team lists possible events against a bottling line controlled from the OT
+        network. Which record best shows a consequence-driven threat event?
+      options:
+      - A) Ransomware is a growing trend in manufacturing
+      - B) Manipulated setpoints stop the filler and spoil the batch
+      - C) Attackers use custom malware to evade detection
+      - D) The historian runs an unsupported operating system version
+      answer: B
+    - question: An OT risk workshop grades a threat event against a safety instrumented system. Which grading
+        axis matters most before any likelihood estimate?
+      options:
+      - A) The number of assets in the segment
+      - B) The age of the controllers involved
+      - C) The severity of the credible adverse consequence
+      - D) The fame of the adversary group said to be involved
+      answer: C
+    - question: A scanner lists a critical vulnerability on sql01, but the fw01 rule set shows no conduit reaches
+        it from outside the server VLAN. What should the assessment record?
+      options:
+      - A) A low-priority threat event, because reachability is absent
+      - B) A critical threat event, because scanner severity governs priority
+      - C) An immediate firewall replacement project
+      - D) An emergency patch outside the change calendar
+      answer: A
+    - question: A threat event says a contractor could carry malware on a service laptop into the plant, past
+        network controls. Which property makes this scenario credible for assessment?
+      options:
+      - A) The malware is written by a known group
+      - B) The laptop is new, expensive and trusted equipment
+      - C) Network controls are certified each year
+      - D) The path bypasses every network boundary control
+      answer: D
+    - question: 'Two threat events share one consequence: a manipulated historian record. One needs stolen
+        credentials; the other needs only access the firewall rules already grant. How should their likelihood
+        ranking compare?'
+      options:
+      - A) Equal, because the consequence is identical
+      - B) Higher for the path that needs no extra access
+      - C) Higher for the credentials path, because theft is common
+      - D) Unrankable without a quantitative model
+      answer: B
+- ordinal: 2
+  title: Zones and Conduits Design Review
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Map the firewalled VLANs of an enterprise range into zones that share one trust level and policy
+  - Record each conduit between zones as a named rule set with its ports, sources and destinations
+  - Judge whether a conduit is over-broad by comparing its allowed traffic with a documented business need
+  topics:
+  - Zones as groupings of assets sharing one trust level, not as subnet numbers alone.
+  - Conduits as explicit, named channels whose purpose and scope a design must state.
+  - Reading a firewall rule set as the authoritative record of conduits between zones.
+  - Trust relationships such as domain forests that create invisible conduits between zones.
+  - 'The design review question: what business need justifies this channel, and how little would serve.'
+  lab: >-
+    Lab: On the large-enterprise range, inventory the zones and conduits of the enterprise design and
+    judge each conduit against a stated business need. Evidence: the VLAN list with each VLAN name and
+    isolation flag; the fw01 rule entries that cross zone boundaries, with source, destination and ports;
+    the trust relationships dc01 holds with other forests. Pass: every zone recorded with its trust level;
+    every cross-zone rule recorded as a conduit with its purpose queried; the database port conduit from
+    the DMZ marked over-broad or justified with a reason; each forest trust recorded as a conduit with its
+    direction stated.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and record the VLAN table of the range, including each VLAN name and whether
+        it is isolated.
+    - hosts: [fw01]
+      action: Export the fw01 rule set and record every rule whose source zone differs from its destination
+        zone, together with its ports.
+    - hosts: [fw01, jump01]
+      action: For each cross-zone rule, write the business purpose it serves, or mark it undocumented with
+        a one-line note.
+    - hosts: [dc01]
+      action: Query dc01 for the trust relationships the forest holds and record each partner domain with its
+        trust direction.
+    - hosts: [jump01, fw01]
+      action: Mark each conduit over-broad, justified or undocumented, and name the one database conduit whose
+        port scope needs narrowing.
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-41r1
+  source_gaps:
+  - No zones-and-conduits standard in the reference library; the review method is adapted from zero trust
+    and firewall policy guidance.
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A reviewer proposes treating the corporate VLAN and the server VLAN as one zone. Which evidence
+        best tests that proposal?
+      options:
+      - A) The VLANs use adjacent numbers in the current addressing plan
+      - B) Both VLANs sit behind the same physical firewall
+      - C) The rules between them are narrower than the rules to the DMZ
+      - D) Both VLANs are administered by the same team
+      answer: C
+    - question: A design document says the OT segment is separated. Which artefact proves how traffic actually
+        crosses into it today?
+      options:
+      - A) The network diagram from the last external audit
+      - B) The asset inventory of the segment
+      - C) The written security policy that covers the segment
+      - D) The firewall rule set that references the segment
+      answer: D
+    - question: The corporate forest holds a two-way trust with a subsidiary forest. What does that trust create
+        that a zones-and-conduits review must record?
+      options:
+      - A) A conduit whose reach follows the trust direction
+      - B) A new VLAN that needs its own firewall
+      - C) A shared administrator account that must rotate monthly
+      - D) A requirement to merge the two forests
+      answer: A
+    - question: A rule allows the corporate VLAN to reach the server VLAN on ports 80, 443, 445, 1433 and 389.
+        Which question should the design review ask first?
+      options:
+      - A) Whether the rule has an owner recorded
+      - B) Which business application needs the database port
+      - C) Whether the ports are logged at the boundary
+      - D) When the rule was last reviewed by the network team
+      answer: B
+    - question: A conduit exists so a web tier can reach one database host. Which change narrows it to the least
+        privilege that still serves that need?
+      options:
+      - A) Restrict the rule to the web hosts and the database port
+      - B) Move the database host into the DMZ with the web tier
+      - C) Allow the whole server VLAN so future web hosts work
+      - D) Replace the rule with a documented exception for one year
+      answer: A
+- ordinal: 3
+  title: Compensating Controls for Legacy Kit
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify legacy systems whose vendor support or protocol age rules out a direct control fix
+  - Select compensating controls that reduce risk for a legacy host without changing the host itself
+  - Verify that a compensating control works by testing what the control still allows and blocks
+  topics:
+  - Why legacy operating systems and protocols resist ordinary patching and hardening.
+  - Compensating controls as risk reduction placed around the asset rather than inside it.
+  - Isolation, allow-listing and boundary rules as compensating measures for unsupported hosts.
+  - Monitoring and alerting as compensation when prevention on the host is impossible.
+  - Verifying a compensating control against the traffic it stops and the traffic it permits.
+  lab: >-
+    Lab: On the large-enterprise range, pick compensating controls for the legacy hosts that cannot take
+    a direct fix. Evidence: the operating system versions historian01 and the HMI workstations run,
+    recorded from the inventory; the wsus01 patch state for the legacy hosts; the fw01 and ot-fw01 rules
+    that currently bound the legacy segment; one proposed compensating control per legacy host. Pass: each
+    legacy host recorded with its version and support status; each proposed control named as isolation,
+    allow-listing, boundary rule or monitoring; each control checked against one thing it must block and
+    one thing it must still permit.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01, dc01]
+      action: Log on to jump01 and query dc01 for the operating system of each registered server and
+        workstation, keeping the legacy entries.
+    - hosts: [historian01]
+      action: Record the operating system version historian01 runs, and mark its vendor support status and
+        patch currency from the inventory.
+    - hosts: [hmi01, hmi02]
+      action: Record the operating system the HMI workstations hmi01 and hmi02 run, and where their updates
+        come from.
+    - hosts: [wsus01]
+      action: Check wsus01 for the patch state of the legacy hosts and record which of them receive updates
+        at all.
+    - hosts: [fw01, ot-fw01]
+      action: List the fw01 and ot-fw01 rules that bound the legacy segment and record what traffic each rule
+        allows today.
+    - hosts: [jump01]
+      action: Propose one compensating control per legacy host, named as isolation, allow-listing, boundary
+        rule or monitoring, and state what each must block and still permit.
+  refs:
+  - nist-sp-800-30r1
+  - cis-benchmarks
+  source_gaps:
+  - No legacy-system hardening guide in the reference library; compensating control patterns are drawn
+    from benchmark and risk guidance.
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A plant must keep a legacy historian whose operating system vendor has ended security
+        updates. Which measure compensates without touching the host?
+      options:
+      - A) Install the newest service pack and keep going
+      - B) Scan the host weekly and report the findings
+      - C) Wait for the replacement project to finish before acting
+      - D) Isolate the host behind a default-deny boundary rule
+      answer: D
+    - question: A legacy HMI accepts configuration writes only from the engineering workstation. Which
+        compensating control enforces that at the boundary?
+      options:
+      - A) A weekly authenticated vulnerability scan of the HMI workstation
+      - B) An allow-list rule admitting only the engineering workstation
+      - C) An endpoint agent installed on the HMI
+      - D) A written procedure that forbids every other source
+      answer: B
+    - question: Prevention on an unsupported host is impossible, so the team watches it instead. Which evidence
+        shows the compensation is real rather than nominal?
+      options:
+      - A) The monitoring plan is approved and signed
+      - B) The host has a hostname recorded in the asset register
+      - C) An alert fires when the host is scanned from outside
+      - D) The team meets each month to discuss the risk
+      answer: C
+    - question: A boundary rule is proposed as compensation for a legacy server. Which test best verifies the
+        rule before it is accepted?
+      options:
+      - A) Test the blocked and the permitted traffic from both sides
+      - B) Confirm the rule appears in the current firewall configuration export
+      - C) Ask the vendor to certify the rule design
+      - D) Compare the rule against the previous version of the design
+      answer: A
+    - question: The patch report shows a legacy host receiving no updates for a year while its peers update
+        monthly. What risk conclusion follows for the assessment?
+      options:
+      - A) The host is compliant because scans find nothing
+      - B) The patch server is faulty and needs replacement
+      - C) The host is protected by the monitoring mirror on its own
+      - D) The host carries weaknesses that compensation alone must assume
+      answer: D
+- ordinal: 4
+  title: Assessing the Air-Gapped Segment
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Verify a claimed air gap by testing reachability and reading the rule set rather than accepting the diagram
+  - Trace how data and updates legitimately enter an isolated OT segment and record each transfer path
+  - Judge whether monitoring coverage exists for an isolated segment and propose a controlled conduit where it does not
+  topics:
+  - Air gaps as claims about reachability that evidence, not diagrams, must settle.
+  - Testing isolation from a host outside the segment and recording every failed and successful path.
+  - Legitimate transfer paths such as update media and report exports as the real conduits.
+  - Monitoring an isolated segment through mirrors rather than direct network access.
+  - Proposing a controlled conduit when isolation leaves a segment blind to detection.
+  lab: >-
+    Lab: On the large-enterprise range, test the claim that the OT segment is air-gapped and judge the
+    isolation as an assessor would. Evidence: the result of connection attempts from jump01 toward hosts
+    in the OT VLAN; the fw01 and ot-fw01 rules that mention the OT VLAN; the way the monitoring mirror
+    delivers traffic copies to ids01; one legitimate transfer path into the OT segment and what bounds it.
+    Pass: each connection attempt recorded with its result; every rule that touches the OT VLAN recorded
+    with its action; the isolation marked confirmed, partial or absent with the rule cited; one proposed
+    controlled conduit for monitoring or transfer, with its stated scope.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01, historian01, plc01]
+      action: Log on to jump01 and attempt connections toward historian01 and plc01, recording every success,
+        failure and timeout exactly.
+    - hosts: [fw01, ot-fw01]
+      action: Read the fw01 and ot-fw01 configurations and record every rule that mentions the OT VLAN, with
+        its action.
+    - hosts: [ids01]
+      action: Check ids01 for the traffic it sees from the OT VLAN through the monitoring mirror and record
+        which OT hosts appear.
+    - hosts: [jump01]
+      action: Record that no network path carries vendor updates into the OT segment, and write the manual
+        transfer path instead, with each boundary it crosses.
+    - hosts: [jump01]
+      action: Mark the air-gap claim confirmed, partial or absent, citing the rule or test result that
+        decides it.
+    - hosts: [fw01, ids01]
+      action: Propose one controlled conduit for monitoring or managed transfer into the OT segment, and
+        state the scope it must not exceed.
+  refs:
+  - nist-sp-800-94
+  source_gaps:
+  - No air-gapped or isolated OT segment reference in the library; the monitoring guidance is general
+    intrusion detection.
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A site diagram shows the OT segment with no connection to the corporate network. What should an
+        assessor do before accepting the claim?
+      options:
+      - A) Test reachability from outside and read the rule set
+      - B) Confirm the diagram was drawn within the last year
+      - C) Interview the operators about their daily work
+      - D) Check that the segment has an entry in the asset register
+      answer: A
+    - question: The isolated segment cannot be scanned directly. How does the monitoring VLAN still see its
+        traffic?
+      options:
+      - A) Through an agent installed on every controller and workstation
+      - B) Through periodic manual log collection
+      - C) Through a mirror that copies traffic to the sensor
+      - D) Through wireless probes placed near the segment
+      answer: C
+    - question: Vendor updates reach the isolated segment on removable media reviewed by one technician. Why
+        does the assessment record this as a conduit?
+      options:
+      - A) Because removable media is slow and costly
+      - B) Because the technician needs additional training
+      - C) Because vendors require signed records for each transfer made
+      - D) Because every path into the segment counts as a conduit
+      answer: D
+    - question: From jump01, connections to every host in the OT VLAN time out, and no rule admits the OT VLAN
+        outward. What verdict does the evidence support?
+      options:
+      - A) The segment is unreachable and therefore unassessable
+      - B) Network isolation holds, but transfer paths need review
+      - C) The timeouts prove the monitoring mirror also fails
+      - D) The rule set contradicts the test results and needs a rebuild
+      answer: B
+    - question: Isolation leaves the OT segment blind to detection. Which proposal adds visibility while
+        keeping the isolation property?
+      options:
+      - A) Route the OT VLAN default gateway through the corporate LAN
+      - B) Allow the OT VLAN to reach the patch server directly
+      - C) Extend the traffic mirror so the sensor sees OT copies
+      - D) Place a wireless access point in the OT control room
+      answer: C
+- ordinal: 5
+  title: Risk Statements and Prioritisation
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write risk statements that name the threat, the conduit, the consequence and the affected asset
+  - Prioritise assessed findings by worst credible consequence and the reachability that enables it
+  - Check that monitoring coverage exists for each prioritised risk before the assessment closes
+  topics:
+  - The parts of a usable risk statement and why vague statements defeat prioritisation.
+  - Ranking findings by consequence first and reachability second, not by scanner severity.
+  - Deduplicating findings that share one conduit or one consequence.
+  - Confirming that monitoring would see the threat event each risk describes.
+  - Handing a prioritised risk register to the design change process.
+  lab: >-
+    Lab: On the large-enterprise range, turn the findings recorded in the earlier modules into a
+    prioritised risk register. Evidence: one risk statement per finding, each naming the threat, the
+    conduit, the affected asset and the worst credible consequence; a priority of high, medium or low
+    for each statement with its reason; the siem01 queries or alerts that would show each threat event
+    occurring. Pass: every statement names all four parts; priorities follow consequence and reachability
+    rather than scanner severity; each risk marked covered or not covered by monitoring, with the siem01
+    source named; the register ordered highest consequence first.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and gather the findings recorded in the earlier modules into one working list.
+    - hosts: [jump01]
+      action: Write one risk statement per finding, naming the threat, the conduit, the affected asset and
+        the worst credible consequence.
+    - hosts: [jump01]
+      action: Assign each statement a priority of high, medium or low, and record the consequence and
+        reachability reason for it.
+    - hosts: [siem01]
+      action: Check siem01 for the queries or alerts that would show each threat event occurring, and record
+        the coverage found.
+    - hosts: [siem01, jump01]
+      action: Order the register highest consequence first, mark each risk covered or not covered by
+        monitoring, and name the source for each.
+  refs:
+  - nist-sp-800-30r1
+  - nist-sp-800-37r2
+  - nist-cswp-29
+  source_gaps:
+  - No OT risk register exemplar in the reference library; statement form follows general risk
+    assessment guidance.
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: Which statement is the usable record of an assessed risk to the historian host?
+      options:
+      - A) The historian is important to the plant
+      - B) A copied report could carry a manipulated setpoint into the OT VLAN
+      - C) The historian has a vulnerability finding rated high
+      - D) Attackers increasingly target operational systems
+      answer: B
+    - question: Two findings share one scanner severity but only one sits behind a rule that admits the DMZ.
+        Which order does the register give?
+      options:
+      - A) The one with the older finding date first, for tracking
+      - B) Both equal, because severity matches
+      - C) The one on the quieter VLAN first
+      - D) The one reachable through the DMZ conduit first
+      answer: D
+    - question: Twelve scanner findings trace to the same open conduit between two zones. How should the
+        register record them?
+      options:
+      - A) As one risk, with the findings as evidence
+      - B) As twelve risks, so the count shows effort
+      - C) As one risk per affected host only
+      - D) As no risk, because the conduit is documented
+      answer: A
+    - question: The register names a threat event on an isolated VLAN. What must the assessment confirm before
+        closing that risk?
+      options:
+      - A) That the VLAN has a named owner
+      - B) That the diagram shows the VLAN correctly
+      - C) That monitoring would see the event occurring
+      - D) That the risk can be transferred to the vendor
+      answer: C
+    - question: The register is complete and ordered. What makes it usable by the team that will change the
+        design?
+      options:
+      - A) Each risk names the conduit and consequence to address
+      - B) Each risk carries its scanner severity in a bold column
+      - C) Each risk links to the original scan report
+      - D) Each risk is written in the assessor shorthand
+      answer: A
+- ordinal: 6
+  title: Findings to Design Change
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Convert a prioritised risk into a design change that narrows a conduit or adds a control
+  - Test a proposed rule change against the business traffic it must still carry
+  - Record a design change with its evidence, scope and the risk it retires or reduces
+  topics:
+  - Turning a risk statement into a specific, testable change to zones or conduits.
+  - Narrowing rules by source, destination and port before reaching for new equipment.
+  - Proving a change safe by checking the business traffic it must preserve.
+  - Recording changes so the next assessment starts from the current design, not a diagram.
+  - The residual risk a change leaves behind and who accepts it.
+  lab: >-
+    Lab: On the large-enterprise range, propose and scope the design changes that answer the
+    highest-priority risks. Evidence: the proof that the DMZ-to-server database conduit is live, taken
+    from web01 toward sql01; the narrowed rule that would replace the broad one; for each proposed
+    change, the risk it reduces and the business traffic it must preserve. Pass: the live conduit
+    recorded with the exact result of the test; each change stated as a rule difference, not a wish;
+    each change lists the traffic it must still carry; each change names its residual risk and who
+    would accept it.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [web01, sql01]
+      action: Log on to web01 and test the database port toward sql01, recording the exact result that proves
+        the conduit is live.
+    - hosts: [fw01, jump01]
+      action: From jump01, write the narrowed rule for fw01 that replaces the broad DMZ rule, naming source, destination and port
+        exactly.
+    - hosts: [jump01]
+      action: For each high-priority risk in the register, state one design change as a rule difference or
+        boundary adjustment.
+    - hosts: [fw01, web01]
+      action: For each change, list the business traffic it must still carry and how the range would prove it.
+    - hosts: [jump01, fw01]
+      action: Record each change with its evidence, its scope and its residual risk, and name who would accept
+        that residual risk.
+  refs:
+  - nist-sp-800-41r1
+  - nist-sp-800-207
+  source_gaps:
+  - No design-change management reference in the library; the recording practice follows firewall policy
+    and zero trust guidance.
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A risk says the DMZ conduit exposes the database tier. Which change answers it most directly?
+      options:
+      - A) Adding an intrusion sensor to the DMZ
+      - B) Moving the database tier behind a second password
+      - C) Narrowing the DMZ rule to the web hosts and port
+      - D) Documenting the conduit as an accepted exception
+      answer: C
+    - question: A proposed rule drops corporate access to the server VLAN except 443. What must be checked
+        before the change is applied?
+      options:
+      - A) That the flows the old rule carried are still served
+      - B) That the rule number sequence stays tidy
+      - C) That the change is applied outside working hours
+      - D) That the old rule text is archived for the audit file
+      answer: A
+    - question: A change narrows a conduit and the register risk drops. What record keeps the next assessment
+        honest?
+      options:
+      - A) The ticket number and the date of the change
+      - B) The rule difference, evidence and residual risk
+      - C) The approval signature of the accountable owner
+      - D) The date the firewall configuration was saved
+      answer: B
+    - question: After the DMZ rule is narrowed, the web tier still reaches the database host. What remains for
+        the assessment to record?
+      options:
+      - A) Nothing, because the exposure is gone
+      - B) A new scan of the database host
+      - C) A request to move the database server into the DMZ
+      - D) The residual risk and the owner who accepts it
+      answer: D
+    - question: The team proposes a new firewall appliance for a conduit problem. What should the design review
+        prefer first?
+      options:
+      - A) The appliance, because new equipment reviews itself
+      - B) Narrowing the existing rule at the same boundary
+      - C) A second rule set maintained in parallel forever
+      - D) Waiting for the next scheduled replacement cycle
+      answer: B

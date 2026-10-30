@@ -1,0 +1,550 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+
+course_code: C527
+title: Static Analysis Beyond the Basics
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C209
+source:
+  origin: "TAZ upskilling catalogue v1 (2026-10-28)"
+  notes:
+  - "NICE work roles: Malware Reverse Engineer (IN-FOR-002)."
+  - "NIST CSF 2.0: DE.AE (Detection Analysis) and RS.AN (Incident Response Analysis)."
+  - "Self-paced upskilling, outside DP1/DP2."
+  - "Unpublished pending Standards review."
+modules:
+- ordinal: 1
+  title: The Static Triage Workflow
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Sequence the steps of a static triage on an unknown Windows binary from intake to written hypothesis
+  - Record the hashes, true file type and metadata that open a triage without executing the sample
+  - Distinguish findings static analysis can establish from behaviour only dynamic analysis can confirm
+  topics:
+  - Sample intake, chain of custody, hashing and working copies.
+  - File magic, headers and extension mismatches.
+  - Timestamps, compiler artefacts and signature metadata.
+  - What static analysis proves and what it cannot.
+  lab: >-
+    Lab: On the soc-training range, open the static triage workflow on the suspicious sample the instructor
+    staged and produce the intake record every later module builds on. Evidence: the file names in the intake
+    folder, the sample's cryptographic hashes, its true file type read from the header bytes, and its size and
+    timestamps. Pass: hashes recorded for the untouched original; the true file type stated with a reason where
+    it differs from the extension; each item marked "established statically" or "needs dynamic analysis" with a
+    one-sentence reason.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 with the analyst account, open a terminal and write the start time in the lab
+        notes.
+    - hosts: [jump01, dfir-ws01]
+      action: From jump01, connect to dfir-ws01, list the instructor's intake folder and record the file names
+        found there.
+    - hosts: [dfir-ws01]
+      action: Copy the staged sample from the intake folder into a working folder on dfir-ws01, leaving the
+        original in the intake folder untouched.
+    - hosts: [dfir-ws01]
+      action: Compute a cryptographic hash of the original, read its first header bytes and record the true file
+        type the bytes indicate.
+    - hosts: [dfir-ws01]
+      action: Record the sample's size, its timestamps and whether the extension matches the header bytes in the
+        intake record.
+    - hosts: [jump01]
+      action: Mark each intake item "established statically" or "needs dynamic analysis" with one sentence of
+        reason, then order the items into the triage sequence to follow.
+  refs:
+  - nist-sp-800-83r1
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: An unknown binary arrives at the triage desk. Which sequence follows a static triage and never
+        executes the sample?
+      options:
+      - A) Execute it briefly in a disposable virtual machine and record its changes
+      - B) Hash the untouched original, confirm its true file type, form a hypothesis
+      - C) Trust the file extension and hand the sample to the response team
+      - D) Hash only the working copy and delete the untouched original
+      answer: B
+    - question: A triage note claims a sample steals passwords because its import table names a credential
+        library. Which statement is the strongest one static analysis supports?
+      options:
+      - A) The sample steals passwords, because the import proves the code executes
+      - B) Nothing can be said, because import names are random
+      - C) The sample could use those functions; dynamic analysis alone confirms use
+      - D) The sample is benign until a sandbox report says otherwise
+      answer: C
+    - question: A file named invoice.pdf begins with the byte marker MZ. Which conclusion is soundest at this
+        stage of the triage?
+      options:
+      - A) The document was corrupted during transfer, so it reopens safely
+      - B) The extension is wrong by accident, so treat it as a document
+      - C) It is a script, because scripts carry the MZ marker
+      - D) It is an executable whose extension hides its type
+      answer: D
+    - question: Why does the intake step hash the untouched sample before any analysis begins?
+      options:
+      - A) To show the analysed copy matches the sample exactly as received
+      - B) To prove the sample is malicious before time is spent on it
+      - C) To encrypt the working copy so rivals cannot read it during analysis
+      - D) To speed up the dynamic analysis that follows the static pass
+      answer: A
+    - question: A responder must state whether a sample exfiltrates data over the network when it runs. What can
+        static analysis alone establish?
+      options:
+      - A) Confirm the transfer happened and record the destination it used
+      - B) Prove the sample never touches the network during execution
+      - C) Show the network-capable functions it imports, and no more than that
+      - D) Replace the sandbox, because the imports list every destination address
+      answer: C
+- ordinal: 2
+  title: PE Structure and Imports
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Name the header fields and sections of a PE file and record each section's characteristics
+  - Group a PE's imports by library and infer capability from the combination of functions it requests
+  - Judge whether a PE's section layout fits a routine build or merits escalation
+  topics:
+  - The DOS header, PE signature and optional header.
+  - Sections, virtual sizes and the characteristics flag field.
+  - Import tables, library dependencies and dynamically resolved functions.
+  - Reading import combinations for network, persistence and process capability.
+  lab: >-
+    Lab: On the soc-training range, dissect the PE sample staged in the working folder and read its structure
+    and imports without running it. Evidence: the machine and subsystem header values, the section table with
+    each section's name, size and characteristics, and the imported libraries grouped with the functions that
+    indicate capability. Pass: every section listed with its characteristics; the import table read from the
+    file rather than guessed; one capability statement per import group that cites the function names it rests on.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 with the analyst account and note the start time in the lab notes.
+    - hosts: [jump01, dfir-ws01]
+      action: From jump01, connect to dfir-ws01 and open the working folder holding the sample from the earlier
+        module.
+    - hosts: [dfir-ws01]
+      action: Read the DOS and PE headers and record the machine type, the subsystem and the number of sections.
+    - hosts: [dfir-ws01]
+      action: List the section table of the sample and record each section's name, raw size and characteristics
+        flags in order.
+    - hosts: [dfir-ws01]
+      action: List the import table and group the imported functions by the library that provides them.
+    - hosts: [jump01]
+      action: Write one capability statement for each import group, then mark the section layout "routine" or
+        "worth escalation" with one sentence of reason.
+  refs:
+  - nist-sp-800-83r1
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A PE file has one section whose characteristics flag it as both executable and writable. What is
+        the soundest reading of that layout?
+      options:
+      - A) Self-modifying code may run there, a trait worth escalation
+      - B) The section holds only string data used at start-up
+      - C) The file is a kernel driver that must carry a vendor signature
+      - D) The header is corrupt and the file cannot be parsed
+      answer: A
+    - question: A sample's imports show functions for internet connections, writing a scheduled task and opening
+        another process. What does the combination support?
+      options:
+      - A) It is an updater, because legitimate updaters import the same functions
+      - B) It cannot do these things without a configuration file stored on disk
+      - C) It can reach the network, persist and control processes, citing named imports
+      - D) It is a dropper only, because downloading implies nothing else
+      answer: C
+    - question: A packed sample shows almost no imports, yet the code calls dozens of library functions while
+        running. How is that possible?
+      options:
+      - A) The import table was truncated when the file was copied to disk
+      - B) The code resolves library functions by name at runtime
+      - C) The sample carries no code and borrows another process's functions
+      - D) The operating system injects the imports after the sample starts
+      answer: B
+    - question: One section's virtual size is far larger than its raw size, and the section is marked executable.
+        What is the soundest reading?
+      options:
+      - A) The section is empty padding added by the compiler for alignment
+      - B) The file was truncated during transfer and lost most of its content
+      - C) The section holds only relocation data the loader discards
+      - D) The section expands in memory, a packed-code trait worth noting
+      answer: D
+    - question: A triage note must state whether a staged binary was built for a graphical or a console
+        interface. Which header field carries that?
+      options:
+      - A) The optional header's subsystem value, which states graphical, console or native
+      - B) The magic value in the DOS header, which flags windowed builds
+      - C) The entry point address, because services and desktop programs start differently
+      - D) The number of sections, which tracks the interfaces the binary can open
+      answer: A
+- ordinal: 3
+  title: String, Entropy and Packer Triage
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Extract strings from a sample and classify which ones indicate capability rather than noise
+  - Compute per-section entropy and decide whether a sample is packed, encrypted or routine
+  - Select the next analysis step for a high-entropy sample and justify the choice in the triage note
+  topics:
+  - String extraction, encodings and filtering to meaningful candidates.
+  - Entropy as a measure and its per-section reading.
+  - Packer signatures, section anomalies and import-table telltales.
+  - Deciding between unpacking statically and handing off to dynamic analysis.
+  lab: >-
+    Lab: On the soc-training range, compare the strings and per-section entropy of the two samples the
+    instructor staged and mark which one is packed. Evidence: the string count and the capability-relevant
+    strings for each sample, the per-section entropy values for both, and a packed-or-routine marking per
+    sample. Pass: strings listed per sample with obvious noise removed; entropy measured per section, not for
+    the file as a whole only; each sample marked "packed" or "routine" with the deciding evidence; a next
+    analysis step named for the packed sample.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 with the analyst account and note the start time in the lab notes.
+    - hosts: [jump01, dfir-ws01]
+      action: From jump01, connect to dfir-ws01 and open the folder holding the two comparison samples the
+        instructor staged.
+    - hosts: [dfir-ws01]
+      action: Extract the strings of the first sample and record the total count plus the strings that indicate
+        capability.
+    - hosts: [dfir-ws01]
+      action: Repeat the string extraction on the second sample and record the same two figures beside the first.
+    - hosts: [dfir-ws01]
+      action: Measure the per-section entropy of both samples and record the values beside the section tables
+        from the earlier module.
+    - hosts: [jump01]
+      action: Mark each sample "packed" or "routine" with the evidence that decided it, and name the next
+        analysis step for the packed one.
+  refs:
+  - binwalk
+  - yara
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A strings pass on a sample lists two URLs, a mutex name and hundreds of library names. Which of
+        these belong in the triage note?
+      options:
+      - A) Every library name, because each one shows a capability the sample holds
+      - B) Nothing yet, because strings gathered this early are unreliable
+      - C) Only the longer strings, because length signals meaning
+      - D) The URL and the mutex name, because they are sample-specific
+      answer: D
+    - question: An analyst measures each section of a downloaded sample separately. What per-section entropy
+        reading suggests a section holds compressed or encrypted content?
+      options:
+      - A) Close to zero, because compressed data repeats the same byte values
+      - B) Close to the maximum, because compressed or encrypted bytes are near-uniform
+      - C) Exactly half the maximum, the average of executable and data sections
+      - D) Entropy cannot be computed for a single section of a file
+      answer: B
+    - question: A sample shows few imports, one high-entropy section and no known compiler artefacts. What is the
+        soundest triage conclusion?
+      options:
+      - A) The sample is likely packed, and the note says so with evidence
+      - B) The sample is corrupt, because routine builds never look like this
+      - C) The sample is a clean installer, which always has these traits
+      - D) Nothing can be concluded until the sample executes in a sandbox first
+      answer: A
+    - question: A sample clearly uses the network during execution, yet a plain strings pass finds no readable
+        addresses. What explains the gap?
+      options:
+      - A) The strings tool failed on this file and must run again differently
+      - B) Network samples never carry their addresses in readable form
+      - C) The strings are encoded or built at runtime, beyond a plain pass
+      - D) The addresses were removed when the file was written to disk
+      answer: C
+    - question: A sample is confirmed packed, the team needs its configuration, and the sample must not be
+        executed. What is the soundest next step?
+      options:
+      - A) Report the sample as unanalysable and wait for a sandbox slot
+      - B) Identify the packer and work from unpacking knowledge without running it
+      - C) Guess the configuration from the sample's file size and compile date
+      - D) Execute it briefly, since the team's need outweighs the constraint
+      answer: B
+- ordinal: 4
+  title: Reading Disassembly Without Fear
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Locate a sample's entry point and trace its calls to the functions that matter
+  - Recognise assembly patterns for string decoding, runtime API resolution and anti-analysis checks
+  - Describe what one function does from its disassembly and record the description in the triage note
+  topics:
+  - Entry points, functions and the call graph of a small binary.
+  - Registers, the stack and standard calling conventions.
+  - String decoding loops and dynamically resolved function names.
+  - Checks a sample makes against its own environment before acting.
+  - Annotating disassembly so the next analyst can follow it.
+  lab: >-
+    Lab: On the soc-training range, read the disassembly of the staged sample far enough to describe its key
+    function, using radare2, without running anything. Evidence: the entry point address, the function count, the
+    address and a behaviour summary of the string decoding loop, and an annotated description of one chosen
+    function. Pass: the entry point located from the file's headers; the decoding loop identified by its structure
+    with the register holding the decoded output named; the function description states what the function reads,
+    what it returns and why it matters.
+
+    AUTHOR-REQUIRED: radare2 installed on dfir-ws01 by a cleared author, since the soc-training
+    baseline lists no disassembler among the workstation's services.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 with the analyst account and note the start time in the lab notes.
+    - hosts: [jump01, dfir-ws01]
+      action: From jump01, connect to dfir-ws01 and open the working sample in radare2 with its analysis pass
+        enabled.
+    - hosts: [dfir-ws01]
+      action: Record the entry point address and the number of functions radare2 reports once its analysis
+        finishes.
+    - hosts: [dfir-ws01]
+      action: Follow the call graph from the entry point and record the path that reaches the function handling
+        encoded data.
+    - hosts: [dfir-ws01]
+      action: Read the decoding loop and record the register that carries the decoded output and the counter
+        that ends the loop.
+    - hosts: [jump01]
+      action: Choose one function and write its description, stating what it reads, what it returns and why it
+        matters to the triage.
+  refs:
+  - nist-sp-800-83r1
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A sample's entry point immediately calls an unpacking function. Where does the code worth reading
+        begin?
+      options:
+      - A) In the import table, which lists the unpacked functions
+      - B) In the file header, which records the original entry point
+      - C) At the instruction after the call, where the unpacked code takes over
+      - D) In the resource section, which holds the unpacking configuration values
+      answer: C
+    - question: Under the x86-64 Windows calling convention, where does a function's first argument live on
+        entry?
+      options:
+      - A) In RCX, the first-argument register under the x86-64 Windows convention
+      - B) In the return address left on the stack by the caller
+      - C) In a global variable the caller wrote before the call
+      - D) In the accumulator register, which every calling convention reserves for arguments
+      answer: A
+    - question: A loop reads one byte, applies arithmetic to it, appends the result to a growing buffer and
+        repeats until a counter runs out. What is the loop doing?
+      options:
+      - A) Computing a checksum of the whole file before start-up
+      - B) Compressing the working buffer to save memory during the execution
+      - C) Comparing the incoming bytes against a list of analyst tool names
+      - D) A string decoding loop producing data worth recovering
+      answer: D
+    - question: A function compares the names of analyst tools against an internal list and exits when one
+        matches. How should the triage note classify it?
+      options:
+      - A) A licensing check that fails only on unlicensed machines
+      - B) An anti-analysis check that changes behaviour under scrutiny
+      - C) A debugging leftover left in by the developer's toolchain
+      - D) A routine error handler for missing system libraries on the host
+      answer: B
+    - question: An analyst hands a partly read sample to a colleague at shift change. What does annotating the
+        disassembly buy that colleague?
+      options:
+      - A) A record of what each block does, so reading need not restart
+      - B) A faster disassembler run next pass, because the tool reads the notes
+      - C) Proof that the sample is malicious for the final report
+      - D) A substitute for the sample's missing import table
+      answer: A
+- ordinal: 5
+  title: Extracting Configs and IOCs
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Extract the configuration values a sample carries, such as controller addresses and campaign identifiers
+  - Distinguish durable indicators from fragile ones and label each extracted value with its type
+  - Record extracted values as indicators with context so another analyst can act on them
+  topics:
+  - "Configuration blocks: controller addresses, ports, campaign identifiers and mutex names."
+  - "Where configuration hides: plain strings, stack-built strings and decoding routines."
+  - Durable indicators versus fragile ones such as hashes and timestamps.
+  - Recording indicators with type, context and confidence for sharing.
+  lab: >-
+    Lab: On the soc-training range, pull the configuration from the staged sample without executing it and turn
+    each value into a usable indicator. Evidence: every configuration value together with the method that
+    produced it, a durable-or-fragile label per value, and each value rewritten as a typed indicator with one
+    line of context. Pass: each value traced to the string or routine that produced it; every indicator labelled
+    with a reason; the finished list typed and contextualised so another analyst can act on it.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 with the analyst account and note the start time in the lab notes.
+    - hosts: [jump01, dfir-ws01]
+      action: From jump01, connect to dfir-ws01 and open the working folder holding the sample analysed in the
+        earlier modules.
+    - hosts: [dfir-ws01]
+      action: Extract the sample's strings and record each configuration-like value together with the string that
+        produced it.
+    - hosts: [dfir-ws01]
+      action: Apply the decoding routine identified in the earlier module and record the values it produces.
+    - hosts: [dfir-ws01]
+      action: Label each extracted value "durable" or "fragile" and write a one-sentence reason that states what
+        a rebuild would do to it.
+    - hosts: [jump01]
+      action: Rewrite each value as a typed indicator with one line of context a responder could act on.
+  refs:
+  - nist-sp-800-150
+  - oasis-cti
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A sample's configuration holds a controller address, a port number and a campaign identifier.
+        Which is the most durable indicator?
+      options:
+      - A) The port number, because ports rarely change between builds
+      - B) The campaign identifier, because variants of the same campaign reuse it
+      - C) The controller address, because controllers stay registered for years
+      - D) All three are equally durable once written into the note
+      answer: B
+    - question: Detections keyed on a sample's hash stopped matching after the actor rebuilt the sample. What
+        does that failure demonstrate?
+      options:
+      - A) The original hash was computed with a weak algorithm
+      - B) The rebuilt sample was never executed, so the hash changed
+      - C) Hash detection works only inside a sandbox
+      - D) A hash is a fragile indicator that a rebuild breaks
+      answer: D
+    - question: A decoding routine moves configuration bytes onto the stack one word at a time. Where does that
+        configuration live in the file?
+      options:
+      - A) In the import table, which the loader rewrites at start-up
+      - B) In the resource section under a standard configuration entry
+      - C) On the stack, built at runtime by those moves
+      - D) Nowhere in the file, because the values arrive from the controller
+      answer: C
+    - question: A colleague extracted twelve bare controller addresses. Which addition makes the list most useful
+        to a responder?
+      options:
+      - A) The type and context of each address, such as its role
+      - B) The addresses sorted alphabetically for faster lookup
+      - C) A hash of each address to confirm later matches
+      - D) The addresses copied into the report twice for emphasis
+      answer: A
+    - question: A sample carries a mutex name it creates when it runs. How does that value serve static
+        detection?
+      options:
+      - A) It serves none, because a mutex exists only while the process runs
+      - B) It proves the sample is malicious without any further analysis
+      - C) It replaces the controller address as the primary indicator
+      - D) A reused mutex name is durable, though only running confirms its creation
+      answer: D
+- ordinal: 6
+  title: From Static Findings to Detection
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a YARA rule from a sample's durable static features and test it against a sample set
+  - Register the extracted indicators in the threat intelligence platform with type and context
+  - Decide whether a triaged sample warrants escalation and write the finding summary
+  topics:
+  - Turning durable static features into YARA strings and conditions.
+  - Testing a rule against clean files to stop false matches.
+  - Registering indicators with context in a threat intelligence platform.
+  - "The triage decision: escalate, monitor or close, with evidence."
+  lab: >-
+    Lab: On the soc-training range, close the loop on the triage by writing a YARA rule from the findings of the
+    earlier modules, registering the indicators and making the escalation decision. Evidence: the YARA rule
+    text, the match results across the staged sample set of the analysed sample plus clean comparison files, the
+    indicator entries registered with their types, and a written escalate-or-close decision with evidence. Pass:
+    the rule keys on durable features rather than the file hash; no clean file matches; every indicator
+    registered with a type; the decision states one evidence-grounded reason.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 with the analyst account and note the start time in the lab notes.
+    - hosts: [jump01, dfir-ws01]
+      action: From jump01, connect to dfir-ws01 and open the staged sample set of the analysed sample plus clean
+        comparison files.
+    - hosts: [dfir-ws01]
+      action: Write a YARA rule from the durable strings and structure recorded earlier and save it in the working
+        folder.
+    - hosts: [dfir-ws01]
+      action: Run the rule across the sample set and record which files match and whether any clean file matches.
+    - hosts: [misp01, dfir-ws01]
+      action: From dfir-ws01, open the threat intelligence platform on misp01 and register each indicator with its
+        type and context.
+    - hosts: [jump01]
+      action: Write the escalate, monitor or close decision for the sample and give one evidence-grounded reason
+        drawn from the earlier findings.
+  refs:
+  - yara
+  - sigma
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A YARA rule keys only on the full file hash of the analysed sample. What follows for its
+        detections?
+      options:
+      - A) It matches only that exact file and misses every variant
+      - B) It matches every file the actor's campaign produced
+      - C) It keeps matching after any rebuild of the sample by the actor
+      - D) It matches clean files that merely share the file size
+      answer: A
+    - question: A new rule fires on three clean administration tools. Which change most directly stops the false
+        matches?
+      options:
+      - A) Delete the rule, because clean tools matching it proves the approach unfixable
+      - B) Add structure, such as a second string with a condition
+      - C) Raise the rule's notice priority so analysts expect the noise
+      - D) Widen the strings to shorter ones so fewer files fit them all
+      answer: B
+    - question: The team shares a sample's indicators with partner analysts. Which entry is most useful to them?
+      options:
+      - A) A screenshot of the terminal where the value was found
+      - B) The raw value alone, so partners can interpret it freely
+      - C) A cryptographic hash of each value so partner analysts can verify it
+      - D) Each indicator typed, dated and tied to the sample that produced it
+      answer: D
+    - question: A triaged packed sample shows beaconing capability and carries a campaign identifier already
+        known to the team. What triage decision does the evidence support?
+      options:
+      - A) Close, because packed samples are common and usually harmless
+      - B) Monitor, because nothing in the sample is new to the team
+      - C) Escalate, citing the known identifier and the beacon capability the imports support
+      - D) Re-triage from scratch, because packers hide every useful finding
+      answer: C
+    - question: A triage note must justify an escalation to a reviewer who saw none of the analysis. Which line
+        best serves that reviewer?
+      options:
+      - A) Packed sample, one controller address, matched rule R, escalated with evidence attached
+      - B) The sample seemed suspicious, so it was escalated after some analysis
+      - C) Analysis is complete and the results have been shared with everyone concerned
+      - D) The sample is bad; delete it everywhere and block its address
+      answer: A

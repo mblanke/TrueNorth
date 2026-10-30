@@ -1,0 +1,180 @@
+# Instructor pack for content/courses/up-ir-05-tabletop-exercise-facilitation.yaml.
+# Unpublished pending Standards review.
+course_code: C535
+audience: staff_only
+overview: >-
+  Tabletop Exercise Facilitation is an advanced self-paced course of six 60-minute modules
+  (360 minutes, 6 hours) for a Student preparing to design, facilitate and debrief a tabletop
+  exercise and convert observations into an after-action report with owned improvements. Each
+  module pairs teaching with an individual lab on the small-enterprise range, and the artefacts
+  build on each other: the module 1 inject set feeds the module 2 facilitation plan, the module 3
+  scribe log feeds the module 4 report draft and the module 5 improvement plan, and module 6 runs
+  the full cycle in one session. The Student hands in an inject set, a facilitation aid sheet, a
+  scribe log, an after-action extract and an improvement plan.
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (objectives, inject anatomy, pacing), 35 lab (three injects on the range),
+    10 assessment (quiz)'
+- module: 2
+  minutes: 60
+  plan: '15 teach (ground rules, timeboxes, techniques), 35 lab (facilitation aids on the
+    ransomware-lite inject), 10 assessment (quiz)'
+- module: 3
+  minutes: 60
+  plan: '15 teach (observation log format, fact versus interpretation), 35 lab (scribe log and
+    gap statements on the range), 10 assessment (quiz)'
+- module: 4
+  minutes: 60
+  plan: '15 teach (report sections, outcome statements, classification), 35 lab (after-action
+    draft from the module 3 log), 10 assessment (quiz)'
+- module: 5
+  minutes: 60
+  plan: '15 teach (improvement plan entries, ranking, checkpoints), 35 lab (owned entries with
+    a range check for closure), 10 assessment (quiz)'
+- module: 6
+  minutes: 60
+  plan: '10 teach (the full cycle and run sheet), 40 lab (one timed mini tabletop on the
+    ransomware-lite scenario, opening to after-action extract), 10 assessment (quiz)'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (M01-O01): A concrete situation twelve minutes in, before escalation, creates the exact
+    decision the objective names. A is background, C teaches instead of testing, D is history. Q2 C
+    (M01-O02): Front-loaded volume starves later objectives of discussion time. A and B name real
+    faults but not the one described; D would show the opposite symptom. Q3 A (M01-O03): Facts must
+    be plausible in the environment the scenario describes, so logs and policy values on the range
+    are the check. B and D are external and unverified; C is irrelevant to plausibility. Q4 D
+    (M01-O02): The master scenario events list is the timeline of record, so reordered injects need
+    new delivery times there. A, B and C do not carry the timeline. Q5 B (M01-O01): An inject needs
+    situation facts participants can decide from; a bare question gives them nothing to work with.
+    A overstates the rule, C and D name problems the inject does not have.'
+- module: 2
+  notes: 'Q1 C (M02-O03): Redirecting to quiet participants rebalances the airtime without shaming
+    anyone. A punishes the group, B is not a technique, D rewards the dominance. Q2 A (M02-O01):
+    Expectations are set before the first inject: ground rules, timeboxes and the objective. B and C
+    are end-of-course outputs, D is irrelevant. Q3 B (M02-O03): An open question to one named
+    participant restarts talk at the smallest possible cost. A abandons the objective, C and D end
+    the exercise. Q4 D (M02-O03): A visible parking list with a promised follow-up keeps the
+    discussion on the objective without losing the item. A, B and C are not parking places. Q5 A
+    (M02-O02): A neutral facilitator turns the question back into an inquiry about requirements and
+    objectives. B and C take sides, D deflects without engaging.'
+- module: 3
+  notes: 'Q1 D (M03-O01): It has a timestamp, a source and an exact fact, which is the log format.
+    A, B and C are judgements with no time, source or observable fact. Q2 B (M03-O02): "Seemed" is
+    an interpretation; the log keeps it marked as such until the observed fact behind it is named.
+    A promotes the interpretation to fact, C and D move it out of the observation log. Q3 C
+    (M03-O01): The line lacks a timestamp, a source and the exact fact, so nothing about it can be
+    verified. A does not fix verifiability, B is irrelevant, D adds the wrong thing. Q4 A (M03-O04):
+    A met target with a time is a strength, and it is recorded with its evidence. B invents a
+    failure, C mislabels it, D would lose it. Q5 D (M03-O03): Without a source, the finding cannot
+    be verified or traced later, so the report loses its evidentiary value. A, B and C are not the
+    harm.'
+- module: 4
+  notes: 'Q1 A (M04-O01): The analysis opens with one outcome statement per objective, marked met or
+    not met and backed by evidence. B, C and D are not outcome statements. Q2 C (M04-O03): Each
+    finding carries its own classification with a reason: escalation a strength, the stale roster an
+    area for improvement. A and B flatten both, D suppresses a real gap. Q3 D (M04-O02): The
+    judgement must name the specific observation and evidence line behind it before it can enter
+    the report. A makes it worse, B and C are irrelevant. Q4 B (M04-O01): Without objective links,
+    the report cannot show whether the objectives were tested, which is its first duty. A, C and D
+    do not follow. Q5 A (M04-O03): Evidence that the observed behaviour met the stated target is
+    what separates a strength from luck. B, C and D are not evidence of performance.'
+- module: 5
+  notes: 'Q1 C (M05-O01): Issue, corrective action, owner role and due period make the entry
+    trackable. A, B and D are sentiments, not entries. Q2 D (M05-O02): Corrective actions are ranked
+    by the risk they reduce, so the lockout gap goes first. A, B and C are not risk ordering. Q3 B
+    (M05-O01): Without a named owner role and a due period, no one is accountable and nothing moves.
+    A does not fix accountability, C and D add activity without ownership. Q4 A (M05-O03): Closure
+    is shown by evidence at a checkpoint that the change took effect. B, C and D record the claim,
+    not the effect. Q5 C (M05-O02): The dependency and a retest window after the upgrade are what
+    keep the action honest. A cancels real work, B is not a plan, D ignores the dependency.'
+- module: 6
+  notes: 'Q1 B (M06-O01): A run sheet adds a timed order of segments from opening to debrief.
+    A, C and D are not scheduling artefacts. Q2 A (M06-O02): Observations are captured as each
+    happens, with a timestamp and source; later capture loses the evidence. B, C and D all delay
+    capture. Q3 D (M06-O03): A punctual session with an evidence-free report points at observation
+    capture as the failed stage. A, B and C can all have worked and still produce an empty report.
+    Q4 C (M06-O03): An objective is declared met by an outcome statement backed by recorded
+    evidence. A, B and D are impressions or counts, not evidence. Q5 B (M06-O03): Repeating the
+    same gaps means improvement plan actions are not being followed through into the next design.
+    A, C and D happen every year and did not prevent it.'
+lab_setup:
+- module: 1
+  setup: Revert the small-enterprise range to its baseline and confirm jump-box is reachable over
+    SSH, dc-01 answers from jump-box and fw-01 accepts the listing command. Record the baseline
+    values yourself before the lab, namely the networks and services each fw-01 allow rule permits
+    and the dc-01 domain password policy minimum length and lockout threshold, so the Student's
+    recorded facts can be marked against them.
+- module: 2
+  setup: Revert the small-enterprise range to its baseline and confirm jump-box over SSH and dc-01
+    from jump-box. Confirm the ransomware-lite scenario is loaded and assign one inject to the
+    Student; note which inject it was so the three open-ended prompts can be checked against it.
+- module: 3
+  setup: Revert the small-enterprise range to its baseline and confirm jump-box over SSH, fw-01
+    reachable from jump-box and ws-01 able to attempt a sign-in to dc-01. Supply the blank
+    observation log with the standard account credentials for ws-01. Record the baseline fw-01
+    allow rule names and count yourself before the walkthrough.
+- module: 4
+  setup: Revert the small-enterprise range to its baseline and confirm jump-box over SSH and fw-01
+    reachable from jump-box. Have the Student's module 3 scribe log available, and your own
+    baseline fw-01 rule count for marking the re-check in lab step 2.
+- module: 5
+  setup: Revert the small-enterprise range to its baseline and confirm jump-box over SSH and fw-01
+    reachable from jump-box. Have the Student's module 4 after-action draft available, and the
+    current fw-01 rule listing for marking which rule each proposed change would touch.
+- module: 6
+  setup: Revert the small-enterprise range to its baseline and confirm jump-box over SSH, fw-01
+    reachable from jump-box and ws-01 able to attempt the sign-in to dc-01 with the standard
+    account. Confirm the ransomware-lite scenario is loaded with its first inject available, keep
+    a visible 20 minute exercise clock for the timed walkthrough, and record the baseline fw-01
+    allow rule facts yourself before the session.
+common_faults:
+- module: 1
+  fault: Injects are written as bare questions ('What do you do now?') with no situation text.
+  remedy: Point back to the inject anatomy topic and require situation facts before any prompt;
+    have the Student rewrite one inject until a participant could decide from the text alone.
+- module: 1
+  fault: Inject prompts lead the witness or cite facts the range never shows.
+  remedy: Check every prompt against the recorded fw-01 and dc-01 facts; a prompt citing a fact the
+    range does not show is rewritten until it grounds in a recorded value.
+- module: 2
+  fault: Ground rules are vague aspirations ('be respectful') with no timeboxes.
+  remedy: Require each rule to be checkable during the session and the timebox plan to fill the
+    30 minute window segment by segment.
+- module: 2
+  fault: The chosen technique for a dominant voice is confrontation instead of redirection.
+  remedy: Walk the neutrality topic again; the technique must rebalance airtime without taking a
+    side or singling anyone out for blame.
+- module: 3
+  fault: Scribe lines carry no timestamp or source, so nothing in the log is verifiable.
+  remedy: Reject any line without both fields and have the Student re-enter it in the log format
+    with timestamp, source, exact fact and recorder.
+- module: 3
+  fault: Interpretations are recorded as facts ('the team was confused').
+  remedy: Have the Student mark every line fact or interpretation, then rewrite each interpretation
+    as the observed fact that supports it before any gap statement is written.
+- module: 4
+  fault: Outcome statements say 'went well' instead of marking met, partly met or not met.
+  remedy: Insist on the three-value mark per objective with the evidence line named in the same
+    statement.
+- module: 4
+  fault: Analysis paragraphs judge without naming the observation or evidence line behind them.
+  remedy: Strike any adjective that does not trace to a logged line; the paragraph must link
+    observation, evidence line and objective explicitly.
+- module: 5
+  fault: Improvement entries name an action but no owner role or due period.
+  remedy: Apply the completeness test from the topics, under which no entry is tracked until
+    issue, action, owner role and due period are all present.
+- module: 5
+  fault: Actions are marked closed because the owner says so, with no checkpoint evidence.
+  remedy: Require the range check from lab step 4 (the fw-01 change check) as the model, where
+    closure means evidence that the change took effect.
+- module: 6
+  fault: The exercise clock runs loosely and observations are captured after the session from
+    memory.
+  remedy: Keep the 20 minute clock visible and insist each observation is written as it happens
+    with its timestamp and source, as the lab Pass demands.
+- module: 6
+  fault: The final judgement for an objective cites no evidence line.
+  remedy: Before the debrief closes, make the Student read out the evidence line behind each
+    met or not met mark; a judgement without a line is rewritten.

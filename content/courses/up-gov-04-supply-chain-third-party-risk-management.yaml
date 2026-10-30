@@ -1,0 +1,571 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# C504 - Supply-Chain & Third-Party Risk Management - DRAFT course content.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C504
+title: Supply-Chain & Third-Party Risk Management
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C502
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Program Director, Cybersecurity Risk Manager.'
+  - 'NIST CSF 2.0: GV.SC, ID.RA.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Mapping Your Dependency Graph
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Build a dependency graph for a small office from installed software and observed network connections
+  - Map each observed external service to the supplier that operates it and name intermediaries
+  - Rank dependencies by criticality and by the readiness of a substitute
+  topics:
+  - Direct and transitive dependencies, and how together they form a dependency graph.
+  - Suppliers, subcontractors and concentration when one supplier sits behind several products.
+  - A software inventory as the raw material of the dependency map.
+  - Resolver and network logs as evidence of live third-party connections.
+  - Ranking dependencies by criticality and by the readiness of substitutes.
+  lab: >-
+    Lab: On the greyspace-internet range, build a dependency graph for the small office from the software
+    installed on its workstations and the external domains they contact. Evidence: the installed-application
+    list for each workstation with versions and publishers; each external domain in the edge01 resolver log
+    with the workstation that queried it; a graph naming the supplier behind each entry. Pass: every recorded
+    application and domain appears in the graph with a supplier or "supplier unknown"; each dependency is
+    marked "critical" or "convenient" with a one-sentence reason; any supplier behind two or more entries is
+    named as a concentration.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01, open the installed-applications list and record every application with its
+        version number and publisher.
+    - hosts: [ws02]
+      action: Repeat the inventory on ws02 and record the applications and versions that differ from ws01.
+    - hosts: [edge01]
+      action: Open the resolver query log on edge01 and record each external domain the workstations resolve.
+    - hosts: [edge01]
+      action: From the same log, record which workstation queried each external domain and how often the
+        query repeats.
+    - hosts: [ws01]
+      action: Draw the dependency graph and record, for each application and domain, the supplier behind it
+        or "supplier unknown".
+    - hosts: [ws01]
+      action: Mark each dependency "critical" or "convenient" with a one-sentence reason, and name any
+        supplier that sits behind two or more entries.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A shipping application loads a calendar library, and that library loads a compression
+        library written by a third author. In dependency vocabulary, what kind of dependency is the
+        compression library?
+      options:
+      - A) A direct dependency
+      - B) A transitive dependency
+      - C) A fourth-party supplier
+      - D) A redundant control
+      answer: B
+    - question: A small office maps its dependencies and finds that three of its five applications are
+        built by the same parent company. Which risk does this illustrate?
+      options:
+      - A) Version drift
+      - B) Shadowed rules
+      - C) Concentration risk
+      - D) Licence expiry on two of the applications
+      answer: C
+    - question: A team wants to know which third-party services its network really contacts, not only
+        which ones were bought. Which artefact shows this most directly?
+      options:
+      - A) The purchase orders on file
+      - B) The asset register
+      - C) Licence documents
+      - D) Resolver query logs
+      answer: D
+    - question: An office finds that its only accounting suite comes from one vendor, with no alternative
+        installed or contracted. How should this entry be classified in the dependency graph?
+      options:
+      - A) A critical dependency with no ready substitute
+      - B) A redundant application kept only for failover
+      - C) A convenience dependency that could be dropped without loss
+      - D) An unused licence that no workstation has activated
+      answer: A
+    - question: A colleague builds the office dependency graph from the purchase list alone. Which
+        dependencies does that source miss?
+      options:
+      - A) The cost of each licence on the purchase list
+      - B) Bundled and transitive components never bought separately
+      - C) The names of the administrators of each workstation
+      - D) The age of each workstation in the office fleet
+      answer: B
+- ordinal: 2
+  title: Supplier Questionnaires That Mean Something
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Verify supplier questionnaire answers against controls observable on a network
+  - Select questionnaire questions that ask for evidence rather than assurances
+  - Classify questionnaire findings by the risk each unanswered gap leaves open
+  topics:
+  - What a questionnaire can and cannot prove about a supplier.
+  - Questions that ask for evidence rather than assurances.
+  - Verifying claims with patch levels, administrator rights and policy settings.
+  - Self-attestation as a claim, and evidence-based follow-up to verify it.
+  - Scoring answers and classifying the residual risk each gap leaves.
+  lab: >-
+    Lab: On the greyspace-internet range, treat the small office as the supplier's network and check the
+    claims in its returned questionnaire against what the range actually shows. Evidence: each claim quoted
+    from the questionnaire; the most recent update on ws01; the accounts in the local administrators group
+    on ws01; the domain password policy on dc01; the screen-lock setting on each workstation. Pass: every
+    claim is marked "supported" or "contradicted" with the observed value beside it; each contradiction is
+    paired with the risk it leaves open; no claim is marked from the questionnaire text alone.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: On ws01, read the questionnaire the supplier returned and record each claim it makes about
+        patching, administrator rights, screen locking and the domain password policy.
+    - hosts: [ws01]
+      action: On ws01, open the update history and record the date and name of the most recent installed
+        update.
+    - hosts: [ws01]
+      action: On ws01, open the properties of the local administrators group and record the name of
+        every account it contains.
+    - hosts: [dc01]
+      action: On dc01, read the domain password policy and record the minimum password length and the
+        lockout threshold.
+    - hosts: [ws01, ws02]
+      action: On ws01 and ws02, record whether a screen lock is enforced after inactivity, and after how
+        long.
+    - hosts: [ws01]
+      action: Mark each claim "supported" or "contradicted" with the observed value, and name the risk each
+        contradiction leaves open.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A questionnaire asks "Do you have a security programme?" and the supplier answers yes.
+        Why is that answer of limited value?
+      options:
+      - A) Yes answers are always false, so no supplier answer can be trusted
+      - B) The question is far too long for a supplier to read quickly
+      - C) It seeks assurance, not evidence like a policy name and date
+      - D) Suppliers always refuse to answer any questions about their security controls
+      answer: C
+    - question: Which questionnaire item can a small supplier answer honestly with least effort, and can
+        a buyer check most cheaply?
+      options:
+      - A) The date of the most recent workstation patch
+      - B) A description of the security culture
+      - C) A promise of overall security
+      - D) A maturity score out of ten, assessed by the supplier itself
+      answer: A
+    - question: A supplier returns the questionnaire with every answer marked fully compliant and no
+        comments. How should this pattern be treated?
+      options:
+      - A) As proof of compliance
+      - B) As an automatic pass
+      - C) As evidence of maturity, because every single line was marked compliant
+      - D) As a reason to verify selected answers before relying on them
+      answer: D
+    - question: A supplier's questionnaire says two administrators share one account between them. Which
+        control does sharing that account weaken most?
+      options:
+      - A) Backup schedules
+      - B) Attribution of each action to a named administrator
+      - C) Network performance
+      - D) Licence counting, which no longer matches real users
+      answer: B
+    - question: A supplier scores nine of ten on the questionnaire, but the missed question concerns
+        patching of the exact software you consume. Where does the residual risk sit?
+      options:
+      - A) With the auditor
+      - B) Nowhere, because a score of nine out of ten passes
+      - C) With the unpatched component you depend on
+      - D) With the supplier's marketing team
+      answer: C
+- ordinal: 3
+  title: SBOMs and Software Provenance
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Read an SBOM and name the components, versions and suppliers it lists for a product
+  - Compare an installed-software inventory with a supplier SBOM and record the discrepancies
+  - Judge what a software artefact's signature proves about its origin and what it does not
+  topics:
+  - The software bill of materials (SBOM) and the components, versions and suppliers it lists.
+  - SBOM quality - completeness, staleness and fields the generator could not fill.
+  - Provenance attestations and signatures as evidence of who produced an artefact.
+  - Code-signing certificates - what a valid signature proves and what it does not.
+  - Using an SBOM to answer whether an announced component flaw affects you.
+  lab: >-
+    Lab: On the greyspace-internet range, take a package from the developer site, record what its signature
+    proves about origin, and compare the office inventory with a supplier SBOM. Evidence: the package file
+    name; the signer and issuing certificate authority shown in its signature details; the ws01 inventory
+    with versions and publishers; every component present in one list but missing from the other; the
+    affected-range decision for the component your instructor names. Pass: signer and issuing authority
+    recorded exactly as shown; each discrepancy listed with the side it appeared on; the signature marked
+    "proves origin" or "does not prove origin" with a one-sentence reason.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [ws01]
+      action: On ws01, open the developer site in the greyspace internet, download the sample package your
+        instructor names and record its file name.
+    - hosts: [ws01]
+      action: Open the package's digital-signature details and record the signer name and the certificate
+        authority that issued the certificate.
+    - hosts: [ws01]
+      action: Generate the installed-software inventory for ws01 and record each entry with its version and
+        publisher.
+    - hosts: [ws01]
+      action: Compare the inventory with the SBOM extract your instructor supplied and record every
+        component present in one list but missing from the other.
+    - hosts: [ws01]
+      action: For the component your instructor names, record from the SBOM whether the installed version
+        falls inside the affected range.
+    - hosts: [ws01]
+      action: Mark the package signature "proves origin" or "does not prove origin" with a one-sentence
+        reason, and list the discrepancies a supplier conversation must resolve.
+  refs:
+  - nist-sp-800-218
+  - nist-sp-800-57pt1r5
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A supplier sends a document listing every library in its product, with versions and
+            licence names. What is this document called?
+      options:
+      - A) A software bill of materials
+      - B) A penetration test report
+      - C) A firewall rule set
+      - D) An asset register of the whole office
+      answer: A
+    - question: Why is a valid code-signing signature alone not proof that software is safe to run?
+      options:
+      - A) Signatures are only used inside companies, never by outside publishers
+      - B) A signature hides the source code
+      - C) Every publisher signs with the same key
+      - D) It proves origin and integrity, not the absence of flaws
+      answer: D
+    - question: A flaw is announced in a library used by one of your products. Which question does an SBOM
+        let you answer fastest?
+      options:
+      - A) Who is to blame for the flaw
+      - B) Which products of ours include that library, and at which versions
+      - C) The supplier's insurance position, and whether the flaw is even covered
+      - D) The office's electricity cost
+      answer: B
+    - question: An SBOM was generated two years ago and the product has shipped three releases since. What
+            is its main weakness?
+      options:
+      - A) Too many components listed for the file to stay readable
+      - B) The wrong file format for the buyer's tooling
+      - 'C) Staleness: it no longer matches the shipped components'
+      - D) Too much detail about each component it describes
+      answer: C
+    - question: A supplier states that the key used to sign its packages was stolen last month. What is
+            the best response?
+      options:
+      - A) Ignore the theft, because signatures never expire once they have been issued
+      - B) Re-sign all the packages yourself with a new office signing certificate
+      - C) Delete every signed file the office holds, then reinstall from backup
+      - D) Treat packages signed after the theft as unproven until the supplier explains
+      answer: D
+- ordinal: 4
+  title: Monitoring Third-Party Connections
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify recurring external connections in resolver logs and match each to its supplier
+  - Distinguish expected supplier traffic from connections that no approved contract explains
+  - Select the evidence a supplier conversation needs about an unexplained connection
+  topics:
+  - A baseline of expected third-party traffic and how to build one.
+  - Regular, repeated connections in resolver logs and when they deserve attention.
+  - Unexplained connections and the questions to carry to the supplier.
+  - Sharing indicators of malicious infrastructure with suppliers and peers.
+  - Escalating a supplier connection concern and the evidence that supports it.
+  lab: >-
+    Lab: On the greyspace-internet range, compare the office's resolver log with the approved-supplier list
+    and judge each unexplained domain. Evidence: each external domain with a query count; the workstations
+    and first and last query times for the three most queried domains; every domain with no approved-supplier
+    entry; the evidence pack for one unexplained domain. Pass: each observed domain is matched to a supplier
+    or listed as unexplained; each unexplained domain carries a next step with a one-sentence reason; the
+    evidence pack states the domain, the hosts involved, the pattern and the question for the supplier.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [edge01]
+      action: Open the resolver query log on edge01 and record each external domain the office queried, with
+        a count per domain.
+    - hosts: [edge01]
+      action: For the three most queried domains, record which workstations queried them and the times of the
+        first and last query.
+    - hosts: [ws01]
+      action: On ws01, compare the observed domains with the approved-supplier list your instructor supplied
+        and record every domain with no matching supplier entry.
+    - hosts: [edge01]
+      action: For one unexplained domain, record every internal host that queried it and the times of its
+        first and last queries.
+    - hosts: [ws01]
+      action: Write the evidence pack for the supplier conversation, recording the domain, the hosts involved,
+        the pattern observed and the question you need answered.
+    - hosts: [ws01]
+      action: Decide the next step for each unexplained domain - ask the supplier, block pending review or
+        escalate - and record one sentence of reason for each.
+  refs:
+  - nist-sp-800-150
+  - oasis-cti
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: Resolver logs show one external domain queried every thirty minutes from a single
+        workstation, weekends included. What is the best first step?
+      options:
+      - A) Announce the finding publicly before anybody inside the office reviews it
+      - B) Delete the resolver log entries so nobody else can see them
+      - C) Reimage the workstation at once, before recording what it contacted
+      - D) Compare the domain with the approved supplier list and record evidence
+      answer: D
+    - question: In third-party management, what is the main use of a baseline that records which external
+        services the network normally contacts?
+      options:
+      - A) It lowers the bandwidth charges the office pays on its internet line
+      - B) It makes unexplained supplier connections stand out for review
+      - C) It replaces written contracts
+      - D) It hides employee browsing
+      answer: B
+    - question: Which evidence best supports a question to a supplier about an unexpected connection from
+        your network?
+      options:
+      - A) The domain, the hosts that contacted it, with times and counts
+      - B) A rumour about the supplier that another office reported last week
+      - C) The price the supplier currently charges for the service it provides
+      - D) The age of the firewall appliance that guards the office network
+      answer: A
+    - question: Two organisations agree to exchange descriptions of malicious infrastructure each has seen,
+        so both can check their own logs. What is this practice called?
+      options:
+      - A) Exit planning
+      - B) Self-attestation by each party, without evidence
+      - C) Threat information sharing
+      - D) Concentration
+      answer: C
+    - question: An unexplained connection targets a domain resembling a supplier's but absent from the
+        contract. When should the concern be escalated rather than only logged?
+      options:
+      - A) Never, so long as the resolver log is retained on disk
+      - B) Only after a full year of unexplained queries have passed by
+      - C) When the log storage allocated on the collector finally fills up
+      - D) When it touches a critical dependency or persists after explanation fails
+      answer: D
+- ordinal: 5
+  title: Contract Clauses and Exit Strategies
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Select contract clauses that match the risks a software dependency carries
+  - Explain what a notification clause obliges and why vague wording cannot be enforced
+  - Design an exit plan for a critical supplier naming the dependencies it would cut
+  topics:
+  - Security clauses in a software contract - patch duties, notification and audit rights.
+  - Notification windows, what triggers them and why vague wording fails.
+  - Data return and deletion when a contract ends.
+  - Exit planning - alternatives, data export and the cut-off sequence.
+  - Testing an exit plan before it is needed.
+  lab: >-
+    Lab: On the greyspace-internet range, plan the exit of the suite vendor whose contract is ending, then
+    audit the draft contract for missing clauses. Evidence: the domain accounts holding the vendor prefix
+    your instructor supplies, with their group memberships; the edge01 rules or connections pointing at the
+    vendor service; each installed application published by the vendor, with versions; each clause marked
+    present or missing. Pass: the exit sequence lists accounts, connections and applications in a workable
+    order with what must exist first; every missing clause is paired with one risk it leaves; the data
+    return position is stated in one sentence.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [dc01]
+      action: On dc01, list the domain accounts whose names carry the vendor prefix your instructor supplies
+        and record each account with its group memberships.
+    - hosts: [edge01]
+      action: On edge01, record which internal hosts hold connections or forwarding rules pointing at the
+        vendor's service.
+    - hosts: [ws01]
+      action: On ws01, open the installed-applications list and record every application published by
+        the vendor, with its version number.
+    - hosts: [ws01]
+      action: Draft the exit sequence, recording the order in which accounts, connections and applications
+        would be removed, and what must exist first.
+    - hosts: [ws01]
+      action: Mark each clause in the draft contract present or missing - notification window, patch duty,
+        audit right, data return on exit - and record one risk each missing clause leaves.
+    - hosts: [ws01]
+      action: State in one sentence what happens to the office's data held by the vendor under the draft
+        contract, and what clause would change it.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A software contract lets the supplier change security features from time to time with no
+        duty to tell customers. Which clause is missing?
+      options:
+      - A) An insurance schedule with per-claim limits and renewal terms
+      - B) A change-notification duty before security-relevant changes
+      - C) A renewal discount
+      - D) A trademark licence
+      answer: B
+    - question: A supplier suffers a breach affecting customer data on a Friday. The contract requires
+        notice as soon as practicable. Why is that wording weak?
+      options:
+      - A) Fridays are busy days for the supplier's incident response team
+      - B) The notice window the wording sets is too short
+      - C) It sets no deadline a buyer can measure or enforce
+      - D) Breaches of this kind never reach customers in practice
+      answer: C
+    - question: An office is planning the exit of a critical supplier and wants to start the plan
+            correctly. Which step comes first?
+      options:
+      - A) Naming what access would be lost and what must replace it
+      - B) Deleting the supplier's contact details from the office's shared address book
+      - C) Hiring replacement staff before the current contract with the supplier ends
+      - D) Extending the current contract indefinitely without any review of its terms
+      answer: A
+    - question: A buyer is deciding where an audit-right clause earns its place in a supplier contract.
+            In which situation does it matter most?
+      options:
+      - A) The contract runs for only a short term with clear deliverables attached
+      - B) The software is free of charge and already deployed across the office
+      - C) The supplier's reports are never read by anybody inside the buying office
+      - D) Claims cannot be verified any other way and the dependency is critical
+      answer: D
+    - question: At the end of a supplier contract, which clause governs what happens to the data the
+        supplier holds?
+      options:
+      - A) The logo usage term
+      - B) The data return and deletion clause
+      - C) The payment schedule
+      - D) The force majeure term, which suspends duties in disasters
+      answer: B
+- ordinal: 6
+  title: Responding to a Supplier Software Incident
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Trace a suspected compromised supplier update to the workstations that received it
+  - Scope a supply-chain incident using the dependency graph, the inventory and the SBOM
+  - Sequence containment, supplier contact and the notification duties a response triggers
+  topics:
+  - How a software supply-chain incident looks from the buyer's side.
+  - Scoping with the dependency graph, the software inventory and the SBOM.
+  - Containment choices and the evidence each preserves or costs.
+  - Supplier contact and the notification duties a contract and the law impose.
+  - Deciding when the supplier's response is enough and your own must start.
+  lab: >-
+    Lab: On the greyspace-internet range, respond to a suspected tampered update from the office's software
+    vendor: find who received it, scope the damage and choose containment. Evidence: every workstation that
+    resolved the update domain your instructor names, with query times; the installed version of the affected
+    application on each workstation; any other external domains those workstations resolved in the same
+    window; the three first decisions written out. Pass: scope names every affected host with the evidence
+    for it; the containment choice states what it preserves and what it costs; the notification duty
+    triggered by the contract is named with its source clause.
+  lab_range:
+    template: greyspace-internet
+    steps:
+    - hosts: [edge01]
+      action: Open the resolver query log on edge01 and record every workstation that resolved the update
+        domain your instructor names, with query times.
+    - hosts: [ws01]
+      action: On ws01, check the installed-applications list and record whether the affected application
+        is present, and which version it runs.
+    - hosts: [ws02]
+      action: Repeat the version check on ws02 and record whether its version falls inside the affected
+        range your instructor supplies.
+    - hosts: [edge01]
+      action: Record any other external domains those workstations resolved in the same window as the
+        update domain.
+    - hosts: [ws01]
+      action: Record the containment options in order - isolate the workstations, stop trusting the update,
+        request a confirmed clean version from the supplier - with what each preserves and what each costs.
+    - hosts: [ws01]
+      action: Write the three decisions the instructor needs first - the scope, the containment choice and
+        the notification duty triggered, each with the evidence behind it.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-218
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A supplier announces that an update was altered between its build and its delivery to
+        customers. From the buyer's side, what kind of event is this?
+      options:
+      - A) A weather event
+      - B) A paperwork error in the delivery records
+      - C) A software supply-chain incident
+      - D) A hardware recall
+      answer: C
+    - question: News of the tampered update arrives. Which combination scopes fastest which of your systems
+        received it?
+      options:
+      - A) The supplier's marketing list and its press releases
+      - B) The office floor plan
+      - C) The payroll register
+      - D) Resolver logs plus the installed-software inventory
+      answer: D
+    - question: Isolating the affected workstations at once is a containment choice. What is its main
+        trade-off?
+      options:
+      - A) Is always the correct containment choice and carries no cost at all
+      - B) Stops further use, but costs evidence and cooperation when done early
+      - C) Is an unlawful act in every case the office could face
+      - D) Only helps the supplier and never protects the office at all
+      answer: B
+    - question: The contract obliges the supplier to notify affected customers within three days. On
+        learning of the incident, what is your first duty?
+      options:
+      - A) Check your own notification duties to customers, and start that clock
+      - B) Publish the supplier's name immediately, before any facts have been confirmed
+      - C) Wait until the supplier has confirmed every detail of the incident
+      - D) Reimage every workstation at once, before any evidence has been preserved
+      answer: A
+    - question: After containment, which record best answers the supplier's request to know what your
+        network observed?
+      options:
+      - A) Opinions about the supplier's competence and its past release behaviour
+      - B) The cost of the outage
+      - C) Times, domains, versions and hosts, with where each was observed
+      - D) A list of employees on shift
+      answer: C

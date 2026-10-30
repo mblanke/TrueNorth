@@ -1,0 +1,172 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# Instructor pack for C501 Foundations of Security Governance (staff only, not for Students).
+course_code: C501
+audience: staff_only
+overview: >-
+  Foundations of Security Governance is an individual course of six 40-minute modules
+  (240 minutes, 4 hours). Each module has the same split: 10 minutes contact, 20 minutes
+  lab on the small-enterprise range, and 10 minutes quiz and debrief. Each module teaches
+  three objectives, practises them on the range, and ends with a five-item quiz passed at
+  70 percent. Say 'Student' throughout and keep every description defensive and observable.
+timings:
+- module: 1
+  minutes: 40
+  plan: 10 contact, 20 lab on the small-enterprise range, 10 quiz and debrief
+- module: 2
+  minutes: 40
+  plan: 10 contact, 20 lab on the small-enterprise range, 10 quiz and debrief
+- module: 3
+  minutes: 40
+  plan: 10 contact, 20 lab on the small-enterprise range, 10 quiz and debrief
+- module: 4
+  minutes: 40
+  plan: 10 contact, 20 lab on the small-enterprise range, 10 quiz and debrief
+- module: 5
+  minutes: 40
+  plan: 10 contact, 20 lab on the small-enterprise range, 10 quiz and debrief
+- module: 6
+  minutes: 40
+  plan: 10 contact, 20 lab on the small-enterprise range, 10 quiz and debrief
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (Govern), M01-O01: Decisions made and recorded before controls is the Govern
+    function duty; the other functions act only after direction exists. Q2 C (Accountability),
+    M01-O03: Who signed and when reviewed is answerable evidence; direction (not A) sets intent
+    and implementation (not B) is operational work. Q3 A (Governance direction), M01-O02: An
+    unrecorded edit lacks a decision behind it; detection (not B) was present and worked. Q4 D
+    (Oversight of assets), M01-O03: An inventory with roles lets someone check that assets are
+    governed; hunting and capture (A, B) are operational. Q5 B (Governance maturity), M01-O01:
+    Identical controls differ in whether decisions and checks can be shown; hardware, speed and
+    headcount (A, C, D) do not separate the two.'
+- module: 2
+  notes: 'Q1 D (Decision rights), M02-O01: Each table holds the authority to decide, not a
+    subject; budgets, vendors and certificates (A, B, C) are subjects. Q2 A (A dated approval
+    record), M02-O03: Only a dated record ties a forum to the change; a diagram, scan or
+    inventory (B, C, D) proves nothing about approval. Q3 B (Escalate to the forum above),
+    M02-O01: A decision beyond the meeting authority moves up with a record; silent approval (A)
+    or unrecorded denial (C) breaks the trail. Q4 C (A change request with rule identifier),
+    M02-O03: The identifier links the approved request to the configured rule; banners, backups
+    and rosters (A, B, D) do not. Q5 D (No independent approval), M02-O01: Proposing and
+    approving in one person removes the check; scanning, encryption and patching (A, B, C) are
+    unrelated.'
+- module: 3
+  notes: 'Q1 A (Policy authority), M03-O01: Changing policy is authority; operating within it is
+    not. Q2 C (Concentration of authority), M03-O03: One account spanning domain and firewall
+    administration concentrates authority beyond one role; expiry, disk and patching (A, B, D)
+    are operational concerns. Q3 D (Authority limits), M03-O01: The denial shows standard users
+    are kept inside their authority; trust, encryption and routing (A, B, C) misread the cause.
+    Q4 B (Responsibility without enforced authority), M03-O02: A documented owner whose control
+    anyone can edit holds responsibility the range does not enforce. Q5 A (A responsibility
+    assignment), M03-O02: Naming who answers for each duty is the assignment record; captures,
+    scans and plans (B, C, D) record other things.'
+- module: 4
+  notes: 'Q1 C (Account standards), M04-O01: Password length, lockout and a review date are
+    account standards; acceptable use, incident response and physical security (A, B, D) cover
+    other families. Q2 B (Approval and review), M04-O02: The named forum shows approval and the
+    due month shows scheduled review; drafting and retirement (A, C) are not evidenced. Q3 D
+    (The lifecycle was skipped), M04-O02: A rule without an approval record passed no approval
+    stage; encryption, passwords and speed (A, B, C) are unrelated. Q4 A (Policy directs,
+    standard measures), M04-O01: A policy states intent and a standard gives the measurable
+    value; the other pairings swap the roles. Q5 C (Review after publication), M04-O02:
+    Republishing with a new review date closes the loop; drafting (A) and deletion (B) precede
+    or end the cycle.'
+- module: 5
+  notes: 'Q1 B (A critical dependency), M05-O01: Every sign-in passing through dc-01 makes it a
+    critical dependency; a spare role, backup path or minor service (A, C, D) it is not. Q2 D
+    (fw-01 above ws-03 in criticality), M05-O02: The wider blast radius ranks fw-01 higher;
+    equal or no ranking (A, C) ignores impact. Q3 A (Risk acceptance), M05-O03: A recorded
+    choice to run one firewall is acceptance; packet loss, drift and rotation (B, C, D) are
+    technical events. Q4 C (An unowned dependency), M05-O01: No named owner means nobody
+    decides; managed, transferred and closed risks (A, B, D) all have someone behind them. Q5 A
+    (The dependency chain), M05-O01: Authentication before applications follows dependencies;
+    cable, budget and roster (B, C, D) order nothing here.'
+- module: 6
+  notes: 'Q1 D (Inside the governance structures), M06-O01: The analyst operates controls that
+    governance directs and reports evidence upward; outside or owner placements (A, B) misplace
+    the role. Q2 C (A governance picture), M06-O02: Assembled artefacts show governance in
+    force; a scan, faster network or threat model (A, B, D) is a different product. Q3 B (An
+    unowned governance decision), M06-O03: An ownerless dependency with no recorded decision is
+    the finding; tuned controls and stale inventories (A, D) are not it. Q4 D (The role holding
+    authority), M06-O03: The decision belongs to the role with authority over the risk; users,
+    auditors and vendors (A, B, C) hold others. Q5 C (Accountability for governance), M06-O03:
+    Naming the weakest area with reasons is individual accountability; hunting, forensics and
+    retention (A, B, D) are other practices.'
+lab_setup:
+- module: 1
+  setup: >-
+    Provision the small-enterprise range and confirm jump-box SSH and dc-01 domain services
+    are reachable from jump-box. Supply the range baseline sheet: the domain password policy
+    values (minimum length, lockout threshold, lockout duration) and the fw-01 rule notes for
+    user-to-srv-ad and mgmt-to-all. Have the range host list ready for comparison.
+- module: 2
+  setup: >-
+    Supply the range baseline: the two fw-01 rules, user-to-srv-ad and mgmt-to-all, with
+    their source and destination networks and notes, plus a forum decision record that covers
+    user-to-srv-ad only, so mgmt-to-all is the one rule with no recorded approving decision.
+    Confirm jump-box reaches dc-01 for the connection test. Prepare a blank change-request form.
+- module: 3
+  setup: >-
+    Supply the range baseline: the domain administrative groups on dc-01 with the number
+    of accounts in each, and the fw-01 rule that allows administration with its source network.
+    Confirm the analyst account on jump-box is denied when it attempts an administrative action
+    on dc-01, and record the exact denial text so the Student's evidence can be marked.
+- module: 4
+  setup: >-
+    Supply the range baseline: the domain password policy values on dc-01 and the fw-01
+    rules with their notes. Confirm the analyst account on jump-box is denied for the
+    administrative attempt against dc-01 and record the exact denial text.
+- module: 5
+  setup: >-
+    Confirm every host is up so the discovery sweep from jump-box and the name-lookup test
+    through dc-01 work without stopping any service. Supply the range baseline: the fw-01 rules
+    with their notes. Prepare the criticality ranking sheet.
+- module: 6
+  setup: Keep the artefacts from modules 1 to 5 available, the host inventory, the fw-01 rule
+    notes with the forum decision record, the password policy values and the dc-01 authority
+    findings. Confirm the analyst denial on dc-01 is unchanged.
+common_faults:
+- module: 1
+  fault: Students treat every range observation as operational and find no governance in it.
+  remedy: Ask for each observation who decided it and who checks it; where both have answers,
+    governance is visible.
+- module: 1
+  fault: Direction, accountability and oversight are used as synonyms.
+  remedy: Drill the three on the fw-01 rules; direction set intent, accountability names who
+    answers, oversight checks it happened.
+- module: 2
+  fault: Students name the technical change meeting for every rule regardless of impact.
+  remedy: Have them rank each rule blast radius first, then match the forum to the ranking.
+- module: 2
+  fault: The flagged rule is described as wrong instead of lacking a recorded decision.
+  remedy: Insist the finding is about evidence, not the rule merit, and re-read the lab wording
+    aloud.
+- module: 3
+  fault: Students read the administrative group list and stop, without comparing reach to
+    responsibility.
+  remedy: Pair each group with the duty a small enterprise would document and ask whether the
+    reach exceeds it.
+- module: 3
+  fault: The dc-01 denial is reported as a fault to fix.
+  remedy: Reframe it as authority limits working, and ask what the range would show if the
+    denial were absent.
+- module: 4
+  fault: Every enforced setting is labelled policy with no family or stage.
+  remedy: Force two columns, family and lifecycle stage, and require evidence for the stage.
+- module: 4
+  fault: Policy, standard and procedure are used interchangeably.
+  remedy: Use the password policy; the policy directs, and the measured minimum length is the
+    standard number.
+- module: 5
+  fault: Criticality is ranked by hardware specification instead of impact of loss.
+  remedy: Cover the specification column and ask only what stops if this host dies.
+- module: 5
+  fault: The unowned dependency is named without a proposed owner.
+  remedy: Require a role, not a person, and check the role plausibly holds the authority.
+- module: 6
+  fault: The final classification repeats module findings verbatim without judging between
+    areas.
+  remedy: Ask for the strongest and weakest areas with reasons that compare them, then the one
+    unowned decision.
+- module: 6
+  fault: The unowned decision is matched to management in general rather than a specific role.
+  remedy: Push to a named role title and test it against the authority recorded in module 3.

@@ -1,0 +1,155 @@
+# Instructor pack for content/courses/up-soc-04-endpoint-telemetry-edr-analysis.yaml (C522).
+# Shape required by docs/interfaces/course-instructor-pack.schema.json and scripts/check_course.py:
+# one timings entry and one lab_setup entry per module ordinal, and one answer-key note per quiz key.
+course_code: C522
+audience: staff_only
+overview: 'Endpoint Telemetry and EDR Analysis (C522) is an intermediate self-paced course of six 50-minute
+  modules (300 minutes, 5 hours) delivered on the soc-training range. The labs build from single-host
+  collection through fleet-wide Velociraptor hunts to full alert triage, and each Student hands in a lab
+  evidence record plus a written triage verdict. Say ''student'' throughout; each module ends with a
+  five-item quiz passed at 70 percent.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: empty command lines mean command-line auditing is off, not that telemetry is absent (A) or that the
+    kernel launched anything (C). Q2 C: the event records the parent at launch and the surviving process re-parents;
+    identifier reuse (D) is real but does not explain a changed parent. Q3 A: the creation event account field answers
+    directly; a reused identifier (B) and a written file (C) do not attribute the launch. Q4 D: the command line is
+    process-supplied and the one field an adversary can shape; image path, timestamp and parent PID are system-recorded.
+    Q5 B: identifier reuse after exit is routine; duplication (C) and clock jumps (D) are rarer and checkable.'
+- module: 2
+  notes: 'Q1 C: a run key value explains an unattended start; the other records show activity but not the persistence
+    mechanism. Q2 D: file creation and deletion events prove existence after deletion; a live listing (A) shows nothing.
+    Q3 B: services start without any sign-in and survive reboots, which an account-hive run key cannot; C and D are
+    false statements about the registry. Q4 A: writes accumulating before a launch in a temporary directory indicate
+    staging; the alternatives are speculation without telemetry. Q5 C: a run key change evidences persistence; initial
+    access (A) was the document, and no theft or credential access appears in the record.'
+- module: 3
+  notes: 'Q1 A: a hunt schedules one collection against all enrolled clients; shells (B) and manual runs (C) are
+    per-host. Q2 B: coverage first - record the ten missing clients and why; timing, size and versions (A, C, D) do
+    not fix the coverage gap. Q3 D: heavy collections during working hours slow endpoints for the people using them;
+    no licence or permanent data loss is involved. Q4 C: nightly unattended collection across a fleet is a scheduled
+    hunt; A and B need an analyst every time. Q5 A: three hits share something worth comparing; the fifty-seven others
+    reported nothing, which is not a failure (B).'
+- module: 4
+  notes: 'Q1 D: the original parent exited and the survivor re-parented; the event and the live view are both correct.
+    Q2 A: role context decides the verdict, so the per-host baseline comes first; vendor docs, firewall logs and
+    quarantine come later. Q3 C: an office application launching a script interpreter breaks the workstation baseline;
+    the other three pairs are ordinary chains. Q4 B: a surviving process whose recorded parent exited is orphaned;
+    kernel threads (A) have no recorded parent identifier to begin with. Q5 D: the spreadsheet chain adds a script
+    interpreter and network reach, so it outranks the editor-calculator pair.'
+- module: 5
+  notes: 'Q1 B: living-off-the-land use is a trusted binary in an untrusted way, which is exactly why signing does not
+    help; the other options state absolutes that are false. Q2 D: the parent process separates ticket-driven
+    administration from document-driven execution; length, PID and time separate nothing here. Q3 A: scoping to risky
+    parents or follow-on file writes keeps the detection useful without blocking administration; removal and threshold
+    hikes destroy the signal. Q4 C: allow-listing on signature alone lets trusted binaries act without tripping the
+    list; it does not stop unsigned tools or break telemetry. Q5 B: reconstructing behaviour needs process, file-write
+    and network telemetry together; any single source leaves the two-minute window unexplained.'
+- module: 6
+  notes: 'Q1 B: the rule detected real activity that the change record authorises - a benign true positive with a
+    tuning request; A and D misuse the verdict terms and C adds an unnecessary wait. Q2 A: corroboration comes from
+    the chain, file writes and connection record in the same window; purchase records and rule metadata say nothing
+    about the execution. Q3 D: an uncollectable endpoint leaves the alert unresolved - needs more evidence, with
+    containment on the table while collection is impossible. Q4 C: only it pairs a timed observation with its source;
+    A and B are conclusions or pleas without evidence, D is an administrative note. Q5 A: enrich, collect, decide,
+    record is the workflow; the other sequences decide before evidence or rebuild before triage.'
+lab_setup:
+- module: 1
+  setup: 'Revert the soc-training range to its baseline. Confirm jump01 and velociraptor01 are reachable over SSH and
+    that the Velociraptor console on velociraptor01 shows the endpoint clients enrolled, including v-ws01. The student
+    account is analyst. Command-line auditing starts disabled on the workstations so step 3 shows the change.'
+- module: 2
+  setup: 'Revert the range to its baseline. Confirm jump01 and velociraptor01 are reachable and v-ws01 responds to
+    collections. Expected baseline artefacts: the standard run key values under each account hive, a normal set of
+    scheduled tasks and services, and no staging files in the temporary directories beyond routine system writes.'
+- module: 3
+  setup: 'Revert the range to its baseline. Confirm jump01 and velociraptor01 are reachable and that all four
+    workstations v-ws01 through v-ws04 plus the server fleet are enrolled as Velociraptor clients, so the hunt counts
+    in step 3 are meaningful. No client may be left in a stopped state unless the instructor intends it as the
+    incomplete-coverage example for step 5.'
+- module: 4
+  setup: 'Revert the range to its baseline. Confirm jump01 and velociraptor01 are reachable. Expected values: on v-ws01
+    the spreadsheet application runs as an ordinary top-level process with no command interpreter beneath it (the
+    baseline); on v-ws02 the instructor plants a command interpreter launched by the spreadsheet application; on v-dc01
+    no interpreter chain should exist unless planted, and any that appears is part of the ranking exercise.'
+- module: 5
+  setup: 'Revert the range to its baseline. Confirm jump01 and velociraptor01 are reachable. The hunt in step 2 needs
+    interpreter launches present in the telemetry of at least two workstations: an administrative one following a
+    helpdesk-style change on v-ws01, and an investigation-worthy one on v-ws03 with file writes or a network connection
+    after the launch. Server fleet telemetry should show no interpreter launches.'
+- module: 6
+  setup: 'Revert the range to its baseline. Confirm jump01, velociraptor01, v-ws01, v-ws04 and v-dc01 are reachable.
+    The instructor assigns each student two alert identifiers before the lab: one on v-ws04 whose telemetry supports a
+    true positive, and one on v-ws01 whose telemetry differs enough to mark needs more evidence. Authentication events
+    on v-dc01 must cover the time window of the v-ws04 alert.'
+common_faults:
+- module: 1
+  fault: Students read the running process view for the parent instead of the parent recorded in the creation event,
+    and the two disagree after re-parenting.
+  remedy: Have them re-run step 2 and step 4 side by side and mark, for each field, whether the console took it from
+    the event stream or from the live process.
+- module: 1
+  fault: The lab records process names but no command lines, so the classification step has nothing to reason about.
+  remedy: Check step 3 before letting anyone move on; without command-line collection the browser entry shows only an
+    image path.
+- module: 2
+  fault: Students treat a deleted file as unprovable because it is absent from the live directory listing.
+  remedy: Point back at the file creation and deletion events collected in step 3 and ask which record survives the
+    deletion.
+- module: 2
+  fault: Every registry value gets marked persistence evidence, including defaults.
+  remedy: Require the one-sentence reason per artefact and ask for the vendor name of any value marked persistence
+    evidence; unknown names are the ones that matter.
+- module: 3
+  fault: Students draw a fleet-wide conclusion from an incomplete hunt without recording the clients that did not
+    report.
+  remedy: Make the completeness statement in step 5 name any missing client before the conclusion sentence; reject
+    conclusions that skip it.
+- module: 3
+  fault: The hunt is launched against the whole fleet including servers when the lab asked for the workstation fleet.
+  remedy: Show where the console filters the client set at launch and have them record the scheduled client count
+    before launching.
+- module: 4
+  fault: Students count re-parenting as a new launch and mark the chain anomalous twice.
+  remedy: Walk the v-ws01 baseline chain first, then the v-ws02 chain, and ask what changed at each hop; the event
+    stream shows one launch.
+- module: 4
+  fault: The ranking is asserted without reasons, or two chains are tied without a stated criterion.
+  remedy: Require one reason per position and a stated criterion, such as depth of the chain or network reach, before
+    accepting the ranking.
+- module: 5
+  fault: Students mark every interpreter launch for investigation, which is the same failure as alerting on all of
+    them.
+  remedy: Ask for the helpdesk-style change on v-ws01 to be compared against the v-ws03 launch; the parent context is
+    the deciding mark.
+- module: 5
+  fault: The detection idea is a goal, not a testable condition.
+  remedy: Insist on the form "alert when parent is X, interpreter is Y, and Z happened within N minutes" and test it
+    mentally against the recorded telemetry.
+- module: 6
+  fault: Verdicts are written with no cited evidence, so the triage record cannot be reviewed.
+  remedy: Reject any mark without its one-sentence reason and ask which collection the reason names.
+- module: 6
+  fault: Both alerts get the same verdict because the same collections were run, without comparing how the telemetry
+    differs.
+  remedy: Have them read step 4 again and write one sentence on how the v-ws01 telemetry differs from the v-ws04
+    telemetry before marking.

@@ -1,0 +1,176 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C542
+audience: staff_only
+overview: 'Full Adversary Emulation Capstone is a lab course of six 60-minute modules (360 minutes, 6 hours)
+  on the red-vs-blue range, taken by one Student working alone. Each module runs 15 minutes of teaching,
+  35 minutes on the range and 10 minutes of quiz, passed at 70 percent. The arc moves from planning an
+  emulation against a live defence, through executing the plan and scoring its detections, to the debrief,
+  the improvement roadmap and a full capstone cycle in Module 6. Hand-ins are the operation log, the scoring
+  sheet, the debrief record and the handoff package.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (plan, scope, scoring scale), 35 lab (baseline recording from red-op01 and siem01),
+    10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (execution discipline, operation log), 35 lab (execute three plan steps and mark each
+    seen or not seen), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (scoring scale, data sources), 35 lab (full scoring round from blue01), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (merged timeline, gap classes), 35 lab (rebuild the run into the debrief record), 10
+    quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (gap to improvement, acceptance tests), 35 lab (write and sequence the roadmap), 10
+    quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (the cycle and the package), 35 lab (plan to handoff in one sitting), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 A: The approved plan and its rules of engagement bound every step; a verbal suggestion outside
+    the plan is not authority. Distractor B tests deference to seniority, C confuses reachability with
+    scope, D tests the myth of run-time judgement. Q2 B: A debrief verdict needs an expected signal to
+    compare the telemetry against; the pairing is what makes per-step scoring possible. A tests speed as a
+    value, C drops steps the defence still needs, D confuses visibility with authorisation. Q3 C: Stop
+    conditions protect the agreed boundary, which is what the authorisation rests on. A and D treat the
+    plan as personal admin, B shifts the duty onto the defence. Q4 C: Agreeing the scale first stops the
+    debrief reopening every score as an argument; the scale is a debrief contract, not a logging or step
+    constraint. Q5 D: The expected signal is defender-side, failed sign-in events from vpn01 reaching the
+    central log platform. A and B are operator-side records, C is inventory that never records an attempt.'
+- module: 2
+  notes: 'Q1 B: The entry carries time, target, action and outcome, which is what a later scoring round
+    needs to reconstruct the step. A is vague, C defers to the plan, D lacks the action and outcome. Q2 B:
+    Unexpected lockouts are unanticipated effects; pause, record, and let the stop conditions decide. A
+    tests haste, C abandons the log, D destroys evidence. Q3 C: A successful step with no event anywhere
+    is a telemetry gap and a finding for the debrief, not a prompt to rerun. B overstates the conclusion,
+    D treats a finding as a plan change. Q4 D: Discipline means staying on the planned route and recording
+    the shortcut as an out-of-scope observation. A and C break scope, B hides the observation. Q5 A:
+    Contemporaneous exact times are what let the debrief match steps against defender records; B through D
+    give wrong reasons.'
+- module: 3
+  notes: 'Q1 C: Nothing collected, nothing examined, so the score is not detected. A and B score silence
+    as success, D invents a scale restriction. Q2 C: Late and buried is the definition of partially
+    detected; A reads any alert as success, B lets the operator''s move-on decide, D names the wrong
+    criterion. Q3 D: A telemetry gap means the data was never collected; an alert gap means it was
+    collected and no rule fired. C states them backwards, A confuses them with alert timing, B denies the
+    distinction the roadmap depends on. Q4 A: Sign-in failures with account and outcome are identity logs.
+    B and C name sources that do not carry the authentication outcome, D is static. Q5 B: The sign-in
+    step scores detected because an alert ties the attempt to vpn01 at the step''s time and target; C and
+    D credit the operator or the plan, A confuses blocking at the gateway with detection.'
+- module: 4
+  notes: 'Q1 D: The merged timeline puts each operator step beside the defender records that did or did not
+    see it, which neither record does alone. A counts length, B replaces nothing, C asserts a conclusion
+    the timeline tests. Q2 D: Events present, no rule fired, nobody noticed, is unalerted telemetry. A
+    misreads retention as absence, B names the wrong class, C denies the gap because the events are kept.
+    Q3 A: The rule fired as designed but too often, so tuning closes it; B and C prescribe fixes for other
+    classes, D excuses the noise. Q4 B: The internet-facing remote access service is the entry point, so
+    its password-guessing gap ranks first; A credits the web server touch for the data it holds, C ranks
+    by host count, D ranks by position rather than risk. Q5 C: A third source such as the sensor timestamp settles the
+    offset and both records are corrected; A and B hand the timeline to one side, D logs the conflict
+    without resolving it.'
+- module: 5
+  notes: 'Q1 A: An acceptance test replays the technique, requires the new alert to fire and requires
+    lookalike benign traffic to stay quiet. B and C accept any signal, D checks deployability, not effect.
+    Q2 B: No telemetry is closed by collecting the missing source first, then writing the rule on top of
+    it; A tunes what exists, C and D change the technique, not the visibility. Q3 C: With no owner, nobody
+    runs the acceptance test and the gap stays open silently. A invents a default owner, B parks the item,
+    D invents automation. Q4 D: Highest-risk gap first, with cheap items bundled alongside; A
+    puts effort above risk, B and C use incidental orders. Q5 A: The handoff record needs the gap cause,
+    the change, the owner role and the acceptance test; B through D hand over inputs the defence already
+    holds or does not need.'
+- module: 6
+  notes: 'Q1 B: One session tests whether scope, logging and judgement hold under time pressure, which is
+    the capstone''s point. A rewards memorisation, C is range administration,
+    D is the defence''s test, not the Student''s. Q2 B: The alert is an in-scope result, so the cycle
+    continues and the alert time is recorded against the operation log. A and C abandon the run, D
+    disturbs the range for no finding. Q3 D: The package is complete with plan header, operation log,
+    scores, gap analysis and roadmap together; A through C each ship a part and lose the rest. Q4 C: A
+    no-telemetry gap needs the missing logging source added, then the rule built and tested on top;
+    A tunes the wrong thing, B breaks scope, D edits the risk instead of the visibility. Q5 C: The
+    strongest line pairs the step''s logged time with the telemetry that saw it and the score; A
+    and D are context, B is an impression.'
+lab_setup:
+- module: 1
+  setup: 'Revert the red-vs-blue range to baseline and confirm jump01 reaches red-op01 through the RDP
+    gateway. Confirm siem01 dashboards open with the baseline indexes visible. Have the approved plan and
+    scoring scale ready to hand out. Verify that web01 answers a path that does not exist with the
+    expected response header, that mx01 shows its mail banner and that vpn01 discloses its version
+    string, and note the exact values before the Students log on.'
+- module: 2
+  setup: 'Revert the range to baseline. Confirm the three planned steps produce their expected effects:
+    web01 answers a nonexistent path, mx01 shows its mail banner, vpn01 records the failed sign-in
+    attempt. Confirm events from the exercised hosts are flowing into siem01, and note the expected counts
+    so the instructor can tell a genuine telemetry gap from an ingestion fault mid-lab.'
+- module: 3
+  setup: 'Revert the range to baseline and execute the Module 2 steps yourself, or use the retained
+    telemetry from the Students'' own Module 2 run, so the scoring round has real events to score.
+    Confirm the nids01 console shows its alerts and siem01 holds the run window. Note the vpn01 alert
+    time so the expected delay can be checked against Students'' recordings.'
+- module: 4
+  setup: 'Revert the range to baseline with the run telemetry from Module 2 or 3 retained in siem01.
+    Verify in advance whether exch01 and db01 ship events in the window, because the lab asks the Student
+    to find which one is silent, and the instructor must know whether the silence is by design or an
+    ingestion fault. Keep the cause-class definitions visible on the board.'
+- module: 5
+  setup: 'Revert the range to baseline with the debrief record available to the Student. Verify the top
+    gap''s index state in siem01 and the nids01 ruleset reachable from blue01. Confirm endpoint events
+    from ws01 arrive in siem01, so the Student''s finding can be checked against the range''s real
+    behaviour.'
+- module: 6
+  setup: 'Revert the range to baseline and allow a full 35 minutes of uninterrupted range time; the
+    capstone cannot be split. Confirm the plan, scoring scale and debrief template are all at hand, that
+    web01, mx01 and vpn01 respond as in earlier modules, and that a storage location for the handoff
+    package exists and is writable from jump01.'
+common_faults:
+- module: 1
+  fault: The Student records targets without naming an expected defensive signal, which leaves the scoring
+    rounds nothing to score against.
+  remedy: Have the Student reread the plan table and require one signal per target before the first range
+    step; the Module 1 lab's last step exists for exactly this.
+- module: 1
+  fault: The Student treats the walkthrough remark as added scope and touches the extra target.
+  remedy: Point at the rules of engagement in the plan header; only the approved plan bounds the run.
+- module: 2
+  fault: Log entries are written after the run from memory, with rounded times and missing outcomes.
+  remedy: Insist on contemporaneous logging; walk the range and check the log grows with each step.
+- module: 2
+  fault: A tempting shortcut outside the plan gets taken because the target was already in scope.
+  remedy: Stop the run, replay the scope rule, and have the Student record the shortcut as an
+    out-of-scope observation instead.
+- module: 3
+  fault: The Student scores any alert as detected, regardless of whether the alert's time and target match
+    the step.
+  remedy: Require the telemetry sentence per score; a score without a time-and-target match is partially
+    detected at best.
+- module: 3
+  fault: A step with no collected telemetry is scored detected because the defence stayed quiet.
+  remedy: Walk the scale aloud, silence is not success; send the Student back to search the indexes for
+    the step's time.
+- module: 4
+  fault: The merged timeline becomes two parallel lists, operator steps on one page, alerts on another.
+  remedy: Require one row per step with the siem01 time beside the operation-log time, unmatched alerts
+    in their own marked rows.
+- module: 4
+  fault: Gaps are ranked by how easy the fix looks rather than by the risk of the technique left unseen.
+  remedy: Cover the fix column and rank from the technique risk alone before any improvement is discussed.
+- module: 5
+  fault: Acceptance tests say "verify the alert works" without naming the technique replayed or the
+    expected alert.
+  remedy: Enforce the three-part form from the module, technique, expected alert, quiet-on-benign, and
+    have the Student rewrite any test that fails the form.
+- module: 5
+  fault: Improvements are listed without owner roles, so the roadmap reads as a wish list.
+  remedy: Reject any row missing an owner role; the quiz's owner item exists because this fault is common.
+- module: 6
+  fault: Under time pressure the Student skips logging and plans to reconstruct the log at the end.
+  remedy: Check the operation log at the mid-point; a stalled log fails the capstone regardless of how
+    the final package looks.
+- module: 6
+  fault: The handoff package ships with the roadmap but without the scoring sheet or gap analysis.
+  remedy: Read the package contents list from the lab brief before sign-off and check all five parts are
+    present.

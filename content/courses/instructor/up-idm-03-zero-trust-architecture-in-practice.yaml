@@ -1,0 +1,177 @@
+# Instructor pack for C509 - Zero Trust Architecture in Practice (DRAFT, unsourced).
+# Staff-only material for the instructor running the medium-enterprise range labs.
+
+course_code: C509
+audience: staff_only
+overview: 'Zero Trust Architecture in Practice is an intermediate self-paced upskilling course of six 50-minute
+  modules (300 minutes, 5 hours) run on the medium-enterprise range. Each module follows the same split: teaching
+  input, a recorded lab on the range, and a five-item quiz passed at 70 percent. The lab arc moves from inventorying
+  implicit trust, through identity evidence, resource-level firewall rules, microsegmentation design and monitoring
+  telemetry, to an integrated pilot plan with an honest maturity score. The Student hands in lab notes each module
+  containing the recorded evidence, the marks the brief asks for and one judgement per finding.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '15 teach (tenets, perimeter comparison, maturity stages), 25 lab (implicit-trust inventory on fw01, ws01
+    and fs01), 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '10 teach (identity as control plane, conditional access), 30 lab (privileged identity and share access
+    evidence on dc01, ws01, ws02 and fs01), 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '10 teach (device posture, per-resource rules), 30 lab (DMZ rule audit on fw01 with probes from web01 and
+    ws01), 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '5 teach (east-west traffic, workload rules), 35 lab (east-west path classification and microsegmentation
+    draft on fw01, ws01 and ws02), 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '10 teach (policy engine, enforcement point, decision signals), 30 lab (telemetry inventory on siem01), 10
+    quiz'
+- module: 6
+  minutes: 50
+  plan: '10 teach (pilot design, honest scoring), 30 lab (pilot plan and maturity score on fw01, ws01 and siem01),
+    10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 C (no implicit trust by location), M1-O2: The campus grants trust purely because a request is internal.
+    A tempts those who think zero trust only constrains admins; B and D are controls, not the violated tenet. Q2 A
+    (per-session least privilege), M1-O1: Standing broad access after the project ended is unscoped access; B and C
+    are unrelated good practices; D describes segmentation, not the tenet breached. Q3 D (evidence-supported stage),
+    M1-O3: Honest scoring follows recorded evidence; A and B score documents and purchases, C wrongly excuses the
+    finding from scoring. Q4 B (perimeter assumes the inside is trusted), M1-O1: The application inherits trust from
+    where the request comes from; A and C state false requirements; D inverts the comparison. Q5 A (unsupported),
+    M1-O3: Each stage demands evidence of practice; B and C accept intent as evidence; D claims plans count as
+    practice, which the module rejects.'
+- module: 2
+  notes: 'Q1 B (identity-centric, per request), M2-O1: MFA plus managed device is identity and context, not location.
+    A is the idea being replaced; C is a password habit; D describes inheritance, the opposite. Q2 D (separate daily
+    and admin accounts), M2-O2: Splitting removes standing privilege from daily use; A keeps one over-privileged
+    account; B and C change visibility, not grants. Q3 A (subject, conditions, resource), M2-O3: Shift hours and
+    managed device are conditions, finance officer the subject, payment system the resource; B names only the
+    address element; C and D name attributes no rule needs. Q4 C (standing privilege too broad), M2-O2: Domain admin
+    rights on every help desk member exceed the role; A and D assert controls the case never shows; B is unrelated
+    to group nesting. Q5 B (authorisation bound to identity and context), M2-O3: The rule names the officer and the
+    tenancy; A keeps location trust; C adds a transport property; D is a periodic grant with no identity binding.'
+- module: 3
+  notes: 'Q1 D (device posture), M3-O1: Patch state and management enrolment are posture checked before access; A
+    is location trust; B and C are attributes that do not describe the device state. Q2 C (name the one service
+    needed), M3-O2: A per-resource rule names the service and ports the consumers need; A and B make the resource
+    worse; D generalises the flaw. Q3 B (port-wide grants unintended access), M3-O2: Opening every port admits
+    services the share rule never named; A ignores the difference in breadth; C is false; D invents an ordering
+    problem. Q4 A (a condition in the access decision), M3-O1: Failing health is a denial condition, not an
+    authentication substitute (B), a logging reason (C) or a policy exemption (D). Q5 D (resource rule replaced by
+    location rule), M3-O3: A zone-wide allow decides by network location again; A and B are wrong about the effect;
+    C is true of nothing here.'
+- module: 4
+  notes: 'Q1 A (flat zone, unfiltered east-west), M4-O1: Same-zone traffic never crosses a firewall, so lateral
+    movement is free; B and C name unrelated controls; D affects addressing, not reachability. Q2 B (microsegmentation
+    at named-flow level), M4-O2: Naming sign-in, lookup and sharing is workload-level policy; A is the zone approach
+    being replaced; C and D are different disciplines. Q3 C (monitoring and blast-radius limits), M4-O3: Residual
+    allowed paths stay dangerous and need coverage; A is false; B and D are disproportional and do not address the
+    path. Q4 B (every service reachable, not only the named ones), M4-O1: A rule with no port list admits everything
+    on the destination; A is a documentation gap, not the weakness; C is invented; D is false, the flows still log.
+    Q5 D (zone separation, lateral paths inside each zone remain), M4-O1: One VLAN per floor is still zone
+    segmentation; A and B overstate it; C claims a detection benefit segmentation does not give.'
+- module: 5
+  notes: 'Q1 C (policy engine and enforcement point), M5-O1: The engine decides, the PEP applies the decision at the
+    resource; A names a real component with the wrong role; B is network jargon; D is telemetry plumbing. Q2 D
+    (re-decide and withdraw), M5-O2: Continuous evaluation re-decides active sessions as signals change; A and B
+    keep a session that no longer qualifies; C destroys inventory instead. Q3 A (device posture reporting), M5-O2:
+    Endpoint health comes from the endpoint; B, C and D supply no device health. Q4 B (the decision log), M5-O3:
+    The log records rule and evidence per decision; A and D are inventories, C is topology; none answers which rule
+    fired. Q5 C (device posture from endpoints), M5-O3: Firewall logs show flows, not endpoint health; A, B and D
+    are all present in firewall telemetry.'
+- module: 6
+  notes: 'Q1 B (one segment, named flows), M6-O1: A pilot scopes one segment with named flows and measures; A
+    contradicts pilot design; C and D are the purchase-counting and no-baseline faults the module names. Q2 A
+    (establishing the baseline), M6-O1: Recording current use and telemetry before restricting is the baseline; B
+    is the fallback step; C and D are not this step. Q3 D (evidence against that flow rule), M6-O2: A success
+    measure treats failure signals as evidence; A and B ignore the signal; C undoes the pilot instead of measuring
+    it. Q4 C (counting purchase as practice), M6-O3: Installing a product is not achieved practice; A is the scope
+    pattern but the case says nothing about pilot scope; B is concealment, not the stated claim; D is close but the
+    case overstates despite evidence, not without any. Q5 A (intermediate, telemetry exists, posture missing),
+    M6-O3: The score states what evidence shows and what it lacks; B scores a licence; C contradicts given
+    telemetry; D scores hardware age.'
+lab_setup:
+- module: 1
+  setup: 'Revert the medium-enterprise range to its baseline snapshot. Confirm fw01, ws01, fs01 and dc01 are up and
+    the Student can sign in to ws01 with the assigned standard user account. Expected baseline: fw01 rules include
+    corp-to-servers (corporate to servers, allow, no port list), corp-to-dmz (ports 80, 443, 25, 587, 143, 993),
+    dmz-to-servers (ports 53, 88, 389, 636), logs-to-siem (all zones to management on 514, 5044, 9200) and
+    mgmt-to-all (management to all, allow), default deny otherwise; the servers subnet is 10.10.200.0/24, the DMZ
+    10.10.30.0/24, corporate 10.10.100.0/24, management 10.10.40.0/24.'
+- module: 2
+  setup: Revert the range to baseline. Confirm dc01 (domain controller, 10.10.200.10), fs01 (SMB, 10.10.200.20),
+    ws01 and ws02 are up. Assign one named standard user account per Student and confirm it is a domain user with
+    no administrative group membership; verify the administrative share on fs01 exists and the domain password
+    policy is readable from dc01.
+- module: 3
+  setup: Revert the range to baseline. Confirm fw01, web01 (nginx, 10.10.30.10), ws01, dc01 and fs01 are up. The
+    DMZ-to-servers rule set must be the baseline allow on ports 53, 88, 389, 636 so the name lookup from web01 to
+    dc01 succeeds and the fs01 share attempt is refused. Confirm ws01 reaches web01 on 443 but not on unlisted
+    ports.
+- module: 4
+  setup: Revert the range to baseline. Confirm fw01, ws01, ws02, fs01 and dc01 are up. ws01 and ws02 share the
+    corporate subnet 10.10.100.0/24, so ws01-to-ws02 traffic stays inside the zone and no fw01 rule governs it;
+    keep a file share enabled on ws02 for the connection test. Leave the corp-to-servers rule (no port list) in
+    place for the classification step.
+- module: 5
+  setup: Revert the range to baseline. Confirm siem01 (10.10.40.10, OpenSearch with filebeat) is up and the logs-to-siem
+    rule (514, 5044, 9200 from all zones) is active. Assign the Student the analyst operating system account on
+    siem01. Generate a sign-in on ws01 shortly before the lab so a fresh sign-in event is present in the telemetry.
+- module: 6
+  setup: Revert the range to baseline. Confirm fw01, ws01, dc01, fs01 and siem01 are up and the logs-to-siem rule is
+    active. The Student reuses the standard user account on ws01 and the analyst account on siem01 from earlier
+    modules; no rule changes are made in this lab, so the baseline fw01 rule set must be intact at the start.
+common_faults:
+- module: 1
+  fault: Students mark the corp-to-servers rule 'segmented' or 'verifies explicitly' because it has a name and a
+    source and destination.
+  remedy: Ask what the rule checks about the request besides where it comes from; nothing, so trust still follows
+    network location.
+- module: 1
+  fault: Students score the range at an advanced maturity stage from the fact that firewalls and a SIEM exist.
+  remedy: Require one sentence of recorded evidence per area from the lab notes before any score is accepted.
+- module: 2
+  fault: The share test on fs01 is attempted with the sealed local Administrator account instead of the assigned
+    standard user, so the result shows full access.
+  remedy: Check the signed-in account name against the assignment sheet before the test; the lab expects the
+    standard user's result.
+- module: 2
+  fault: Students read the password policy as an authorisation control and mark every grant 'least privilege'
+    because lockout is configured.
+  remedy: Separate authentication policy from authorisation grants; judge each group membership on its own.
+- module: 3
+  fault: Students classify the corp-to-servers rule as per-resource least privilege because it names two zones.
+  remedy: A per-resource rule names the service and ports; a rule with no port list is a zone-wide allow whatever
+    its name.
+- module: 3
+  fault: The web01-to-dc01 lookup succeeding is recorded as proof that web01 may reach every server.
+  remedy: One allowed flow proves one rule; have the Student run the fs01 share attempt and record its refusal
+    alongside the success.
+- module: 4
+  fault: Students invent an fw01 rule that governs ws01-to-ws02 and mark the path 'segmented'.
+  remedy: Both workstations sit in 10.10.100.0/24; traffic between them never crosses fw01, so no rule governs it
+    and the path is flat.
+- module: 4
+  fault: The drafted microsegmentation rule list keeps the zone-wide corp-to-servers allow unchanged.
+  remedy: Require each drafted rule to name the flow, source and destination with ports, and a default deny at the
+    end.
+- module: 5
+  fault: Students count firewall logs as device posture and mark posture 'supplied'.
+  remedy: Firewall telemetry shows flows and rules, not endpoint health; have the Student point at the field that
+    would carry posture and observe that none does.
+- module: 5
+  fault: The decision log line is written from the lab brief instead of an event actually visible on siem01.
+  remedy: Require the subject, timestamp and outcome in the draft line to match a recorded event from step 3.
+- module: 6
+  fault: The maturity score is justified by purchases (a SIEM is licensed, the firewall is new) rather than recorded
+    evidence.
+  remedy: Accept only evidence the Student recorded in earlier modules, quoted in the score line.
+- module: 6
+  fault: The pilot scope keeps the whole corp-to-servers allow and restricts nothing.
+  remedy: The pilot must name one first flow to restrict, its success measure and its rollback step; anything wider
+    is not a pilot.

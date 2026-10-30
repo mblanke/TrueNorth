@@ -1,0 +1,147 @@
+# Instructor pack for C547 IaC Security & Policy as Code (staff only; never learner content).
+course_code: C547
+audience: staff_only
+overview: 'IaC Security & Policy as Code is a self-paced course of six 60-minute modules (360 minutes, 6 hours) on the
+  cloud-security range. Each module has the same split: 15 minutes of teaching, 35 minutes of range lab and a
+  10-minute quiz passed at 70 percent. The arc runs from Terraform review technique through policy-as-code
+  guardrails and drift handling to golden modules, pipeline secret hygiene and a closing continuous-assurance
+  exercise. Say ''Student'' throughout and keep every description defensive and observable.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (review technique and state exposure), 35 lab (terraform01 review walkthrough), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (policy engines and enforcement modes), 35 lab (gitlab01 rule and pipeline gate), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (drift sources and remediation direction), 35 lab (localstack01 detection pass), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (golden modules and exceptions), 35 lab (terraform01 module plus k3s-master comparison), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (gates and secret hygiene), 35 lab (gitlab01 and jenkins01 exposure audit), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (continuous assurance view), 35 lab (prowler01 and cloud-siem01 summary), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: a literal password in a committed tfvars file is the finding; A tests drift confusion, C and D
+    test whether the Student can rank a hygiene breach above style gaps. Q2 C: state holds full resource
+    attributes in plaintext, including values marked sensitive; A and D understate it, B is the classic false
+    belief. Q3 C: the plan scope does not match the ticket, so it is rejected; A and B test replace-action
+    complacency, D would destroy state. Q4 B: an administrator credential in production state grants control;
+    A and C minimise exposure, D confuses fact recording with judgement. Q5 D: a finding needs address, evidence
+    and fix; A is raw capture, B and C are context, not the record.'
+- module: 2
+  notes: 'Q1 C: policy as code evaluates every plan without a human reader; A and B still need people, D audits
+    after the fact. Q2 A: only a fail condition on a concrete attribute is machine-evaluable; B, C and D are
+    guidance or after-the-fact process. Q3 D: advisory rules report without stopping, so blocking requires the
+    enforcement mode; A and C weaken the rule, B runs it too late. Q4 D: the gate before apply approval is the
+    last blocking point before deployment; A, B and C all act after or outside the pipeline. Q5 A: fix the
+    tagging in the shared modules and keep the rule; B, C and D each teach teams to ignore policy output.'
+- module: 3
+  notes: 'Q1 A: a resource in the deployment that the code does not declare is drift; B, C and D are unrelated
+    tooling states. Q2 C: keep a beneficial console change by adopting it in code and applying from the pipeline;
+    A throws the improvement away, B leaves the code and reality apart, D is destructive. Q3 B: least-privilege
+    console access plus pipeline-only changes removes the main drift source; A, C and D do not touch the cause.
+    Q4 D: record address, both sizes and the owner to question; A, B and C assume conclusions with no evidence.
+    Q5 C: detection inside the change it polices is not independent; A, B and D name unrelated weaknesses.'
+- module: 4
+  notes: 'Q1 D: reviewed defaults, version, change notes and owner make a module trustworthy; A, B and C reward
+    speed and configurability, which are the opposite of golden discipline. Q2 B: a documented, expiring exception
+    keeps the road honest; A is coercive, C recreates the problem per team, D abandons the road. Q3 C: inputs,
+    outputs, guarantees and version let a caller rely on the interface; A, B and D are irrelevant to trust. Q4
+    C: a deprecation window plus a change note protects callers on the old interface; A, B and D break or hide
+    the change. Q5 B: secure defaults make compliance the default and exceptions visible; A, C and D describe
+    evasion, not assurance.'
+- module: 5
+  notes: 'Q1 A: the gate belongs between plan and apply approval, the last blocking point before deployment;
+    B, C and D cannot block anything. Q2 D: a short-lived credential assumed by a least-privilege deployment
+    identity removes the long-lived secret; A and B are cosmetic, C spreads the exposure. Q3 B: an unauthenticated
+    console is an execution path that reaches deployment credentials; A, C and D misclassify the severity.
+    Q4 C: history keeps the committed value, so rotation is required; A is the false belief the question targets,
+    B and D are irrelevant. Q5 C: the public repository and its readable CI variables are one exposure chain to
+    one deployment key; A, B and D are unrelated pairs.'
+- module: 6
+  notes: 'Q1 C: one summary fed by scheduled review, policy runs and drift detection is continuous assurance;
+    A, B and D each cover one slice or none. Q2 B: re-test every enforced rule against a violating and a compliant
+    sample after an upgrade; A is wishful, C and D test trivia. Q3 D: exception trend and mean time to revert
+    drift show the road working; A, B and C count activity, not outcomes. Q4 A: fix the shared module default so
+    all four teams stop failing at once; B masks findings, C weakens the rule, D blames teams the road failed.
+    Q5 C: reports go to owners who can act, ranked and tied to controls; A hides risk, B drowns it, D outsources
+    ownership.'
+lab_setup:
+- module: 1
+  setup: 'Revert terraform01 and jump01 to the cloud-security baseline before the module. Confirm terraform01 is
+    reachable from jump01 by SSH, the state endpoint answers without credentials, and the working directory still
+    shows the exposed state file and the tfvars file with hardcoded credentials (both easy-baseline items).'
+- module: 2
+  setup: 'Revert gitlab01 and localstack01 to baseline. Confirm the infrastructure repository on gitlab01 is present
+    with its public-visibility baseline, the pipeline runner starts jobs, and the public-assets bucket on localstack01
+    still shows public access allowed. Expected value before correction: the policy job fails on the branch.'
+- module: 3
+  setup: 'Revert terraform01 and localstack01 to baseline. Confirm the declared stack on terraform01 matches the
+    deployed storage on localstack01 except for the attributes the instructor will change, and prepare the one
+    harmless out-of-band change (bucket policy edit on localstack01) to announce during the lab. Expected value:
+    the detection pass is clean before the change and reports one resource after it.'
+- module: 4
+  setup: 'Revert terraform01, k3s-master and k3s-worker01 to baseline. Confirm the published-modules directory on
+    terraform01 exists and is writable, and that kubectl on k3s-master still shows the privileged-debug pod
+    scheduled on k3s-worker01 with privilege escalation allowed. Expected values: pod spec shows privileged true
+    and allowPrivilegeEscalation true before the module call.'
+- module: 5
+  setup: 'Revert gitlab01, jenkins01 and jump01 to baseline. Confirm the repository on gitlab01 is public with its
+    baseline CI variables readable, and jenkins01 still answers on its script console without authentication with
+    its weak credential store. Expected values: anonymous read on the repository; script console responds HTTP 200
+    unauthenticated.'
+- module: 6
+  setup: 'Revert prowler01, cloud-siem01, localstack01 and jump01 to baseline. Confirm the assessor toolkit on
+    prowler01 runs against the simulated cloud account, the audit trail on cloud-siem01 holds the configuration
+    change events from modules 2 to 5, and localstack01 reflects the exposure state left by earlier labs.
+    Expected value: at least two service groups appear in assessor output with findings.'
+common_faults:
+- module: 1
+  fault: Students read the state file and stop at the first secret, recording no resource addresses.
+  remedy: Require the address-and-evidence table from the brief; walk one resource from tfvars credential to
+    state attribute on the board before they start.
+- module: 1
+  fault: Severity is assigned by gut feeling, with no reason recorded.
+  remedy: Ask for the one-sentence reason per finding and challenge any low or medium rating of a production
+    credential.
+- module: 2
+  fault: Students write a rule that matches a resource name instead of the attribute that causes exposure.
+  remedy: Show the failing resource in the job output and ask which attribute made it fail; the rule text must
+    name that attribute.
+- module: 2
+  fault: The corrected configuration is committed but nobody confirms the job passes on the branch.
+  remedy: The lab brief requires the after-status; keep the pipeline view open during debrief.
+- module: 3
+  fault: Students record only the current value of a drifted attribute, not both values.
+  remedy: The brief demands both values; demonstrate one comparison row with declared and live side by side.
+- module: 3
+  fault: Every difference is labelled revert, including the beneficial console change.
+  remedy: Point at the adoption criterion from the teaching block; ask who wants the change kept and what that
+    requires in code.
+- module: 4
+  fault: The new module exposes every input, so nothing is a default and nothing is golden.
+  remedy: Require at least the two vulnerable attributes to be defaults that deny; review the module inputs
+    before publication.
+- module: 4
+  fault: Students treat the vulnerable pod as a policy-engine problem instead of a module-design problem.
+  remedy: Revisit the paved-road principle; the module encodes the guardrail so the pipeline rule becomes the
+    backstop, not the only line.
+- module: 5
+  fault: Students stop at the public repository and never open the CI variables view.
+  remedy: The evidence list names both; walk the exposure chain from repository visibility to the deployment key.
+- module: 5
+  fault: Rotation order starts with the least-privileged value.
+  remedy: Ask what each credential grants and rank by blast radius; the broadest access rotates first.
+- module: 6
+  fault: The combined table lists findings but has no counts per category.
+  remedy: The brief asks for counts; show a three-row table (blocking, advisory, drifted) on the board and have
+    each Student fill theirs.
+- module: 6
+  fault: The ranked improvement restates a finding instead of proposing a control change.
+  remedy: Require the form 'change X so that Y, justified by finding Z'; reject restatements in debrief.

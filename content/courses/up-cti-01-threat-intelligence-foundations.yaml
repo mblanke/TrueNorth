@@ -1,0 +1,584 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C555
+title: Threat Intelligence Foundations
+version: '1.0'
+difficulty: foundation
+duration_hours: 3
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C105
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Threat Analyst and Cyber Defense Analyst (PR-CDA-001).'
+  - 'NIST CSF 2.0: ID.RA and DE.CM.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Strategic Intelligence
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the leadership decisions a strategic intelligence product informs and name the consumer for each decision
+  - Distinguish long-term trend judgements from campaign reporting and indicator lists in one briefing pack
+  - Write a one-paragraph strategic assessment of a stated threat trend for a named consumer
+  topics:
+  - 'Strategic intelligence answers questions leadership owns; budgets, priorities and multi-year risk.'
+  - Operational intelligence tracks campaigns, capabilities and intent over weeks to months.
+  - Tactical intelligence describes specific indicators, behaviours and immediate defender actions.
+  - Consumer, decision window and the standing question that turn collected data into intelligence.
+  - Estimative language; stating a judgement, its basis and what would change it.
+  lab: >-
+    Lab: On the small-enterprise range, take a strategic view of the estate from the management
+    network; which three networks it routes, what the name service on dc-01 holds and which
+    single host the workstations depend on, then write a three-sentence strategic note for a
+    named consumer. Evidence: the address and mask on the jump host's own interface; the
+    reachability result for each gateway address in the addressing plan; each host name and
+    address the name service returns; the domain service ports that answer; the finished
+    strategic note naming its consumer. Pass: all range facts recorded exactly as the
+    observations show them; the note states a judgement rather than a list of facts; the note
+    names one consumer and one decision the note supports.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH with the analyst account the instructor assigned and
+        record the address and mask on the jump host's own network interface.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, test reachability of each gateway address on fw-01 in the
+        instructor's addressing plan and record which of the three networks answers.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, query the name service on dc-01 for each host name in the
+        instructor's host list and record the name and address every query returns.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, test the domain logon services on dc-01 and record the service ports
+        that answer; name the single host every workstation depends on for sign-in.
+    - hosts: [jump-box]
+      action: Write a three-sentence strategic note for one named consumer, such as the head of
+        IT, stating one judgement about the estate's largest dependency and the decision it
+        supports, and record the note.
+  refs:
+  - nist-sp-800-30r1
+  - nist-sp-800-150
+  source_gaps:
+  - A source on strategic intelligence products and their consumers is not in the reference library.
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A retailer's intelligence team reports that ransomware groups now steal backups
+        before encrypting, and that the shift should guide next year's security budget. What kind
+        of intelligence product is this?
+      options:
+      - A) A tactical indicator feed for the monitoring desk
+      - B) A strategic assessment of a threat trend
+      - C) An operational campaign report on one group
+      - D) A collection plan for firewall logs
+      answer: B
+    - question: One briefing pack holds a three-year trend judgement, a report on one criminal group's
+        ongoing campaign and a list of blocked addresses. Which statement is correct?
+      options:
+      - A) All three items are tactical because all three of them reach defenders
+      - B) The blocked address list is strategic because leadership acts on its contents
+      - C) The trend is strategic, the campaign operational, the list tactical
+      - D) The right label depends on which tool distributed each item to staff
+      answer: C
+    - question: A tactical intelligence note reaches the monitoring team. What should the team do with it?
+      options:
+      - A) Check whether monitoring rules would see the behaviour the note describes
+      - B) Forward it straight to leadership so it informs next year's security budget
+      - C) Rewrite the entire note as a strategic trend assessment for the board
+      - D) Archive the note until the next campaign report has been fully published
+      answer: A
+    - question: A report describes one criminal group's victims, tooling and activity over the past
+        four months. At which level of intelligence does this report sit?
+      options:
+      - A) Strategic, because it covers a period of several months of activity
+      - B) Tactical, because it names the tools the group was seen using
+      - C) Technical, because it lists network ports alongside the victim names
+      - D) Operational, because it follows one campaign over time
+      answer: D
+    - question: A dashboard lists yesterday's blocked addresses with no judgement attached. What does
+        it lack to count as a finished intelligence product?
+      options:
+      - A) A consumer, a decision and an assessed judgement
+      - B) More addresses collected over a longer period
+      - C) A map from each address to a firewall port
+      - D) A distribution list of every staff member in the company
+      answer: A
+- ordinal: 2
+  title: Operational and Tactical Intelligence
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Classify a finished intelligence item as strategic, operational or tactical against its consumer and decision window
+  - Distinguish a single indicator from the campaign behaviour that gives the indicator meaning
+  - Select the shift-actionable part of an intelligence report and record the action it should trigger
+  topics:
+  - Operational reporting follows one actor or campaign; capability, intent and victim pattern.
+  - Tactical reporting carries indicators, behaviours and detection ideas defenders apply now.
+  - Consumer and decision window decide the level, not the subject matter alone.
+  - Turning finished intelligence into a monitoring change or a boundary decision.
+  - Why a bare indicator without context ages badly and misleads detection.
+  lab: >-
+    Lab: On the small-enterprise range, classify what the estate shows at operational and
+    tactical level; the standing rule arrangement for user-to-server domain traffic, one
+    permitted service tested from the management network and the workstations the domain lists,
+    then write one operational and one tactical statement. Evidence: the rule summary line with
+    its name, source network, destination network and ports; the service tested from jump-box,
+    the dc-01 address used and the outcome; the workstation names the domain's name service
+    holds; the two statements with their consumers. Pass: the operational statement describes
+    the standing arrangement rather than one address; the tactical statement names an action a
+    defender takes this shift; both statements name their consumer.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: At jump-box, read the rule summary the instructor supplies and record the name, source network,
+        destination network and permitted ports of the rule that carries user-to-server domain
+        traffic.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, test whether dc-01 answers on one service the recorded rule permits
+        and record the service, the dc-01 address used and the outcome.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, query the name service on dc-01 for the workstation host names and
+        record which workstations the domain has registered.
+    - hosts: [jump-box]
+      action: Write one operational statement about the standing arrangement the rule summary and
+        tests describe and one tactical statement a defender can act on this shift, each naming
+        its consumer, and record both.
+  refs:
+  - mitre-attack
+  - nist-sp-800-150
+  source_gaps:
+  - A text separating operational from tactical intelligence products is not in the reference library.
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A defender sorting this week's reporting mid-shift must decide what to act on
+        now. Which item is a tactical indicator rather than a finished operational report?
+      options:
+      - A) A four-month account of one criminal group's victims, tooling and methods
+      - B) A leadership briefing on ransomware trends expected over the next several years
+      - C) An address seen contacting a known phishing host, with the sighting time
+      - D) A judgement that one group will target retailers over the next quarter
+      answer: C
+    - question: A blocking list produced last year is applied unchanged to this month's traffic.
+        What is the main risk?
+      options:
+      - A) The list will exhaust the memory available on the firewall's rule tables
+      - B) The list mixes strategic, operational and tactical items without any grading
+      - C) The list lacks a named consumer, a decision and a stated window
+      - D) The indicators have aged and no longer carry their original context
+      answer: D
+    - question: A long report on a criminal campaign reaches a defender mid-shift. Which part of the
+        report is shift-actionable?
+      options:
+      - A) The behaviours the defender can watch for on today's systems
+      - B) The group's estimated revenue and its outside sources of funding
+      - C) The employment history of the researcher who wrote the report
+      - D) The multi-year ransomware trend the report forecasts for the sector
+      answer: A
+    - question: A security team sorts four items from one week's reporting into operational and
+        tactical. Which statement is operational rather than tactical?
+      options:
+      - A) Block address 203.0.113.7 at the boundary today
+      - B) A group targets small enterprises through remote access
+      - C) Restart the monitoring service before the next shift begins
+      - D) Port 445 is open between two named networks
+      answer: B
+    - question: A tactical note describes password-guessing behaviour against internet-facing logons.
+        What is the most direct defensive action it should trigger?
+      options:
+      - A) Commission a strategic assessment of credential theft for leadership
+      - B) Wait for the next operational campaign report
+      - C) Tune logon monitoring to count failures across many accounts
+      - D) Re-classify the note as an indicator list
+      answer: C
+- ordinal: 3
+  title: The Intelligence Cycle
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Sequence the phases of the intelligence cycle and name what each phase hands to the next
+  - Write a priority intelligence requirement that states a decision, an owner and a time window
+  - Identify the phase to revisit when finished intelligence fails to answer its requirement
+  topics:
+  - The cycle phases; planning, collection, processing, analysis, dissemination and feedback.
+  - Priority intelligence requirements anchor collection to decisions rather than curiosity.
+  - Feedback closes the loop and corrects the next pass through the cycle.
+  - Why real analysis iterates; a phase may send work back, not only forward.
+  - Dissemination failure; intelligence that never reaches its consumer changes no decision.
+  lab: >-
+    Lab: On the small-enterprise range, run one full pass of the intelligence cycle against the
+    requirement of which networks can reach the server network for administration; write the
+    requirement, collect from the management network, analyse only what was collected,
+    disseminate to a named owner and record feedback. Evidence: the written requirement with
+    owner and window; the administration ports on dc-01 that answered; the host names and
+    addresses the name service returned; the one-paragraph answer citing only collected
+    material; the feedback question and the phase named for revision. Pass: the requirement
+    states a decision, an owner and a time window; the answer cites nothing outside the
+    collected material and states what the collection could not observe; the feedback names one
+    phase to revisit.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: At jump-box, write the requirement as a question a named person can answer this week, which
+        networks can reach the server network for administration, and record the question with
+        its owner and window.
+    - hosts: [jump-box, dc-01]
+      action: Collect from jump-box; test which remote administration ports on dc-01 answer and
+        record each port that responded.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, query the name service on dc-01 for the estate's host names and
+        record the addresses returned, then note which networks this collection cannot observe.
+    - hosts: [jump-box]
+      action: Analyse and disseminate; write one paragraph that answers the recorded question
+        using only the material collected in this pass, states what remains unverified, and
+        address it to the named owner.
+    - hosts: [jump-box]
+      action: Close the cycle; record one feedback question for the owner that tests whether the
+        answer changed a decision, and name the phase a new pass should revisit.
+  refs:
+  - nist-sp-800-150
+  - oasis-cti
+  source_gaps:
+  - A source describing the intelligence cycle phases in depth is not in the reference library.
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A team reviews four draft priority intelligence requirements before its next
+        collection pass. Which priority intelligence requirement is written best?
+      options:
+      - A) Tell the team everything it can learn about threats to the estate
+      - B) Keep collecting until nothing about the estate can surprise anyone
+      - C) Decide this quarter whether remote administration paths need narrowing
+      - D) Monitor every firewall log continuously for anomalies without any decision
+      answer: C
+    - question: A consumer reports that the finished assessment did not answer the stated requirement.
+        Which cycle phase captures that reaction so the next pass improves?
+      options:
+      - A) Collection, because the requirement now needs a wider set of sources
+      - B) Processing, because the raw records must be normalised again before use
+      - C) Analysis, because the existing material must be judged again more carefully
+      - D) Feedback, because the consumer's reaction is recorded for the next pass
+      answer: D
+    - question: Raw network records have been gathered and normalised, and the analyst now judges
+        what they mean for the requirement. Which phase is underway?
+      options:
+      - A) Collection, because more raw records are still arriving from the sources
+      - B) Analysis, because the records are being judged against the requirement
+      - C) Planning, because the requirement is being rewritten for the next pass
+      - D) Dissemination, because the finished judgement is being prepared for its consumer
+      answer: B
+    - question: A well-sourced assessment sits in a shared folder that no decision-maker reads.
+        What has failed?
+      options:
+      - A) Dissemination to the named consumer
+      - B) Collection planning, which never gathered the right material
+      - C) Processing of the raw data the sources delivered
+      - D) The requirement itself, which was answered in full
+      answer: A
+    - question: Mid-analysis, the analyst finds the collected material cannot distinguish a
+        misconfiguration from deliberate activity. What does the cycle support?
+      options:
+      - A) Publishing the assessment immediately with the ambiguity left unmarked
+      - B) Declaring the requirement unanswerable and stopping all further work
+      - C) Returning to planning and collection with a refined requirement
+      - D) Skipping dissemination this cycle because the answer is still incomplete
+      answer: C
+- ordinal: 4
+  title: Sources and Collection Planning
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Enumerate the sources available to a team and grade each source's reliability separately from its information
+  - Assess a source for freshness, coverage and the observations it can actually make
+  - Design a collection plan that maps each requirement to named sources and names one remaining gap
+  topics:
+  - Sources available to a team; internal logs and staff, industry sharing, commercial feeds and open reporting.
+  - Grading source reliability apart from the information the source carries.
+  - Freshness, coverage and blind spots decide what a source can contribute.
+  - The collection plan maps requirements to sources and exposes the gaps.
+  - Feeds and structured exchange move machine-readable indicators between organisations.
+  lab: >-
+    Lab: On the small-enterprise range, plan collection instead of performing it; inventory what
+    the sources reachable from jump-box can each observe, then map the requirement of which
+    workstations use the domain controller onto those sources and name one gap. Evidence: the
+    networks that answered through the boundary; the count of workstations registered in the
+    domain's name service; the result of the ws-01 service test; the two-column plan mapping the
+    requirement to named sources; the named gap. Pass: each mapped source can actually observe
+    what the requirement asks from the access the Student holds; the gap names a question no
+    listed source answers; the plan keeps source reliability grading separate from the findings.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box, fw-01]
+      action: Inventory the network source; from jump-box, test reachability of each gateway address on fw-01 in the addressing
+        plan and record which networks answer through the boundary.
+    - hosts: [jump-box, dc-01]
+      action: Inventory the directory source; from jump-box, query the name service on dc-01 for
+        the workstation host names and record how many workstations the domain has registered.
+    - hosts: [jump-box, ws-01]
+      action: Inventory an endpoint source; from jump-box, test which services ws-01 answers and
+        record what an endpoint source would add that no network query showed.
+    - hosts: [jump-box]
+      action: Map the requirement of which workstations use the domain controller onto the sources
+        inventoried, and record the mapping plus one collection gap no inventoried source covers.
+  refs:
+  - nist-sp-800-150
+  - oasis-cti
+  - nist-sp-800-92
+  source_gaps:
+  - A text on intelligence collection planning and source evaluation is not in the reference library.
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A vendor feed delivers addresses that its analysts check before publication. What
+        does that curation most directly improve?
+      options:
+      - A) The reliability of the information the feed carries
+      - B) The freshness of every internal log source
+      - C) The coverage of questions only internal staff can answer
+      - D) The number of requirements a single plan may hold
+      answer: A
+    - question: Two organisations want to exchange machine-readable indicators automatically. What
+        do they need beyond the indicators themselves?
+      options:
+      - A) A shared network folder plus an agreed staff rota for manual uploads
+      - B) An agreed structured format and a transport for the exchange
+      - C) A longer retention period applied to each of their own internal logs
+      - D) A written strategic assessment produced for every single indicator exchanged
+      answer: B
+    - question: A usually reliable partner passes on a rumour it did not check. How should the
+        analyst grade this item?
+      options:
+      - A) High reliability for the item itself, because the partner is usually right
+      - B) Low reliability for the item, because unverified rumours are always false
+      - C) No grade at all, because grading applies only to internal log sources
+      - D) Grade the partner's reliability apart from the unverified information
+      answer: D
+    - question: A requirement asks which workstations reach the domain controller after hours.
+        Which source answers it most directly?
+      options:
+      - A) A strategic multi-year trend report on the sector from a commercial vendor
+      - B) The network connection records from the boundary between their networks
+      - C) The curriculum of the last security awareness course the organisation ran
+      - D) The organisation chart of the facilities team at the head office building
+      answer: B
+    - question: The only endpoint source covers one of three workstations. What must the collection
+        plan record?
+      options:
+      - A) That the requirement is already answered for the whole estate
+      - B) That the two uncovered workstations do not matter
+      - C) That the feed and the logs are the same source
+      - D) A coverage gap for the two workstations no source observes
+      answer: D
+- ordinal: 5
+  title: Confidence
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Assign high, moderate or low confidence to a judgement and justify the assignment from the evidence checked
+  - Distinguish the quality and corroboration of evidence from the number of sources repeating it
+  - Rewrite a judgement whose stated confidence outruns the evidence recorded for it
+  topics:
+  - Confidence expresses how much the checked evidence supports the judgement, not its importance.
+  - Corroboration means independent observations agreeing, not one observation repeated.
+  - Evidence quality measures how directly an observation answers the requirement.
+  - Estimative language separates what was observed from what is inferred.
+  - Overstated confidence drives wrong decisions earlier than low confidence does.
+  lab: >-
+    Lab: On the small-enterprise range, grade two judgements the instructor supplies; one about
+    the service ports dc-01 answers and one about every workstation being domain-joined, each
+    checked against the evidence the range can show from the management network. Evidence: the
+    evidence list written for each judgement before checking; the dc-01 port test results as
+    recorded; the workstation records the name service returned, with the hosts not examined;
+    the confidence level and one-sentence justification for each judgement; any rewritten
+    judgement. Pass: confidence rests on evidence checked, not on how many times the claim was
+    read; evidence that stops short of the hosts themselves limits the confidence an estate-wide
+    claim can carry; a rewritten judgement states the observation and the inference separately.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: At jump-box, read the two judgement cards the instructor supplies and record, for each judgement,
+        the evidence the range would need to show before the claim is believed.
+    - hosts: [jump-box, dc-01]
+      action: Check the service judgement from jump-box; test the claimed ports on dc-01 and
+        record whether each port answers as the card claims.
+    - hosts: [jump-box, dc-01]
+      action: Check the workstation judgement from jump-box; query the name service for the
+        workstation host names and record which workstations the domain lists and that no
+        workstation itself was examined.
+    - hosts: [jump-box]
+      action: Assign high, moderate or low confidence to each judgement with a one-sentence
+        justification that names the evidence checked, and record both assignments.
+    - hosts: [jump-box]
+      action: Rewrite any judgement whose confidence outruns its evidence, stating the observation
+        first and the inference second, and record the rewritten form.
+  refs:
+  - nist-sp-800-30r1
+  source_gaps:
+  - A text on analytic confidence standards and estimative language is not in the reference library.
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: An analyst finishes a judgement about one group's targeting and must attach a
+        confidence level before the report is issued. What does the confidence level express about
+        the judgement?
+      options:
+      - A) How important the judgement is to leadership
+      - B) How many people have read the report
+      - C) How severe the threat would be if the judgement were true
+      - D) How well the checked evidence supports the judgement
+      answer: D
+    - question: One monitoring system saw an address once, and nothing else supports the claim.
+        What confidence can the analyst assign?
+      options:
+      - A) Low or moderate at most, until an independent observation corroborates it
+      - B) High confidence, because monitoring systems do not invent the sightings they record
+      - C) High confidence, provided the single sighting is recent enough to act on
+      - D) None; a sighting is a plain fact that needs no confidence level
+      answer: A
+    - question: Three reports this week state the same claim about one group, and each cites the
+        first report. Is this corroboration?
+      options:
+      - A) Yes, because three separately published reports agree on the same claim
+      - B) Yes, provided the three reports all arrived within the same single week
+      - C) No; one observation repeated through citation is still one source
+      - D) No; proper corroboration requires at least five independent agreeing sources
+      answer: C
+    - question: A judgement rests on reporting about a different sector from two years ago. What
+        should the analyst do with the confidence level?
+      options:
+      - A) Raise the confidence because the reporting has survived unchallenged for two years
+      - B) Lower confidence and state how old and distant the evidence is
+      - C) Keep the confidence and remove the evidence note from the report
+      - D) Hand the judgement to another analyst as a fresh collection requirement
+      answer: B
+    - question: An assessment reads that the group has compromised the estate, but the evidence is
+        two failed logons from one address. What is the correct rewrite?
+      options:
+      - A) The group has already compromised the estate through many addresses
+      - B) The failed logons prove the group holds valid credentials
+      - C) The group will compromise the estate within the month
+      - D) Two failed logons were observed; compromise is not established
+      answer: D
+- ordinal: 6
+  title: Bias and Validation
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify confirmation bias, anchoring and availability in a written analytic judgement
+  - Validate an indicator against the estate before any block, alert or ticket is raised
+  - Select the response proportionate to a finding's validated confidence rather than its wording
+  topics:
+  - Confirmation bias; seeking only the evidence that fits the judgement already held.
+  - Anchoring and availability; the first number and the most recent story.
+  - Validation means testing an indicator's claim against what the estate can observe.
+  - Proportionate response; acting on validated findings, not on alarming wording.
+  - Structured challenge; a colleague tests the judgement before it is published.
+  lab: >-
+    Lab: On the small-enterprise range, validate three indicator claims the instructor supplies
+    before acting on any of them; what each claim predicts, what the range shows from the
+    management network and which bias could distort the check. Evidence: the prediction recorded
+    for each claim before validating; the dc-01 port test result; which host answered the
+    identical name query; the address the name service returns for dc-01; each claim marked
+    corroborated or not corroborated; one named bias and the proportionate action chosen per
+    claim. Pass: no claim is actioned on its wording alone; a refuted claim is corrected in the
+    record rather than quietly dropped; the named bias is tied to a judgement, not merely
+    defined.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: At jump-box, read the three indicator claims the instructor supplies and record, for each claim,
+        what the range would show from the management network if the claim were true.
+    - hosts: [jump-box, dc-01]
+      action: Validate the service claim from jump-box; test whether dc-01 answers on the claimed
+        port and record the result as corroborated or not corroborated.
+    - hosts: [jump-box, ws-01, dc-01]
+      action: Validate the name-service claim from jump-box; send the identical name query to
+        ws-01 and to dc-01 and record which host answers.
+    - hosts: [jump-box, dc-01]
+      action: Validate the address claim from jump-box; record the address the name service
+        returns for dc-01 and compare it with the address the claim states.
+    - hosts: [jump-box]
+      action: Mark each claim corroborated or not corroborated, and record one bias, such as
+        anchoring on the first claim read, that could distort the validation.
+    - hosts: [jump-box]
+      action: Choose a proportionate action for each claim, such as raise a ticket, correct the
+        record or escalate, and record the action with the evidence supporting it.
+  refs:
+  - nist-sp-800-150
+  - nist-sp-800-30r1
+  source_gaps:
+  - A text on cognitive biases and structured analytic techniques is not in the reference library.
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: An analyst convinced of a compromise records only the log lines that support it and
+        skips the rest. Which bias is this?
+      options:
+      - A) Availability, because the most recent incidents come to the analyst's mind first
+      - B) Anchoring, because the very first log line fixed the analyst's whole view
+      - C) Confirmation, because the analyst seeks what fits the judgement already held
+      - D) Recency, because the older log lines in the collection were ignored altogether
+      answer: C
+    - question: A feed delivers an address described as an active command server. What must come
+        before blocking it?
+      options:
+      - A) Checking what the estate itself has observed about that address
+      - B) Blocking first and validating during the next maintenance window
+      - C) Raising the confidence to high because a vendor sent it
+      - D) Adding the address to the strategic assessment for leadership
+      answer: A
+    - question: The first estimate in a report said eight affected servers; later evidence shows
+        two, but the report still says eight. Which bias persisted?
+      options:
+      - A) Availability, because the affected servers were the easiest to recall later
+      - B) Recency bias, because the newest evidence was preferred over the first estimate
+      - C) Sunk-cost bias, because the expensive report had already been fully written
+      - D) Anchoring, because the first estimate survived contradicting evidence
+      answer: D
+    - question: A claim states that workstation-to-server traffic is blocked at the boundary.
+        Before accepting the claim, what must the analyst do?
+      options:
+      - A) Ask the vendor that published the claim to confirm it in writing
+      - B) Search public reporting for news of similar claims at other enterprises
+      - C) Read the boundary's actual rules and compare them with the claim
+      - D) Raise the unvalidated claim to leadership with a high confidence level
+      answer: C
+    - question: A validated finding carries low confidence; one sighting, no corroboration. Which
+        response is proportionate?
+      options:
+      - A) Record the sighting and add targeted monitoring
+      - B) Isolate the affected network segment immediately
+      - C) Brief leadership that compromise is confirmed
+      - D) Close the finding because low confidence means it is irrelevant
+      answer: A

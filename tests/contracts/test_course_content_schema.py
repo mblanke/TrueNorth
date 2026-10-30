@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SCHEMA_PATH = ROOT / "docs/interfaces/course-content.schema.json"
 COURSE_DIR = ROOT / "content/courses"
 CATALOGUE = ROOT / "content/catalogue/cyber_operator_programme.csv"
+SPECIALIST = ROOT / "content/catalogue/specialist_pathways.csv"
 COURSE_FILES = sorted(COURSE_DIR.glob("*.yaml"))
 
 SCHEMA = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
@@ -47,6 +48,13 @@ NAMING_EXCEPTIONS = {"iot-security-foundations.yaml": "C304"}
 # lab and questions. The most similar distinct pair in the library scores under 0.01;
 # copy-paste filler with light edits scores well above this.
 NEAR_DUPLICATE = 0.25
+
+
+def _is_upskilling(code: str) -> bool:
+    """C500-C599: the self-paced upskilling catalogue, outside the DP1/DP2 programme, so it
+    has no catalogue row and no term."""
+    digits = "".join(ch for ch in str(code) if ch.isdigit())
+    return bool(digits) and 500 <= int(digits) < 600 and not str(code).upper().startswith("RMC")
 
 
 def _load(path: Path) -> dict:
@@ -73,7 +81,7 @@ def test_the_schema_is_a_valid_draft7_schema():
 
 
 def test_the_corpus_is_not_empty():
-    assert len(COURSE_FILES) == 44
+    assert len(COURSE_FILES) == 44 + 60  # the programme, plus the C501-C560 upskilling set
 
 
 @pytest.mark.parametrize("path", COURSE_FILES, ids=lambda p: p.name)
@@ -112,6 +120,14 @@ def test_file_name_and_title_follow_the_catalogue(path):
     doc = _load(path)
     code = doc["course_code"]
     catalogue = _catalogue()
+    if _is_upskilling(code):
+        assert code not in catalogue, f"{path.name}: {code} is upskilling but is in the programme catalogue"
+        with SPECIALIST.open(newline="", encoding="utf-8") as fh:
+            specialist = {r["course_code"]: r["course_title"] for r in csv.DictReader(fh)}
+        assert code in specialist, f"{path.name}: {code} is not in the specialist catalogue"
+        assert path.name.startswith("up-"), path.name
+        assert doc["title"] == specialist[code], f"{path.name}: title {doc['title']!r} != catalogue {specialist[code]!r}"
+        return
     assert code in catalogue, f"{path.name}: {code} is not in the catalogue"
     if path.name in NAMING_EXCEPTIONS:
         assert NAMING_EXCEPTIONS[path.name] == code
@@ -138,6 +154,12 @@ def test_declared_prerequisites_are_catalogue_courses_from_an_earlier_term(path)
     doc = _load(path)
     terms = _terms()
     when = terms.get(doc["course_code"])
+    if _is_upskilling(doc["course_code"]):
+        # no term to compare: a prerequisite must still be a real course, never the course itself
+        known = terms.keys() | {_load(p)["course_code"] for p in COURSE_FILES}
+        for code in doc.get("prerequisites") or []:
+            assert code in known and code != doc["course_code"], f"{path.name}: prerequisite {code} is not a course"
+        return
     for code in doc.get("prerequisites") or []:
         assert code in terms, f"{path.name}: prerequisite {code} is not in the catalogue"
         assert when is not None and terms[code] < when, (

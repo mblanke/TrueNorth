@@ -1,0 +1,92 @@
+# Instructor pack for C507 Authentication Protocols Hands-On (unsourced draft, Standards review pending).
+course_code: C507
+audience: staff_only
+overview: >-
+  Authentication Protocols Hands-On is a self-paced course of six 30-minute modules (180 minutes,
+  3 hours) on the medium-enterprise range. Each module has the same split: 8 minutes teaching the
+  concepts, 14 minutes on the range lab, 8 minutes for the five-item quiz passed at 70 percent.
+  The Student works alone, tracing how credentials are stored, challenged and delegated across
+  Kerberos, NTLM and modern OAuth/OIDC flows, and finishes by choosing phishing-resistant factors.
+  Say 'Student' throughout and keep every description defensive and observable.
+timings:
+- module: 1
+  minutes: 30
+  plan: '8 teach (hash guarantees, digest comparison), 14 lab (digests on web01 via siem01), 8 quiz'
+- module: 2
+  minutes: 30
+  plan: '8 teach (salts, slow hashes, stored entry structure), 14 lab (shadow entries on web01), 8 quiz'
+- module: 3
+  minutes: 30
+  plan: '8 teach (AS and TGS exchanges, SPNs, lifetimes), 14 lab (tickets on ws01 against dc01 and fs01), 8 quiz'
+- module: 4
+  minutes: 30
+  plan: '8 teach (challenge and response, what Kerberos adds), 14 lab (authentication package search in the SIEM on siem01), 8 quiz'
+- module: 5
+  minutes: 30
+  plan: '8 teach (roles, code flow, OIDC claims), 14 lab (captured flow on web01), 8 quiz'
+- module: 6
+  minutes: 30
+  plan: '8 teach (factor categories, relay phishing, passkeys), 14 lab (entry-point inventory across ws01, web01 and siem01), 8 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (Integrity): a matching digest shows the file is unchanged since the digest was computed; it says nothing about who published it (not D), whether anyone could read it in transit (not A) or whether the service is up (not C). Q2 C: SHA-256 produces a longer digest with far stronger collision resistance than MD5; it is not reversible with a key (not B), not encrypted (not D) and not shorter (not A). Q3 A (Collision): two different inputs reaching one digest is exactly the definition; a preimage is finding an input for a given digest (not B), a salt is storage-side (not C) and a replay is resending a captured message (not D). Q4 D: when the attacker controls the page, file and digest are rewritten together, so the check cannot help; the other options are transmission errors the digest does catch. Q5 B: one-way means cheap to compute, computationally infeasible to invert; the distractors test reading the phrase as a limit on inputs or runs.'
+- module: 2
+  notes: 'Q1 C: a different random value per account ahead of the digest is a per-account salt; a pepper is system-wide (not B), a secret key implies encryption (not A) and a certificate is not part of password storage (not D). Q2 A: with unsalted fast hashes, one precomputed table against the whole file recovers many passwords at once; the distractors describe network access, certificate forgery and log tampering, none of which a lookup table buys. Q3 B: a slow hash costs the attacker time on every guess, and that cost repeats for each account; it does not change bandwidth, hide account names or protect salts. Q4 A: salted slow password hashes are the only option that resists both direct reading and bulk cracking; the others are plaintext with extra steps, a retired fast hash, or separation that does not survive theft of both files. Q5 D: unique salts force the attacker to attack each account separately; they do not hide accounts, encrypt under keys, or enable recovery.'
+- module: 3
+  notes: 'Q1 D: the authentication service exchange issues the ticket-granting ticket first, then the ticket-granting service exchange issues the service ticket for the file server; the distractors reverse the order, skip the TGT or send the password to the service, which Kerberos never does. Q2 B: the client authenticates with a service ticket plus an authenticator keyed from the password, so the password never travels to the service; TLS, a local password copy and public-key encryption of the password are all wrong pictures of the exchange. Q3 A: the timestamp in the authenticator lets the service reject a captured message replayed later; it is not about realms, sharing or expiry. Q4 C: when the TGT expires the client returns to the authentication service for a new one; service tickets do not self-renew and no password is involved. Q5 A: a TGS exchange naming the file server''s service principal name is the evidence; the other records name no ticket and no service.'
+- module: 4
+  notes: 'Q1 B: the server computes the same challenge-and-response value from its stored hash of the password and compares; the password itself is never sent (not A), no Kerberos ticket is involved (not C) and machine certificates are not part of NTLM (not D). Q2 D: Kerberos adds a central ticket service so services verify tickets instead of handling password-derived material; link speed, share encryption and password length are not the difference. Q3 C: the authentication package name field says NTLM or Kerberos directly; computer name, logon identifier and severity do not carry the protocol. Q4 A: requiring message signing and auditing every NTLM use reduces relay exposure without breaking the legacy application; renaming accounts, moving it to the DMZ or disabling Kerberos domain-wide do not address the exchange itself. Q5 B: a single legacy device accounts for the pattern; the sound next step is to confirm the dependency and plan its migration, not to read the events as attack evidence, false positives or a domain controller fault.'
+- module: 5
+  notes: 'Q1 C: the client exchanges the code with the authorization server on a back channel for the tokens; the code is not reused by the browser, emailed or validated by the resource against the user. Q2 A: only the authorization server issues access tokens; the client, the browser and the protected resource each play other roles. Q3 D: the signed identity token naming user, issuer and expiry is OpenID Connect layered on OAuth2; NTLM and Kerberos are domain protocols and session resumption is transport-level. Q4 B: anything carried through the browser can leak to history, proxies and the user, so the code is exchanged off-browser and the tokens never ride the front channel. Q5 B: the token''s scope and expiry bound a leak to one interface for a limited time; client binding is not assumed, per-use approval is not how scopes work, and tokens carry no password.'
+- module: 6
+  notes: 'Q1 A: a password and a security question are both knowledge factors, so the design is single-factor however many prompts it shows; policy, prompt spacing and a claimed password exclusivity are distractors. Q2 C: a phishing-resistant authenticator bound to the real sign-in page cannot be exercised by an attacker holding only the password, which a longer password, a second knowledge factor or more rotation cannot claim. Q3 B: a password (knowledge) plus a hardware security key (possession) spans two categories; password plus PIN and PIN plus security question are two knowledge factors, and fingerprint plus face are two inherence factors. Q4 D: a shareable code verifies possession at a distance, so anything the user can read out the caller can use; generation speed, length and on-screen display are not the flaw. Q5 A: a device-bound passkey that signs the site''s identity fails on a fake site by construction; codes, push approvals and security questions can all be relayed.'
+lab_setup:
+- module: 1
+  setup: 'Revert the medium-enterprise range to its baseline. Place two copies of one instructor-named file on web01 (one differs) and post the reference digest on siem01. Confirm siem01 can reach web01 over SSH and that the analyst account works on siem01.'
+- module: 2
+  setup: 'Revert the range to its baseline. Confirm siem01 reaches web01 over SSH. Prepare elevated (sudo) access on web01 for the Student''s account and have two named accounts whose shadow entries the Student will read.'
+- module: 3
+  setup: 'Revert the range to its baseline. Confirm dc01 and fs01 are up and the sysvol or named share on fs01 is reachable. Have the assigned domain account ready and confirm the klist ticket lister runs on ws01.'
+- module: 4
+  setup: 'Revert the range to its baseline. Confirm the SIEM on siem01 holds the last day''s sign-in events from ws01, ws02 and dc01, with filebeat forwarding intact. Supply the analyst login for the SIEM search page.'
+- module: 5
+  setup: 'Revert the range to its baseline. Save the captured authorization-code flow file on web01 where the Student''s account can read it. Confirm siem01 reaches web01 over SSH and that the capture shows a complete code exchange with response type, scope, redirect and state.'
+- module: 6
+  setup: 'Revert the range to its baseline. Confirm the three sign-in paths work: the siem01 analyst prompt with the assigned analyst account, the ws01 domain prompt and the web01 SSH prompt from siem01. The lab needs the prompts to show exactly what each asks for; no scenario required.'
+common_faults:
+- module: 1
+  fault: The Student reads a matching digest as proof the file is genuine, not just unchanged.
+  remedy: 'Return to the module 1 topic on origin: ask who computed the digest and where it was published from, then have the Student restate what the check proves in one sentence.'
+- module: 1
+  fault: The Student records only one algorithm's digest or skips the character count.
+  remedy: Have the Student re-run the digest commands and paste both values with their lengths into the notes before moving to the comparison step.
+- module: 2
+  fault: The Student calls the salt a secret, or expects it to be hidden like a key.
+  remedy: 'Point at the stored entry: the salt is stored alongside the digest by design. Ask what property actually defends the scheme (slow hashing plus per-account salts), not secrecy of the salt.'
+- module: 2
+  fault: The Student reads the shadow entry structure but never compares the two accounts.
+  remedy: Have the Student record the file consulted and both entries' identifiers, salts and digests side by side, then answer the yes-or-no comparison before judging the scheme.
+- module: 3
+  fault: The Student conflates the ticket-granting ticket with the service ticket, or records one ticket as both.
+  remedy: Ask for each ticket's service principal name from the klist output; the TGT names the domain controller's ticket service, the service ticket names fs01. Two tickets, two targets.
+- module: 3
+  fault: The Student skips the post-purge share connection and so never observes the password-free reconnection.
+  remedy: 'Make the purge-and-reconnect step explicit: purge tickets, list to confirm the cache is empty, connect to fs01 again and record that no password was requested.'
+- module: 4
+  fault: The Student searches sign-in events by account name only and reports every event as NTLM.
+  remedy: Show the authentication package filter first; have the Student re-run the search with that field named in the query and recount.
+- module: 4
+  fault: The Student marks every residual NTLM use as an attack indicator.
+  remedy: Return to the module 4 topic on where NTLM survives; ask which hosts sent the events and whether each host has a named legacy dependency before ranking.
+- module: 5
+  fault: The Student lists the captured requests out of order, or reads the code exchange as happening in the browser.
+  remedy: Have the Student number the requests by timestamp first, then mark each front channel or back channel; the token step must land after the code exchange, away from the browser.
+- module: 5
+  fault: The Student records the scope and state values loosely instead of exactly.
+  remedy: Ask for the four authorization-request parameters verbatim from the capture; exact values matter because the state check is what ties the response to the request.
+- module: 6
+  fault: The Student counts prompts instead of factor categories, so the domain sign-in reads as multi-factor by default.
+  remedy: Drill 'categories, not steps' on the three recorded prompts before the marking step; a password alone is one category however it is asked for.
+- module: 6
+  fault: The proposed authenticator is described as phishing-resistant with no reason tied to relay.
+  remedy: 'Require one sentence naming what the authenticator refuses: a passkey signs the real site''s identity, so a fake site cannot complete the ceremony. Push the Student past ''it is newer''.'

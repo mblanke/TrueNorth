@@ -56,6 +56,11 @@ back. A course drafted before this guide existed is re-done against it.
    - `hosts` are node `id`s from that template's `nodes:` list. **Use only hosts that
      exist.** Do not invent a host, and do not name one in `action` text that the template
      lacks. The checker reads every word shaped like a host name (`dc01`, `ws-01`).
+   - **Name every host a step lists, in that step's `action`** (or in an earlier step of
+     the same module that lists it). "Open the SIEM" does not count; "open the SIEM
+     (siem01)" does. A host that the step does not use does not belong in its `hosts`
+     list. Name each host by its id at least once per module, in the first step that lists
+     it. The checker (and ARC2 QA's `lab.host_used`) fails a step otherwise.
    - A scenario is optional. If you give one, its `scenario.yaml` `range_template` must be
      the same template.
    - Write 3 to 8 concrete, ordered steps per module that a Student can follow on that
@@ -98,6 +103,25 @@ back. A course drafted before this guide existed is re-done against it.
 10. **Words:** say "Student" for a person taking a course. Never "Member" or "Learner".
     No framework codes (NICE, DCWF, CSF sub-categories) in module text, and no offensive
     payloads or tradecraft: describe what an analyst detects and decides.
+
+## Lessons from earlier batches (check these before you report)
+
+- **Quiz keys must be true, not just consistent.** A question can pass every check and still
+  have a wrong or ambiguous key (for example, calling SIGKILL "the one signal" a process
+  cannot catch when SIGSTOP is also uncatchable). Re-derive each keyed answer from the
+  module text and check that no distractor is also correct.
+- **Upskilling courses (C500 and up, files `up-*.yaml`)** carry no `qsp_code` and no
+  catalogue row. Their notes say "Unpublished pending Standards review." and do not need
+  the "proposed / not standards-validated" wording.
+- **Keep every module-level `po:` block** (`po: {qsp_code, po_code}`) from the course you are
+  re-doing. The programme tests count which module delivers each objective; the C208 re-do
+  dropped `PO_004`'s binding and `test_developmental_path_binding` failed. Compare the
+  `po:` blocks of the base file with your result before you report.
+- **"Reviewed" is not "technically proven".** Do not describe a lab as proven; no lab has
+  run on a real range yet. Keep `readiness: draft`.
+- A lab step may only rely on what the range template already has. If a step needs a
+  spare disk, a planted process or a new account that the template does not provide, say
+  so in your report as a range-support request instead of writing the step as if it works.
 
 ## Done means the checker passes
 

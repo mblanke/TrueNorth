@@ -1,0 +1,576 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C532
+title: Live Triage & Containment Lab
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C531
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Incident Responder (PR-CIR-001)'
+  - 'NIST CSF 2.0: RS.MA, RS.MI, DE.AE'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Scoping the Intrusion
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Define the blast radius of an intrusion by listing every affected host, account and network path on the range
+  - Classify each indicator found during triage as confirmed, suspected or unrelated and record the evidence for the call
+  - Write a scope statement that names the affected systems, the time window and the confidence level
+  topics:
+  - 'Scoping questions: what is affected, since when, and with what confidence.'
+  - Indicators of compromise, indicators of attack and unrelated noise during triage.
+  - 'Scoping sources: endpoint alerts, network telemetry, identity events and user reports.'
+  - 'The scope statement: systems in and out, the time window, the confidence level.'
+  - Widening scope as new indicators arrive during the first hours.
+  lab: >-
+    Lab: Scope the seeded intrusion on the small-enterprise range by walking its alert feed and logs,
+    listing every host, account and network path that appears, and classifying each indicator.
+    Evidence: the list of affected hosts, accounts and paths; each indicator marked confirmed, suspected
+    or unrelated with its supporting observation; a scope statement naming systems, time window and
+    confidence. Pass: the statement names every host with an indicator and no host without one; every
+    indicator carries a classification with one supporting observation; the confidence level matches the
+    evidence recorded.
+  lab_range:
+    template: small-enterprise
+    scenario: ransomware-lite
+    steps:
+    - hosts: [jump-box]
+      action: Log in to jump-box over SSH as the assigned analyst account, open the exercise alert feed and
+        write the start time in the lab notes.
+    - hosts: [jump-box, ws-02]
+      action: Read the alerts for ws-02 and record each one with its timestamp, the account named and what
+        the alert says happened.
+    - hosts: [jump-box, fw-01]
+      action: On fw-01, list the traffic the firewall logged toward the server network during the alert
+        window and record the destinations that repeat.
+    - hosts: [jump-box, dc-01]
+      action: Check the domain controller dc-01 for sign-ins by the accounts named in the alerts and record
+        every successful sign-in with its source host.
+    - hosts: [jump-box]
+      action: Mark each indicator confirmed, suspected or unrelated, and note the single observation that
+        supports each marking.
+    - hosts: [jump-box]
+      action: 'Write the scope statement: affected hosts and accounts, the time window the alerts cover, and
+        a confidence level with its reason.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: An intrusion is confirmed on one workstation and the same phishing message reached two others
+        that show no alerts. What must the scoping step produce first?
+      options:
+      - A) A complete inventory of every server in the organisation
+      - B) A scope statement naming affected and unconfirmed hosts
+      - C) Isolation of every host that received the message
+      - D) A reimage of the confirmed workstation
+      answer: B
+    - question: During triage a dashboard flags traffic from a workstation to a vendor destination, but the
+        destination is on last month's approved list. How is this indicator classified?
+      options:
+      - A) Confirmed, because an automated monitoring tool raised it during triage
+      - B) Unrelated, because no corresponding alert fired on the workstation itself
+      - C) Suspected, because the destination is known but the traffic is not
+      - D) Malicious, because traffic to vendor destinations is never legitimate
+      answer: C
+    - question: A responder must decide whether an account seen in suspicious sign-ins is in scope. Which
+        source gives the strongest direct evidence for the decision?
+      options:
+      - A) The domain controller's own sign-in log for that account
+      - B) A teammate's memory of the account owner's schedule
+      - C) The average sign-in count for accounts that month
+      - D) The antivirus console summary for the whole estate
+      answer: A
+    - question: Halfway through scoping, a new host starts beaconing to the same destination. What does the
+        responder do with the scope statement?
+      options:
+      - A) Leave the statement unchanged, because the first scoping decision stands
+      - B) Delete it and restart the triage from nothing
+      - C) Mark the whole network compromised without further checks
+      - D) Revise it to name the new host and adjust confidence
+      answer: D
+    - question: Two alerts bracket a suspicious sign-in at 02:10 and a matching destination contact at 02:40.
+        What time window does the scope statement record?
+      options:
+      - A) Only the minute of the first alert
+      - B) From the earliest indicator to the last observed activity
+      - C) A fixed twenty-four hour window around the alerts
+      - D) Whatever window the responder estimates feels safe
+      answer: B
+- ordinal: 2
+  title: Building the Triage Timeline
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Build a first timeline of adversary activity from alert, network and host observations gathered during triage
+  - Order evidence by volatility so memory and live network state are captured before hosts are powered off
+  - Rate each timeline entry as direct, corroborated or single-source and state what would raise its confidence
+  topics:
+  - Timeline construction from timestamps across different log sources.
+  - 'Evidence volatility: memory, live network state, disk and backups.'
+  - Preserving evidence before containment changes the state of a host.
+  - 'Confidence ratings: direct, corroborated and single-source entries.'
+  - Gaps in a timeline and what they mean for scoping.
+  lab: >-
+    Lab: On the small-enterprise range, build the first timeline of the seeded intrusion from the
+    exercise alert feed, the firewall log and the endpoint alerts, then rate every entry's confidence
+    before anyone touches the hosts.
+    Evidence: a timestamped timeline of adversary activity; the source of each entry; a volatility-ordered
+    collection list; a confidence rating for every entry. Pass: entries sit in time order across sources;
+    the collection list captures memory and live network state first; every entry carries a rating and the
+    missing record that would raise it.
+  lab_range:
+    template: small-enterprise
+    scenario: ransomware-lite
+    steps:
+    - hosts: [jump-box]
+      action: Log in to jump-box and open the exercise alert feed, the firewall log and the endpoint alerts
+        side by side.
+    - hosts: [jump-box]
+      action: Copy every timestamped event into the notes in time order, and record which source each event
+        came from.
+    - hosts: [jump-box, ws-02]
+      action: List what evidence ws-02 still holds in memory and live state, and write what a reboot would
+        destroy.
+    - hosts: [jump-box, ws-02, fw-01]
+      action: Order the collection list by volatility, putting memory and live network state from ws-02 and
+        fw-01 ahead of disk.
+    - hosts: [jump-box]
+      action: Mark each timeline entry direct, corroborated or single-source, and note what missing record
+        would raise its confidence.
+    - hosts: [jump-box]
+      action: Point at the largest gap in the timeline and write one sentence on what the gap means for
+        scoping.
+  refs:
+  - nist-sp-800-86
+  - nist-sp-800-92
+  - mitre-attack
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: The mail log records a message at 00:05 in one time zone and the endpoint alert shows 23:05
+        in another. What does the responder do first when building the timeline?
+      options:
+      - A) Drop the earlier event as unreliable
+      - B) Average the two timestamps together
+      - C) Normalise every timestamp to one time zone before ordering events
+      - D) Keep both times and order events by source
+      answer: C
+    - question: A workstation is compromised and still running. Which artefact is collected first, and why?
+      options:
+      - A) Memory, because it holds the running state that a reboot destroys
+      - B) The disk image, because it is the largest source
+      - C) Backup tapes, because they are the easiest to fetch
+      - D) The paper incident log, because it is authoritative
+      answer: A
+    - question: The team wants to unplug the compromised host immediately, but collection has not started.
+        What argument does the responder make?
+      options:
+      - A) Unplug it, because speed always beats evidence
+      - B) Reimage it first so the adversary cannot return
+      - C) Wait overnight for a forensic vendor to arrive
+      - D) Collect the volatile evidence first, then change the host's state
+      answer: D
+    - question: A timeline entry rests on one endpoint alert with no other record. How is the entry rated?
+      options:
+      - A) Direct, because the endpoint sensor observed the event itself
+      - B) Single-source, until another record corroborates it
+      - C) Corroborated, because the alert tool is trusted
+      - D) Discarded, because one source is never enough
+      answer: B
+    - question: The timeline shows forty quiet minutes between the phish and the first execution. What does
+        the responder record about the gap?
+      options:
+      - A) Nothing at all, because quiet periods are not evidence
+      - B) An assumption that the adversary was idle
+      - C) A mark that the timeline is finished
+      - D) A note that sources for that period are missing
+      answer: D
+- ordinal: 3
+  title: Isolation vs Blockade Decisions
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Compare host isolation and network blockade against scoping criteria such as compromise certainty, evidence loss and business impact
+  - Choose the containment action for a compromised workstation whose role in the intrusion is not fully scoped
+  - Justify a containment decision in writing with its expected disruption, residual risk and escalation trigger
+  topics:
+  - 'Host isolation: cutting one host from the network while it stays running.'
+  - 'Network blockade: rules at the firewall that stop a command channel reaching every host.'
+  - 'Decision criteria: compromise certainty, evidence loss, business impact and adversary awareness.'
+  - Partial containment and the residual risk it leaves behind.
+  - 'The written decision: disruption, residual risk and the trigger to escalate.'
+  lab: >-
+    Lab: On the small-enterprise range, decide containment for the compromised workstation in the running
+    exercise by weighing isolation
+    against blockade at the firewall, then record the decision and its justification. Evidence: the
+    criteria scored for each option; the chosen action; a written justification with disruption, residual
+    risk and escalation trigger. Pass: both options are scored against the same criteria; the justification
+    names what the choice disrupts and what risk remains; the escalation trigger is a stated condition, not
+    a feeling.
+  lab_range:
+    template: small-enterprise
+    scenario: ransomware-lite
+    steps:
+    - hosts: [jump-box]
+      action: Log in to jump-box, open the exercise notes and re-read the scope statement from the first lab.
+    - hosts: [jump-box, ws-02]
+      action: Score host isolation for ws-02 against compromise certainty, evidence loss and business impact,
+        and write the scores down.
+    - hosts: [jump-box, fw-01]
+      action: Score a blockade on fw-01 that cuts the command channel for every host, using the same three
+        criteria.
+    - hosts: [jump-box]
+      action: Choose one action for this intrusion and write the disruption it causes and the risk it leaves
+        behind.
+    - hosts: [jump-box]
+      action: Write the condition that would trigger escalation from the chosen action to the stronger one.
+    - hosts: [jump-box]
+      action: Re-read the justification and strike every claim the recorded evidence does not support.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-83r1
+  - nist-sp-800-94
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A responder cuts one compromised workstation off the network while leaving it powered on and
+        collecting. What is this containment action called?
+      options:
+      - A) Host isolation
+      - B) Network blockade
+      - C) Eradication
+      - D) Business continuity
+      answer: A
+    - question: Every workstation in one network phones the same command channel. Which action touches all of
+        them at once?
+      options:
+      - A) Reimage every workstation in turn
+      - B) Isolate each workstation one by one
+      - C) A firewall rule that blocks the channel for the whole network
+      - D) A new password for every account on the domain
+      answer: C
+    - question: Isolation would destroy the only copy of memory evidence on a host, but the host keeps
+        beaconing. Which criterion is in tension?
+      options:
+      - A) Business impact, because the host serves customers
+      - B) Evidence loss, because the memory holds live artefacts
+      - C) Adversary awareness, because the beacon is loud
+      - D) Scoping speed, because the alert is old
+      answer: B
+    - question: A workstation shows one weak indicator and its role is not scoped yet. Which containment
+        action fits best?
+      options:
+      - A) Isolate the host and keep collecting from it
+      - B) Reimage the host before anything is captured
+      - C) Blockade the whole network for a weak indicator
+      - D) Leave the host alone until certainty arrives
+      answer: A
+    - question: A written containment decision must let a successor judge it later. Which sentence belongs in
+        that record?
+      options:
+      - A) We did what felt right under pressure
+      - B) The situation was handled without any disruption
+      - C) Everyone agreed the choice was the safest
+      - D) We blocked the channel, accepting two lost services and one residual risk
+      answer: D
+- ordinal: 4
+  title: Live Response Toolkits
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Collect volatile evidence from a running Windows host with a live response toolkit before any state changes
+  - Interpret process, network and autorun listings from a live collection to judge whether a host is compromised
+  - Record every artefact with a hash and a collection time so another responder can trust the set
+  topics:
+  - 'The volatility order: memory first, then live network state, then disk.'
+  - 'Live response artefacts: process lists, network tables, scheduled tasks and autoruns.'
+  - Reading process and network listings for signs of a compromised host.
+  - Hashing and recording artefacts so a collection is repeatable and reviewable.
+  - 'The limits of live response: what a running system cannot reveal.'
+  lab: >-
+    Lab: On the small-enterprise range, run a live response collection on the compromised workstation in
+    the running exercise, read the
+    listings and record each artefact so the set survives review. Evidence: the ordered collection steps;
+    the process and network listings as observed; one artefact table with names, hashes and collection
+    times; a judgement whether the host is compromised. Pass: memory comes before disk in the recorded
+    order; the table names every artefact with its hash; the judgement cites a specific listing line, not a
+    hunch.
+  lab_range:
+    template: small-enterprise
+    scenario: ransomware-lite
+    steps:
+    - hosts: [jump-box, ws-02]
+      action: Log in to jump-box and reach ws-02 with the live response toolkit the instructor prepared.
+    - hosts: [ws-02]
+      action: Capture the memory of ws-02 first, and record the capture tool, its start time and the output
+        path.
+    - hosts: [ws-02]
+      action: Record the live network table and the running process list from ws-02, in that order, before
+        anything touches the disk.
+    - hosts: [ws-02]
+      action: Read both listings and note every process with an unusual parent, an odd network connection or
+        a name that mimics a system binary.
+    - hosts: [ws-02]
+      action: Hash each artefact as it lands and write its hash and collection time beside its name.
+    - hosts: [jump-box]
+      action: Judge whether ws-02 is compromised, citing the exact listing line that supports the judgement,
+        or the absence of one.
+  refs:
+  - nist-sp-800-86
+  - volatility3
+  - sigma
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A responder opens a live collection on a running host. Which sequence follows the volatility
+        order?
+      options:
+      - A) Disk, then memory, then network state
+      - B) Network state, then disk, then memory
+      - C) Disk, then network state, then memory
+      - D) Memory, then network state, then disk
+      answer: D
+    - question: Which live response artefact shows which programs started automatically when the host booted
+        or the user logged in?
+      options:
+      - A) The routing table
+      - B) The autorun listing
+      - C) The memory histogram
+      - D) The disk hash list
+      answer: B
+    - question: A process on a compromised host runs from a user's temporary folder and mimics a system name.
+        Which listing line exposes it?
+      options:
+      - A) The memory histogram for the process
+      - B) The disk free-space figure
+      - C) The process list entry showing its path and parent
+      - D) The domain registration record
+      answer: C
+    - question: Why does a responder hash each artefact as it is collected during live response?
+      options:
+      - A) So another responder can verify the set has not changed
+      - B) So the artefact compresses faster during transfer
+      - C) So the antivirus tool recognises the file later
+      - D) So the collection finishes inside the response window
+      answer: A
+    - question: The memory capture fails, but the disk is intact. What does the responder record about the
+        collection?
+      options:
+      - A) That the host was never compromised
+      - B) That live response cannot be trusted at all
+      - C) That the memory artefact is missing and every later conclusion notes the gap
+      - D) That the disk capture makes memory unnecessary
+      answer: C
+- ordinal: 5
+  title: Containment Trade-off Drills
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Execute a containment plan on the range by isolating the compromised workstation and cutting its command channel at the firewall
+  - Measure the cost of each containment action by recording lost services, broken authentication and blocked business traffic
+  - Revise a containment plan when new hosts appear, widening from one host to a network blockade with justification
+  topics:
+  - Running a containment plan step by step while the intrusion is live.
+  - 'Costs of containment: lost services, broken authentication, blocked business traffic.'
+  - 'Trade-off drills: isolation and blockade compared for the same intrusion.'
+  - Widening scope mid-incident when new hosts or accounts appear.
+  - Telling service owners what containment will break before it does.
+  lab: >-
+    Lab: On the small-enterprise range, execute the containment decision from the earlier lab on the
+    running exercise, isolate the
+    compromised workstation, cut its command channel at the firewall and record what breaks. Evidence: the
+    isolation steps as performed; the firewall rule as written; a cost record of lost services and blocked
+    traffic; a revised plan if scope widened during the drill. Pass: the workstation is cut from the network
+    while it stays running; the rule blocks the channel without touching unrelated traffic; every break is
+    recorded with the service that owned it.
+  lab_range:
+    template: small-enterprise
+    scenario: ransomware-lite
+    steps:
+    - hosts: [jump-box, ws-02]
+      action: Log in to jump-box, re-read the containment decision from the earlier lab and open a session
+        to ws-02.
+    - hosts: [ws-02]
+      action: Isolate ws-02 by revoking its network access while it stays powered on, and write the exact
+        time of the revocation.
+    - hosts: [fw-01]
+      action: On fw-01, write the rule that blocks the command channel for every host and record the rule
+        verbatim.
+    - hosts: [jump-box]
+      action: 'Record what the isolation and the rule broke: which services stopped, which sign-ins failed and
+        which business traffic was blocked.'
+    - hosts: [jump-box]
+      action: Re-run the alert feed and check whether any new host appears in scope while containment is in
+        force.
+    - hosts: [jump-box]
+      action: Revise the plan if scope widened, and write the justification for the change next to the
+        recorded costs.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-83r1
+  - nist-sp-800-94
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: The containment plan says to isolate the compromised workstation. Which sequence performs the
+        isolation?
+      options:
+      - A) Reimage the workstation and restore from backup
+      - B) Revoke its network access while it stays powered on
+      - C) Delete its accounts from the domain
+      - D) Power it off and bag the disk
+      answer: B
+    - question: After the firewall rule lands, the finance team loses an approved payment channel and files a
+        complaint. Where is this recorded?
+      options:
+      - A) In the quarantine folder of the mail gateway
+      - B) Nowhere, because business complaints are not technical events
+      - C) In the adversary's timeline as a new indicator
+      - D) In the cost record, as a lost service with its owner
+      answer: D
+    - question: The same intrusion can be met by isolating one host or by blockading the channel for the
+        network. What does the drill compare?
+      options:
+      - A) Disruption caused and residual risk left by each option
+      - B) Which option the responder personally prefers under pressure
+      - C) Which option the alerting tool recommends
+      - D) How fast each option can be typed
+      answer: A
+    - question: During the drill a second workstation starts beaconing to the same channel. What does the
+        responder do to the containment plan?
+      options:
+      - A) Ignore the second host until the first is clean
+      - B) Shut the whole network down for the night
+      - C) Widen the plan and write why the wider action is justified
+      - D) Reimage both hosts before recording anything
+      answer: C
+    - question: The payroll service runs on a host the plan will isolate. When do the responders tell the
+        service owner?
+      options:
+      - A) After the isolation, once the tickets arrive
+      - B) Before the action, so the impact is known and agreed
+      - C) Never, because service owners need no notice
+      - D) Only if the payroll run actually fails
+      answer: B
+- ordinal: 6
+  title: Verifying and Handing Off Containment
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Verify that containment held by re-checking logs and live state for renewed beaconing or unauthorised access
+  - Document containment decisions, timestamps and evidence locations in an incident record a successor can follow
+  - Hand off a contained incident to eradication and recovery with open risks and next actions stated
+  topics:
+  - 'Verification checks: renewed beaconing, unexpected sign-ins and channels left open.'
+  - 'The incident record: decisions, timestamps, evidence locations and named owners.'
+  - 'Handoff to eradication and recovery: what the next team needs.'
+  - Open risks after containment and how each one is tracked.
+  - Capturing lessons while the incident is still fresh.
+  lab: >-
+    Lab: On the small-enterprise range, verify that the containment from the drill held, complete the
+    incident record and hand the
+    exercise off to eradication and recovery. Evidence: the verification checks and their results; the
+    completed incident record with decisions, timestamps and evidence locations; a handoff note naming open
+    risks and next actions. Pass: the checks cover beaconing, sign-ins and open channels; every record entry
+    carries a time and a source; the handoff names an owner for each open risk.
+  lab_range:
+    template: small-enterprise
+    scenario: ransomware-lite
+    steps:
+    - hosts: [jump-box]
+      action: Log in to jump-box, open the exercise notes and list the containment actions taken in the
+        earlier labs.
+    - hosts: [jump-box, fw-01]
+      action: Re-read the firewall log on fw-01 for attempts to reach the blocked channel and record every
+        attempt with its time.
+    - hosts: [jump-box, ws-02]
+      action: Check ws-02 for renewed network activity and unexpected sign-ins since the isolation, and
+        record every finding.
+    - hosts: [jump-box]
+      action: 'Complete the incident record: each decision, its timestamp, the evidence location and the
+        responder who owns it.'
+    - hosts: [jump-box]
+      action: 'Write the handoff note: the scope, the open risks and the next action for eradication and
+        recovery, each with an owner.'
+    - hosts: [jump-box]
+      action: 'Judge whether containment held: cite the verification results that support the verdict and
+        name any risk that stays open.'
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-92
+  - sigma
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: Containment cut the command channel two hours ago. Which observation would show that it did
+        not hold?
+      options:
+      - A) A drop in the firewall's blocked-rule counters
+      - B) A quiet evening on the isolated workstation
+      - C) A new attempt to reach the blocked channel that succeeded
+      - D) A completed incident record in the ticket
+      answer: C
+    - question: Which verification check best confirms that no unauthorised sign-in returned to the contained
+        host?
+      options:
+      - A) Comparing the host's sign-in log against the known baseline
+      - B) Reading the responder's own summary out loud
+      - C) Waiting a week to see whether anything happens
+      - D) Counting the tickets closed since the isolation
+      answer: A
+    - question: A successor opens the incident record after the shift ends. Which entry lets them act without
+        guessing?
+      options:
+      - A) The responder's opinion of the adversary
+      - B) A note that things were mostly fine
+      - C) The team's group chat, quoted at length
+      - D) Each decision with its timestamp and evidence location
+      answer: D
+    - question: The handoff to eradication and recovery must let the next team start immediately. What does
+        the note carry?
+      options:
+      - A) A full replay of every alert raised during the first hour
+      - B) The open risks, each with an owner and a next action
+      - C) An apology for the disruption caused
+      - D) A copy of the firewall configuration alone
+      answer: B
+    - question: Containment held, but the phished mailbox still holds a stolen credential. How is this
+        handled at handoff?
+      options:
+      - A) As an open risk with an owner and a next action
+      - B) As a lesson learned for the report written next quarter
+      - C) As a reason to reverse the containment entirely
+      - D) As the responder's private note for the next shift
+      answer: A

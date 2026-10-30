@@ -39,6 +39,12 @@ def _all_docs():
     return [(f.name, yaml.safe_load(f.read_text(encoding="utf-8"))) for f in COURSE_FILES]
 
 
+def _is_upskilling(doc):
+    """C500-C599: the self-paced upskilling catalogue, outside the DP1/DP2 programme."""
+    digits = "".join(ch for ch in str(doc["course_code"]) if ch.isdigit())
+    return 500 <= int(digits) < 600 and not str(doc["course_code"]).upper().startswith("RMC")
+
+
 def _library():
     return yaml.safe_load(REFERENCES.read_text(encoding="utf-8"))["references"]
 
@@ -74,12 +80,16 @@ def test_every_course_file_declares_a_qualification():
     """Courses deliver toward a qualification; the mapping is proposed, not validated."""
     valid = {"ALJQ", "TEMP67", "TEMP64", "ALRA"}
     for name, doc in _all_docs():
-        assert doc["qsp_code"] in valid, f"{name} has an unrecognised qsp_code"
+        if _is_upskilling(doc) and doc.get("qsp_code") is None:
+            continue  # qsp_code is optional for upskilling courses; a given one must still be valid
+        assert doc.get("qsp_code") in valid, f"{name} has an unrecognised qsp_code"
 
 
 def test_every_course_file_records_the_mapping_as_proposed():
     """The mapping must never read as Standards-validated."""
     for name, doc in _all_docs():
+        if _is_upskilling(doc):
+            continue  # no qualification mapping to propose; they say "Unpublished pending Standards review"
         notes = " ".join(doc["source"]["notes"]).lower()
         assert "proposed" in notes, f"{name} does not record the mapping as proposed"
         assert "not standards-validated" in notes, name
@@ -150,7 +160,7 @@ def test_every_catalogue_course_has_content():
 
     with open(CATALOGUE, newline="", encoding="utf-8") as f:
         catalogue = {r["course_code"] for r in csv.DictReader(f)}
-    authored = {doc["course_code"] for _, doc in _all_docs()}
+    authored = {doc["course_code"] for _, doc in _all_docs() if not _is_upskilling(doc)}
     assert catalogue == authored, f"catalogue/content mismatch: {catalogue ^ authored}"
 
 

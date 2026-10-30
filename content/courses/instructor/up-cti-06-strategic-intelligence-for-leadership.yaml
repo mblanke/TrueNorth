@@ -1,0 +1,169 @@
+course_code: C560
+audience: staff_only
+overview: 'Strategic Intelligence for Leadership is an advanced course of six 60-minute modules (360
+  minutes, 6 hours) for analysts moving toward intelligence leadership. Each module teaches three
+  objectives through a lab on the small-enterprise range and ends with a five-item quiz passed at 70
+  percent. The through-line is turning incident history and landscape trends into strategic outlooks,
+  board-level intelligence requirements and decision-support products that trace to decisions. Say
+  Student throughout and keep every task defensive and observable.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (objectives and topics), 35 range lab (5 recorded steps), 10 quiz and debrief'
+- module: 2
+  minutes: 60
+  plan: '15 teach (objectives and topics), 35 range lab (5 recorded steps), 10 quiz and debrief'
+- module: 3
+  minutes: 60
+  plan: '15 teach (objectives and topics), 35 range lab (5 recorded steps), 10 quiz and debrief'
+- module: 4
+  minutes: 60
+  plan: '15 teach (objectives and topics), 35 range lab (5 recorded steps), 10 quiz and debrief'
+- module: 5
+  minutes: 60
+  plan: '15 teach (objectives and topics), 35 range lab (5 recorded steps), 10 quiz and debrief'
+- module: 6
+  minutes: 60
+  plan: '15 teach (objectives and topics), 35 range lab (5 recorded steps), 10 quiz and debrief'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: a year-ahead judgement about risk direction is a strategic outlook; A and C stay at
+    the tactical incident level and D is a collection task, not a product. Q2 C: an unproven
+    future-facing claim is estimative and carries its confidence level; A and B claim certainty no
+    analysis holds and D drops the qualification entirely. Q3 A: month-end recurrence across three
+    departments is a pattern that can bear on an outlook; B closes a case the pattern keeps open,
+    C stays at one mailbox and D collects on a person rather than judging the pattern. Q4 D: the
+    cycle restarts at direction, turning the unanswered questions into new collection; A publishes
+    known gaps, B defers the decision and C rewrites the outlook without new evidence. Q5 B: a
+    caveat states the limits of the judgement, so dropping it overstates what is known; A treats
+    caveats as concealment, C confuses the caveat with the confidence level and D makes brevity a
+    value in itself.'
+- module: 2
+  notes: 'Q1 C: the growth claim has no figures behind it, so what is missing is supporting
+    evidence; A and B name audience and format features that do not fix an unsupported claim and D
+    changes the schedule, not the support. Q2 A: design partner targeting bears directly on leaks of
+    build recipes, while B, C and D are real trends in unrelated sectors that fail the relevance
+    test. Q3 D: it carries one trend, one confidence level and one caveat, the house form; A and B
+    state conclusions or hedges without the form and C asserts two directions at once with neither
+    qualified. Q4 B: hourly operational depth and cadence answer an operations team, not a board; A
+    asks for still more depth, C reverses the need and D treats reading volume as the problem. Q5 C:
+    the two incident reports show targeting of the sector but say nothing about campaign scale, so
+    the line stands only in part; A and B let a citation or source count prove more than it does and
+    D dismisses footnotes altogether.'
+- module: 3
+  notes: 'Q1 D: a board-level requirement exists to serve a decision leadership must take, and
+    tracking all tooling worldwide serves none; A mistakes breadth for value, while B and C argue
+    deadline and scope without addressing the missing decision. Q2 B: a quarterly exposure trend is
+    board-level while daily alert volumes are operational reporting; A and C blur the levels and D
+    swaps the two audiences entirely. Q3 A: two readers recording different answers shows the
+    wording is not testable; B blames tooling, C blames the readers and D blames timeliness, none of
+    which the scenario shows. Q4 C: failed login spikes against the access point directly indicate
+    probing; A and D record governance and catering facts and B measures satisfaction, none
+    answering the requirement. Q5 A: naming the reporting that answers the requirement, and when it
+    arrives, ties the evidence to the decision meeting; B and C change breadth without timing and D
+    moves the meeting instead of the reporting.'
+- module: 4
+  notes: 'Q1 B: a decision needs options and a recommendation; the timeline alone is a status
+    report, which is what A lengthens, C deepens and D re-authors. Q2 D: prices without implications
+    leave leaders unable to choose, which is the gap; A and C are administrative details and B adds
+    an option without explaining the two it has. Q3 C: accepted residual harm defines the risk
+    appetite, so the option is rated against it; A refuses harm the leaders already accept, B
+    reduces the rating to price and D conceals the harm the rating must surface. Q4 A: asking what
+    would make the recommendation wrong in a year is a pre-mortem; B audits accounts, C rehearses a
+    technical reversal and D reviews cost, none of them the pre-mortem. Q5 D: equal cost and risk
+    leave ease of reversal as the deciding rating; A, B and C pick labels, features and brand, none
+    of which the scenario varies.'
+- module: 5
+  notes: 'Q1 A: a periodic account review on the domain controller answers the requirement
+    directly; B, C and D are external sources that cannot count local accounts. Q2 C: keystroke
+    collection far exceeds what one narrow requirement justifies, which is the proportionality
+    principle; A argues maintenance effort, while B and D name traceability and dissemination, which
+    the scenario does not strain. Q3 B: a source that costs two analyst-days a week fails unless the
+    collection is sustainable at that effort; A, C and D judge fashion, imitation and price rather
+    than effort. Q4 D: the decision retires the requirement and feeds back into direction,
+    restarting the cycle; A keeps collecting for no requirement, B discards the learning silently
+    and C escalates outside the function. Q5 C: the requirement stays unanswered and the gap is
+    named, so leadership knows what intelligence cannot provide; A hides the gap, B collects without
+    authority and D reshapes the requirement to fit an available source.'
+- module: 6
+  notes: 'Q1 D: one pack lets the board read the parts as a single product pointed at its
+    decisions; A defends the message split, while B and C treat style and count as the problem. Q2 A:
+    tracing the vendor line to its requirement and decision answers why it is in the pack; B
+    lengthens future products, C deletes the line and D adds a signature, none of which answers the
+    why. Q3 B: a cadence and a named owner per product are the quality checks that stop missed
+    deadlines; A adds detail, C drops review and D adds products to a function already missing
+    dates. Q4 C: a sourcing and confidence review catches a line stated as fact without confidence
+    or caveat; A and B check surface form and D changes length, none testing the claims. Q5 A: a
+    recommendation that names no requirement cannot be traced to a decision the board took, so the
+    pack loses its spine; B blames readability, while C and D invent weight and delay the scenario
+    does not support.'
+lab_setup:
+- module: 1
+  setup: Revert the small-enterprise range to its baseline before class. Confirm from jump-box over
+    SSH that dc-01 and fw-01 respond, and record the expected administrative account count on dc-01
+    and the fw-01 rule set so lab evidence can be compared against them.
+- module: 2
+  setup: Revert the range to its baseline. Confirm the dc-01 host inventory and the fw-01 egress
+    rules show their baseline values, and have the three class trends ready for the relevance
+    exercise.
+- module: 3
+  setup: Revert the range to its baseline. Confirm the services on dc-01 and the fw-01
+    user-to-server rules show their baseline values, so the service-loss analysis rests on known
+    facts.
+- module: 4
+  setup: Revert the range to its baseline. Confirm from ws-01 that one connection to dc-01 on an
+    allowed port succeeds and one on a port outside the user-to-server rule list is blocked by the
+    default deny.
+- module: 5
+  setup: Revert the range to its baseline. Either leave the range unchanged from module three or
+    make one planned change, such as an extra account or a test rule, and note which, so the result
+    of the re-check is known in advance.
+- module: 6
+  setup: Revert the range to its baseline. Confirm the dc-01 account count and fw-01 rules match
+    the values recorded in the earlier modules, and check the lab notes from modules one to four are
+    available to Students.
+common_faults:
+- module: 1
+  fault: Students classify every range fact as strategic because the course is strategic.
+  remedy: Have them ask what decision each fact would change; facts that change no near-term decision
+    are tactical or operational context.
+- module: 1
+  fault: Outlook statements arrive as certain predictions.
+  remedy: Require a confidence level and one caveat per outlook line and read one aloud without them
+    to show the difference.
+- module: 2
+  fault: Briefing lines assert a trend the recorded range facts do not support.
+  remedy: Have each Student mark every claim in their own line as shown or claimed against the lab
+    evidence.
+- module: 2
+  fault: Relevance judgements follow interest rather than decision impact.
+  remedy: Ask which decision the trend would change for this range; if none, it is out.
+- module: 3
+  fault: Requirements are written as topics to watch rather than testable questions.
+  remedy: Test each requirement by asking what evidence would answer it and when; if no answer
+    exists, rewrite it.
+- module: 3
+  fault: Board-level requirements and operational reporting needs are merged into one list.
+  remedy: Sort the list into two columns by audience and decision horizon before review.
+- module: 4
+  fault: Memos present one option with reasons to approve it.
+  remedy: Require two genuine options with a disadvantage each before any recommendation is written.
+- module: 4
+  fault: Ratings stop at cost.
+  remedy: Add risk appetite and ease of reversal as explicit rating rows and score both options on
+    all three.
+- module: 5
+  fault: Every requirement is mapped to the same source.
+  remedy: Ask what each source cannot answer; force a distinct mapping or an explicit gap for each
+    requirement.
+- module: 5
+  fault: Feedback is skipped once the decision is taken.
+  remedy: Close each lab by rewriting one requirement in light of the decision, however small the
+    change.
+- module: 6
+  fault: The pack is assembled as four separate documents in one folder.
+  remedy: Require one order, one traceability table and the decision each part serves at its head.
+- module: 6
+  fault: Stale facts from earlier modules are carried into the pack.
+  remedy: Make the refresh steps, the dc-01 account count and the fw-01 rules, a pass item before
+    assembly.

@@ -1,0 +1,572 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C507
+title: Authentication Protocols Hands-On
+version: '1.0'
+difficulty: foundation
+duration_hours: 3
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C203
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Infrastructure Support Specialist, Cyber Defense Analyst (PR-CDA-001).'
+  - 'NIST CSF 2.0: PR.AA, PR.DS.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Hashing Fundamentals
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain what a cryptographic hash function guarantees and what it cannot do
+  - Compare MD5, SHA-1 and SHA-256 digests by length, collision resistance and current fitness
+  - Verify the integrity of a supplied file by computing and comparing digest values
+  topics:
+  - 'One-way functions: fixed-length digests, determinism and avalanche behaviour.'
+  - Collision and preimage resistance in plain language.
+  - MD5, SHA-1 and the SHA-2 family, and why the first two are retired.
+  - Digest comparison as an integrity check, and why a digest alone proves nothing about origin.
+  - Where digests appear in credential handling and file verification.
+  lab: >-
+    Lab: On the medium-enterprise range, compute digests for a supplied file with two hash functions,
+    detect which of two copies differs from the reference digest, and judge which algorithm remains
+    fit for security work. Evidence: the MD5 and SHA-256 digest values exactly as the tools print
+    them, the character length of each value, which of the two copies on web01 matches the reference
+    digest, and one sentence on what a matching digest does and does not prove. Pass: both digest
+    values recorded with their lengths; the differing copy named; MD5 and SHA-256 each marked "fit"
+    or "retired" with a one-sentence reason.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account the instructor assigned, open a terminal and
+        note the start time.
+    - hosts: [siem01, web01]
+      action: From siem01, connect to web01 over SSH and compute the MD5 and SHA-256 digests of the
+        file the instructor named; record both values and how many characters each value has.
+    - hosts: [siem01, web01]
+      action: Compute the SHA-256 digest of the second copy on web01 and record whether it matches
+        the first copy's digest.
+    - hosts: [siem01]
+      action: Compare the recorded digests against the reference digest the instructor posted on
+        siem01 and record which copy it matches.
+    - hosts: [siem01]
+      action: Write one sentence on what a matching digest does and does not prove about the
+        file it was computed from.
+    - hosts: [siem01]
+      action: Mark MD5 and SHA-256 "fit" or "retired" for security work, each with a one-sentence
+        reason.
+  refs:
+  - nist-sp-800-63-4
+  - nist-sp-800-57pt1r5
+  source_gaps:
+  - A dedicated cryptographic hash standard (FIPS 180) is not in the reference library.
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A verifier recomputes a downloaded file's SHA-256 digest and it matches the digest
+        the publisher published alongside the file. Which property does this check demonstrate?
+      options:
+      - A) Confidentiality of the file's contents
+      - B) Integrity, because the file is unchanged since the digest was computed
+      - C) Availability of the publisher's download service
+      - D) That the publisher still holds the file's encryption key
+      answer: B
+    - question: 'An engineer replaces MD5 with SHA-256 for file verification. Compared with an MD5
+        digest, a SHA-256 digest is:'
+      options:
+      - A) Shorter, so it is cheaper to store and publish
+      - B) Reversible when the right key is applied
+      - C) Longer and far more resistant to collisions
+      - D) Encrypted, so it hides what the file contains
+      answer: C
+    - question: 'A hash function produces the same digest for two different files. This event is
+        called a:'
+      options:
+      - A) Collision
+      - B) Preimage
+      - C) Salt mismatch
+      - D) Replay
+      answer: A
+    - question: An attacker who has compromised a publisher's download page replaces both the
+        installer and the digest shown beside it. What does the digest check fail to prevent?
+      options:
+      - A) A copy truncated during transfer
+      - B) A corrupted copy stored on a mirror
+      - C) A bit flipped while the file was copied to a USB drive
+      - D) A wholesale replacement made where both file and digest are rewritten
+      answer: D
+    - question: A colleague asks why the module calls a cryptographic hash function a one-way
+        function. Which statement gives the correct reason?
+      options:
+      - A) It accepts only one file as input at a time
+      - B) The digest is quick to compute but infeasible to invert
+      - C) It works only on a single algorithm family
+      - D) It can be computed only once per file
+      answer: B
+- ordinal: 2
+  title: Salting and Credential Storage
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain how a per-account salt changes the cost of attacking many stored password hashes
+  - Distinguish encrypted passwords, unsalted fast hashes and salted slow password hashes in stored entries
+  - Select a storage approach for a stated credential and justify the choice
+  topics:
+  - Why plaintext storage and reversible encryption fail for password handling.
+  - Precomputed tables and why a unique random salt per account defeats them.
+  - Deliberately slow password hashing with tunable work factors.
+  - 'Reading a stored credential entry: algorithm identifier, salt and digest.'
+  - Breach response for exposed credential databases.
+  lab: >-
+    Lab: On the medium-enterprise range, read the stored credential entries on web01, identify the
+    algorithm identifier and the salt inside one entry, and judge the storage scheme the Linux hosts
+    use. Evidence: the structure of one shadow entry as far as the format shows it, the algorithm
+    identifier as stored, whether the two named accounts' entries carry different salts and digests,
+    and the file consulted. Pass: the identifier and salt position recorded exactly as stored; the
+    comparison stated yes or no; the scheme marked "acceptable" or "not acceptable" with a
+    one-sentence reason.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01, web01]
+      action: From siem01, connect to web01 over SSH with the account the instructor assigned and
+        open a terminal.
+    - hosts: [web01]
+      action: With the elevated access the instructor grants, read one entry of the shadow password
+        file and record the file consulted, then the entry's structure, account name, algorithm
+        identifier, salt and digest as far as the format shows them.
+    - hosts: [web01]
+      action: Read the second named account's entry and record its algorithm identifier, salt and
+        digest, then state whether the two entries' salts and digests differ.
+    - hosts: [siem01]
+      action: Mark the storage scheme the range's Linux hosts use "acceptable" or "not acceptable"
+        for password handling, with a one-sentence reason that names the property that defends it.
+  refs:
+  - nist-sp-800-63-4
+  - cis-benchmarks
+  source_gaps:
+  - An OWASP password storage guide is not in the reference library.
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: Two accounts on one server use the same password, and each stored entry carries a
+        different random value ahead of its digest. What did the server add?
+      options:
+      - A) A shared secret key, the same for every account
+      - B) A system-wide pepper
+      - C) A unique salt per account
+      - D) A signing certificate
+      answer: C
+    - question: A service stores passwords as unsalted fast hashes. Which attack does a large
+        precomputed table make cheap?
+      options:
+      - A) Recovering many of the passwords at once
+      - B) Reading the hash file over the network
+      - C) Forging the server's sign-in certificate
+      - D) Changing the entries the log records
+      answer: A
+    - question: A service moves from a fast hash to a slow password hash with a tunable
+        work factor. Once the hash file is stolen, what does this primarily cost the attacker?
+      options:
+      - A) Network bandwidth during the theft
+      - B) Time per guess, repeated for every account
+      - C) The ability to read the account names
+      - D) Access to the salt values and the account names
+      answer: B
+    - question: Which storage choice keeps a stolen credential database from revealing any password
+        directly?
+      options:
+      - A) Salted, slow password hashes
+      - B) Encrypted passwords, with the key stored on the same server
+      - C) Passwords hashed once with a retired fast hash
+      - D) Passwords kept in a separate file with tighter permissions
+      answer: A
+    - question: After a hash file is stolen, why does a unique salt per account still limit the
+        damage?
+      options:
+      - A) It hides which accounts exist on the system
+      - B) It encrypts each hash under a different key
+      - C) It lets the server recover the original passwords
+      - D) It forces a separate attack per account
+      answer: D
+- ordinal: 3
+  title: Kerberos Walkthrough
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Sequence the message exchanges that issue a ticket-granting ticket and a service ticket
+  - Explain why a Kerberos client never sends a password to the service it reaches
+  - Read the tickets a workstation holds and identify each ticket's target and lifetime
+  topics:
+  - The key distribution centre, the account database and the realm.
+  - The authentication service exchange and the ticket-granting ticket it returns.
+  - The ticket-granting service exchange, service tickets and service principal names.
+  - Authenticator timestamps, replay protection and ticket lifetimes.
+  - Common ticket abuse techniques and the sign-in events that expose them.
+  lab: >-
+    Lab: On the medium-enterprise range, trigger a fresh domain sign-in and a file-share connection
+    on ws01, then read the tickets Windows holds and tie each one to the exchange that produced it.
+    Evidence: the ticket-granting ticket's service principal name and expiry as the ticket lister
+    shows them; the service ticket's service principal name that appears after reaching the fs01
+    share; the ticket list after the tickets are purged; and whether the second share connection
+    asked for a password. Pass: both tickets recorded with target and expiry; each ticket matched to
+    the exchange that issued it; the post-purge behaviour described in one sentence.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [ws01]
+      action: Sign in to ws01 with the domain account the instructor assigned and open a command
+        prompt.
+    - hosts: [ws01, dc01]
+      action: Run the ticket lister and record the ticket-granting ticket the domain controller dc01
+        issued, its service principal name, start time and end time.
+    - hosts: [ws01, fs01]
+      action: Connect to the file share on fs01, run the ticket lister again and record the new
+        service ticket's service principal name.
+    - hosts: [ws01]
+      action: Purge all tickets, run the ticket lister once more and record that no tickets remain.
+    - hosts: [ws01, fs01]
+      action: Connect to the fs01 share again and record whether Windows asked for a password
+        this time.
+    - hosts: [ws01]
+      action: Match each recorded ticket to the exchange that issued it, authentication service or
+        ticket-granting service, and state in one sentence why the second share connection needed no
+        password.
+  refs:
+  - mitre-attack
+  source_gaps:
+  - RFC 4120 and the MIT Kerberos documentation are not in the reference library.
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A workstation signs a user in to a domain and then opens a file share. In which
+        order do the Kerberos exchanges happen?
+      options:
+      - A) The service is contacted first, then the domain controller checks a password
+      - B) A service ticket is issued before any ticket-granting ticket exists
+      - C) The password is sent to the file server, then tickets follow
+      - D) The authentication service exchange first, then the ticket-granting service exchange
+      answer: D
+    - question: Why does the file server never see the user's password during a Kerberos
+        connection?
+      options:
+      - A) The password travels to the service only inside a TLS tunnel
+      - B) The client proves itself with a ticket and a password-derived key
+      - C) The file server keeps a copy of every password locally
+      - D) Kerberos encrypts the password with the server's public certificate
+      answer: B
+    - question: Each ticket request carries the client's current time inside its authenticator.
+        What does this timestamp mainly defend against?
+      options:
+      - A) A captured message being replayed much later
+      - B) Clock drift between two different Kerberos realms
+      - C) A user sharing a workstation
+      - D) A service ticket outliving its expiry
+      answer: A
+    - question: A domain's ticket-granting tickets expire after ten hours. What must a client do to
+        keep reaching services afterwards?
+      options:
+      - A) Nothing, because service tickets renew themselves
+      - B) Change the account's password
+      - C) Obtain a new ticket-granting ticket
+      - D) Contact each service directly with the password
+      answer: C
+    - question: Which record best shows that a workstation obtained a ticket for a file service?
+      options:
+      - A) A ticket-granting service exchange naming the file server
+      - B) An event naming the user's password
+      - C) A firewall rule allowing the file service port for the client
+      - D) A DHCP lease for the workstation
+      answer: A
+- ordinal: 4
+  title: NTLM Walkthrough
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Explain the NTLM challenge-and-response exchange and where each participant's secret is used
+  - Distinguish NTLM and Kerberos sign-ins in Windows authentication event records
+  - Identify residual NTLM dependencies on a described network and rank their migration risk
+  topics:
+  - The challenge, the response and the stored hash's role in NTLM.
+  - 'What NTLM lacks beside Kerberos: no central ticket service and weaker replay defence.'
+  - 'Where NTLM survives on a managed network: legacy applications and non-domain devices.'
+  - The authentication package and logon type fields in sign-in events.
+  - Signing and auditing as the controls that limit NTLM relay exposure.
+  lab: >-
+    Lab: On the medium-enterprise range, separate the sign-in events collected in the SIEM on siem01
+    by authentication package, record where NTLM still appears, and rank each NTLM dependency for
+    migration. Evidence: the search used, the host, account and authentication package named in three
+    sign-in events, and the counts of NTLM and Kerberos events in the window. Pass: every recorded
+    NTLM use marked "legacy requirement" or "replaceable by Kerberos" with a one-sentence reason; the
+    dependency to migrate first named.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account and open the SIEM's search page with the login
+        the instructor supplies.
+    - hosts: [siem01, ws01, dc01]
+      action: Search the last day's sign-in events and record, for three events, the host (such as ws01 or dc01), the
+        account and the authentication package each one names.
+    - hosts: [siem01]
+      action: Narrow the search to events whose authentication package is NTLM and record how many
+        appeared and which hosts sent them.
+    - hosts: [siem01, dc01]
+      action: Count the Kerberos sign-ins against dc01 in the same window and record the two counts
+        side by side.
+    - hosts: [siem01]
+      action: Mark each recorded NTLM dependency "legacy requirement" or "replaceable by Kerberos"
+        with a one-sentence reason, and name the dependency to migrate first.
+  refs:
+  - nist-sp-800-92
+  - mitre-attack
+  source_gaps:
+  - Microsoft's NTLM documentation and the NTLM protocol specifications are not in the reference
+    library.
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: In an NTLM sign-in the client answers a random challenge with a value derived
+        from the challenge and the account's password. What does the server compare that answer
+        against?
+      options:
+      - A) The password, which the client also sends in the clear
+      - B) A value computed the same way from its stored hash
+      - C) A Kerberos service ticket for the same account
+      - D) The client's machine certificate
+      answer: B
+    - question: Which capability does a Kerberos domain give sign-ins that NTLM on the same domain
+        does not?
+      options:
+      - A) Faster network links between client and server
+      - B) Encrypted file share traffic
+      - C) Longer password minimums
+      - D) A central ticket service for the domain
+      answer: D
+    - question: Which field in a Windows sign-in event most directly shows whether NTLM or Kerberos
+        was used?
+      options:
+      - A) The computer name of the signing-in host
+      - B) The logon identifier
+      - C) The authentication package name
+      - D) The event's severity
+      answer: C
+    - question: A legacy inventory application on the server network accepts only NTLM from its
+        clients. Which action reduces its risk without breaking it?
+      options:
+      - A) Requiring message signing on that path
+      - B) Renaming the accounts the application uses
+      - C) Moving the application into the DMZ with the web servers
+      - D) Disabling Kerberos for the whole domain
+      answer: A
+    - question: Sign-in events show NTLM from exactly one legacy device and Kerberos everywhere else.
+        What is the soundest reading?
+      options:
+      - A) NTLM events prove attackers are present
+      - B) One legacy device accounts for the pattern
+      - C) NTLM events are always false positives
+      - D) The domain controller is failing to issue tickets
+      answer: B
+- ordinal: 5
+  title: OAuth2 and OIDC Flows
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Sequence the authorization code flow from sign-in redirect to token exchange
+  - Distinguish the authorization server, the client and the protected resource in a described flow
+  - Explain what OpenID Connect adds to OAuth2 and which claims the identity token carries
+  topics:
+  - 'Roles in a delegated sign-in: authorization server, resource owner, client and protected resource.'
+  - 'The authorization code flow: front-channel redirect and back-channel token exchange.'
+  - Access tokens, refresh tokens and token lifetimes.
+  - 'OpenID Connect on OAuth2: the identity token and its claims.'
+  - Scopes, consent and why an authorization code is worthless without the client's own secret.
+  lab: >-
+    Lab: On the medium-enterprise range, read the captured authorization flow the instructor saved
+    on web01, put each request in order, and label the flow's parts from the application's
+    perspective. Evidence: the ordered list of captured requests, the response type, scope, redirect
+    target and state values of the authorization request, and the point at which the access token
+    first appears. Pass: the four authorization-request parameters recorded exactly; each captured
+    request marked "front channel" or "back channel" with a one-sentence reason; the step at which
+    the access token first appears named.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01, web01]
+      action: From siem01, connect to web01 over SSH and open the captured authorization flow the
+        instructor saved there.
+    - hosts: [web01]
+      action: List the captured requests in the order they happened and record each request's
+        path and method.
+    - hosts: [web01]
+      action: Record the response type, scope, redirect target and state values carried by the
+        authorization request.
+    - hosts: [web01]
+      action: Record where in the sequence the access token first appears and which two parties
+        exchange it.
+    - hosts: [web01]
+      action: Mark each captured request "front channel" or "back channel" with a one-sentence
+        reason, and name the request a phishing page would try to harvest.
+  refs:
+  - nist-sp-800-63-4
+  source_gaps:
+  - RFC 6749 (OAuth 2.0) and the OpenID Connect Core specification are not in the reference library.
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A web application redirects the browser to the authorization server, the user
+        approves, and the server sends the browser back with a one-time code. What happens to the
+        code next?
+      options:
+      - A) The browser keeps it and attaches it to every later request
+      - B) The authorization server emails it to the user for storage
+      - C) The client exchanges it with the authorization server for tokens
+      - D) The protected resource validates it directly with the user
+      answer: C
+    - question: A web application completes an authorization code flow and receives its tokens.
+        Which party issues the access token?
+      options:
+      - A) The authorization server
+      - B) The client application
+      - C) The browser on the user's device
+      - D) The protected resource
+      answer: A
+    - question: An application receives a signed token whose payload names the user, the issuer and
+        the expiry. Which protocol addition delivers this identity token?
+      options:
+      - A) NTLM
+      - B) Kerberos, the domain ticket protocol
+      - C) TLS session resumption
+      - D) OpenID Connect layered on OAuth2
+      answer: D
+    - question: Why is the code exchanged for tokens on a back channel rather than through the
+        browser?
+      options:
+      - A) Browsers cannot carry values of that length
+      - B) The browser can leak the code to history and proxies
+      - C) The authorization server refuses direct browser connections
+      - D) The protected resource sits on an offline network
+      answer: B
+    - question: A client's access token for one interface is leaked. Which limitation most reduces
+        what an attacker can do with it?
+      options:
+      - A) The token works only from the original browser
+      - B) Its scope and expiry bound it to one interface
+      - C) The resource owner must approve every single use of it
+      - D) The token carries the user's password
+      answer: B
+- ordinal: 6
+  title: MFA and Phishing-Resistant Factors
+  content_type: reading
+  duration_minutes: 30
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Classify authentication factors by category and identify single-factor sign-in designs
+  - Determine whether a described sign-in design meets multi-factor authentication or stays single-factor
+  - Select a phishing-resistant authenticator for a stated entry point and justify the choice
+  topics:
+  - Knowledge, possession and inherence factors, and why two prompts can still be one factor.
+  - One-time codes and push approvals, and how relay phishing defeats them.
+  - Device-bound passkeys and smart cards as phishing-resistant authenticators.
+  - 'Entry-point inventory: where sign-in happens and which factor each point accepts.'
+  - Single sign-on and its effect on how many entry points a factor protects.
+  lab: >-
+    Lab: On the medium-enterprise range, inventory three places a user signs in, record the factor
+    each one asks for, and propose a phishing-resistant replacement for the weakest. Evidence: the
+    entry-point list with the factor each sign-in asked for as the prompt showed it, the
+    single-factor entries marked, and one proposed authenticator per single-factor entry. Pass: all
+    three entry points listed with their factor category; each single-factor entry marked; every
+    proposed authenticator named with one sentence on why it resists relay phishing.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account the instructor assigned and open a terminal.
+    - hosts: [ws01]
+      action: Sign in to ws01 with the domain account the instructor assigned and record exactly
+        what the sign-in prompt asks for.
+    - hosts: [siem01, web01]
+      action: From siem01, start an SSH connection to web01 and record exactly what that sign-in
+        prompt asks for.
+    - hosts: [siem01]
+      action: Record the factor the siem01 analyst sign-in presented at the start of the lab, and
+        note how the three prompts compare.
+    - hosts: [siem01]
+      action: Mark each entry point with its factor category, knowledge, possession or inherence,
+        and mark the single-factor ones.
+    - hosts: [siem01]
+      action: For each single-factor entry point, propose one phishing-resistant authenticator and
+        write one sentence on why it resists relay phishing.
+  refs:
+  - nist-sp-800-63-4
+  - nist-sp-800-207
+  source_gaps:
+  - A dedicated passkey or FIDO specification is not in the reference library.
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A sign-in asks for a password and then for the answer to a security question. Why
+        does this design not meet multi-factor authentication?
+      options:
+      - A) Both authenticators are knowledge factors
+      - B) Security questions are forbidden by policy
+      - C) The two prompts arrive too far apart
+      - D) Passwords cannot be combined with anything else
+      answer: A
+    - question: A push approval reaches a sleeping user after the password was captured on a
+        fake sign-in page. Which control would have stopped the attacker even with the password?
+      options:
+      - A) A longer password required at every sign-in
+      - B) A second knowledge factor asked on the same page
+      - C) A phishing-resistant authenticator bound to the real sign-in page
+      - D) More frequent password changes across the whole domain
+      answer: C
+    - question: A designer must combine two authenticators so a sign-in meets multi-factor
+        authentication. Which pair of categories qualifies?
+      options:
+      - A) A password and a personal identification number
+      - B) A password and a hardware security key
+      - C) A fingerprint and a face scan
+      - D) A PIN and a security question
+      answer: B
+    - question: A caller persuades a user to read out the six-digit code from the authenticator app.
+        Which design flaw does the code's success expose?
+      options:
+      - A) The app generated the code too slowly to be useful
+      - B) The code was too long for the user to memorise
+      - C) The app displayed the code on screen in plain view
+      - D) The code proves possession, and whoever holds it possesses it
+      answer: D
+    - question: A bank must replace one-time codes at its customer portal with an authenticator
+        that resists relay phishing. Which one qualifies?
+      options:
+      - A) A device-bound passkey that first signs the real site's identity
+      - B) A six-digit one-time code displayed in an authenticator app
+      - C) A push notification the user taps to approve the sign-in
+      - D) A security question the user chose at onboarding
+      answer: A

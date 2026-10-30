@@ -1,0 +1,195 @@
+# Instructor pack for C536 Recovery Operations & Business Restoration (unsourced draft).
+# Staff-only material: answer keys, range preparation and facilitation notes. Not shown to Students.
+course_code: C536
+audience: staff_only
+overview: >-
+  Recovery Operations and Business Restoration (C536) is an advanced individual course of six
+  60-minute modules on the medium-enterprise range. Each module follows the same split: 15 minutes
+  of teaching, 35 minutes of range lab and 10 minutes of quiz. Every lab ends in a written
+  judgement, and every quiz is debriefed against the answer key below before the session closes.
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (dependency mapping and the two recovery objectives), 35 lab (ws01 service discovery
+    through to the written recovery order), 10 quiz with key debrief'
+- module: 2
+  minutes: 60
+  plan: '15 teach (integrity evidence and restore point selection), 35 lab (fs01 catalogue review to the
+    written restore point choice), 10 quiz with key debrief'
+- module: 3
+  minutes: 60
+  plan: '15 teach (isolation, known-good sources, credential rotation), 35 lab (fw01 isolation check to
+    the written rebuild sequence), 10 quiz with key debrief'
+- module: 4
+  minutes: 60
+  plan: '15 teach (validation criteria and staged reconnection), 35 lab (web01 baseline comparison to the
+    written go or no-go), 10 quiz with key debrief'
+- module: 5
+  minutes: 60
+  plan: '15 teach (cadence, facts against interpretation, audiences), 35 lab (siem01 fact pull to the
+    drafted update set), 10 quiz with key debrief'
+- module: 6
+  minutes: 60
+  plan: '15 teach (review structure and findings into actions), 35 lab (siem01 timeline to the owned
+    improvement actions), 10 quiz with key debrief'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (The dependency map recorded before the incident): the map is the evidence that sets restore
+    order. A treats stored data volume as priority; C treats patch recency as priority; D treats alert
+    order as impact. Q2 C (Recovery point objective one hour, recovery time objective four hours): one
+    hour of loss is the RPO, four hours to restore is the RTO. A swaps the two measures; B dodges both
+    by inflating one number; D drops the time measure entirely. Q3 D (An undocumented dependency on
+    another service): clean DNS and an open path with queuing mail points at a dependency nobody mapped.
+    A treats the symptom as the cause; B blames users with no evidence; C asserts corruption nothing
+    recorded supports. Q4 A (Directory first, then the database): the directory has no internal upstream,
+    so it goes first and the database follows it. B inverts the dependency; C hides the ordering behind
+    false parallelism; D lets restore speed set the order. Q5 B (The order cannot be reviewed or repeated
+    by others): an order held in one memory cannot be checked. A names speed, not the direct risk; C
+    raises confidentiality, not continuity; D confuses failover with restore.'
+- module: 2
+  notes: 'Q1 C (Only that the job completed without errors): a job report proves completion, nothing more.
+    A assumes a recoverability nobody tested; B assumes an isolation the report does not show; D confuses
+    retention compliance with restorability. Q2 D (An immutable copy outside the console account): it
+    survives the compromised account. A and B stay inside the blast radius the account defines; C keeps
+    snapshots on storage the same account can rewrite. Q3 A (Tainted, because restoring it reinstates
+    attacker access): credentials held at backup time come back with the restore. B and C mistake
+    consistency and timing for cleanliness; D confuses retention age with trust. Q4 C (The application
+    configuration files): the scope decision the module teaches separates system state, data and
+    configuration, and the plan covered only the first two, so the application''s own configuration is the
+    element left out. A sits inside the system state scope; B sits inside the data scope; D holds transient
+    files no validation needs. Q5 D (A dated test restore report
+    with results): it is direct evidence the backup works. A is vendor marketing; B repeats the job log
+    trap; C is policy, not practice.'
+- module: 3
+  notes: 'Q1 A (The rebuild ran on a network the attacker could still reach): a reachable rebuild
+    explains reinfection within a day. B only delays detection; C is a user behaviour cause outside the
+    rebuild; D host name reuse alone does not reinfect. Q2 B (Its integrity matches a recorded verified
+    hash): the hash ties the media to a known-good source. A recency is not integrity; C storage location
+    proves nothing; D one successful install is not provenance. Q3 C (Every credential the compromised
+    host held or used): rotation covers the full set, proven theft or not. A and D rotate single
+    credentials and stop; B waits for a proof of theft the range work shows is unnecessary. Q4 A
+    (Directory joined and patched, then the application installed): identity first and patched, then the
+    application that trusts it. B builds the application before its directory exists; C reconnects to
+    production before patching; D defers the patching gate. Q5 D (Verify its hash on the isolated
+    transfer path): integrity check plus isolation keeps the room clean. A and B cross into production
+    from the build side; C carries no integrity check at all.'
+- module: 4
+  notes: 'Q1 D (Fix the differences, then validate again): the baseline is a gate, not a suggestion. A treats
+    the scan as the only gate; B reconnects with a known gap and a hope; C changes the deadline instead
+    of the state. Q2 B (One service path at a time, watched throughout): staging keeps any failure small.
+    A restores everything at once and removes containment; C and D order by audience, not by blast
+    radius. Q3 C (Unexpected outbound connections in the event stream): it is the earliest behavioural
+    sign on siem01. A and D are the designed outcomes of the check itself; B is late and indirect. Q4 A
+    (The system owner, using the recorded validation evidence): ownership and evidence sit with the
+    owner. B and D are single-function views of a business decision; C abandons ownership altogether.
+    Q5 B (Configuration, patch and behaviour checks against criteria): the validation record shows the
+    checks a scan cannot. A is vendor data about the tool, not the host; C and D measure effort and
+    demand, not readiness.'
+- module: 5
+  notes: 'Q1 B (Publishing updates on a fixed cadence): a stated rhythm answers most questions before they
+    are asked. A stays reactive and feeds the queue; C over-shares raw data no stakeholder can read; D
+    leaves a silence that rumour fills. Q2 A (State the tested functions with their check times): facts
+    with times make the line defensible. B softens the wording without adding evidence; C hides detail
+    the audience needs; D substitutes a second opinion for evidence. Q3 D (Service impact for users,
+    indicators for responders): each audience gets its own register. A and B force one register on both;
+    C leaks account names into a user update. Q4 C (One recovery log that every update cites): a single
+    source ends the conflict. A stops communicating altogether; B is verbal and unrecorded; D assigns
+    blame where a process fix belongs. Q5 B (Record it as open and set an answer time): the
+    question is legitimate and the honest state is open. A asserts the unproven; C guesses; D hands the
+    organisation''s own answer to a vendor without recording the question.'
+- module: 6
+  notes: 'Q1 C (Owned findings that improve the next recovery): that is what the review exists to produce.
+    A checks compliance, not learning; B narrows the audience to the auditor; D pre-judges the outcome
+    before the timeline is read. Q2 D (The cause, and an action with an owner): the gap is recorded with
+    its cause and a fix. A moves the objective to match the result; B promises without a cause; C
+    discards the finding because the day ended. Q3 A (Monthly restore tests from March, owned by the
+    platform lead): it names what, when and who. B, C and D state directions with no owner, date or
+    test attached. Q4 C (A dated revision tested in the next drill): a dated, tested revision survives
+    the people in the room. A and B are ephemeral records; D raises visibility without changing
+    anything. Q5 A (It is exercised in the next drill): the drill proves the change works. B announces
+    it; C appeals to the author''s authority; D files it with the incident record and moves on.'
+lab_setup:
+- module: 1
+  setup: 'Range ready before the session: dc01 on the servers VLAN running directory, DNS and DHCP; fs01
+    publishing its SMB shares; web01 and mail01 in the DMZ; ws01 and ws02 on the corporate network; fw01
+    carrying the zone rules. Expected: ws01 resolves dc01 by name; web01 lists its nginx and PHP services
+    and mail01 its postfix and dovecot services, and both reach dc01 for directory lookups; fw01 shows the
+    corp-to-servers,
+    corp-to-dmz, dmz-to-servers and logs-to-siem rule sets, with dmz-to-servers allowing DNS and
+    directory ports to dc01. The analyst account is provided for siem01; the instructor supplies every
+    password at the bench, never in writing.'
+- module: 2
+  setup: 'Seed fs01 with a backup catalogue of four restore points: two clean and checksum-verified, one
+    taken inside the compromise window, one failing verification. Expected: the siem01 event record shows
+    first attacker activity the day before the tainted restore point, so the time comparison is visible
+    step by step. The instructor supplies every password at the bench.'
+- module: 3
+  setup: 'Present ws02 as the build workstation holding approved media, and record its baseline level on the
+    instructor copy. Expected: fw01 has no rule path from any rebuild segment into the corporate or
+    servers zones; dc01 lists the service accounts the compromised host used; fs01 holds a quarantine
+    folder with two items the rebuild may not restore. The instructor supplies every password at the
+    bench.'
+- module: 4
+  setup: 'Set web01 to a rebuilt state carrying two deliberate baseline deviations, one out-of-date package
+    and one changed configuration directive, with the expected values on the instructor copy. Expected:
+    the fw01 dmz-to-servers rules for web01 are disabled so the first reconnection rule must be named; the
+    siem01 event stream for the DMZ is live. The instructor supplies every password at the bench.'
+- module: 5
+  setup: 'Load siem01 with a recovery window of events carrying exact times, including one quiet gap that
+    tempts an interpretation. Expected: three facts are extractable with times and source; draft
+    templates for the management and user updates sit on ws01 and ws02. The instructor supplies every
+    password at the bench.'
+- module: 6
+  setup: 'Load siem01 with a finished recovery timeline whose milestones differ from the planned objectives,
+    for example a two-hour directory restore against a one-hour objective. Expected: fs01 holds the
+    current runbook with three sections the improvement actions can target; ws02 holds the decision list
+    with evidence pointers. The instructor supplies every password at the bench.'
+common_faults:
+- module: 1
+  fault: Students rank hosts by data volume or alert order instead of dependencies.
+  remedy: Make each written recovery position cite one recorded observation from the lab before it is
+    accepted; a position without an observation is rewritten.
+- module: 1
+  fault: The dependency map records services but not their direction.
+  remedy: Require every pair to be written as "consumer depends on provider" and check the fw01 rule
+    review against it.
+- module: 2
+  fault: Students accept the nightly job report as proof of restorability.
+  remedy: Ask what the report would show if the media were unreadable, then point to the checksum and
+    test-restore steps they skipped.
+- module: 2
+  fault: A restore point taken inside the compromise window is marked clean because its checksum passes.
+  remedy: Return to the siem01 timeline; integrity and trust are separate judgements, and the checksum
+    only answers the first.
+- module: 3
+  fault: The rebuild plan keeps the build host on the production network to save time.
+  remedy: Show the fw01 rule review again; a rebuild path that touches production is not a clean room,
+    whatever the schedule says.
+- module: 3
+  fault: Credential rotation stops at the local administrator password.
+  remedy: Re-read the dc01 account list with the class and ask, for each credential, what the rebuilt
+    host would still trust.
+- module: 4
+  fault: The go decision cites only the clean malware scan.
+  remedy: Hold every go decision to the three recorded items the pass line requires; a scan is one
+    criterion of several.
+- module: 4
+  fault: All fw01 rules for the host are re-enabled at once after validation.
+  remedy: Ask what the containment radius is if the first reconnection misbehaves, then restore the
+    staged order.
+- module: 5
+  fault: Updates state interpretations such as fully restored as facts.
+  remedy: Have students mark each line fact or interpretation; an interpretation line must name what
+    would confirm it.
+- module: 5
+  fault: Each update cites a different source, and the times drift apart.
+  remedy: Check every drafted update against the one recovery log; a time that appears in only one
+    update is rewritten or sourced.
+- module: 6
+  fault: Findings are recorded without owners or dates.
+  remedy: Reject any improvement action that does not name who and when; an unowned finding is a
+    wish, not an action.
+- module: 6
+  fault: The review changes the runbook but nothing is scheduled for the next drill.
+  remedy: Ask how the change will be proven if it is never exercised, then have the class pick the
+    action the next drill tests first.

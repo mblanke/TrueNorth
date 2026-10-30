@@ -23,11 +23,31 @@ CATALOGUE = ROOT / "content/catalogue/cyber_operator_programme.csv"
 CROSSWALK = ROOT / "truenorth-content-pack/truenorth-content/crosswalk.csv"
 
 
+SPECIALIST = ROOT / "content/catalogue/specialist_pathways.csv"
+
+
+def _specialist_rows():
+    import csv
+
+    with open(SPECIALIST, newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
+SPECIALIST_COURSES = len(_specialist_rows())  # C501-C560, six modules each
+SPECIALIST_PATHWAYS = len({r["programme"] for r in _specialist_rows()})
+
+
+def _import_catalogues(db):
+    """The DP1/DP2 programme, then the specialist pathways (C500-C599, ADR 0018)."""
+    programme_ingest.import_programme(db, CATALOGUE.read_text(encoding="utf-8"))
+    programme_ingest.import_programme(db, SPECIALIST.read_text(encoding="utf-8"))
+
+
 @pytest.fixture
 def spine(db_session):
     """Ingested QSP spine + programme catalogue + all authored content."""
     qsp_ingest.import_crosswalk(db_session, CROSSWALK.read_text(encoding="utf-8"))
-    programme_ingest.import_programme(db_session, CATALOGUE.read_text(encoding="utf-8"))
+    _import_catalogues(db_session)
     for f in sorted(COURSE_DIR.glob("*.yaml")):
         course_content_ingest.import_course_content(db_session, f.read_text(encoding="utf-8"))
     return db_session
@@ -41,7 +61,14 @@ def _course_doc(name):
 
 
 def test_every_course_is_bound_to_a_qualification(spine):
-    assert spine.query(Course).filter(Course.qualification_id.is_(None)).count() == 0
+    # The specialist pathways (ADR 0018) are not qualifications: they carry no qsp_code until
+    # Standards defines DP 3-5, so only the DP1/DP2 programme is held to this.
+    unbound = [
+        c.name
+        for c in spine.query(Course).filter(Course.qualification_id.is_(None)).all()
+        if not str(qsp_paths.course_meta_of(c).get("programme", "")).startswith("specialist-")
+    ]
+    assert unbound == []
 
 
 def test_the_mapping_delivers_every_specified_objective(spine):
@@ -147,7 +174,7 @@ def test_coverage_shape(spine):
     cov = qsp_paths.po_coverage(spine)
     assert cov["objective_count"] == 16
     assert cov["covered"] + cov["uncovered"] == 16
-    assert cov["unbound_modules"] == 264 - cov["covered"]
+    assert cov["unbound_modules"] == spine.query(CourseModule).count() - cov["covered"]
 
 
 def test_coverage_names_the_delivering_course_and_module(spine):
@@ -171,8 +198,8 @@ def test_another_tenant_sees_the_shared_spine_but_none_of_its_courses(spine):
 
 def test_programme_paths_are_generated_per_term_and_programme(spine):
     stats = programme_ingest.generate_programme_paths(spine)
-    assert stats["term_paths"] == 8
-    assert stats["programme_paths"] == 2
+    assert stats["term_paths"] == 8 + SPECIALIST_PATHWAYS
+    assert stats["programme_paths"] == 2 + SPECIALIST_PATHWAYS
 
 
 def test_programme_paths_are_unpublished(spine):
@@ -205,7 +232,7 @@ def spine_paths_first(db_session):
     the time the courses land. `_claim_po` is what makes authored content win.
     """
     qsp_ingest.import_crosswalk(db_session, CROSSWALK.read_text(encoding="utf-8"))
-    programme_ingest.import_programme(db_session, CATALOGUE.read_text(encoding="utf-8"))
+    _import_catalogues(db_session)
     qsp_paths.generate_learning_paths(db_session)
     for f in sorted(COURSE_DIR.glob("*.yaml")):
         course_content_ingest.import_course_content(db_session, f.read_text(encoding="utf-8"))
@@ -221,7 +248,7 @@ def spine_paths_after(db_session):
     the stub silently shadowed the authored module and real coursework stopped counting.
     """
     qsp_ingest.import_crosswalk(db_session, CROSSWALK.read_text(encoding="utf-8"))
-    programme_ingest.import_programme(db_session, CATALOGUE.read_text(encoding="utf-8"))
+    _import_catalogues(db_session)
     for f in sorted(COURSE_DIR.glob("*.yaml")):
         course_content_ingest.import_course_content(db_session, f.read_text(encoding="utf-8"))
     qsp_paths.generate_learning_paths(db_session)
@@ -341,7 +368,7 @@ def test_a_stub_with_enrolments_is_retired_rather_than_deleted(db_session):
     from app.models import Enrollment, EnrollmentStatus
 
     qsp_ingest.import_crosswalk(db_session, CROSSWALK.read_text(encoding="utf-8"))
-    programme_ingest.import_programme(db_session, CATALOGUE.read_text(encoding="utf-8"))
+    _import_catalogues(db_session)
     qsp_paths.generate_learning_paths(db_session)
 
     stub, _ = _delivering(db_session, "ALJQ", "PO_009")
@@ -415,7 +442,7 @@ def spine_placed(db_session):
         TAXONOMY.read_text(encoding="utf-8"),
         COMPETENCY.read_text(encoding="utf-8"),
     )
-    programme_ingest.import_programme(db_session, CATALOGUE.read_text(encoding="utf-8"))
+    _import_catalogues(db_session)
     for f in sorted(COURSE_DIR.glob("*.yaml")):
         course_content_ingest.import_course_content(db_session, f.read_text(encoding="utf-8"))
     qsp_paths.generate_learning_paths(db_session)
@@ -489,7 +516,7 @@ def test_most_of_the_programme_delivers_nothing(spine_placed):
 def test_retired_stubs_are_not_programme_courses(spine_placed):
     grouped = qsp_paths.programme_courses(spine_placed)
     everything = [c for courses in grouped.values() for c in courses]
-    assert len(everything) == 44
+    assert len(everything) == 44 + SPECIALIST_COURSES
     assert all(c["course_code"] for c in everything)
 
 
@@ -554,7 +581,7 @@ def test_every_authored_module_has_teaching_content(spine):
     from app.models import ContentKind, Lesson, ModuleContent
 
     modules = spine.query(CourseModule).all()
-    assert len(modules) == 264
+    assert len(modules) == 264 + 6 * SPECIALIST_COURSES
     missing = []
     for mod in modules:
         teach = (
@@ -632,7 +659,7 @@ def test_stubs_released_by_an_earlier_run_are_purged(db_session):
     spine is reconciled, so that is where it gets cleaned up.
     """
     qsp_ingest.import_crosswalk(db_session, CROSSWALK.read_text(encoding="utf-8"))
-    programme_ingest.import_programme(db_session, CATALOGUE.read_text(encoding="utf-8"))
+    _import_catalogues(db_session)
     qsp_paths.generate_learning_paths(db_session)
 
     # Release a stub the way a previous version of the importer did, without deleting it.
@@ -653,7 +680,7 @@ def test_the_purge_spares_the_objective_nothing_delivers(db_session):
     """PO_TODO has no real deliverer, so its stub is the only thing standing between
     that objective and being undeliverable. It must survive."""
     qsp_ingest.import_crosswalk(db_session, CROSSWALK.read_text(encoding="utf-8"))
-    programme_ingest.import_programme(db_session, CATALOGUE.read_text(encoding="utf-8"))
+    _import_catalogues(db_session)
     for f in sorted(COURSE_DIR.glob("*.yaml")):
         course_content_ingest.import_course_content(db_session, f.read_text(encoding="utf-8"))
     qsp_paths.generate_learning_paths(db_session)
@@ -665,7 +692,7 @@ def test_the_purge_spares_the_objective_nothing_delivers(db_session):
 
 def test_the_purge_never_touches_authored_content(db_session):
     qsp_ingest.import_crosswalk(db_session, CROSSWALK.read_text(encoding="utf-8"))
-    programme_ingest.import_programme(db_session, CATALOGUE.read_text(encoding="utf-8"))
+    _import_catalogues(db_session)
     for f in sorted(COURSE_DIR.glob("*.yaml")):
         course_content_ingest.import_course_content(db_session, f.read_text(encoding="utf-8"))
 
@@ -678,4 +705,4 @@ def test_the_purge_never_touches_authored_content(db_session):
         c.name for c in db_session.query(Course).all()
         if qsp_paths.course_meta_of(c).get("provenance")
     }
-    assert before == after and len(before) == 44
+    assert before == after and len(before) == 44 + SPECIALIST_COURSES

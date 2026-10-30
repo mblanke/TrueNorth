@@ -41,6 +41,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 API_DIR = REPO_ROOT / "control-plane" / "api"
 COURSES_REL = Path("content/courses")
 CATALOGUE_REL = Path("content/catalogue/cyber_operator_programme.csv")
+SPECIALIST_REL = Path("content/catalogue/specialist_pathways.csv")  # C500-C599, same columns (ADR 0018)
 REFERENCES_REL = Path("content/catalogue/references.yaml")
 VM_CATALOGUE_REL = Path("truenorth-content-pack/truenorth-content/vm_catalogue.csv")
 CROSSWALK_REL = Path("truenorth-content-pack/truenorth-content/crosswalk.csv")
@@ -434,12 +435,15 @@ def check_catalogue_identity(manifest: dict[str, Any], repo_root: Path, api: dic
             )
         ]
     codes = {r["course_code"] for r in api["programme"].parse_programme(path.read_text(encoding="utf-8-sig"))}
+    specialist = repo_root / SPECIALIST_REL
+    if specialist.is_file():
+        codes |= {r["course_code"] for r in api["programme"].parse_programme(specialist.read_text(encoding="utf-8-sig"))}
     if code not in codes:
         return [
             _finding(
                 "qa.catalogue_identity",
                 "fail",
-                f"course.catalogue_code {code!r} is not a course in {CATALOGUE_REL}",
+                f"course.catalogue_code {code!r} is not a course in {CATALOGUE_REL} or {SPECIALIST_REL}",
                 "content-architect",
             )
         ]

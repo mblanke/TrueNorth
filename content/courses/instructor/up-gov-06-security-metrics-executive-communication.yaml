@@ -1,0 +1,162 @@
+course_code: C506
+audience: staff_only
+overview: 'Security Metrics & Executive Communication is an advanced six-module course of six 60-minute modules
+  (360 minutes, 6 hours) for Staff moving into security leadership work. Each module runs 10 minutes of
+  contact, 20 minutes of reading, 20 minutes on the small-enterprise range and 10 minutes of assessment
+  (quiz and debrief). The arc: choose decision-driving metrics, harden them against gaming and bias, build
+  dashboard elements from real range telemetry, brief an executive under time pressure, cost a control
+  against risk appetite, and run the programme as a going concern. Every module ends with a five-item quiz
+  passed at 70 percent. Say ''Student'' throughout and keep every description defensive and observable.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '10 contact (metric qualities and the vanity-metric trap), 20 reading, 20 range lab on the
+    small-enterprise range (candidate list, cut to three), 10 assessment (7-minute quiz, 3-minute debrief)'
+- module: 2
+  minutes: 60
+  plan: '10 contact (Goodhart''s law and normalisation), 20 reading, 20 range lab (two raw counts,
+    normalised, then attacked), 10 assessment (7-minute quiz, 3-minute debrief)'
+- module: 3
+  minutes: 60
+  plan: '10 contact (pipeline stages and dashboard hierarchy), 20 reading, 20 range lab (two dashboard
+    elements and a one-screen sketch), 10 assessment (7-minute quiz, 3-minute debrief)'
+- module: 4
+  minutes: 60
+  plan: '10 contact (the one-page brief and confidence language), 20 reading, 20 range lab (gather figures,
+    write and deliver the five-minute brief aloud), 10 assessment (7-minute quiz, 3-minute debrief)'
+- module: 5
+  minutes: 60
+  plan: '10 contact (appetite, tolerance, capacity; the budget case anatomy), 20 reading, 20 range lab
+    (exposure figure, one-page case, ranking), 10 assessment (7-minute quiz, 3-minute debrief)'
+- module: 6
+  minutes: 60
+  plan: '10 contact (operating cadence and programme value), 20 reading, 20 range lab (capstone review of the
+    course metric register), 10 assessment (7-minute quiz, 3-minute debrief)'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: A count nobody acts on is a vanity metric; it measures activity, not control. A (leading
+    indicator) is wrong because nothing downstream is warned; C (lagging) would need an outcome it follows;
+    D (threshold) is a setting, not a report. Q2 C: Blocked connections precede the breach they warn of, so
+    leading; A and B both misread what the number tracks; D confuses any number with a threshold. Q3 D: A
+    decision-driving metric changes what an owner does; A-C test convenience, flattery and comparability,
+    none of which move a decision. Q4 A: Balance across prevention, detection and response with owners; B
+    repeats one measure, C outsources judgement, D rewards existing activity. Q5 B: Patch latency has an
+    owner, threshold and trigger; A prefers comfort, C mistakes volume for value, D adds a money test the
+    module never requires.'
+- module: 2
+  notes: 'Q1 C: A target changes behaviour until the measure stops measuring - Goodhart''s law; the response
+    is redesign, not more waiting (B) or narrower counting (D). Q2 A: Exposure changed between months, so
+    only the per-endpoint rate compares fairly; B reads raw counts, C compares calendars, D worships sample
+    size. Q3 D: A whole subnet absent for days is a completeness failure; accuracy and timeliness can be
+    fine on what arrives; consistency is not one of the module''s four checks. Q4 B: A quality check on a
+    sample makes gaming visible and costly; A publishes the gamed number, C raises the pressure that causes
+    gaming, D slows detection of it. Q5 D: Interpret only after the source is proven complete and timely for
+    that day; A and B react before checking, C cosmetically shrinks the signal.'
+- module: 3
+  notes: 'Q1 D: Raw counts rise with traffic, so restate as a rate; A and B tweak settings without fixing
+    the unit, C discards the element. Q2 B: Failed domain sign-ins live in the domain controller''s security
+    event log; A sees network blocks, C sees workstation-local events, D is a stale copy. Q3 A: Three
+    headline figures with thresholds and a drill-down path serve one glance; B buries the reader, C and D
+    are raw material, not a dashboard. Q4 C: A threshold belongs above the normal band at the point where
+    action would start; A alerts daily, B alerts never, D ignores the normal band. Q5 A: The refresh cadence
+    exceeds what the feed delivers, so align them; B and C adjust other knobs, D adds navigation to an
+    element that cannot update honestly.'
+- module: 4
+  notes: 'Q1 A: The opening must state the decision requested and the figure that drives it; B-D continue the
+    technical narrative the executive interrupted. Q2 D: It states capability, the flaw and the absence of
+    observed attempts; A claims certainty, B reassures without evidence, C invents a precision the module
+    forbids. Q3 C: The written follow-up is the one-page brief with options and the recommendation; A and B
+    are evidence, not a decision document; D records the meeting, not the ask. Q4 B: It gives the coverage
+    figure and the blind spot plainly; A overstates, C blames a team, D hides coverage from the headline. Q5
+    C: An appendix with the evidence behind each figure survives questioning; A memorises raw lines, B
+    dilutes ownership, D adds slides without adding answers.'
+- module: 5
+  notes: 'Q1 B: An appetite statement must name per-domain limits an owner can enforce or exceed; A (length),
+    C (legal review) and D (tone) are not what makes it enforceable. Q2 D: Appetite is the risk the
+    organisation seeks, tolerance the deviation around it; A inverts the scopes, B invents authors, C
+    confuses capacity with preference. Q3 A: When the control costs more than the exposure it removes, accept
+    the risk or find a cheaper control unless the difference buys other value; B skips the arithmetic, C
+    works backwards from a conclusion, D hides the cost. Q4 C: Four per dollar beats about one point three;
+    A reads absolute size, B reads outlay, D postpones a computable ranking. Q5 B: The accept option shows
+    the residual risk the organisation would knowingly carry; A implies a breach date nobody knows, C and D
+    are evidence and comparison, not the answer to refusal.'
+- module: 6
+  notes: 'Q1 C: A measure no decision uses is retired at the quarterly review; A mistakes inertia for
+    control, B promotes dead weight, D widens a threshold to manufacture motion. Q2 B: The incident becomes a
+    detection-latency metric with a threshold; A assigns blame, C closes the loop without learning, D raises
+    appetite for the wrong reason. Q3 D: Growth changes exposure, so affected domains'' limits are reviewed
+    and the change recorded; A waits for the calendar, B and C change limits without analysis. Q4 A: Value is
+    a named decision the data changed and its outcome; B-D count outputs, which prove production, not
+    effect. Q5 D: Cadences differ because decision speeds differ - data drifts fast, portfolios move slowly;
+    A-C invent blame, law and a substitute for quality work.'
+lab_setup:
+- module: 1
+  setup: Provision the small-enterprise range before the module and confirm fw-01 traffic summaries and the
+    sign-in logs on dc-01 and ws-01 are reachable from jump-box over SSH. Print or post the six-candidate
+    metric worksheet.
+- module: 2
+  setup: Confirm the range is up and that the firewall logs on fw-01 and the domain sign-in logs on dc-01 and
+    ws-01 cover the same seven-day window. Have the host count of the range posted and a blank normalisation
+    sheet per Student.
+- module: 3
+  setup: Provision the small-enterprise range and verify log collection from jump-box. Supply the one-screen
+    sketch grid (five figure slots) and post the aggregation-window options before the lab.
+- module: 4
+  setup: Range up, figures from module 3 still recorded. Assign each Student one briefing scenario note
+    (budget refusal, incident rumour, audit finding) and reserve a slot where the brief is delivered aloud
+    against a visible clock.
+- module: 5
+  setup: Range up with the module 2 figures still recorded. Prepare one control proposal per Student and one
+    alternative proposal to rank against; post the annualised-loss-exposure worksheet with the assumptions
+    section blank.
+- module: 6
+  setup: Range up and the metric register from modules 1-5 available on jump-box. Supply one incident
+    scenario note per Student and a verdict sheet (keep, rework, retire) with the reason column ruled.
+common_faults:
+- module: 1
+  fault: Students keep metrics that are easy to collect rather than metrics that change a decision.
+  remedy: For each kept candidate ask 'what would the owner do differently at the threshold?' and cut any
+    candidate with no answer before discussing thresholds.
+- module: 1
+  fault: Every candidate is labelled lagging because the data is historical.
+  remedy: "Re-anchor on the outcome: a measure that warns before the event is leading even when yesterday's
+    logs feed it."
+- module: 2
+  fault: Normalisation is skipped and raw counts are compared across periods.
+  remedy: Have Students write the exposure base beside every raw count in the lab before any comparison is
+    allowed.
+- module: 2
+  fault: Gaming defences are procedural ('tell analysts not to game') rather than design changes.
+  remedy: Push for structural answers - paired metrics, sampled quality checks, moved windows - and ask how
+    each survives an analyst under target pressure.
+- module: 3
+  fault: Thresholds are set at the observed average 'because it is data-driven'.
+  remedy: "Rebuild one element live: plot the normal band, mark where action would start, and place the
+    threshold there, above the band."
+- module: 3
+  fault: The sketch crams every element onto the first screen.
+  remedy: Enforce the five-slot grid; everything beyond five figures must live behind a drill-down path with
+    a named owner.
+- module: 4
+  fault: The brief opens with the incident timeline and reaches the ask in the last sentence.
+  remedy: Read the thirty-second headline aloud first; if the decision requested is not in it, rewrite
+    before the five-sentence brief is attempted.
+- module: 4
+  fault: Confidence is stated as false precision ('the risk is 8.2 million') or false certainty.
+  remedy: Drill the three-part form - what is known, what is estimated, what is unknown - and have Students
+    mark each sentence of their brief as one of the three.
+- module: 5
+  fault: The exposure figure is produced with hidden assumptions and defended after the fact.
+  remedy: Collect the assumption lists first and grade the case on the assumptions, not the conclusion.
+- module: 5
+  fault: The appetite statement is a single sentence about all risk, with no enforceable limits.
+  remedy: Require domain, numeric limit and owner on every appetite line before the budget case is attached
+    to it.
+- module: 6
+  fault: Every metric is kept because deleting work feels like loss.
+  remedy: Point at the module's rule - a measure no decision uses is cost without value - and ask which
+    decision each kept metric informed this quarter.
+- module: 6
+  fault: Programme value is argued in outputs (dashboards built, charts produced).
+  remedy: "Force the before-and-after form: name the decision, the figure that changed it and the outcome,
+    one line each."

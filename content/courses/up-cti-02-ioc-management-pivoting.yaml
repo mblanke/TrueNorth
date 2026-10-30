@@ -1,0 +1,557 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C556
+title: IOC Management & Pivoting
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C555
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Threat Analyst, Cyber Defense Analyst (PR-CDA-001).'
+  - 'NIST CSF 2.0: DE.CM (continuous monitoring), DE.AE (adverse event analysis).'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: IOC Lifecycle and Decay
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Define indicator of compromise and place it in the detection, triage and hunt cycle
+  - Build a decay table that assigns score windows and confidence to hash, domain, URL and IP indicators
+  - Apply expiry rules to an ageing indicator set and separate retired indicators from suppressed false positives
+  topics:
+  - Indicator of compromise definition, atomic versus computed indicators, and the detection, triage and hunt cycle.
+  - Indicator quality, confidence scoring and the false-positive cost of an over-broad indicator.
+  - Score decay models, half-life choices and window lengths for file, network and e-mail indicators.
+  - Expiry rules, retirement versus suppression, and recording why an indicator left the active set.
+  - Indicator lifecycle states from ingestion to retirement and what each state permits.
+  lab: >-
+    Lab: On the soc-training range, audit the active indicator set on misp01, record each indicator's type,
+    confidence and last-seen age, and judge which entries should be decayed, retired or suppressed. Evidence:
+    the indicator count by type; the confidence and decay window of the three oldest entries; one domain still
+    active past its decay window; one event that a stale IP indicator matches on siem01. Pass: every indicator
+    in the audit list marked active, decay, retire or suppress with a one-sentence reason; the stale domain
+    given a corrected window; the siem01 match quoted with its timestamp.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open the MISP web interface on misp01 and open the events index.
+    - hosts: [misp01]
+      action: In the events index on misp01, count the indicators by type, then record the confidence score and last-seen
+        date of the three oldest entries.
+    - hosts: [misp01]
+      action: Find a domain indicator whose last-seen date is older than its decay window and record its event ID,
+        score and the window it should have used.
+    - hosts: [siem01, misp01]
+      action: Search the telemetry on siem01 for one connection matching that stale IP indicator and record the
+        matching event with its timestamp and source host.
+    - hosts: [misp01]
+      action: For each audited indicator, mark it active, decay, retire or suppress with one sentence of reason,
+        and give the stale domain a corrected decay window.
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-150
+  source_gaps:
+  - No cited reference covers indicator decay models or expiry policy.
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A SOC keeps a blocking rule for every indicator it has ever seen, and analysts now chase benign
+        matches all shift. Which lifecycle weakness does this describe?
+      options:
+      - A) Missing confidence scoring
+      - B) No expiry, so false positives accumulate
+      - C) Missing review of retired indicators
+      - D) Mixing atomic and computed indicators
+      answer: B
+    - question: An analyst proposes blocking a domain that one report mentioned once, four years ago. Which
+        indicator property should weigh most against the block?
+      options:
+      - A) Its last-seen age
+      - B) Its domain length
+      - C) Its event tag count
+      - D) Its report order
+      answer: A
+    - question: A campaign IP indicator matched a backup server at 03:00 and now fires nightly. What is the
+        correct lifecycle action?
+      options:
+      - A) Retire the indicator as expired
+      - B) Delete the event on the SIEM
+      - C) Raise the indicator's confidence score
+      - D) Suppress the indicator as a false positive and keep the context
+      answer: D
+    - question: Which pair places a hash and a domain indicator correctly on the atomic-versus-computed line?
+      options:
+      - A) Both are computed indicators
+      - B) The hash is atomic; the domain is computed from observed context
+      - C) The hash is computed; the domain is atomic
+      - D) Both are atomic indicators
+      answer: B
+    - question: A team halves every indicator's score every 30 days and deletes it at zero. What should they
+        record when they delete an entry?
+      options:
+      - A) The retirement reason and match count
+      - B) The reporting contact of the campaign
+      - C) The original event description
+      - D) The deletion date only
+      answer: A
+- ordinal: 2
+  title: Pivoting Across WHOIS
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Extract registration fields from a WHOIS record and identify which values carry pivot value
+  - Correlate registrant, name-server and creation-date fields across domains to expose campaign infrastructure
+  - Judge the weight a shared registration field deserves when it is the only link between two domains
+  topics:
+  - WHOIS record structure, registrar data, registration and expiry dates, and privacy-redacted entries.
+  - Registrant organisation, e-mail, name-server and creation-date fields as pivot points between domains.
+  - Infrastructure reuse patterns that survive privacy redaction, such as name servers and registration bursts.
+  - Weighing correlation strength and recording a WHOIS pivot chain so another analyst can retrace it.
+  - Limits of registration data, including privacy proxies and bulk registration, as pivot confidence bounds.
+  lab: >-
+    Lab: On the soc-training range, open the campaign events on misp01, take the two suspicious domains and
+    their WHOIS registration records, and build a pivot chain linking them. Evidence: each record's creation
+    date, registrar and name servers; which registrant fields are redacted; the one shared value that links
+    the two domains; one further check on siem01 telemetry that tests whether the linked domain was contacted.
+    Pass: the pivot chain names each field used in order; the redacted fields are listed as unusable; the
+    shared link is graded weak or strong with a reason; the telemetry check result is recorded with a timestamp.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and open the two campaign events on misp01, recording each suspicious domain.
+    - hosts: [misp01]
+      action: From each domain's event on misp01, open its WHOIS attributes and record the creation date, registrar,
+        registrant fields and name servers.
+    - hosts: [misp01]
+      action: List which registrant fields are privacy-redacted in each record and mark them unusable for pivoting.
+    - hosts: [misp01]
+      action: Identify the field value both records share, record it as the pivot link and grade it weak or strong
+        with one sentence of reason.
+    - hosts: [siem01]
+      action: Search the telemetry on siem01 for connections to the second domain and record whether it was
+        contacted, with the timestamp.
+    - hosts: [jump01]
+      action: Write the pivot chain in field order, so another analyst can retrace it from the recorded values.
+  refs:
+  - nist-sp-800-150
+  source_gaps:
+  - No cited reference covers WHOIS records or registration-data pivoting.
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: Two domains share a name server but have fully redacted registrant data. What is the soundest
+        reading of the link?
+      options:
+      - A) It proves the same operator owns both domains
+      - B) It proves both domains are malicious
+      - C) It is a weak link, since large providers share name servers widely
+      - D) It is invalid until WHOIS removes the redaction
+      answer: C
+    - question: Which WHOIS field is most likely to survive a privacy-redaction service and still carry pivot
+        value?
+      options:
+      - A) Registrant street address
+      - B) Registrant e-mail address
+      - C) Name-server host
+      - D) Registrant fax number
+      answer: C
+    - question: A cluster of phishing domains was registered within 40 minutes of one another at the same
+        registrar. What does this pattern most support?
+      options:
+      - A) Bulk registration from one campaign actor
+      - B) Registrar data corruption
+      - C) Automated certificate renewal
+      - D) Stolen domain inventory
+      answer: A
+    - question: An analyst links a new domain to a known campaign through a registrant e-mail that WHOIS shows
+        in clear. What should the pivot record include?
+      options:
+      - A) Only the matched e-mail address
+      - B) The campaign name only
+      - C) Both domains' full records
+      - D) The matched value, both domains and the date the pivot was made
+      answer: D
+    - question: A domain alert fires on mail from a fresh campaign. Which creation-date finding makes the
+        "newly registered domain" alert the most suspicious?
+      options:
+      - A) Created seven years ago with a stable registrar and long history
+      - B) Created eleven days before the phishing mails it resolves to
+      - C) Created on a weekday during business hours
+      - D) Created with a ten-year expiry term
+      answer: B
+- ordinal: 3
+  title: DNS and Certificate Pivoting
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Resolve a domain through its DNS records and identify which record types expose hosting infrastructure
+  - Correlate certificate transparency data with DNS resolutions to map domains onto hosting addresses
+  - Distinguish resolver data that changes per query from data stable enough to support a pivot
+  topics:
+  - A, AAAA, CNAME, MX and NS records, and what each reveals about hosting.
+  - Passive DNS, resolution history and the difference between a live query and a recorded observation.
+  - Certificate transparency logs, subject alternative names and certificate overlap between related hosts.
+  - Round-robin and fast-flux resolutions as reasons a single resolution cannot anchor a pivot.
+  - Building an infrastructure map that joins domain, certificate and address observations with times.
+  lab: >-
+    Lab: On the soc-training range, resolve the campaign domains, collect their certificate observations and
+    map each domain onto hosting addresses. Evidence: each domain's A, MX and NS records; one certificate's
+    subject alternative names and validity window; one additional domain sharing that certificate; one Zeek
+    connection record in the Security Onion console on seconion01 confirming which address the monitored
+    clients actually contacted. Pass: the
+    map lists each domain with its address set and observation time; the certificate link is marked confirmed
+    or unconfirmed; the seconion01 record is quoted with its timestamp; one address is proposed for the next
+    telemetry hunt.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and resolve each campaign domain with dig, recording the A, MX and NS answers.
+    - hosts: [misp01]
+      action: Open the campaign event on misp01 and record the certificate attribute for one domain, including
+        its subject alternative names and validity window.
+    - hosts: [misp01]
+      action: List any further domains in the event that share that certificate's subject alternative names,
+        and mark the certificate link confirmed or unconfirmed.
+    - hosts: [jump01, seconion01]
+      action: From jump01, open the Security Onion console on seconion01, search the Zeek connection logs for
+        the campaign domains and record the address each monitored client contacted, with the timestamp.
+    - hosts: [jump01]
+      action: Draw the infrastructure map joining each domain, certificate and address observation with its
+        observation time, and mark one address for the next telemetry hunt.
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-150
+  source_gaps:
+  - No cited reference covers DNS record analysis or certificate transparency pivoting.
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: A domain resolves to four different addresses on four consecutive queries, all mail relays.
+        What does the mixed resolution pattern most suggest?
+      options:
+      - A) The domain host runs a load-balanced mail service
+      - B) The resolver is misconfigured
+      - C) The domain is parking on a registrar page
+      - D) The A records expired
+      answer: A
+    - question: Which DNS record type should an analyst check first to learn which provider hosts a domain's
+        mail?
+      options:
+      - A) AAAA
+      - B) CNAME
+      - C) MX
+      - D) TXT
+      answer: C
+    - question: Two unrelated-looking domains appear in one certificate's subject alternative names. What is
+        the correct next step?
+      options:
+      - A) Treat both domains as compromised immediately
+      - B) Check whether the certificate is a shared hosting or provider certificate first
+      - C) File a takedown request for the certificate
+      - D) Add the certificate hash to the blocklist
+      answer: B
+    - question: Why does a single live DNS resolution make a weaker pivot anchor than a passive DNS history?
+      options:
+      - A) Live answers omit the MX record
+      - B) Passive DNS history contains no addresses
+      - C) Live answers cannot resolve subdomains
+      - D) One answer is a single uncorroborated observation that may change between queries
+      answer: D
+    - question: A hunt needs one address likely to persist across a campaign. Which candidate should the analyst
+        choose?
+      options:
+      - A) The first A record returned today
+      - B) A name-server host shared by every campaign domain
+      - C) The round-robin address that resolved least often in the window
+      - D) The mail relay that served one message
+      answer: B
+- ordinal: 4
+  title: MISP Workflows
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Structure a MISP event with attributes, tags and galaxy references that another team can consume
+  - Apply distribution and sharing-group settings to an event before it leaves the owning organisation
+  - Run a MISP correlation query and judge which correlations need validation before they become detections
+  topics:
+  - MISP events, attributes, attribute categories and types, and how events differ from feeds.
+  - Tags, taxonomies and galaxies, and how shared tags turn an event into a community signal.
+  - Distribution levels and sharing groups, and what each setting promises the receiving organisation.
+  - Correlation on value and correlation on hash, false correlation sources and pre-export validation steps.
+  - Event workflow from draft to publication and what publication signals to consuming teams.
+  lab: >-
+    Lab: On the soc-training range, create a draft MISP event on misp01 from the campaign's indicators, tag
+    and distribute it, then run a correlation query and judge the correlations. Evidence: the attribute list
+    with one type per campaign indicator; the distribution setting chosen with a reason; the taxonomy tag
+    applied; the correlation query result with two correlations marked valid or false-positive and why. Pass:
+    every attribute typed correctly; the distribution setting is justified against the sharing group; the two
+    judged correlations each carry a reason; the event stays in draft with the publication decision recorded.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and open MISP on misp01, then start a new draft event named for the campaign.
+    - hosts: [misp01]
+      action: Add one attribute on misp01 for each campaign indicator in the lab notes, choosing the correct category and
+        type for each, and record the list.
+    - hosts: [misp01]
+      action: Apply the campaign taxonomy tag, set the distribution level and record the reason the chosen
+        distribution fits the sharing group.
+    - hosts: [misp01]
+      action: Run a correlation query on the event's values on misp01 and record every correlation MISP
+        returns.
+    - hosts: [misp01]
+      action: For two of the returned correlations, judge each valid or false-positive with one sentence
+        of reason.
+    - hosts: [jump01]
+      action: Leave the event in draft, record the publication decision and confirm the draft would not yet
+        reach other organisations.
+  refs:
+  - oasis-cti
+  - nist-sp-800-150
+  source_gaps:
+  - No cited reference covers MISP event structure or distribution settings.
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: An analyst adds an internal asset inventory address to an event meant for community sharing.
+        What should happen before the event leaves the organisation?
+      options:
+      - A) The attribute is deleted before anything is shared
+      - B) The attribute is tagged private and left in the event
+      - C) The event is published immediately so consumers receive it sooner
+      - D) The address is hashed and kept in the attribute
+      answer: A
+    - question: A sharing group receives a published event but no tags. What is the most direct consequence?
+      options:
+      - A) The event cannot be correlated because matching runs only on tags
+      - B) The event reverts to draft until the tags are restored
+      - C) The attributes lose their types and can no longer be imported
+      - D) Filters and triage rules that rely on taxonomies will not fire
+      answer: D
+    - question: A MISP correlation matches one short URL string across three unrelated campaigns. What does
+        this illustrate?
+      options:
+      - A) The correlation engine is broken and should be reported as a fault
+      - B) Short or generic values correlate falsely and need validation
+      - C) The three campaigns are the work of one actor
+      - D) The URL attribute type was wrong for the value
+      answer: B
+    - question: Which statement correctly separates a draft event from a published one in MISP?
+      options:
+      - A) A draft event has no attributes yet
+      - B) A published event cannot be edited or withdrawn by the owning organisation
+      - C) A draft event stays visible only inside its distribution scope
+      - D) Publication deletes all earlier revisions of the event
+      answer: C
+    - question: Which attribute type fits the value "evil-example.test" in a MISP event about phishing mail?
+      options:
+      - A) hostname
+      - B) ip-dst
+      - C) sha256
+      - D) email-subject
+      answer: A
+- ordinal: 5
+  title: Hunting with Indicator Sets
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Translate an indicator set into SIEM and endpoint hunt queries that return evidence, not noise
+  - Execute a hunt across telemetry and endpoint data, and attribute each match to a verdict with evidence
+  - Feed validated hunt findings back into the indicator set as scored, decayed indicators
+  topics:
+  - From indicator set to hunt query, and scoping by time, host group and data source.
+  - Sigma rule structure and its mapping onto stored telemetry for repeatable hunts.
+  - Endpoint hunts with Velociraptor artefacts against live hosts and collected evidence.
+  - Verdict discipline, true positive, benign true positive and false positive, and the evidence each requires.
+  - Closing the loop, converting validated hunt findings into indicators with confidence and decay windows.
+  lab: >-
+    Lab: On the soc-training range, turn the validated campaign indicators into a hunt, run it on siem01 and
+    velociraptor01, and assign a verdict to every match. Evidence: the scoped hunt query with its time window;
+    the count of SIEM matches by source host; one Velociraptor artefact result naming the endpoint examined;
+    a verdict per match with the evidence line that supports it. Pass: the query returns evidence lines, not
+    alerts alone; every match carries a verdict and evidence; one finding is written back to misp01 as a new
+    indicator with a confidence score and decay window; the hunt summary states what was and was not found.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open Dashboards on siem01 and build the scoped hunt query over the campaign
+        indicators with a time window, recording the query.
+    - hosts: [siem01]
+      action: Run the query on siem01, record the match count by source host and copy two evidence lines.
+    - hosts: [velociraptor01]
+      action: On velociraptor01, run a file-hunt artefact across the endpoints for one campaign hash and record
+        which endpoint the artefact names.
+    - hosts: [siem01]
+      action: For every match, write a verdict, true positive, benign true positive or false positive, with the
+        evidence line that supports it.
+    - hosts: [misp01]
+      action: Add one validated finding back to the campaign event on misp01 as a new attribute with a confidence
+        score and a decay window.
+    - hosts: [jump01]
+      action: Write the hunt summary stating what was found, what was not found and what the empty results
+        still rule out.
+  refs:
+  - sigma
+  - mitre-attack
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A hunt over one month of telemetry for a broad domain indicator returns two thousand matches.
+        What is the first correction?
+      options:
+      - A) Run the query again with a longer window and more sources
+      - B) Convert the query into a scheduled alert for the wider team
+      - C) Lower the indicator's confidence score and leave the query unchanged
+      - D) Scope the query tighter by time, host group or source, then re-run
+      answer: D
+    - question: A Sigma rule matched a nightly backup job writing to the same path the rule watches. The rule
+        works as designed. What is the verdict?
+      options:
+      - A) True positive, the matched host is compromised and needs response
+      - B) False positive, the rule matched activity it was built to ignore
+      - C) Benign true positive, the rule saw exactly its authorised target
+      - D) Rule defect, the watch path was written against the wrong job
+      answer: C
+    - question: A Velociraptor hunt finds the campaign hash on one endpoint of forty. What must accompany the
+        finding before it becomes an indicator?
+      options:
+      - A) The artefact name, the endpoint and the evidence line
+      - B) The hunt's wall-clock duration across the endpoint fleet
+      - C) The endpoint's uptime, patch level and owning team
+      - D) The other thirty-nine hostnames as a sweep list
+      answer: A
+    - question: A hunt scoped to one week and one host group returns no matches at all. What has the hunt
+        still produced?
+      options:
+      - A) Nothing, an empty hunt is wasted effort and should be rerun unscoped
+      - B) Evidence that the indicator set was wrong for this campaign entirely
+      - C) A negative result ruling the indicators out for that scope and window
+      - D) Proof the telemetry pipeline is broken somewhere in its ingestion
+      answer: C
+    - question: A hunt over one week of SIEM and endpoint telemetry has produced four findings. Which finding
+        earns a new indicator with the highest confidence score?
+      options:
+      - A) A domain seen once in an e-mail header
+      - B) An address matching two endpoints with full connection evidence
+      - C) A URL reported by an external blog without samples or captured infrastructure
+      - D) A hash named in a vendor press release
+      answer: B
+- ordinal: 6
+  title: Validating and Sharing the Indicator Set
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Validate a finished indicator set against the false-positive rate and coverage the SOC actually needs
+  - Package an indicator set as structured threat information and record its provenance and confidence
+  - Decide which validated indicators to share, retire or keep internal when a campaign closes
+  topics:
+  - Validation criteria for an indicator set, specificity, coverage, observed evidence and tested query syntax.
+  - Structured threat information, STIX objects and TAXII channels, and why structure beats prose for machines.
+  - Provenance and confidence records, and what a consuming analyst needs to re-weigh a shared indicator.
+  - Campaign closure, retiring indicators, keeping low-volume watch items and recording the closure decision.
+  - Post-campaign review of which pivots held and what the next hunt inherits.
+  lab: >-
+    Lab: On the soc-training range, validate the closed campaign's indicator set on misp01, package it for
+    sharing and record the closure decision. Evidence: each indicator marked validated or rejected against
+    specificity, evidence and query syntax; the STIX bundle fields chosen for one domain indicator; the
+    provenance note naming the source and confidence; one SIEM check on siem01 proving the campaign no longer
+    fires. Pass: every indicator carries a validation mark with a reason; the packaged indicator names source,
+    confidence and decay; one indicator is marked keep-internal with its reason; the siem01 check result and
+    the closure decision are both recorded.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and open the campaign event on misp01, listing every indicator it now holds.
+    - hosts: [misp01]
+      action: Mark each indicator on misp01 validated or rejected, judging specificity, observed evidence and query syntax,
+        and record a reason for each mark.
+    - hosts: [misp01]
+      action: For one domain indicator, record the fields a STIX representation would carry, including value,
+        confidence, labels and the valid-from date.
+    - hosts: [misp01]
+      action: Write the provenance note naming the source, the confidence and the decay window, and mark one
+        indicator keep-internal with its reason.
+    - hosts: [siem01]
+      action: Re-run the campaign hunt query on siem01 and record whether it still fires, with the count.
+    - hosts: [jump01]
+      action: Record the closure decision, retire, watch or share, for the set, and note one decay window that
+        the campaign proved right or wrong.
+  refs:
+  - oasis-cti
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A packaged indicator set carries values only, with no source, confidence or dates. What is the
+        most direct consequence for a receiving analyst?
+      options:
+      - A) The values cannot be parsed by machine and the set is unusable
+      - B) The analyst cannot re-weigh the indicators and treats them at unknown trust
+      - C) The set expires immediately on import because the confidence dates are missing
+      - D) The set cannot be imported until a source and confidence are added
+      answer: B
+    - question: An indicator fires twice in ninety days, both times on one known backup host. What validation
+        mark and action fit?
+      options:
+      - A) Validated and shipped as it stands, with no change made
+      - B) Rejected, the value is malformed or too generic to keep
+      - C) Validated with a suppression for the backup host, then shared
+      - D) Retired, because two matches in ninety days invalidate any indicator
+      answer: C
+    - question: A campaign closes and its indicator set holds a burned infrastructure address and a
+        low-and-slow domain. Which pairing of closure decisions is internally consistent?
+      options:
+      - A) A burned address is retired, a low-and-slow domain is watched
+      - B) All indicators retire at closure
+      - C) All indicators stay active forever
+      - D) A low-and-slow domain is retired, a burned address stays on watch
+      answer: A
+    - question: A SOC analyst must hand a campaign's indicators to a partner's parsing pipeline. Why does
+        structured threat information beat a prose report for machine consumption?
+      options:
+      - A) It is always shorter than the prose report
+      - B) Typed objects with dates and confidence import, correlate and decay
+      - C) It avoids the need for any validation
+      - D) Prose reports cannot contain indicators, so a machine must re-read each one
+      answer: B
+    - question: The post-campaign review shows every domain indicator outlived its decay window while every
+        address indicator expired too early. What should the next hunt inherit?
+      options:
+      - A) Uniform windows for every type, since per-type exceptions break the automation
+      - B) No windows at all
+      - C) Longer windows for domain indicators and shorter ones for addresses
+      - D) Shorter windows for domains, longer for addresses
+      answer: C

@@ -1,0 +1,573 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+
+course_code: C505
+title: Audit, Assessment & Continuous Improvement
+version: '1.0'
+difficulty: advanced
+duration_hours: 6
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C503
+- C502
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Security Control Assessor, Authorizing Official.'
+  - 'NIST CSF 2.0: GV.OV, ID.IM, GV.RM.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Assessment Frameworks and Evidence Sampling
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish an assessment, an audit and a penetration test by the question each answers and the evidence each produces
+  - Select an evidence sample for a stated control that an independent reviewer can re-perform
+  - Map each assessment activity to the stage of a recognised assessment process
+  topics:
+  - 'The purpose of assessment: conformance, effectiveness and residual risk.'
+  - Assessment methods - interviews, document review, technical testing and observation.
+  - Sampling - the population, the sample size and the evidence each item must carry.
+  - Evidence quality - re-performable, dated, sourced and complete.
+  - Recording weaknesses, and how assessment results feed risk decisions and improvement plans.
+  lab: >-
+    Lab: On the medium-enterprise range, build the evidence base for an assessment of the
+    boundary and identity controls, taking one sample item of evidence for each control in
+    the assessment plan. Evidence: the list of host names whose logs the SIEM holds; each
+    fw01 rule with its source, destination and action, in rule order; the domain password
+    policy values dc01 reports; the operating system version and latest update shown on
+    ws01 and ws02. Pass: every host in the sample appears in the SIEM host list or is
+    explained as out of scope; each control has at least one dated evidence item; each
+    evidence item is marked direct or indirect with a one-sentence reason.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 with the analyst account the instructor assigned and record the list of
+        host names whose logs the SIEM holds.
+    - hosts: [siem01, fw01]
+      action: From siem01, open the administration page on fw01 and record each firewall rule with its
+        source, destination and action, in rule order.
+    - hosts: [dc01]
+      action: Query dc01 for the domain password policy and record the minimum password length and the
+        account lockout threshold.
+    - hosts: [ws01, ws02]
+      action: Sign in to ws01 and ws02 in turn and record the operating system version and the most
+        recent update each shows.
+    - hosts: [siem01]
+      action: Mark each evidence item direct or indirect, with one sentence stating what re-performing
+        that item would require.
+  refs:
+  - nist-sp-800-115
+  - nist-sp-800-37r2
+  - nist-cswp-29
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: An assessor is asked whether the controls on a network operate effectively, not merely
+        whether documents for them exist. Which activity best answers that question?
+      options:
+      - A) Reading the signed and approved security policy the organisation published recently
+      - B) Re-performing a control test, such as attempting a blocked connection
+      - C) Counting the staff who completed awareness training
+      - D) Copying the asset register into the report
+      answer: B
+    - question: 'A control applies to 240 workstations and the assessor can examine 24. What makes
+        the 24 a defensible evidence sample?'
+      options:
+      - A) They are the 24 quickest and cheapest for the assessor to reach
+      - B) They are the 24 the administrator recommends
+      - C) They were chosen so results project to the whole population
+      - D) They are the 24 newest machines
+      answer: C
+    - question: Which evidence item can an independent reviewer re-perform without trusting the
+        assessor's notes?
+      options:
+      - A) A dated rule export taken from the firewall during the assessment window
+      - B) An e-mail from an administrator recalling that the rules were once tighter
+      - C) A screenshot with no date or host name
+      - D) The assessor's summary that the control works
+      answer: A
+    - question: 'A team is engaged to break into a network within agreed rules of engagement and
+        report what it achieved. In assessment vocabulary, this engagement is:'
+      options:
+      - A) A compliance audit
+      - B) A control assessment
+      - C) A document review
+      - D) A penetration test
+      answer: D
+    - question: 'An assessment finds a control documented in an approved standard but not enforced on
+        the network. The result should first be recorded as:'
+      options:
+      - A) A conforming control, because the document exists
+      - B) A weakness with evidence, feeding a risk decision and an improvement plan
+      - C) A matter for staff training only
+      - D) Out of scope, because enforcing the control is operational work for administrators
+      answer: B
+- ordinal: 2
+  title: Running a Control Assessment on the Range
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Execute a control assessment on a live network by collecting the evidence each control in the plan expects
+  - Test a boundary control from an authorised workstation and record the observed result without changing the range
+  - Grade each control implemented, partially implemented or not implemented against the collected evidence
+  topics:
+  - 'Working from the assessment plan: control, evidence expected and method.'
+  - 'Interview, examine and test: choosing the method each control needs.'
+  - Testing boundary rules from an authorised workstation.
+  - Recording evidence as the test runs, with times and sources.
+  - Grading controls implemented, partially implemented or not implemented.
+  lab: >-
+    Lab: On the medium-enterprise range, assess three controls - the boundary rules on fw01,
+    the domain password policy on dc01, and the restriction on workstation-to-DMZ traffic -
+    and grade each against the policy the instructor states. Evidence: the fw01 rules that
+    apply from the corporate network to the DMZ, with their ports; the dc01 password policy
+    values; the result of one connection attempt from ws01 to web01 on a port the policy does
+    not allow; whether that attempt appears in the SIEM. Pass: each of the three controls is
+    graded implemented, partially implemented or not implemented; each grade cites the
+    evidence item that supports it; no range setting was changed during the assessment.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 with the analyst account and record the start time of the assessment
+        session.
+    - hosts: [siem01, fw01]
+      action: From siem01, open fw01 and record each rule that applies to traffic from the corporate
+        network to the DMZ, with its ports and action.
+    - hosts: [dc01]
+      action: Query dc01 for the domain password policy and record the minimum length, the lockout
+        threshold and the lockout duration.
+    - hosts: [ws01, web01]
+      action: From ws01, attempt one connection to web01 on a port the stated policy does not allow
+        and record whether it connects or fails.
+    - hosts: [siem01]
+      action: Query the SIEM for events from ws01 in the assessment window and record whether the
+        blocked attempt appears.
+    - hosts: [siem01]
+      action: Grade each of the three controls implemented, partially implemented or not implemented,
+        citing the evidence item for each grade.
+  refs:
+  - nist-sp-800-115
+  - cis-benchmarks
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: 'During an assessment, the assessor wants evidence that the boundary rules on a firewall
+        are enforced, not just present. The strongest method is to:'
+      options:
+      - A) Read the current rule export that the firewall administrator supplies for review
+      - B) Interview the firewall administrator about the rules
+      - C) Attempt a blocked connection from an authorised workstation and record the result
+      - D) Review the change tickets raised for the rules
+      answer: C
+    - question: 'A policy requires automatic screen lock after ten minutes. On ten sampled workstations
+        the assessor finds the setting applied on six and absent on four. The control should be graded:'
+      options:
+      - A) Implemented, because most of the sampled workstations comply with the policy
+      - B) Not implemented, because any gap is total failure
+      - C) Out of scope, because the setting is a workstation matter
+      - D) Partially implemented, with the sample results recorded as evidence
+      answer: D
+    - question: 'While testing, the assessor finds a rule that allows more traffic than the stated policy
+        permits. The correct action is to:'
+      options:
+      - A) Remove the over-broad rule at once so the network ends up compliant
+      - B) Record the observation with evidence, continue the plan and report the finding
+      - C) Widen the policy to match what the rule allows
+      - D) Stop the assessment until the rule is authorised
+      answer: B
+    - question: Which action falls outside a read-only control assessment on a live production network?
+      options:
+      - A) Disabling a rule that failed the test to observe what changes
+      - B) Attempting a blocked connection from an authorised workstation
+      - C) Exporting the current rule set from the firewall
+      - D) Recording the password policy the domain controller reports for the assessment
+      answer: A
+    - question: 'The assessor''s connection test from a workstation does not appear in the SIEM. The most
+        accurate conclusion for the assessment record is:'
+      options:
+      - A) The control is proven, because nothing was logged
+      - B) The SIEM is broken and must be fixed before the assessment continues
+      - C) That control's evidence base has a gap the assessment report must state
+      - D) The attempt never actually happened
+      answer: C
+- ordinal: 3
+  title: Findings
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a finding that states the condition, the criteria, the cause and the effect
+  - Rate each weakness's severity from likelihood and impact rather than from preference
+  - Distinguish a finding from an observation and from an out-of-scope note
+  topics:
+  - The anatomy of a finding - condition, criteria, cause and effect.
+  - Severity scales, and rating by likelihood and impact.
+  - Telling findings, observations and out-of-scope notes apart in the written report.
+  - Evidence attachment - every finding cites what was seen and where.
+  - Common finding defects - merged conditions, missing criteria and unranked severity.
+  lab: >-
+    Lab: On the medium-enterprise range, examine three areas for weaknesses - the fw01 rule
+    set against the stated policy, the privileged accounts on dc01, and the service version
+    web01 reports - and write each weakness as a finding. Evidence: any fw01 rule broader
+    than the stated policy, with its rule name; the members of the domain administrators
+    group on dc01; the web service version web01 reports. Pass: each weakness is written
+    with condition, criteria, cause and effect; each cites the evidence item and where it
+    was observed; each carries a severity with a one-sentence likelihood and impact reason;
+    anything noted that is not a weakness is listed as an observation.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01, fw01]
+      action: From siem01, open fw01 and compare each rule with the policy the instructor states,
+        recording any rule that allows more than the policy permits.
+    - hosts: [dc01]
+      action: Query dc01 for the members of the domain administrators group and record each account
+        name.
+    - hosts: [ws01, web01]
+      action: From ws01, connect to web01 on port 80 (allowed by corp-to-dmz) and record the web
+        service version it reports.
+    - hosts: [siem01]
+      action: Write one finding for each weakness, with condition, criteria, cause and effect, and
+        attach the evidence item and where it was observed.
+    - hosts: [siem01]
+      action: Rate each finding's severity with one sentence on likelihood and one on impact, and
+        list anything noted that is not a weakness as an observation.
+  refs:
+  - nist-sp-800-30r1
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'A finding reads, in full: "Patch management is weak." The defect that makes this
+        finding unusable is:'
+      options:
+      - A) It states a judgement with no condition, criteria or cited evidence
+      - B) It is too short to store in the organisation's findings tracker
+      - C) It names no product vendor
+      - D) It carries no ticket number
+      answer: A
+    - question: 'One finding merges two weaknesses - an over-broad firewall rule and an unpatched
+        service. The report should:'
+      options:
+      - A) Keep them together, so the overall severity is counted only once
+      - B) Split them into two findings, each with its own severity and remediation
+      - C) Keep them merged because fixing a rule is easier than patching
+      - D) Merge every finding in the report into one combined entry for tracking
+      answer: B
+    - question: 'An over-broad rule affects one internal printer; a second rule exposes every server
+        to the internet. Both violate the same policy. What justifies rating the second more severe?'
+      options:
+      - A) It was found later in the testing programme
+      - B) The vendor of the affected devices is better known to the team
+      - C) The rule text is longer than the first
+      - D) It affects every server, so the impact of exploitation is far greater
+      answer: D
+    - question: 'During the assessment the assessor notices an unlocked server room door, but the
+        approved scope covers network controls only. The note belongs in the report as:'
+      options:
+      - A) A critical finding
+      - B) A remediation entry raised against the door controls
+      - C) An out-of-scope note passed to the system owner
+      - D) Nothing, because the scope excludes it
+      answer: C
+    - question: 'The web service on a server is one version behind the current release, but no weakness
+        in that version is known. This is best recorded as:'
+      options:
+      - A) An observation, until a known weakness gives it a severity
+      - B) A critical finding, because older versions are always unsafe
+      - C) An out-of-scope note, because versions are operational
+      - D) A policy exception granted by the assessor
+      answer: A
+- ordinal: 4
+  title: POA&Ms and Remediation Tracking
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Convert each accepted finding into a plan of action and milestones entry with owner, resources and dates
+  - Re-test a remediated control and record the evidence that supports closing the entry
+  - Report remediation status honestly when a milestone slips or a fix is partial
+  topics:
+  - The plan of action and milestones - weakness, milestone, owner, resources and status.
+  - Turning findings into milestones that one owner can complete and verify.
+  - Risk-based scheduling - which weaknesses are fixed first and why.
+  - Re-testing remediation before an entry is marked closed.
+  - Reporting slipped milestones and partial fixes without hiding residual risk.
+  source_gaps:
+  - The federal guidance dedicated to plans of action and milestones is not in the reference library;
+    the module teaches the practice from the risk management and assessment guides that are listed.
+  lab: >-
+    Lab: On the medium-enterprise range, turn the previous module's findings into a plan of
+    action and milestones, remediate one weakness the instructor approves, and re-test it.
+    Evidence: a plan of action and milestones entry for each finding with weakness, milestone,
+    owner role, resources and status; the changed fw01 rule as it now stands; the result of
+    re-testing the restricted connection from ws01; whether SIEM logging continued after the
+    change. Pass: every finding has an entry with all five fields; the remediated rule allows
+    only what the policy states; the re-test result is recorded; each entry is marked closed
+    or ongoing with the evidence that supports the status named.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: On siem01, write a plan of action and milestones entry for each finding from the previous module,
+        with weakness, milestone, owner role, resources and status.
+    - hosts: [siem01]
+      action: Order the entries by risk and record one sentence saying why the first entry is
+        scheduled first.
+    - hosts: [fw01]
+      action: With the instructor's approval, restrict the over-broad rule on fw01 to the ports the
+        policy states and record the rule as it now stands.
+    - hosts: [ws01, web01]
+      action: From ws01, repeat the connection test to web01 on a port the policy does not allow and
+        record whether it now fails.
+    - hosts: [siem01]
+      action: Query the SIEM for fw01 events in the window after the change and record whether
+        logging of those events continued as before.
+    - hosts: [siem01]
+      action: Mark each plan of action and milestones entry closed or ongoing, naming the recorded
+        evidence that supports each status.
+  refs:
+  - nist-sp-800-37r2
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: 'A remediation milestone passed two weeks ago and the work has not started. The honest
+        status on the plan of action and milestones entry is:'
+      options:
+      - A) Closed, so the tracker score stays clean and the report looks complete
+      - B) Deleted, then re-raised as a new finding
+      - C) Left blank, because the work never began
+      - D) Ongoing, with a revised milestone and slip reported to the risk owner
+      answer: D
+    - question: 'A plan of action and milestones entry needs a milestone one owner can complete
+        and verify. Which milestone fits?'
+      options:
+      - A) Improve the security culture across the organisation
+      - B) Make the whole network safe against every kind of compromise imaginable
+      - C) Restrict the over-broad rule to the policy ports and re-test it
+      - D) Consider whether awareness training might be useful
+      answer: C
+    - question: 'A plan of action and milestones entry may be marked closed only when:'
+      options:
+      - A) The remediation is in place and a re-test produced evidence it works
+      - B) The milestone date has passed and the calendar confirms the entry finished
+      - C) The owner states that the work is done
+      - D) The next assessment cycle begins
+      answer: A
+    - question: 'When several weaknesses are open at once, the order of remediation should be
+        driven chiefly by:'
+      options:
+      - A) The order in which the findings were raised
+      - B) Each weakness's severity and the resources available to fix it
+      - C) The age of each finding in the tracker
+      - D) An alphabetical listing of the affected systems in the asset register
+      answer: B
+    - question: 'A partial fix reduces a weakness but does not remove it. Honest tracking records:'
+      options:
+      - A) Closure, with a note that improvement was made
+      - B) Closure, because any improvement counts
+      - C) Deletion of the entry, because the work is partly done
+      - D) An ongoing entry with the residual risk stated to the risk owner
+      answer: D
+- ordinal: 5
+  title: Lessons-Learned Loops into ID.IM
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Run a lessons-learned review that turns assessment results into improvement actions
+  - Assign each improvement action to people, process or technology so the loop covers all three
+  - Select a metric for each improvement action that existing telemetry can measure
+  topics:
+  - The improvement loop - assess, analyse, act and re-assess.
+  - Lessons-learned reviews - who attends, what is examined and what is recorded.
+  - Improvement actions for people, process and technology.
+  - Metrics that show an improvement worked, measured from existing telemetry.
+  - Feeding assessment weaknesses back into policy, training and monitoring.
+  lab: >-
+    Lab: On the medium-enterprise range, run the lessons-learned stage for the assessment the
+    earlier modules carried out: examine what the SIEM recorded during the assessment period
+    and convert the recurring weaknesses into improvement actions with metrics. Evidence: the
+    count and top source of failed sign-in events against dc01 in the recorded period; one
+    other recurring event class the period shows, with its count; one improvement action for
+    each weakness, labelled people, process or technology; for one action, the metric that
+    would show it worked and the SIEM data that measures it. Pass: every action states the
+    weakness it addresses; each action is labelled people, process or technology; the chosen
+    metric is measurable from data the SIEM already holds.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Query the SIEM (siem01) for failed sign-in events against dc01 over the recorded period and
+        record the total count and the source host with the most failures.
+    - hosts: [siem01]
+      action: Record one other recurring event class the assessment period shows, such as blocked
+        connection attempts, with its count.
+    - hosts: [siem01]
+      action: Write one improvement action for each weakness the assessment found, stating the
+        weakness each action addresses.
+    - hosts: [siem01]
+      action: Label each action people, process or technology, and record one sentence saying why
+        that label fits.
+    - hosts: [siem01]
+      action: Select one metric for the highest-risk action and record the SIEM data that will
+        measure it.
+  refs:
+  - nist-cswp-29
+  - nist-sp-800-61r3
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'After an assessment, an organisation fixes each finding separately and changes nothing
+        else. What a lessons-learned improvement loop would add is:'
+      options:
+      - A) Faster formal closure of all the open entries in the findings tracker
+      - B) A review asking why the weaknesses arose and acting on the causes
+      - C) A longer assessment report for the archive
+      - D) A larger number of findings next time
+      answer: B
+    - question: 'Sign-in failures recur at every assessment because staff share accounts. The improvement
+        action that addresses the cause is to:'
+      options:
+      - A) Issue individual accounts, train staff in their use and re-assess
+      - B) Count the sign-in failures again next quarter and compare the totals
+      - C) Buy a larger licence for the logging platform
+      - D) Write the same finding again with a higher severity
+      answer: A
+    - question: Which metric shows a boundary-hardening improvement worked, using data the SIEM already
+        holds?
+      options:
+      - A) The number of staff members who attended the closing briefing in person
+      - B) The budget spent on the boundary device
+      - C) The fall in blocked connection attempts from workstations to restricted ports
+      - D) The count of new policies published during the cycle
+      answer: C
+    - question: 'A lessons-learned review concludes that findings recur because evidence samples were
+        too small. The improvement action belongs to:'
+      options:
+      - A) Technology, because a larger sensor would help
+      - B) People, because the assessors should try harder when they sample next time
+      - C) Nothing, because sampling is never recorded
+      - 'D) Process: rewrite the sampling method and test it at the next assessment'
+      answer: D
+    - question: 'In an improvement loop, work on a single weakness counts as complete when:'
+      options:
+      - A) The finding is filed in the tracker
+      - B) The action is complete and re-assessment shows the weakness did not return
+      - C) The report is published on the intranet
+      - D) A metric has been chosen, recorded and reported for the improvement action
+      answer: B
+- ordinal: 6
+  title: Assessment Reporting and the Authorisation Decision
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Assemble an assessment report in which every conclusion cites the evidence collected
+  - Write a risk determination for each open finding using likelihood and impact
+  - Recommend an authorisation decision with reasons and conditions a decision-maker can act on
+  topics:
+  - The assessment report - scope, methodology, findings and evidence annexes.
+  - Risk determination - likelihood, impact and residual risk for each open finding.
+  - The authorisation package - recommendation, conditions and what remains accepted.
+  - Conditions of authorisation, and the continuous monitoring that supports them.
+  - Presenting results so the decision-maker can act without re-doing the assessment.
+  lab: >-
+    Lab: On the medium-enterprise range, close the assessment the earlier modules ran:
+    assemble the report from the recorded evidence, write a risk determination for each
+    open finding, and recommend an authorisation decision for the range. Evidence: the
+    report sections with each conclusion tied to its evidence item; which over-broad
+    conditions and earlier findings remain open on fw01 and dc01; a likelihood and impact
+    rating with a one-sentence reason for each open finding; a recommended decision with
+    its conditions and the residual risk stated. Pass: every conclusion cites an evidence
+    item from the earlier labs; each open finding has a likelihood and impact rating with
+    reasons; the recommendation names its conditions or states that none are needed.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Assemble the assessment report on siem01 from the evidence recorded in the earlier modules, and
+        record each conclusion beside the evidence item that supports it.
+    - hosts: [siem01, fw01]
+      action: Read the fw01 rule set as it now stands and record which over-broad conditions, if any,
+        remain open.
+    - hosts: [dc01]
+      action: Query dc01 for the password policy and the privileged accounts as they now stand, and
+        record which earlier findings remain open.
+    - hosts: [siem01]
+      action: Write a likelihood rating and an impact rating for each open finding, with one sentence
+        of reason for each rating.
+    - hosts: [siem01]
+      action: Recommend authorise, authorise with conditions or do not authorise, and record the
+        conditions and the residual risk the organisation would accept.
+  refs:
+  - nist-sp-800-37r2
+  - nist-sp-800-30r1
+  - nist-sp-800-115
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: 'An assessment report concludes: "The network is secure." The defect in this
+        conclusion is that it:'
+      options:
+      - A) Is too positive a statement for a formal report to contain
+      - B) Belongs in the executive summary instead
+      - C) Asserts more than the evidence and scope of the assessment support
+      - D) Names the network without naming its owner
+      answer: C
+    - question: 'A finding shows every server reachable from the internet through one over-broad rule,
+        and both its likelihood and impact are rated high. The risk determination is:'
+      options:
+      - A) High residual risk, which should not be accepted without conditions
+      - B) Low, because a documented rule exists that governs the traffic in question
+      - C) Medium, because the rule is documented in the tracker
+      - D) Zero, because the weakness has now been reported
+      answer: A
+    - question: 'A decision-maker receives the assessment report and must respond this week.
+        Which recommendation can they act on directly?'
+      options:
+      - A) Security in the organisation should simply improve over the coming year
+      - B) The assessment programme is now complete
+      - C) Risk levels are ultimately a matter of opinion
+      - D) Authorise for six months, with the over-broad rule restricted and re-tested
+      answer: D
+    - question: 'In an authorisation decision, the conditions attached to the final approval
+        exist to:'
+      options:
+      - A) Punish the system owner for the weaknesses found
+      - B) State the weaknesses accepted for now and the actions that close them
+      - C) Replace the findings in the assessment report
+      - D) End the continuous monitoring that the system would otherwise require after authorisation
+      answer: B
+    - question: 'Six months pass after an assessment with no re-assessment or monitoring report. The
+        weakest point of the standing authorisation is:'
+      options:
+      - A) The formatting of the original report
+      - B) The sample size that the original assessment programme decided on last cycle
+      - C) The evidence is stale, so it no longer shows the controls work
+      - D) The choice of assessment framework at the time
+      answer: C

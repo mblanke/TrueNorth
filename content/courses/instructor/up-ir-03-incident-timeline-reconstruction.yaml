@@ -1,0 +1,196 @@
+course_code: C533
+audience: staff_only
+overview: >-
+  Incident Timeline Reconstruction is a self-paced course for a Student working alone across six
+  50-minute modules (300 minutes, 5 hours). It teaches one chain of work on the soc-training
+  range: read the clocks and sources (Module 1), measure skew and correlate (Module 2), merge
+  host and network evidence (Module 3), build the master timeline (Module 4), write the attack
+  narrative (Module 5) and review and hand over the finished work (Module 6). Each module has
+  15 minutes of teaching, a 25-minute range lab and a 10-minute quiz passed at 70 percent. The
+  Modules 4 and 5 labs carry forward: the timeline built in Module 4 is the one the Student
+  turns into a narrative in Module 5. The Student hands in lab notes with the recorded evidence,
+  the master timeline table and the cited narrative.
+timings:
+- module: 1
+  minutes: 50
+  plan: '15 teach, 25 lab, 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '15 teach, 25 lab, 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '15 teach, 25 lab, 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '15 teach, 25 lab, 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '15 teach, 25 lab, 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '15 teach, 25 lab, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: >-
+    Q1 B: two stamps of one event minutes apart is clock skew, the module's core term. A supposes
+    a second event with no evidence; C asserts replay with nothing to suggest it; D claims loss,
+    but the collector did receive the record. Q2 C: UTC is the common reference so sources in
+    different zones still order correctly. A and B anchor time to one party's locality; D to an
+    arbitrary file. Q3 A: NTP synchronisation to a central source is the control that stops drift
+    at source; B restarts and does not correct; C and D manage storage and collection, not clock
+    accuracy. Q4 D: a packet sensor sees the connection, not the process behind it, so the
+    endpoint absence limits the claim; A overstates what a sensor can read; B and C are not
+    supported at all. Q5 B: network sensor connection records show outbound connections directly;
+    A shows address assignment only, C and D are irrelevant to network activity.
+- module: 2
+  notes: >-
+    Q1 C: 14:07:22 minus 14:05:50 is 92 seconds, so the host is 1 minute 32 seconds ahead; the
+    distractors test sign errors and carrying across the minute. Q2 A: correction by the measured
+    offset must precede any ordering; B, C and D change or re-collect data instead of correcting
+    the stamps already held. Q3 D: with the clock exactly on reference, missing records cannot be
+    skew, so a collection or logging gap is the sound conclusion; A contradicts the given fact; B
+    and C invent causes. Q4 B: after the 8-second offset is applied the two records describe one
+    action seen by two sources; A treats raw stamps as proof of two events; C overstates; D
+    refuses a record the offset fully explains. Q5 B: a whole-hour difference with one source in
+    local time and one in UTC is a time-zone difference, not drift; A confuses stamp difference
+    with duration; C and D invent sensor and host failures.
+- module: 3
+  notes: >-
+    Q1 A: a process starting two seconds before the connection it could open is the classic join
+    and supports initiation; B reverses causation; C and D deny the join the times support. Q2 D:
+    a known-fast host clock is trusted only after correction against the reference, which is how
+    the conflict is settled; A and B take one source on faith; C ignores that sources differ in
+    reliability. Q3 B: only the sensor's connection record carries the destination; A, C and D
+    are host logs that never record the remote endpoint. Q4 C: shared account name and overlapping
+    times support that the same account appears in both records, no more; A and B overstate to a
+    person and to theft; D deletes corroborating records. Q5 A: a shared value such as an address
+    is the pivot that links the two session records for further analysis; B jumps to guilt; C and
+    D misuse the finding.
+- module: 4
+  notes: >-
+    Q1 D: an entry survives review only with its corrected time, source and observed action, the
+    module's entry format; A adds length without structure; B and C add decoration and opinion.
+    Q2 B: when raw stamps collide, corrected time decides, and source reliability breaks ties;
+    A, C and D order by irrelevant or arbitrary keys. Q3 C: an alert belongs at its corrected
+    position with its source marked, like any other record; A and D distort the order; B wrongly
+    excludes alerts from the master timeline. Q4 A: a one-minute brief carries the entries that
+    mark each stage of the intrusion, the module's ranking objective; B, C and D select by
+    volume, length or position, not by meaning. Q5 D: the master timeline's value is one
+    corrected order for analysis across sources; A is incidental; B and C claim it replaces raw
+    logs and alerting, which it does not.
+- module: 5
+  notes: >-
+    Q1 B: every factual sentence needs the timeline entry that supports it, the module's citation
+    objective; A strengthens wording without evidence; C and D add speculation and cost, not
+    support. Q2 C: an inference with no supporting record is kept only when marked as inference
+    with its confidence and basis; A deletes a defensible statement; B promotes it to fact; D
+    confuses narrative and timeline. Q3 A: staged prose with times and cited evidence is what
+    survives outside scrutiny; B hides the when; C omits the reasoning; D drowns the reader in
+    raw logs. Q4 D: stating where the evidence begins and what was searched bounds the claim
+    honestly; A and B dismiss the question; C denies that scope matters. Q5 C: the narrative is
+    written for the response lead and reviewers who must act on it; A, B and D name readers with
+    no decision to make on the findings.
+- module: 6
+  notes: >-
+    Q1 A: an entry whose cited source is gone is unsupported until another source confirms it,
+    which is the review outcome the module teaches; B and D overreact; C lets an uncited claim
+    stand as fact. Q2 D: conflicting entries are recorded as a contradiction and resolved against
+    the cited evidence; A accepts both; B prefers the newer stamp with no reason; C invents a
+    person. Q3 B: a silent hour while sources were logging points to a collection or search gap
+    that must be closed before handover; A asserts a negative the search did not establish; C and
+    D wave the gap away. Q4 C: the measured offsets and the reference time that produced the
+    order are the defence; A and B are rhetorical; D offers assurance instead of method. Q5 C:
+    handover carries the timeline, the narrative and the evidence behind each entry so the
+    response lead can act; A, B and D each drop part of that set.
+lab_setup:
+- module: 1
+  setup: >-
+    Revert the soc-training range to its baseline. Confirm the Student reaches jump01 with the
+    analyst account, and from jump01 reaches v-ws01, siem01 and log-agg01 over SSH. Leave the
+    clock states as the template builds them; the lab reads them and does not change them. Have
+    one stored event from v-ws01 visible in the SIEM on siem01 so the ingest timestamp can be
+    opened in step 5.
+- module: 2
+  setup: >-
+    Revert the range to its baseline. Confirm siem01 holds a recent authentication event from
+    v-ws01 and that the local security log on v-ws01 carries the matching entry, so the same
+    sign-in exists on both sides. Note the offset v-ws01 reports against its time source before
+    the session so the expected value in seconds is known for marking. Prepare the three mixed
+    v-ws01 and siem01 records listed in the lab sheet.
+- module: 3
+  setup: >-
+    Revert the range to its baseline. Confirm the velociraptor01 agents report for v-ws01, that
+    zeek01 holds connection records for v-ws01 in the exercise window, and that v-fs01 logged the
+    share access v-ws01 made. Fix the exercise window in the lab sheet and note one process and
+    its matching connection by corrected time so the pair the Student should find is known.
+- module: 4
+  setup: >-
+    Revert the range to its baseline. On dfir-ws01 place the evidence set for the exercise: host
+    and network records for the window, already exported, so the merge is a working exercise and
+    not a collection task. Confirm siem01 shows the alerts inside the window. Note the record
+    count, the first and last corrected times and which stage each boundary entry opens so the
+    marking values are known.
+- module: 5
+  setup: >-
+    Revert the range to its baseline. Confirm the Module 4 master timeline is present on
+    dfir-ws01, either kept from the previous session or placed as the standard answer timeline so
+    a Student who missed Module 4 can still run this lab. Confirm each of the five strongest
+    entries resolves to a stored record on siem01. Provide the narrative template with one line
+    per sentence for the citation and confidence marks.
+- module: 6
+  setup: >-
+    Revert the range to its baseline. Place the review draft timeline on dfir-ws01: it must
+    contain at least three entries with no cited source, one contradiction, and omit the
+    authentication entries for the window. Confirm v-dc01 holds those authentication entries so
+    the omission is discoverable. Note which of the uncited entries holds on siem01 and which
+    fails, so step 3 can be marked.
+common_faults:
+- module: 1
+  fault: The Student records wall-clock times without the time zone, then compares them across hosts.
+  remedy: Have the lab table add a time-zone column and redo any row that lacks it; the recorded values
+    are not comparable without it.
+- module: 1
+  fault: The Student assumes the SIEM clock is the reference because it is the tool they know.
+  remedy: Ask what the synchronisation state on each host showed, and have the reason reference the
+    readings, not familiarity.
+- module: 2
+  fault: The Student subtracts the offset the wrong way round and orders the records backwards.
+  remedy: Drill the rule that a corrected time is raw time minus the measured offset when the host is
+    ahead, then have one record re-computed aloud before the rest.
+- module: 2
+  fault: The Student treats a five-hour difference between local-time and UTC records as clock drift.
+  remedy: Show whole-hour differences next to the second-and-minute drift measured in the lab and ask
+    which one NTP corrects.
+- module: 3
+  fault: The Student joins records by raw timestamp and pairs the wrong connection with a process.
+  remedy: Have the pair re-checked after correction; the recorded offset from Module 2 exists for
+    exactly this step.
+- module: 3
+  fault: The Student discards unconfirmed records as useless during the merge.
+  remedy: Point at the final sentence of the lab brief and ask what each standing-alone record still
+    narrows down.
+- module: 4
+  fault: The Student sorts the master table by the raw stamp column and never applies the offsets.
+  remedy: Check the first and last entry against the expected corrected times before the table is
+    accepted for marking.
+- module: 4
+  fault: The Student pastes alerts at the top of the table instead of placing them in the order.
+  remedy: Ask where each alert lands between which two entries; an alert with no neighbours has not
+    been placed.
+- module: 5
+  fault: The narrative sentences carry no entry citations and read as conclusions only.
+  remedy: Mark the draft against the one-line-per-sentence template; any sentence with an empty citation
+    field is returned.
+- module: 5
+  fault: The Student marks every sentence as fact, including the motive and attribution claims.
+  remedy: Have the confidence column filled for those sentences; a fact needs a record, and the records
+    do not show motive.
+- module: 6
+  fault: The Student accepts the draft because most entries look right and skips the uncited ones.
+  remedy: Have the uncited-entry list from step 2 completed first; the review starts from what fails,
+    not what passes.
+- module: 6
+  fault: The readiness decision is written as a feeling about the draft rather than reasons tied to
+    findings.
+  remedy: Require each ready or not ready statement to point at a recorded finding from the same lab
+    session.

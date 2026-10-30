@@ -11,6 +11,14 @@ from arc2 import check, qa
 from conftest import QUESTIONS
 from test_arc2_manifest import full_manifest, make_run
 
+# C500-C599 sit outside the DP1/DP2 programme: qsp_code is optional and no mapping is "proposed".
+UPSKILLING_EXEMPT = {"course.qsp_code", "course.notes_proposed"}
+
+
+def _is_upskilling(code: str) -> bool:
+    digits = "".join(ch for ch in str(code) if ch.isdigit())
+    return bool(digits) and 500 <= int(digits) < 600 and not str(code).upper().startswith("RMC")
+
 
 def qa_run(tmp_path: Path, manifest: dict | None = None) -> tuple[Path, dict]:
     """make_run() already writes the course YAML, catalogue row, timeline and scenario."""
@@ -243,5 +251,7 @@ class TestParity:
             for rule, message in qa.course_rules(
                 raw, parsed, own_name=path.name, references=references, stems=stems, qsp_codes=qsps, arc2=False
             ):
+                if _is_upskilling(raw["course_code"]) and rule in UPSKILLING_EXEMPT:
+                    continue  # C5xx sit outside the DP1/DP2 programme: no qsp_code, no "proposed" mapping
                 problems.append(f"{path.name}: {rule}: {message}")
         assert problems == [], "\n".join(problems)

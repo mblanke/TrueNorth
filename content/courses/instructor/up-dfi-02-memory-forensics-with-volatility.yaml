@@ -1,0 +1,182 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# Instructor pack for C526 Memory Forensics with Volatility (content/courses/up-dfi-02-memory-forensics-with-volatility.yaml).
+
+course_code: C526
+audience: staff_only
+overview: 'Memory Forensics with Volatility is an intermediate, self-paced course of six 50-minute modules
+  (300 minutes, 5 hours) for one Student working alone. Each module pairs about 10 minutes of teaching with a
+  30-minute lab on the soc-training range and a 10-minute quiz passed at 70 percent. Modules 1 to 5 build one
+  continuous case around the v-ws01 memory image, from acquisition through process and network artefacts,
+  injection signatures and a timeline, and Module 6 closes the case with an escalation note. The Student hands
+  in lab notes at each module: digests and custody lines, process and network findings, injection
+  classifications, a merged chronology and the final note.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '10 teach, 30 lab, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (order of volatility, M1-O1): RAM is the most volatile store; the disk backup, browser cache and
+    rotated logs all sit on disk and survive a shutdown. Q2 C (digest verification, M1-O2): Only a digest taken
+    before the copy and repeated after proves the bytes arrived unchanged; file size, openability and transfer
+    time prove nothing about content. Q3 A (what memory-only evidence means, M1-O3): Memory-only malware exists
+    in no file, so a reboot removes it; the registry, browser history and file index all persist on disk. Q4 D
+    (acquisition method selection, M1-O1): Never write the image to the disk being imaged; the network path to
+    the evidence server fits the constraint. Rebooting destroys the evidence, and skipping acquisition leaves
+    the question open. Q5 B (chain of custody, M1-O2): The custody record shows who handled the image and that
+    it was not altered between collection and analysis; speed of analysis and report length are irrelevant, and
+    custody says nothing about live malware.'
+- module: 2
+  notes: 'Q1 C (orphaned processes, M2-O1): A listed process whose named parent is absent from the listing is
+    consistent with the parent having exited; the idle process is a artefact of the listing itself, and a tool
+    failure is an assumption not a reading. Q2 A (pool scanning, M2-O1): Unlinking a process from the active
+    list hides it from the standard listing but not from a scan that walks raw pool structures; sorting,
+    counting siblings and rerunning the same tool all stay inside the listing. Q3 D (record, do not conclude,
+    M2-O2): The evidence is the command line, parent and start time; a ransomware conclusion, a user assumption
+    and waiting for a second analyst are conclusions or deferrals, not recorded evidence. Q4 B (same name,
+    different provenance, M2-O2): Matching a routine name with a different parent and start time is the classic
+    masquerading pattern; duplication and corruption have no basis in the listing. Q5 C (purpose of a baseline,
+    M2-O3): The baseline lets the analyst mark the routine as expected and spend the effort on the unexplained;
+    it replaces nothing, guarantees nothing and does not touch exited processes.'
+- module: 3
+  notes: 'Q1 A (attributing a connection, M3-O2): The network scan output ties the socket to its owning
+    process; MAC address, sensor capture size and routing position name hardware or paths, not the process. Q2
+    B (what survives a close, M3-O1): A closed connection is removed from the live table, so a scan of the image
+    no longer sees it; nothing here indicates corruption, a tool limitation or a disk copy. Q3 D (corroborate
+    before acting, M3-O3): Network monitoring records for the same destination and window are the independent
+    check before isolation; waiting, asking the owner and deleting notes all delay or discard evidence. Q4 A
+    (unexplained listening service, M3-O3): A baseline-absent listener owned by a newly started process
+    warrants escalation; the other options assert compromise, duplication or a double capture without evidence.
+    Q5 C (which source to weigh, M3-O2): The memory record ties the socket to its owning process, which is what
+    attribution needs; a firewall does not report ports perfectly and cannot name the local process, and the
+    packet capture is not required to name a port.'
+- module: 4
+  notes: 'Q1 D (writable and executable, M4-O1): Injected code must first be written into the region and then
+    executed, so the region needs both protections; compression, scanner blindness and allocation lifetime are
+    not the reason. Q2 B (reading malfind-style output, M4-O1): A private committed executable region in a
+    routine application is a signature worth investigating, not proof of compromise and not normal for every
+    application; a misread page is a guess. Q3 C (hollowing versus injection, M4-O2): Hollowing replaces the
+    executable image of a legitimate process while the process keeps its name; adding libraries, encrypting
+    pages and copying the process table describe other behaviours. Q4 A (finding unlinked processes, M4-O2):
+    Pool scanning walks raw memory structures and finds processes the active list no longer names; rerunning
+    the listing, security logs and file system checks all depend on the unlinked process being visible. Q5 D
+    (usable YARA evidence, M4-O3): A usable record names the matching process, the rule and the location of the
+    match; licence terms, image size and non-matching rule counts add nothing.'
+- module: 5
+  notes: 'Q1 B (reading sequence, M5-O1): A process start preceding the first outbound connection supports that
+    the process ran before the workstation reached the address; it does not show causation in either direction,
+    does not by itself indict the clock and is not a duplication. Q2 D (clock skew, M5-O2): An exact one-hour
+    offset between sources is the signature of a time zone or skew difference; capture count, sensor access and
+    licences do not produce a uniform hour. Q3 A (timeline sources, M5-O1): The plugin builds events from
+    process, network and file activity in the image; it does not write its own log during acquisition, read the
+    sensor or index the disk. Q4 C (limits of a memory timeline, M5-O3): Activity after acquisition must come
+    from other record sources; the gap shows nothing about the system stopping, deliberate hiding or a tool
+    fault. Q5 B (sequence as corroboration lead, M5-O1): The ordered chain is a lead to corroborate with other
+    records before acting; it does not prove exfiltration, name a person or confirm legitimacy.'
+- module: 6
+  notes: 'Q1 C (what to escalate, M6-O1): The injection finding and the unexplained connection are the
+    escalated items, each with evidence and source; full listings and raw output bury the case, and a
+    conclusion without evidence is not a note. Q2 A (containment trade-off, M6-O3): A reboot preserves the host
+    at the cost of the volatile evidence the analysis still needs; installed applications, cached credentials
+    on disk and sensor configuration are not the memory case''s loss. Q3 B (what memory alone shows, M6-O3):
+    Memory shows the code existed in memory and supports treating the host as compromised, but it cannot
+    enumerate every file and account touched on disk; that is disk forensics. Q4 D (note completeness, M6-O2):
+    A note without the timestamp and source of the evidence behind the finding cannot be acted on or verified;
+    length, author opinion and budget codes are not the gap. Q5 C (hand-off, M6-O1): Confirmed injected code
+    in one process goes to malware analysis for the code and disk forensics for impact; closing the case,
+    re-imaging without records and watch-only monitoring each drop part of the finding.'
+lab_setup:
+- module: 1
+  setup: 'Revert the soc-training range to its baseline. Confirm jump01, velociraptor01, dfir-ws01 and v-ws01
+    are reachable and that the Student''s analyst account works on jump01 and dfir-ws01, and that the
+    Velociraptor console allows the collection to be exported to dfir-ws01. Before the module, note the image
+    size and the digest the collection reports so you can mark the Student''s Evidence; students must not be
+    told the values in advance.'
+- module: 2
+  setup: 'Revert the range. Place the v-ws01 memory image from Module 1 in the evidence folder on dfir-ws01 and
+    give the Student the baseline: the list of routine process names with their expected parent and start-time
+    pattern. Keep a copy of the expected operating system version, process count, largest-child process and
+    parent identifier for marking.'
+- module: 3
+  setup: 'Revert the range and confirm dfir-ws01 and siem01 are reachable with the analyst accounts. Confirm
+    the SIEM on siem01 holds network records covering the acquisition window. Keep the expected network scan
+    output for the image (connections, remote addresses, states, owning processes) for marking.'
+- module: 4
+  setup: 'Revert the range and confirm dfir-ws01 is reachable. Stage on dfir-ws01 the YARA rule file for this
+    exercise and keep the list of processes expected to match. Keep the expected injection-detection findings
+    (process, identifier, protection value) for marking; decide in advance which finding is the false positive
+    so the classification debrief is quick.'
+- module: 5
+  setup: 'Revert the range and confirm dfir-ws01 and siem01 are reachable. Note the image''s expected timeline
+    event count and first and last timestamps, and the SIEM timestamp and time zone of the first network record
+    for v-ws01, for marking. Check what clock offset the range shows between the two sources so the Student''s
+    normalisation can be judged.'
+- module: 6
+  setup: 'Revert the range and confirm dfir-ws01 and velociraptor01 are reachable. Bring forward the Student''s
+    findings from Modules 2 to 4 or hand out the instructor summary of them. Keep the expected agent status of
+    v-ws01 on velociraptor01 for marking, and the escalation-note format on the board for the lab.'
+common_faults:
+- module: 1
+  fault: The digest is computed only after the copy, so it proves nothing about the transfer.
+  remedy: Have the Student point at where each digest was taken in their notes; both values and both times
+    must be on the page before the custody lines are written.
+- module: 1
+  fault: The chain of custody becomes a narrative paragraph with no per-line judgement.
+  remedy: Insist on the four lines (source host, collection time, digest, analyst) each marked complete or
+    missing with a reason; a missing line with a reason is a pass, an unmarked line is not.
+- module: 2
+  fault: The Student trusts the standard listing alone and concludes there is nothing hidden.
+  remedy: Ask what a process that unlinked itself would look like in that listing, then have them run the pool
+    scan and compare the two outputs side by side.
+- module: 2
+  fault: Unexplained processes are recorded as conclusions (malware, ransomware) with no metadata.
+  remedy: Require the command line, parent and start time fields to be filled before any classification is
+    written; no verdict without those three fields.
+- module: 3
+  fault: Connections are attributed to a process on name resemblance alone, not the owning process in the
+    scan output.
+  remedy: Make the owning-process column mandatory in the notes; if it is blank, the artefact is not yet
+    attributable.
+- module: 3
+  fault: A workstation is recommended for isolation on the memory artefact alone.
+  remedy: Walk the corroboration step again on siem01; the lab asks for one checked address precisely so the
+    habit forms before a real escalation.
+- module: 4
+  fault: Every flagged region is read as proof of injection.
+  remedy: Have the Student read the protection value and any mapped file behind the region aloud, then classify;
+    the debrief should surface the false positive they marked.
+- module: 4
+  fault: YARA matches are recorded as bare hits with no process or location.
+  remedy: Require the three fields (process, rule, location) on one line per match; a bare hit cannot be
+    escalated in Module 6.
+- module: 5
+  fault: Events from the image and the SIEM are merged without normalising time zones or stating the offset.
+  remedy: Ask for the offset on the page first, then the merged chronology; a one-hour skew left in place
+    inverts the sequence.
+- module: 5
+  fault: The ordering is read as proven cause and effect.
+  remedy: Have the Student write the two sentences (what the ordering suggests, what it leaves unproven) and
+    read one aloud; push every causal verb into the 'suggests' sentence.
+- module: 6
+  fault: The escalation note states a finding with no timestamp or source.
+  remedy: Mark each of the three lines as carrying evidence or missing it; the note format is three lines
+    exactly, and line two must name where and when the evidence was observed.
+- module: 6
+  fault: Containment is chosen with the trade-off stated as none.
+  remedy: Ask what volatile evidence the chosen action destroys or preserves; every containment option in the
+    lab carries a cost, and the note must name it.

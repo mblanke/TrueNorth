@@ -1,0 +1,609 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C511
+title: Identity Detection Engineering
+version: '1.0'
+difficulty: advanced
+duration_hours: 6
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C508
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Analyst (PR-CDA-001); Cyber Defense Incident Responder
+    (PR-CIR-001).'
+  - 'NIST CSF 2.0: DE.AE, DE.CM, PR.AA.'
+  - 'Self-paced upskilling, outside DP1/DP2.'
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Identity telemetry sources
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Classify identity telemetry sources by the authentication events each records across the range
+  - Map each source to the domain controller event identifiers that prove account activity
+  - Select forwarding paths that deliver authentication events to the SIEM completely and on time
+  topics:
+  - 'Identity data planes: directory services, endpoint sign-in, network access control and
+    application logons.'
+  - Domain controller security event logs for ticket requests, logons and account changes.
+  - Endpoint, network and EDR telemetry that corroborates directory evidence on workstations.
+  - 'Forwarding architecture: collectors, aggregation queues, clock synchronisation and duplicate
+    suppression.'
+  - Coverage mapping of telemetry against credential access behaviours using the MITRE ATT&CK
+    knowledge base.
+  lab: >-
+    Lab: On the SOC training range, inventory every source that carries identity telemetry, confirm
+    the domain controller forwards its security events, and judge where coverage is thin. Evidence:
+    the indices and saved searches on siem01 that contain authentication events; the audit settings
+    shown on v-dc01 for account logon events and logon events; the authentication protocol records
+    visible on zeek01; the endpoint telemetry categories velociraptor01 reports for v-ws01. Pass:
+    all four sources recorded with the exact event or record types each carries; one gap named
+    where a source adds nothing beyond another; a one-sentence judgement of which source is
+    authoritative for domain logon evidence.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [siem01]
+      action: Log in to siem01 with the analyst account, open Dashboards and list the indices that
+        hold authentication or identity events.
+    - hosts: [v-dc01]
+      action: On v-dc01, open the local security policy and record the audit settings for account
+        logon events and for logon events.
+    - hosts: [zeek01]
+      action: On zeek01, list the protocol logs captured for authentication traffic and record
+        which identity protocols the range observes.
+    - hosts: [velociraptor01]
+      action: On velociraptor01, open the agent view for v-ws01 and record which endpoint telemetry
+        categories are collected from it.
+    - hosts: [siem01]
+      action: Compare the four sources in your notes and judge which one is authoritative for
+        domain logon evidence, naming one source that adds no unique coverage.
+  refs:
+  - nist-sp-800-92
+  - mitre-attack
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: >-
+        A Student must prove which accounts signed into the domain last night and how each session
+        was authenticated. Which source records this most directly?
+      options:
+      - A) Endpoint telemetry from the workstations involved
+      - B) Domain controller security event logs
+      - C) Firewall session records
+      - D) Web server access logs
+      answer: B
+    - question: >-
+        siem01 shows authentication events arriving twice for every sign-in. Which forwarding
+        defect explains the duplicated events?
+      options:
+      - A) A retention policy that is too short
+      - B) An oversized aggregation queue
+      - C) Two collectors reading the same feed without duplicate suppression
+      - D) A missed coverage mapping entry
+      answer: C
+    - question: >-
+        During a coverage review the team maps identity telemetry to credential access behaviours.
+        Which pairing is the strongest example of complete coverage?
+      options:
+      - A) Password guessing seen in domain controller and endpoint lockout events
+      - B) A dashboard that counts successful logons only, never any failures
+      - C) A nightly export of account names with no event evidence
+      - D) A sample of one workstation's events for the whole domain
+      answer: A
+    - question: >-
+        Analysts see a spray pattern in SIEM event data but cannot tie failures to the workstation
+        that generated them. Which supplementary source closes that gap?
+      options:
+      - A) Application error logs
+      - B) A longer retention window
+      - C) The domain controller audit policy
+      - D) Endpoint telemetry on workstations
+      answer: D
+    - question: >-
+        An administrator disables security event logging on v-dc01 during a quiet week. Per good
+        log management practice, what has most clearly been lost?
+      options:
+      - A) Nothing, because the week was quiet and nothing needed investigating
+      - B) The evidence base that baselines and hunts depend on
+      - C) Only disk space
+      - D) A single unimportant event source
+      answer: B
+- ordinal: 2
+  title: Authentication anomaly baselines
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Define normal authentication behaviour per account group using success rates, sign-in timing
+    and source distribution
+  - Compute failure count thresholds that separate monitoring noise from suspicious authentication
+    activity
+  - Distinguish baseline deviations caused by spraying from those caused by benign configuration
+    change
+  topics:
+  - Baseline windows, sampling periods and accounting for shift patterns and scheduled jobs.
+  - Success and failure authentication event identifiers and their status codes on the domain
+    controller.
+  - Per-account and per-source aggregation views built in the SIEM.
+  - 'Benign causes of deviation: password expiry campaigns, service accounts and monitoring probes.'
+  - Documenting baselines as reference tables that detections can be tuned against.
+  lab: >-
+    Lab: Build a one-week authentication baseline for the range domain and judge which deviations
+    deserve investigation. Evidence: hourly successful and failed sign-in counts per account group
+    queried on siem01; the per-source failure counts for the domain controller feed; the sign-in
+    pattern of the finance_user profile on v-ws01 across the week; any service account whose
+    activity repeats on a fixed schedule. Pass: baseline counts recorded per hour and per source
+    exactly as the queries return them; each observed deviation marked expected or investigate with
+    one sentence of reason; the two deviations most likely to hide spraying named.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [siem01]
+      action: On siem01, query a week of authentication events from v-dc01 and record hourly
+        success and failure counts per account group.
+    - hosts: [siem01, v-dc01]
+      action: Aggregate the same failures by source address on siem01 and confirm the source list
+        against the address leases v-dc01 shows.
+    - hosts: [v-ws01]
+      action: Review the sign-in times recorded for the finance_user profile on v-ws01 and record
+        the pattern across the week.
+    - hosts: [siem01]
+      action: Identify any service account whose authentication repeats on a fixed schedule and
+        record its period.
+    - hosts: [siem01]
+      action: Mark each deviation in your notes as expected or investigate with one sentence of
+        reason, and name the two deviations that could hide spraying.
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-63-4
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: >-
+        A baseline week shows every accountant signing in between 07:00 and 09:00 from two subnets.
+        What does an accountant sign-in at 03:00 from an unknown subnet represent?
+      options:
+      - A) Proof of a password spray in progress
+      - B) Normal behaviour for a shared account
+      - C) A baseline deviation that warrants investigation
+      - D) Evidence the baseline window was too short
+      answer: C
+    - question: >-
+        Failures for one account rise from two per day to sixty, all against one service. The owner
+        confirms an expired password in a mobile client. Classify the deviation.
+      options:
+      - A) Password spraying
+      - B) Credential dumping from a compromised endpoint
+      - C) A brute force attack
+      - D) Benign deviation from an expiry campaign
+      answer: D
+    - question: >-
+        Why does an alert keyed only to high per-account failure counts fail to catch spraying?
+      options:
+      - A) Spraying keeps failures per account below any such threshold
+      - B) Spraying always triggers lockouts first
+      - C) Lockout events suppress the alert
+      - D) The threshold hides lockout events
+      answer: A
+    - question: >-
+        Service accounts on the range authenticate every five minutes without user interaction. How
+        should the baseline treat them?
+      options:
+      - A) As noise that should be deleted from the logs entirely
+      - B) As a distinct account group with its own expected pattern
+      - C) As evidence of ticket forgery
+      - D) As failures to ignore
+      answer: B
+    - question: >-
+        A monitoring probe authenticates to v-web01 every night at midnight with a scripted account.
+        What should the baseline record for it?
+      options:
+      - A) An anomaly worth paging the on-call analyst
+      - B) Nothing, because scripts cannot hold credentials
+      - C) A standing expected entry keyed to the schedule
+      - D) A suspicious spike that must be escalated immediately
+      answer: C
+- ordinal: 3
+  title: Password-spray and brute-force hunt labs
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish password spraying from brute force using failure spread across accounts and
+    sources
+  - Write SIEM queries that aggregate authentication failures by source address and target account
+  - Classify hunt results as spray, brute force or benign using event evidence
+  topics:
+  - 'Password spray behaviour: few failures per account, many accounts, one or few sources.'
+  - 'Brute force behaviour: many failures per account, lockout events and repeated single-source
+    attempts.'
+  - Aggregation queries, thresholds and time binning for authentication failure events.
+  - Account lockout telemetry and its relationship to both attack patterns.
+  - 'False positive sources: expiry campaigns, misconfigured services and stale credentials.'
+  lab: >-
+    Lab: Hunt the domain controller authentication failure feed on the range, split spray from
+    brute force, and judge each cluster. Evidence: the source addresses with the highest failure
+    totals on siem01; the number of distinct accounts each top source targeted; the failure and
+    lockout counts for the hr_user profile on v-ws02; the protocol records for rejected
+    authentication traffic on zeek01. Pass: every clustered result labelled spray, brute force or
+    benign with one sentence of event evidence; the two labels justified by failure spread across
+    accounts and sources; no cluster left unlabelled.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [siem01]
+      action: On siem01, aggregate a day of authentication failures from v-dc01 by source address
+        and record the five highest totals.
+    - hosts: [siem01]
+      action: For each top source, count the distinct accounts targeted and record the failures per
+        account.
+    - hosts: [v-ws02]
+      action: On v-ws02, review the hr_user profile sign-in failures and record the lockout events
+        observed.
+    - hosts: [zeek01]
+      action: On zeek01, locate records of rejected authentication traffic and record which
+        protocols the rejections used.
+    - hosts: [siem01]
+      action: Label each cluster spray, brute force or benign in your notes, citing failure spread
+        across accounts and sources as evidence.
+  refs:
+  - sigma
+  - mitre-attack
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: >-
+        One source address produces three failures each against four hundred accounts in an hour.
+        Which classification fits this pattern?
+      options:
+      - A) Password spraying against many accounts
+      - B) Brute force against one account from many sources
+      - C) Benign scheduled task churn
+      - D) A network device malfunction
+      answer: A
+    - question: >-
+        An account shows four hundred failures in twenty minutes, then a lockout event. No other
+        account was touched. Which classification fits?
+      options:
+      - A) Password spraying across the domain
+      - B) A benign expiry reminder
+      - C) Scanning the domain for open file shares
+      - D) Brute force against a single account
+      answer: D
+    - question: >-
+        Lockout telemetry shows one account locked twice in a day while spraying hits the domain.
+        Why does the lockout view not replace the spray hunt?
+      options:
+      - A) Spray failures spread across accounts, so one account history tells little
+      - B) Lockouts only occur during brute force
+      - C) Lockout views cannot show the targeted accounts
+      - D) Lockout views ignore the source addresses
+      answer: A
+    - question: >-
+        A scanner host reauthenticates with a stale password every ten minutes, failing against one
+        service account. Hunt evidence shows a single source and a single account. Judge the
+        cluster.
+      options:
+      - A) Spray, because one source is typical of spraying
+      - B) Benign, because one stale credential explains every failure
+      - C) Brute force, because failures repeat against one account
+      - D) Forgery, because a service account is involved
+      answer: B
+    - question: >-
+        During a hunt, failures hit hundreds of accounts from one subnet, but each carries the same
+        expired-password status code and a helpdesk ticket exists. What is the best judgement?
+      options:
+      - A) A spray campaign underway
+      - B) An attacker cycling large numbers of stolen credentials
+      - C) Benign mass expiry matching a known campaign
+      - D) Ticket forgery from the subnet
+      answer: C
+- ordinal: 4
+  title: Golden ticket detection
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify indicators of forged ticket-granting tickets in domain controller authentication
+    evidence
+  - Correlate ticket lifetime anomalies and encryption downgrades with unexpected privileged
+    account activity
+  - Design detections that catch forged tickets without flooding the team with administrative
+    noise
+  topics:
+  - 'Ticket-granting ticket lifecycle on the domain controller: request, issuance, renewal and
+    lifetime.'
+  - 'Forged ticket indicators: encryption downgrade to legacy ciphers and implausibly long
+    lifetimes.'
+  - Event pairs that legitimate sign-ins produce and forgeries leave incomplete.
+  - 'Privilege context: forged tickets surfacing as domain administrator activity from unexpected
+    hosts.'
+  - 'Detection tuning: thresholds, allow lists and exclusion of scheduled administrative jobs.'
+  source_gaps:
+  - Vendor Kerberos event field documentation is not held in the reference library; the field-level
+    indicators above rely on range telemetry and MITRE ATT&CK technique descriptions.
+  lab: >-
+    Lab: Hunt the range domain controller evidence for forged ticket-granting ticket indicators and
+    judge what you find. Evidence: ticket request events with legacy encryption ciphers queried on
+    siem01; the lifetimes recorded for privileged account tickets; domain administrator activity on
+    v-ws03 checked against the change list the instructor provides; the endpoint process view
+    velociraptor01 holds for v-ws03. Pass: each legacy-cipher ticket request recorded with its
+    account and source; each
+    suspicious lifetime recorded with the account it belongs to; a judgement for each finding of
+    forged, benign but unexplained, or expected administration, with one sentence of reason.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [siem01]
+      action: On siem01, query ticket request events from v-dc01 and record every request that used
+        a legacy encryption cipher.
+    - hosts: [siem01]
+      action: For privileged accounts, record the ticket lifetimes issued and flag any lifetime
+        that exceeds the domain policy.
+    - hosts: [v-ws03]
+      action: On v-ws03, list recent sign-ins by domain administrator accounts and match them
+        against the change list the instructor provides, recording each match and mismatch.
+    - hosts: [velociraptor01]
+      action: On velociraptor01, open the endpoint view for v-ws03 and record the processes that ran
+        during those sign-ins.
+    - hosts: [siem01]
+      action: Judge each finding in your notes as forged, benign but unexplained, or expected
+        administration, with one sentence of reason.
+  refs:
+  - mitre-attack
+  - sigma
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: >-
+        A ticket request event for a domain administrator shows a legacy encryption cipher although
+        the domain requires modern cryptography. What does this indicator most suggest?
+      options:
+      - A) A misconfigured monitoring probe
+      - B) A routine password change
+      - C) A duplicate forwarded event
+      - D) A forged ticket-granting ticket
+      answer: D
+    - question: >-
+        Privileged tickets on the range normally live ten hours, but one administrator ticket shows
+        a lifetime of thirty days. Which reading is strongest?
+      options:
+      - A) The clock synchronisation between the collectors drifted by several minutes
+      - B) A forged ticket, since the lifetime exceeds the domain policy
+      - C) The administrator works long hours during that part of the month
+      - D) The event was forwarded twice by the forwarding rule
+      answer: B
+    - question: >-
+        Which completeness check best separates a legitimate domain administrator sign-in from a
+        forged ticket replayed on a workstation?
+      options:
+      - A) A matching ticket request event on the domain controller
+      - B) A successful sign-in event on the workstation
+      - C) A firewall rule allowing the workstation
+      - D) A note in the helpdesk system
+      answer: A
+    - question: >-
+        Domain administrator activity appears on v-ws03 at 03:00 with no change record. Before
+        escalating, what should the analyst check first?
+      options:
+      - A) Whether the SIEM retention covers the hour
+      - B) Whether the range firewall logged the session and from where
+      - C) Whether endpoint telemetry shows an interactive session and which processes ran
+      - D) Whether the account's password is due to expire soon
+      answer: C
+    - question: >-
+        A detection fires on every scheduled administrative job that requests a ticket each night.
+        Which tuning change keeps the detection useful?
+      options:
+      - A) Delete the detection entirely
+      - B) Raise every threshold in the rule to maximum
+      - C) Allow list the known scheduled jobs
+      - D) Lower the threshold to zero
+      answer: C
+- ordinal: 5
+  title: Silver ticket detection
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Detect service ticket activity that lacks a matching ticket-granting ticket request record
+  - Trace forged service tickets to the targeted service account and the rights it grants
+  - Select containment actions that remove forged service tickets and their access path
+  topics:
+  - Service ticket issuance and the request records a legitimate sign-in flow leaves.
+  - 'The missing-request signature: service tickets appearing without prior ticket-granting
+    activity.'
+  - Service account targeting and the scope of rights a single service grants.
+  - Host-scoped indicators and why complete domain controller logging underpins detection.
+  - Containment and recovery for compromised service accounts, including credential rotation
+    effects.
+  source_gaps:
+  - Kerberos service ticket field semantics are not covered by the listed references; the module
+    relies on range telemetry and MITRE ATT&CK technique descriptions.
+  lab: >-
+    Lab: Hunt for service tickets on the range that no ticket request explains, and judge whether
+    forgery fits the evidence. Evidence: service ticket events on siem01 whose accounts show no
+    prior ticket request that day; the service accounts those tickets name and the shares or
+    services each can reach, checked on v-fs01; the audit settings on v-dc01 that decide whether
+    such requests are logged at all; a judgement per finding. Pass: each unmatched service ticket
+    recorded with account, service and source; each named service account marked with the rights it
+    grants; every finding judged forged, logging gap or expected use, with one sentence of reason.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [siem01]
+      action: On siem01, list service ticket events from v-dc01 and record any whose account shows
+        no ticket request earlier that day.
+    - hosts: [v-fs01]
+      action: On v-fs01, record which shares and services each flagged service account can reach.
+    - hosts: [v-dc01]
+      action: On v-dc01, record the audit settings that decide whether ticket request events are
+        logged.
+    - hosts: [siem01]
+      action: Compare the unmatched tickets against those audit settings and record whether a
+        logging gap could explain each one.
+    - hosts: [siem01]
+      action: Judge each finding forged, logging gap or expected use in your notes, with one
+        sentence of reason.
+  refs:
+  - mitre-attack
+  - sigma
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: >-
+        A service ticket for the engineering share appears on v-fs01 while the domain controller
+        logged no ticket request for that account all day. Which signature does this match?
+      options:
+      - A) A normal interactive sign-in
+      - B) A forged service ticket
+      - C) A password spray
+      - D) A failed logon storm
+      answer: B
+    - question: >-
+        Why does incomplete domain controller logging leave a team unable to rely on service ticket
+        detection?
+      options:
+      - A) Logging gaps hide the missing request that the signature depends on
+      - B) Tickets cannot exist without complete logs
+      - C) Detection only works on workstations
+      - D) Logging gaps delete the shares
+      answer: A
+    - question: >-
+        Compromise of one service account is confirmed on the range. Which containment step removes
+        the forged tickets tied to it?
+      options:
+      - A) Rebooting the SIEM
+      - B) Disabling the domain administrator account
+      - C) Rebuilding every workstation
+      - D) Rotating the service account credentials and revoking its tickets
+      answer: D
+    - question: >-
+        A hunt finds service tickets only for the file service, never for other services, all from
+        one host. What does this scoping indicate about the attacker's position?
+      options:
+      - A) They hold credentials for that one service account
+      - B) They hold domain administrator rights
+      - C) They compromised every workstation
+      - D) They abandoned the environment
+      answer: A
+    - question: >-
+        After containment, the team must confirm no forged service tickets remain in use. Which
+        evidence provides that assurance?
+      options:
+      - A) A clean firewall log for the whole week
+      - B) No tickets lacking matching requests for a full lifetime
+      - C) A signed statement from the service owner covering the period
+      - D) A reduction in event volume
+      answer: B
+- ordinal: 6
+  title: Identity playbooks
+  content_type: reading
+  duration_minutes: 60
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Convert validated identity detections into playbook steps covering triage, escalation and
+    containment
+  - Assign severity to identity incidents using observed impact and the incident response lifecycle
+  - Write evidence capture steps that preserve authentication logs for later incident review
+  topics:
+  - Incident response lifecycle phases from NIST guidance applied to identity detections.
+  - 'Playbook structure: trigger, triage questions, containment, recovery and review.'
+  - Severity assignment and escalation criteria for identity incidents.
+  - 'Evidence handling: log preservation, timestamps and handover to incident responders.'
+  - Case management records that keep playbook runs reviewable.
+  lab: >-
+    Lab: Turn one validated detection into a working identity playbook on the range and run it once
+    end to end. Evidence: a case opened in thehive01 from a siem01 detection hit; the triage
+    questions the playbook asks and the answers the case evidence gives; the severity assigned and
+    the escalation criteria that justify it; the evidence capture steps that preserve the
+    authentication logs. Pass: the case linked to the triggering detection with the query recorded;
+    every playbook step marked executed or skipped with a reason; a severity assigned against the
+    escalation criteria with one sentence of justification.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [siem01]
+      action: On siem01, run the password spray detection and record one hit with its query and
+        matched events.
+    - hosts: [thehive01]
+      action: On thehive01, open a case for the hit and record the triggering detection in the case
+        summary.
+    - hosts: [thehive01]
+      action: 'Draft the playbook tasks in the case: triage questions, containment, evidence capture
+        and recovery.'
+    - hosts: [siem01]
+      action: Capture the supporting authentication events from siem01 into the case and record the
+        export taken.
+    - hosts: [thehive01]
+      action: Assign the case severity against your escalation criteria in your notes, with one
+        sentence of justification.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: >-
+        A validated spray detection fires. Which playbook trigger definition keeps triage fast and
+        repeatable?
+      options:
+      - A) Any single failed sign-in anywhere
+      - B) A weekly review of all logs
+      - C) Failures from one source across many accounts within one time bin
+      - D) An analyst noticing something odd
+      answer: C
+    - question: >-
+        Spray from one subnet is confirmed and stopped by blocking the source. Which lifecycle phase
+        does the block belong to?
+      options:
+      - A) Recovery
+      - B) Preparation
+      - C) Post-incident review
+      - D) Containment
+      answer: D
+    - question: >-
+        Which severity assignment for a confirmed spray against several service accounts is best
+        justified?
+      options:
+      - A) Low, because no account was compromised
+      - B) High, because service accounts can reach many resources if one succeeds
+      - C) Low, because sprays always fail
+      - D) Medium, because the range is small
+      answer: B
+    - question: >-
+        Before containment, the team must keep the authentication evidence reviewable. Which capture
+        step preserves it best?
+      options:
+      - A) Screenshot the dashboard only
+      - B) Rely on the range to keep logs forever
+      - C) Note the event counts in a chat message
+      - D) Export the matched events with timestamps into the case
+      answer: D
+    - question: >-
+        After recovery, the playbook requires a review step. Which record best supports that review?
+      options:
+      - A) The analyst's memory of what happened during the shift
+      - B) A verbal handover at shift end with no notes taken anywhere
+      - C) The case record with each step marked executed or skipped
+      - D) A deleted chat thread
+      answer: C

@@ -1,0 +1,197 @@
+# Instructor pack for C555 - Threat Intelligence Foundations (draft, unsourced).
+# Staff-only material: answer keys, range preparation, and the faults Students commonly make.
+course_code: C555
+audience: staff_only
+overview: 'Threat Intelligence Foundations is a self-paced course of six 30-minute modules (three
+  hours, 180 minutes) for one Student working alone; there are no pairs, teams or role plays.
+  Every module has the same split: 8 minutes reading, 15 minutes on the lab worksheet against a
+  deployed small-enterprise range, and 7 minutes for the five-item quiz passed at 70 percent.
+  Each module teaches three objectives, practises them on the range, and ends with the quiz. The
+  Student hands in the lab worksheet after each module; worksheets are the pass evidence. Say
+  ''Student'' throughout and keep every description defensive and observable.'
+timings:
+- module: 1
+  minutes: 30
+  plan: '8 reading, 15 lab on the small-enterprise range (strategic note worksheet), 7 quiz'
+- module: 2
+  minutes: 30
+  plan: '8 reading, 15 lab on the small-enterprise range (operational/tactical statements), 7 quiz'
+- module: 3
+  minutes: 30
+  plan: '8 reading, 15 lab on the small-enterprise range (one full cycle pass), 7 quiz'
+- module: 4
+  minutes: 30
+  plan: '8 reading, 15 lab on the small-enterprise range (source inventory and plan), 7 quiz'
+- module: 5
+  minutes: 30
+  plan: '8 reading, 15 lab on the small-enterprise range (confidence grading of two judgements), 7 quiz'
+- module: 6
+  minutes: 30
+  plan: '8 reading, 15 lab on the small-enterprise range (validating three claims), 7 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (strategic assessment), M01-O01: A multi-year trend tied to a budget decision is
+    leadership''s question; one group''s campaign (not C) is operational and a feed of addresses
+    (not A) is tactical. Q2 C, M01-O02: Level follows the consumer and the decision window, not
+    the delivery tool (not D) or the length of the period alone (not A). Q3 A, M01-O03: A
+    tactical note exists to be turned into a monitoring check; budgeting (not B) and rewriting
+    upward (not C) lose the decision window. Q4 D, M01-O02: One group followed over months is
+    campaign reporting; coverage length alone does not make it strategic (not A). Q5 A, M01-O01:
+    Without a consumer, a decision and a judgement, a list of addresses is data, not intelligence;
+    more volume (not B) or formatting (not C) does not fix that.'
+- module: 2
+  notes: 'Q1 C, M02-O02: A single observed address with a time is an indicator; a four-month
+    account (not A) is operational and a forecast (not D) is strategic. Q2 D, M02-O02: Indicators
+    age; without the context that made them meaningful, stale blocks mislead and pile up. Q3 A,
+    M02-O03: Shift-actionable means something the defender can watch for or change now; revenue
+    estimates (not B) and forecasts (not D) belong to other consumers. Q4 B, M02-O01: The
+    standing target pattern over weeks is operational; today''s block (not A) and the open port
+    (not D) are tactical facts. Q5 C, M02-O03: The note should trigger the monitoring change that
+    detects the described behaviour; waiting (not B) or relabelling (not D) changes nothing.'
+- module: 3
+  notes: 'Q1 C, M03-O02: A requirement needs a decision, an owner and a time window; open-ended
+    curiosity (not A, B) and continuous monitoring (not D) are not answerable requirements. Q2 D,
+    M03-O03: Feedback is the phase that records the consumer''s reaction and corrects the next
+    pass; the earlier phases cannot hear the consumer. Q3 B, M03-O01: Judging what normalised
+    records mean for the requirement is analysis; gathering (not A) and delivering (not D) come
+    either side of it. Q4 A, M03-O01: An assessment no consumer reads fails at dissemination; the
+    requirement itself was answered. Q5 C, M03-O01: The cycle iterates; the analyst returns to
+    planning with a refined requirement instead of publishing an ambiguous answer (not A) or
+    stopping (not B).'
+- module: 4
+  notes: 'Q1 A, M04-O01: Curation is checked before publication, which is exactly what source
+    reliability grades; it says nothing about internal freshness (not B) or staff-only coverage
+    (not C). Q2 B, M04-O03: Machine-readable exchange needs an agreed structured format and a
+    transport; neither storage (not A) nor prose assessments (not D) move indicators between
+    organisations. Q3 D, M04-O01: Reliability grades the source; the unverified information is
+    graded separately and the two grades travel together, never collapse into one (not A). Q4 B,
+    M04-O02: The boundary between the two networks is the only source positioned to observe the
+    traffic the requirement names. Q5 D, M04-O03: A plan states its coverage gaps; one endpoint
+    source cannot answer an estate-wide requirement, and pretending otherwise (not A) hides the
+    gap.'
+- module: 5
+  notes: 'Q1 D, M05-O01: Confidence measures how far the checked evidence supports the judgement;
+    importance (not A) and severity (not C) are different scales. Q2 A, M05-O02: One sighting
+    with no independent support supports only low or moderate confidence until something
+    corroborates it; a machine sighting is still one observation (not B). Q3 C, M05-O02: Reports
+    that all cite the first report repeat one observation; corroboration needs independent
+    observations, not a count of documents (not A). Q4 B, M05-O01: Old evidence about a different
+    sector weakens support, so the confidence drops and the age and distance are stated. Q5 D,
+    M05-O03: The rewrite separates the observation (two failed logons, one address) from the
+    inference (compromise), which the original wording collapsed.'
+- module: 6
+  notes: 'Q1 C, M06-O01: Selecting the lines that fit a judgement already held is confirmation
+    bias; anchoring (not B) would be the first number surviving later evidence. Q2 A, M06-O02:
+    Validate before acting; the estate''s own observations decide whether the vendor''s claim
+    holds here. Blocking first (not B) inverts the order. Q3 D, M06-O01: The first estimate
+    survived contradicting evidence; that is anchoring. Q4 C, M06-O02: Validation compares the
+    claim with the actual rules on the boundary; the publisher''s word (not A) is the claim, not
+    the check. Q5 A, M06-O03: A proportionate response to a low-confidence finding records it and
+    watches; isolation (not B) and a confirmed-compromise brief (not C) outrun the evidence, and
+    low confidence is not a reason to discard (not D).'
+lab_setup:
+- module: 1
+  setup: 'Deploy the small-enterprise range before the module. Baseline the Student will see:
+    networks mgmt 10.0.1.0/24 (jump-box 10.0.1.10, fw-01 10.0.1.1), srv 10.0.2.0/24 (dc-01
+    10.0.2.10, Windows Server 2022 with AD DS and DNS), user 10.0.3.0/24 (ws-01 10.0.3.10,
+    ws-02 10.0.3.11, ws-03 10.0.3.12, all Windows 11); fw-01 rules user-to-srv-ad and
+    mgmt-to-all, everything else default-denied. The Student''s only account is the analyst
+    login on jump-box over SSH; every observation is made from there. Hand out the addressing
+    plan (the three networks and gateway addresses) and the host list (dc-01, ws-01, ws-02,
+    ws-03) the lab queries against; the name service on dc-01 should resolve each of them.
+    Expected: dc-01 answers on the domain service ports of user-to-srv-ad. Choose the named
+    consumer (head of IT) before the lab starts.'
+- module: 2
+  setup: 'Same deployed range; the Student works from jump-box only. Baseline: the
+    user-to-srv-ad rule allows user to srv on ports 53, 88, 123, 135, 389, 445, 464, 636 and
+    49152-65535; mgmt-to-all allows mgmt to every network. Put the user-to-srv-ad rule summary
+    line (name, source network, destination network, ports) on the worksheet, because the rule
+    list itself is not readable from the Student''s access. Decide in advance which permitted
+    service the Student tests from jump-box against dc-01 (SMB on port 445 is the usual
+    choice); the test exercises the mgmt-to-all path and shows only that dc-01 offers the
+    service. Expected: the name service on dc-01 returns records for ws-01, ws-02 and ws-03.'
+- module: 3
+  setup: 'Same deployed range; the Student works from jump-box only. Supply the owner and time
+    window for the requirement (infrastructure owner, this week) but let the Student write the
+    requirement wording. Baseline: the only administration path into the server network is
+    mgmt-to-all from the management network; the user-to-srv-ad rule is service traffic, not
+    administration. Collection from jump-box therefore verifies the management path (remote
+    administration ports on dc-01 answer) and cannot observe a user-network path; a good
+    answer states that gap, and a good feedback names collection as the phase to revisit.
+    Expected: the name service returns dc-01, ws-01, ws-02 and ws-03.'
+- module: 4
+  setup: 'Same deployed range; the Student works from jump-box only. Baseline: fw-01 answers
+    reachability tests at each gateway (10.0.1.1, 10.0.2.1, 10.0.3.1); three workstations are
+    registered in the domain''s name service; ws-01 answers no domain service, because none is
+    installed on it. Confirm connection logging state on fw-01 yourself before the module: the
+    Student cannot read the boundary logs from jump-box, so a correct plan names that as the
+    collection gap for the requirement of which workstations use the domain controller.
+    Prepare the two-column plan template (requirement, source) on the worksheet.'
+- module: 5
+  setup: 'Same deployed range; the Student works from jump-box only. Prepare two judgement
+    cards. J1: "dc-01 answers on the domain service ports the rule summary lists" - checkable
+    in full by port tests from jump-box, so high confidence is defensible. J2: "Every
+    workstation on the user network is joined to the domain" - the Student can see only the
+    name-service records the domain publishes for ws-01, ws-02 and ws-03, which shows
+    registration, not membership on any host, so at most moderate confidence is defensible. Do
+    not tell the Student which card is which kind; the evidence limits the confidence, not the
+    wording.'
+- module: 6
+  setup: 'Same deployed range; the Student works from jump-box only. Prepare three claim cards.
+    C1: "dc-01 answers on port 445" - corroborated by a port test from jump-box. C2: "the
+    domain''s name service runs on ws-01" - refuted; the same query gets no answer from ws-01
+    while dc-01 answers. C3: "dc-01 holds the address 10.0.3.10" - refuted; the name service
+    returns 10.0.2.10 for dc-01, and 10.0.3.10 is ws-01 on the user network. Expected verdicts:
+    C1 corroborated, C2 and C3 not corroborated.'
+common_faults:
+- module: 1
+  fault: The strategic note is an inventory (three networks, five hosts) with no judgement or
+    named consumer.
+  remedy: Ask what the consumer should decide differently after reading it; an inventory supports
+    a note but is not one.
+- module: 1
+  fault: Campaign reporting is called strategic because it covers months.
+  remedy: Ask who owns the decision the item serves; the actor's timeline is operational even
+    when it is long.
+- module: 2
+  fault: The tactical statement restates the operational one with a host name swapped in.
+  remedy: Insist the tactical statement names an action a defender takes this shift; the
+    operational statement describes the standing arrangement.
+- module: 2
+  fault: Indicators are treated as permanent facts; last year's block list is reused unmodified.
+  remedy: Discuss what made each indicator meaningful and how that context expires; validation
+    before reuse.
+- module: 3
+  fault: The requirement is a topic ("threats to the estate"), not an answerable question with a
+    decision, an owner and a window.
+  remedy: Reject any requirement that does not name all three; have the Student rewrite it once.
+- module: 3
+  fault: The one-paragraph answer cites material from outside the collection pass (assumed
+    internet access, imagined hosts).
+  remedy: Check each sentence against the recorded evidence; strike anything the range did not
+    show.
+- module: 4
+  fault: The plan maps the requirement to a source that cannot observe the traffic in question.
+  remedy: For each mapping ask what that source actually records; a vendor feed cannot see
+    internal workstation traffic.
+- module: 4
+  fault: Source reliability and information credibility are merged into one grade.
+  remedy: Drill the two grades as separate columns; a reliable source can pass on unchecked
+    information.
+- module: 5
+  fault: Confidence is set high because the claim was read several times or sounds authoritative.
+  remedy: Ask what was checked on the range, not what was read; repetition is not corroboration.
+- module: 5
+  fault: The estate-wide judgement (J2) keeps high confidence when only the name-service
+    records were checked.
+  remedy: Show that a published registration stops short of the hosts themselves; coverage of
+    the evidence limits confidence.
+- module: 6
+  fault: Claims are actioned or dismissed on their wording without checking the range.
+  remedy: Require the prediction step first; the Student writes what the range would show if the
+    claim were true, then looks.
+- module: 6
+  fault: The named bias is defined from the reading but never tied to a judgement the Student
+    actually made.
+  remedy: Point at the sentence in the Student's own worksheet where the bias could have shaped
+    the conclusion; a definition alone does not pass.

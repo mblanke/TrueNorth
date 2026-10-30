@@ -585,7 +585,7 @@ modules:
     po: {qsp_code: ALJQ, po_code: PO_009}   # optional
 ```
 
-A course may also declare a top-level `qsp_code`, which sets `Course.qualification_id`. It is optional: omit the key for courses outside a qualification (the upskilling courses); an empty or null value is refused by the schema.
+A course may also declare a top-level `qsp_code`, which sets `Course.qualification_id`. It is optional: omit the key for courses outside a qualification (the upskilling courses, which are rows of `content/catalogue/specialist_pathways.csv`, ADR 0018); an empty or null value is refused by the schema.
 
 Rules the importer enforces:
 

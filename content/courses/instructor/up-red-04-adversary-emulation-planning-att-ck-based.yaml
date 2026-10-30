@@ -1,0 +1,192 @@
+# Instructor pack for C540 (Adversary Emulation Planning (ATT&CK-based)). Unsourced draft --
+# not validated by Standards. TAZ upskilling catalogue v1 (GLM draft). Staff-only material:
+# the answer key below is the course's key; each note says why the keyed option is right and
+# what each distractor tests, keyed to the module's objectives and topics.
+course_code: C540
+audience: staff_only
+overview: 'Adversary Emulation Planning (ATT&CK-based) is a course of six 50-minute modules (300 minutes,
+  5 hours) for advanced Students on the red-team range. Each module teaches three objectives, works one
+  planning lab on the range, and ends with a five-item quiz passed at 70 percent. The modules follow the
+  life of an emulation plan: choosing the adversary profile, scoping the range, mapping the plan to
+  ATT&CK coverage, verifying the data collection plan, writing the rules of engagement and safety
+  valves, and integrating the documents into one plan with a dry run and a go or no-go decision. Every
+  lab is planning and verification work with benign probes only; no offensive tooling is taught. Say
+  ''Student'' throughout and keep every description defensive and observable.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 teach (profile sources and confidence), 25 lab (reachability check against the drafted
+    profile), 15 assessment (10 quiz, 5 debrief)'
+- module: 2
+  minutes: 50
+  plan: '10 teach (topology, firewall policy, scope boundary), 25 lab (inventory and boundary marks),
+    15 assessment (10 quiz, 5 debrief)'
+- module: 3
+  minutes: 50
+  plan: '10 teach (tactics, techniques, coverage table), 25 lab (mapping and coverage gaps), 15
+    assessment (10 quiz, 5 debrief)'
+- module: 4
+  minutes: 50
+  plan: '10 teach (collection planning and log sources), 25 lab (benign probes and verification), 15
+    assessment (10 quiz, 5 debrief)'
+- module: 5
+  minutes: 50
+  plan: '10 teach (rules of engagement, safety valves), 25 lab (lockout policy, isolation rule, stop
+    conditions), 15 assessment (10 quiz, 5 debrief)'
+- module: 6
+  minutes: 50
+  plan: '10 teach (assembled plan, cross-checks, go or no-go), 25 lab (dry run and decision), 15
+    assessment (10 quiz, 5 debrief)'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B, M01-O01: Profile choice follows behaviour matched to the organisation, not technique
+    count or tooling noise; A and C reward the scanner for the wrong reasons, D asserts a falsehood
+    about help desks. Q2 C, M01-O03: Uncorroborated claims are retained with recorded confidence, never
+    upgraded (A), never discarded wholesale (B), and rewording hides the uncertainty (D). Q3 D,
+    M01-O02: A target the range cannot match is kept and the substitution is documented; silent
+    substitution (B, C) breaks the brief, and dropping the objective (A) loses coverage the review
+    needs. Q4 A, M01-O02: The brief carries objectives with their confidence; captures (B), analyst
+    names (C) and assurances (D) are not profile-derived content. Q5 B, M01-O03: Invented behaviour
+    makes the plan test what no intelligence supports; plausibility (A) and difficulty (C) do not make
+    it sourced, and an appendix note (D) does not cure the invention.'
+- module: 2
+  notes: 'Q1 C, M02-O01: Scope records what the firewall policy actually admits; defaults (A) and
+    through-paths (B) are not in the rules, and reachability is testable during scoping (D). Q2 A,
+    M02-O01: A permitted port with no answering service is scoped out until confirmed; blaming the rule
+    (B), postponing (C) and counting the port as open on policy alone (D) all record falsehoods. Q3 D,
+    M02-O03: The isolation rule is a fixed constraint, so the path is recorded out of scope; arguing
+    with it (A), proceeding quietly (B) and treating failure as a finding (C) ignore scoping. Q4 B,
+    M02-O02: A boundary statement names hosts and assumptions; production guarantees (A) are
+    meaningless on a range, harvested credentials (C) belong to no boundary, and standing down the blue
+    team (D) defeats the exercise. Q5 C, M02-O03: The time budget trims the list until each technique
+    is observable; rushing (A), adding staff (B) and stretching the window (D) leave the plan unrunnable.'
+- module: 3
+  notes: 'Q1 A, M03-O01: Credential access names the goal, so it is a tactic; B confuses technique with
+    tactic, C narrows without a parent behaviour, D is an implementation detail no plan row records. Q2
+    D, M03-O02: Technique selection starts from profile behaviour; tool-first mapping (A, B) tests
+    capability instead of the adversary, and novelty (C) is not a source. Q3 B, M03-O02: A coverage row
+    is technique, node, expected observation and evidence source; A and D record tooling artefacts, C
+    records attribution the plan does not need. Q4 C, M03-O01: Sub-technique precision earns its place
+    when defenders act on the distinction; A dismisses it, B over-collects, D misstates how sub-techniques
+    attach. Q5 A, M03-O03: Gaps are recorded with reasons so the review can judge them; silent drops
+    (B), arbitrary substitution (C) and marking intent as coverage (D) hide the gap.'
+- module: 4
+  notes: 'Q1 D, M04-O01: The collection plan exists so each technique has proving evidence; volume (A),
+    compliance (B) and pacing (C) are not its purpose. Q2 B, M04-O02: Share access auditing on the file
+    server records the read; web logs (A) and firewall sessions (C) show network context only, and a
+    week-old memory image (D) records neither. Q3 A, M04-O03: The benign probe confirms the source
+    fires before the exercise depends on it; measuring adversaries (B), consuming disk (C) and shaping
+    account patterns (D) are not verification. Q4 C, M04-O02: A local-only trail makes the local log
+    the source, and its collection must be verified; forwarding does not capture everything (A), local
+    techniques still need evidence (B), and remapping (D) changes the plan to fit the telemetry. Q5 D,
+    M04-O03: An unmapped technique is flagged unvalidatable and passed to validation; assuming (A),
+    dropping (B) and self-certifying (C) break the chain from plan to evidence.'
+- module: 5
+  notes: 'Q1 B, M05-O01: Rules of engagement name targets, permitted actions and stop conditions;
+    attribution (A), reused credentials (C) and stealth promises (D) have no place in them. Q2 C,
+    M05-O03: The valve caps attempts per account below the lockout threshold; going faster (A) invites
+    the lockout, disabling policy (B) removes the control, and a restoration promise (D) acts after
+    the harm. Q3 A, M05-O02: The isolation rule is a constraint the permitted actions respect; treating
+    it as an obstacle (B), irrelevant (C) or a later question (D) invites an unrunnable path. Q4 D,
+    M05-O03: The named authority in the rules of engagement halts activity; proximity (A), role
+    ownership (B) and advisory stop conditions (C) leave the halt undecided. Q5 B, M05-O02: Deviations
+    are recorded for the after-action review regardless of harm; silence (A), a restart (C) and log
+    deletion (D) all defeat the review.'
+- module: 6
+  notes: 'Q1 A, M06-O01: The assembled plan is the five documents the course built; tool inventories
+    (B), the raw profile (C) and old slides (D) are not the plan. Q2 C, M06-O02: The cross-check caught
+    scope drift between documents; logging (A) and firewall change (B) are different faults, and a new
+    profile (D) does not follow. Q3 D, M06-O03: The dry run confirms the plan works with the safety
+    valves armed; spare time (A) is incidental, a defender rehearsal (B) is a different exercise, and
+    testing every technique (C) is not a dry run. Q4 B, M06-O03: No collection evidence is a no-go until
+    the source is fixed and re-probed; proceeding without evidence (A, C) invalidates validation, and
+    discarding the plan (D) overreacts to a fixable fault. Q5 C, M06-O02: The handoff carries the
+    coverage table and collection plan; personal notes (A) and raw reports (B) add noise, and
+    credentials or tooling (D) never travel with the plan.'
+lab_setup:
+- module: 1
+  setup: 'Range up on the red-team template with a-kali01, fw01 and the demilitarised zone hosts
+    (t-web01, t-mail01, t-dns01) running. Expected values: fw01 admits only ports 80, 443, 25 and 53
+    from the attacker infrastructure network to the demilitarised zone; t-web01 and t-mail01 answer on
+    admitted ports, t-dns01 answers on 53. Print the drafted adversary profile with a target set that
+    includes one entry with no range equivalent.'
+- module: 2
+  setup: 'Same range state as module 1. Expected values: five networks on fw01 (attacker infrastructure,
+    demilitarised zone, corporate, database, pivot); the database network is isolated from attacker
+    infrastructure; the pivot network is broadly permitted. t-vpn01 does not answer on the admitted
+    ports, so at least one scoping mark must be "no service confirmed".'
+- module: 3
+  setup: 'Same range state. Expected values: the web service on t-web01 yields two tactic mappings
+    (initial access, discovery); the file share on t-fs01 is reachable only for internal-path planning,
+    so its rows mark the node without a live path; at least one profile behaviour (for example a cloud
+    technique) has no technique on this range and must be recorded as a coverage gap. Hand out a blank
+    coverage table with the four columns before the lab.'
+- module: 4
+  setup: 'Range up with share auditing enabled on t-fs01 and the web server access log writable on
+    t-web01. Expected values: the benign share probe from t-ws01 produces one audit event on t-fs01
+    within a minute, showing account, share and time; one request from a-kali01 adds one access line to
+    the t-web01 log; the directory service log on t-dc01 records interactive and network authentication
+    but not local workstation-only events. No exploit tooling is used in this module.'
+- module: 5
+  setup: 'Range up on the red-team template with the domain policy as provisioned. Expected values:
+    t-dc01 lockout threshold 5 attempts, duration 30 minutes; fw01 denies all database-network traffic
+    to attacker infrastructure; a-teamserver and the kali hosts hold the tool inventory the plan
+    references. Students never run the planned techniques; the module only reads policy and drafts
+    stop conditions.'
+- module: 6
+  setup: 'Same range state, with all four planning documents from modules 2 to 5 distributed to each
+    Student. Expected values: the dry-run web request on t-web01 matches the coverage row if the plan is
+    consistent; the t-dc01 lockout values read 5 attempts and 30 minutes; the firewall comparison
+    matches the scope statement unless the instructor has seeded one drift (recommended: a scope
+    statement that still names t-fs01), which the cross-check must catch before the go decision.'
+common_faults:
+- module: 1
+  fault: Students map every profile target to the biggest host on the range instead of recording "no
+    equivalent host" where nothing matches.
+  remedy: Put the node inventory beside the profile target set and require one line per target entry
+    before any reachability testing starts.
+- module: 1
+  fault: Unverified report claims are copied into the brief as fact.
+  remedy: Require a confidence marker on every brief line in the lab, and review the two lowest markers
+    aloud before the quiz.
+- module: 2
+  fault: Students mark a port reachable because the firewall permits it, without confirming a service
+    answers.
+  remedy: 'Show the t-vpn01 case first: permitted in policy, no answer on the wire. Scope marks must cite
+    the probe, not the rule.'
+- module: 2
+  fault: The scope boundary lists hosts but no assumptions.
+  remedy: Hand out a boundary template with an assumptions column and reject any boundary where it is
+    empty.
+- module: 3
+  fault: Techniques are chosen because a tool on the range performs them.
+  remedy: Ask "which profile behaviour does this row serve?" for each mapped row; a row with no
+    behaviour is struck from the table.
+- module: 3
+  fault: Coverage gaps are dropped from the plan instead of recorded.
+  remedy: Keep the gap list on the board through the lab; the quiz Q5 answer is the recorded gap, and
+    Students should recognise the pattern in their own table.
+- module: 4
+  fault: The benign probe is skipped and the source assumed live.
+  remedy: Compare the two module 4 quiz items that hinge on verification; a source that was never
+    probed is never verified.
+- module: 4
+  fault: Students treat central log forwarding as complete coverage of every local log.
+  remedy: 'Use the local application log case: forwarding was configured for the security log only, so
+    the local source must be named and verified in the collection plan.'
+- module: 5
+  fault: Stop conditions are written as goals ("respond quickly") rather than measurable triggers.
+  remedy: Reject any stop condition without a number or a named service; rewrite one aloud with the
+    class before the lab.
+- module: 5
+  fault: Students propose disabling the lockout policy to let the technique run.
+  remedy: 'Point at the isolation-rule row already recorded: range controls are constraints, and the
+    valve is a ceiling below the threshold, not a policy change.'
+- module: 6
+  fault: The dry run is treated as a rehearsal of the whole plan rather than the first steps.
+  remedy: Time-box the dry run to the first step and the valve check; the point is the comparison with
+    the predicted observation, not completeness.
+- module: 6
+  fault: The go decision is announced without citing the criteria.
+  remedy: Require the decision line to name the criterion that decided it; an uncited go or no-go fails
+    the lab pass item.

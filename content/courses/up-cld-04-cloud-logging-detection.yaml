@@ -1,0 +1,548 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C546
+title: Cloud Logging & Detection
+version: '1.0'
+difficulty: advanced
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites: [C543]
+source:
+  origin: "TAZ upskilling catalogue v1 (2026-10-28)"
+  notes:
+  - "NICE work roles: Cyber Defense Analyst (PR-CDA-001) and Systems Security Analyst."
+  - "NIST CSF 2.0 categories covered: DE.CM (continuous monitoring) and DE.AE (adverse event analysis)."
+  - "Self-paced upskilling, outside DP1/DP2."
+  - "Unpublished pending Standards review."
+modules:
+- ordinal: 1
+  title: Cloud audit log anatomy
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Identify the record structure of a cloud control-plane audit log, including event source, identity and resource fields
+  - Distinguish management events from data events and state what each class records about account activity
+  - Read a raw audit record and reconstruct who acted, on what resource, from which address and when
+  topics:
+  - 'What a cloud control plane records: API calls, identities, source addresses and affected resources.'
+  - Management events versus data events, and why a trail records one class by default and not the other.
+  - 'The fields of one audit record: event time, identity, source address, action name, resource and outcome.'
+  - Read-only events versus write events, and why write events carry the detection weight.
+  - 'Trail configuration as the foundation of log integrity: what is switched on decides what can be investigated.'
+  lab: >-
+    Lab: On the cloud-security range, read real audit records from the simulated cloud account and
+    reconstruct three actions from the raw records alone. Evidence: the trail and event source the
+    records come from; for each of three records, the event time, acting identity, source address,
+    action name, affected resource and outcome; one sentence saying whether each action was read-only
+    or a write. Pass: all three records reconstructed with every field recorded exactly as the range
+    shows it; each action marked read-only or write with a one-sentence reason; the trail settings
+    that made each record appear (or not appear) named.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open a shell with the cloud command-line tool pointed at the simulated account,
+        and record the trail configuration that is active, including which event classes it records.
+    - hosts: [localstack01]
+      action: Read the most recent records from the audit trail service on localstack01 and record, for the three
+          most recent write events, the event time, acting identity, source address, action name and outcome.
+    - hosts: [localstack01]
+      action: Find one record of an object read in a storage bucket on localstack01 and record whether the trail
+          captured it, then record which event class that action belongs to and why the trail showed what it showed.
+    - hosts: [cloud-siem01]
+      action: Open the search platform on cloud-siem01, find the same three write events as delivered records, and
+          record one field whose name or shape changed between the raw record and the delivered record.
+    - hosts: [jump01]
+      action: For each reconstructed action, write one sentence judging whether it was read-only or a write, and
+          state which trail setting would have had to change for that action to be missing from the record.
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-145
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: An audit trail shows a record for a policy attachment but nothing for the object reads in one storage
+        bucket. Which explanation fits what the record shows?
+      options:
+      - A) Data event logging was not enabled for that bucket
+      - B) The reading identity lacked permission to read the objects
+      - C) Object reads are recorded only for the account root identity
+      - D) The bucket must be encrypted before reads reach the trail
+      answer: A
+    - question: An analyst must state, from one raw audit record, which principal acted on which resource. Which pair
+        of record fields answers that?
+      options:
+      - A) Event name and log format version
+      - B) Response payload and error code
+      - C) The identity field and the resource field
+      - D) The trail name and the delivery time
+      answer: C
+    - question: A reviewer is sorting recorded activity into management events and data events. Which pair are both
+        management events in a control-plane trail?
+      options:
+      - A) Object read, object write
+      - B) Object read, identity policy change
+      - C) Object write, function invocation
+      - D) Identity policy change, console sign-in
+      answer: D
+    - question: Why do write events in a control-plane audit trail deserve faster review than read events?
+      options:
+      - A) Write events are larger records and cost more to store
+      - B) Write events change account state, so each one needs an owner
+      - C) Read events never carry an identity in the record
+      - D) Write events only ever occur during a real incident
+      answer: B
+    - question: A team wants assurance that past audit records cannot be quietly altered or removed. Which trail
+        setting matters most for that assurance?
+      options:
+      - A) Validation that detects changed or deleted records
+      - B) Compression of records before delivery
+      - C) Delivery into the same account that produced them
+      - D) Filtering of management events to reduce storage noise
+      answer: A
+- ordinal: 2
+  title: Log pipelines, retention and tamper signals
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Describe the delivery path audit records follow from cloud service to searchable store, naming each stage
+  - Select retention and integrity settings that keep records available and trustworthy for an investigation window
+  - Recognize the audit events that signal an attempt to disable, filter or evade logging
+  topics:
+  - 'The delivery path: service events, trail output, collection targets and the searchable store.'
+  - Retention and integrity settings, and the balance between investigation depth and storage cost.
+  - 'Tamper signals in the record itself: logging stopped, a trail deleted, a filter narrowed, a destination changed.'
+  - 'Guarding the logger: who may change trail configuration and how changes to it are alerted.'
+  lab: >-
+    Lab: On the cloud-security range, map the delivery path of audit records end to end and identify
+    every point where records could be stopped, filtered or altered. Evidence: the ordered list of
+    stages a record passes through, from service to search platform; the retention and integrity
+    settings observed at the delivery target; the configuration change events in the trail that touch
+    logging itself. Pass: the delivery path recorded in order with each stage named as the range shows
+    it; each observed setting recorded with its value; at least three stopping points identified with
+    one sentence each on how an alert would catch a change there.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: From jump01, record the delivery target of the active trail in the simulated account, including the
+        destination service and account that receive the records.
+    - hosts: [cloud-siem01]
+      action: On cloud-siem01, record how delivered records arrive into the search platform, including the ingestion
+        job or collector that writes them and the index or data stream they land in.
+    - hosts: [cloud-siem01]
+      action: Record the retention setting on the index or data stream holding the audit records and the integrity
+        or validation setting observed on the trail, writing each value exactly as configured.
+    - hosts: [localstack01]
+      action: In the audit records on localstack01, search for configuration events that touch logging itself, such
+        as trail changes or logging stops, and record each matching event with its time and identity.
+    - hosts: [jump01]
+      action: Write the ordered delivery path from service to search platform as observed, mark the three points
+          where a record could be stopped or altered, and state one detection that would catch a change at each.
+  refs:
+  - nist-sp-800-92
+  - nist-cswp-29
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: An analyst traces one audit record backwards from the search platform to its origin. Which ordered
+        path does the record travel?
+      options:
+      - A) Collector, cloud service, delivery target, searchable store
+      - B) Cloud service, delivery target, searchable store, query
+      - C) Searchable store, delivery target, cloud service
+      - D) Cloud service, analyst workstation, searchable store
+      answer: B
+    - question: During a review an auditor finds that the audit trail itself was deleted two days ago and nothing
+        has been recorded since. What does that finding indicate?
+      options:
+      - A) A rotation job archived the trail on schedule
+      - B) Retention expired and the records aged out normally
+      - C) A collector failed and will re-deliver the records
+      - D) A possible evasion step that needs immediate escalation
+      answer: D
+    - question: Investigations at an organisation regularly surface control-plane activity from six weeks earlier.
+        Which retention choice fits that reality?
+      options:
+      - A) Retain records one day and rely on written summaries
+      - B) Keep only management events past one week of depth
+      - C) Retain records beyond the longest likely investigation window
+      - D) Retain records only while the storage budget is unspent
+      answer: C
+    - question: Which control best ensures that changes to logging configuration are themselves visible to the
+        detection team?
+      options:
+      - A) Encrypting the audit records at rest
+      - B) Running logging duties from a shared administrator account
+      - C) Alerting on changes to trails and their delivery destinations
+      - D) Increasing the query capacity of the search platform
+      answer: C
+    - question: Delivered records reach the search platform with a different field name for the actor in each source.
+        Which pipeline stage resolves that?
+      options:
+      - A) Compression and encryption of records before their delivery
+      - B) Normalization that maps source fields to common names
+      - C) Faster network delivery from the source region
+      - D) Longer retention at the source account
+      answer: B
+- ordinal: 3
+  title: From API calls to ATT&CK mappings
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Map individual cloud API calls to the adversary tactic each one serves in an unfolding attack chain
+  - Assemble sequences of audit events into an ordered technique chain and name the technique at each stage
+  - Separate routine administrative behaviour from behaviour that only makes sense as attack preparation
+  topics:
+  - 'Behaviour over syntax: why the same API call serves different adversary goals in different chains.'
+  - 'Common control-plane techniques: privilege escalation, persistence, credential access and defence evasion.'
+  - Chaining audit events into an ordered technique sequence and naming each stage with confidence and evidence.
+  - 'Baseline thinking: what administrative behaviour normally looks like in the account, and what standing out means.'
+  lab: >-
+    Lab: On the cloud-security range, map a sequence of audit events to tactics and techniques and
+    defend each mapping with the evidence in the record. Evidence: for each event in the sequence, the
+    tactic it serves and the technique it matches; the one field in each record that carries the
+    deciding evidence; one sentence separating routine administration from attack behaviour in the
+    sequence. Pass: every event in the sequence mapped to a tactic and a technique with the deciding
+    record field named; the chain written in order from first to last event; one stated judgement of
+    which single event proves the sequence is not routine administration.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: From jump01, list the recent control-plane events for the deployment identity in the simulated account
+        and record the action name, time and source address of each one.
+    - hosts: [localstack01]
+      action: On localstack01, read the full records for the identity's policy changes and key creations and record,
+        for each, which tactic the behaviour serves and which record field carries the evidence.
+    - hosts: [localstack01]
+      action: Compare the identity's events against its recorded normal cadence in the trail and record which events
+        fall outside that baseline and what each outlier prepares for.
+    - hosts: [cloud-siem01]
+      action: In the search platform on cloud-siem01, assemble the flagged events into one ordered chain and record
+        the tactic and technique of each stage, first to last.
+    - hosts: [jump01]
+      action: Write one judgement naming the single event that proves the sequence is not routine administration, and
+          record the evidence from that record that supports the judgement.
+  refs:
+  - mitre-attack
+  - nist-cswp-29
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: An audit record shows a new access key created for an existing identity. Which mapping question does
+        the analyst answer first?
+      options:
+      - A) Which vendor named the API call in its documentation
+      - B) How many bytes the record occupies in storage
+      - C) What an adversary gains by holding that key
+      - D) Which region stored the delivered record
+      answer: C
+    - question: An identity attaches an administrator policy to itself and then creates a new console user. Which
+        ordered mapping of that sequence fits?
+      options:
+      - A) Privilege escalation, then persistence through a new account
+      - B) Discovery, then collection of stored data
+      - C) Collection, then exfiltration to storage
+      - D) Initial access, then impact on availability
+      answer: A
+    - question: An attacker holding a stolen identity stops audit logging before acting further in the account.
+        Which tactic does the logging change serve?
+      options:
+      - A) Discovery of the account layout
+      - B) Collection of stored objects
+      - C) Credential access to stored keys
+      - D) Defence evasion against detection
+      answer: D
+    - question: A deployment identity changes infrastructure every weekday. Saturday policy changes from the same
+        identity stand out to an analyst because of what?
+      options:
+      - A) Policy changes are always malicious in any account
+      - B) They fall outside the identity's recorded normal baseline
+      - C) Weekend events never appear in audit records
+      - D) The identity worked through the console rather than automation
+      answer: B
+    - question: Records show account enumeration, then a new administrator policy, then bulk object copies toward an
+        outside bucket. What does that chain describe?
+      options:
+      - A) A scheduled backup job with new settings
+      - B) A misconfigured application deployment
+      - C) An unscoped penetration test rehearsal
+      - D) Collection staged after a privilege escalation
+      answer: D
+- ordinal: 4
+  title: Detection queries for the control plane
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write detection queries against control-plane audit fields for identity, persistence and evasion behaviour
+  - Tune a query against a recorded benign baseline so its threshold keeps alerts believable
+  - Judge a detection rule by its stated behaviour, its field coverage and its false-positive cost
+  topics:
+  - 'Detection query structure: event source, field filters, thresholds and the alert record that results.'
+  - 'Queries for sensitive control-plane actions: policy attachments, key creations, logging changes, new principals.'
+  - 'Baselining: capturing the normal cadence of an action so a threshold has evidence behind it.'
+  - 'Rule quality in operations: precision, recall and what a noisy rule costs the team that answers it.'
+  lab: >-
+    Lab: On the cloud-security range, write and tune three detection queries against the delivered
+    audit records and judge each rule's quality. Evidence: the full query text of each rule, including
+    event source and field filters; the count of records each query matches in the recorded window;
+    the baseline number for its action and the threshold chosen from it; one judgement per rule of
+    whether its alerts would be believed. Pass: all three queries recorded in full and executed
+    against the range data; each threshold justified by the observed baseline; each rule marked
+    precise or noisy with one sentence naming the benign behaviour it would also catch.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [cloud-siem01]
+      action: On cloud-siem01, open the search platform, confirm the index holding the delivered audit records and
+        record the field names available for identity, action, resource and outcome.
+    - hosts: [cloud-siem01]
+      action: Write and run a query for policy attachments that grant administrator rights, record the full query
+        text and the number of matching records in the window, and note the identity behind each match.
+    - hosts: [cloud-siem01]
+      action: On cloud-siem01, count the normal cadence of key creations and console sign-ins in the delivered audit
+          records across the same recorded window and record those two baseline numbers with the window they cover.
+    - hosts: [cloud-siem01]
+      action: Write and run queries for key creations and for logging changes on cloud-siem01, record each query
+          text, then set each threshold from the baselines counted on those same delivered records and record the
+          chosen values.
+    - hosts: [cloud-siem01]
+      action: For each of the three rules, write one judgement of precision or noise, naming the benign behaviour
+          the rule would also catch, and record what that costs the team answering the alert.
+  refs:
+  - sigma
+  - nist-sp-800-92
+  - mitre-attack
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: A detection query should fire only when a sensitive control-plane action succeeds. Which part of the
+        audit record carries that outcome?
+      options:
+      - A) The event time of the record
+      - B) The log format version stamped on the record
+      - C) The delivery delay of the record
+      - D) The error or result field of the record
+      answer: D
+    - question: Which query watches the single highest-risk identity change a control-plane trail can show?
+      options:
+      - A) Queries counting console sign-ins per day
+      - B) Queries matching policy attachments that grant administrator rights
+      - C) Queries listing object reads in one bucket
+      - D) Queries counting delivered records per region
+      answer: B
+    - question: A rule alerts on every key creation and pages the team nightly over routine deployment work. Which
+        change fixes the rule?
+      options:
+      - A) Deleting the rule and returning to manual review
+      - B) Removing the identity fields from the query
+      - C) Setting the threshold from the recorded baseline of key creations
+      - D) Raising retention so the alerts arrive later
+      answer: C
+    - question: Which statement describes a precise detection rule over audit records?
+      options:
+      - A) It fires on the stated behaviour and rarely on benign work
+      - B) It fires on every record the trail delivers
+      - C) It matches any field name variant in any source
+      - D) It holds alerts until an analyst asks for them
+      answer: A
+    - question: An alert reaches the triage queue. Which alert content lets an analyst judge it fastest?
+      options:
+      - A) A screenshot of the monitoring dashboard
+      - B) Only the rule name and its severity
+      - C) The record's identity, action, resource and time
+      - D) The rule author's name, version and change history
+      answer: C
+- ordinal: 5
+  title: Multi-account visibility
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Compare centralised and per-account audit collection and select a design for a multi-account organisation
+  - Correlate one identity's activity across accounts and log sources into a single reconstructed account
+  - Identify the visibility gaps a proposed logging design leaves open and state what each gap costs detection
+  topics:
+  - 'Why per-account logging fails an investigation: split retention, inconsistent fields and blind regions.'
+  - 'Central collection designs: an aggregation account, cross-account delivery and controlled access to it.'
+  - 'Correlating identity across accounts and regions: one principal, several record sources, one story.'
+  - 'Auditing the auditor: verifying with an assessment tool that every account really delivers its records.'
+  lab: >-
+    Lab: On the cloud-security range, verify audit coverage across accounts, correlate one identity's
+    activity across two record sources and judge the design's gaps. Evidence: the list of accounts and
+    sources expected to deliver records and those actually observed; the timeline of one identity's
+    events across both sources; the gaps found, each with its detection cost. Pass: the coverage
+    comparison recorded with every missing source named; the cross-source timeline written in time
+    order; each gap marked with the question an investigator could not answer because of it.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [prowler01]
+      action: On prowler01, run the Prowler audit checks for trail and delivery configuration against the simulated
+        accounts and record the account list with each account's delivery status, naming every account that shows a
+        gap.
+    - hosts: [jump01]
+      action: From jump01, query each account's audit records for the deployment identity and record every event
+        with its time, account, action and source address, tagged by the account it came from.
+    - hosts: [cloud-siem01]
+      action: On cloud-siem01, merge the tagged events into one cross-account timeline for the identity and record
+        it in time order, marking where the two record sources overlap or contradict.
+    - hosts: [prowler01]
+      action: Record each visibility gap found on prowler01 or in the timeline, naming for each the question an
+          investigator could not answer and the detection that fails without the answer.
+    - hosts: [jump01]
+      action: Write one judgement of the collection design as observed, stating whether central aggregation or per-
+          account retention fits the investigation need, and record the reason.
+  refs:
+  - nist-sp-800-207
+  - nist-sp-800-92
+  - cis-benchmarks
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: Each account in an organisation keeps its own audit records with a different retention. What harm
+        does that cause during an incident?
+      options:
+      - A) Storage costs fall sharply and queries get much faster
+      - B) One story is split across accounts expiring at different times
+      - C) Records duplicate themselves across the different accounts
+      - D) Identities lose their recorded names outside their own home account
+      answer: B
+    - question: Which design gives one detection team searchable audit records from every account?
+      options:
+      - A) Each account emails a weekly summary of its records
+      - B) Only the production account is required to keep records
+      - C) A dedicated aggregation account receives cross-account deliveries
+      - D) Analysts sign in to every account and search by hand
+      answer: C
+    - question: One identity appears in audit records across three accounts within an hour. Which record field ties
+        those events into one story?
+      options:
+      - A) The identity and source address present in each record
+      - B) The different bucket names used in each account
+      - C) The dashboard colour each account's team prefers
+      - D) The billing total that each account reports to finance monthly
+      answer: A
+    - question: A logging design collects management events everywhere but data events nowhere. Which investigation
+        question stays unanswered?
+      options:
+      - A) Who holds administrator rights in each account
+      - B) When each account and trail was created
+      - C) Which regions the organisation actually uses
+      - D) Whether stored objects were actually read or copied
+      answer: D
+    - question: How does an analyst verify that every account in an organisation really delivers its audit records
+        to the aggregation point?
+      options:
+      - A) Run a coverage assessment comparing expected sources with received records
+      - B) Trust the newest account's dashboard as representative
+      - C) Ask each account owner once a year for confirmation
+      - D) Count the alerts raised as proof of coverage
+      answer: A
+- ordinal: 6
+  title: Investigating a control-plane incident
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Reconstruct an attacker's control-plane activity from raw audit records into an ordered timeline
+  - Decide containment actions for a compromised cloud identity based on the reconstructed timeline
+  - Report an incident's scope with evidence drawn from audit records and mapped techniques
+  topics:
+  - 'An incident walkthrough: initial access, privilege escalation, persistence and collection in one chain.'
+  - 'Building the timeline: audit records ordered by time with identity, action, resource and outcome per line.'
+  - Containment choices for compromised cloud credentials and the operational cost of each choice.
+  - 'Reporting scope with confidence: what was touched, what left the account and what the evidence supports.'
+  lab: >-
+    Lab: On the cloud-security range, work a recorded control-plane incident end to end: reconstruct
+    the timeline, choose containment and state the scope with evidence. Evidence: the timeline of
+    attacker activity, first to last event, with identity, action and outcome per line; the persistence
+    mechanism found in the account; the containment order chosen and the reason for its first step; the
+    scope statement listing affected resources with the record that proves each. Pass: the timeline
+    reconstructed from the records with every attacker event placed in order; the persistence mechanism
+    named with its creation record cited; a containment order recorded with a one-sentence reason per
+    step; a scope statement where every claim points at a specific record.
+  lab_range:
+    template: cloud-security
+    scenario: cloud-breach
+    steps:
+    - hosts: [jump01]
+      action: On jump01, open the recorded incident data for the simulated account, read the first audit records of
+        the intrusion and record the time, source address and identity of the earliest attacker event.
+    - hosts: [localstack01]
+      action: On localstack01, follow the attacker's records in order and record each one as a timeline line with
+        time, identity, action, resource and outcome, up to the end of the recorded activity.
+    - hosts: [localstack01]
+      action: Find the persistence mechanism the attacker left running in the account, record its creation record as
+        cited evidence, and record any attempt made against logging itself.
+    - hosts: [cloud-siem01]
+      action: On cloud-siem01, confirm which of the timeline events appear in the delivered records and record any
+          stage that is missing there, naming the gap it leaves in detection.
+    - hosts: [jump01]
+      action: Write the containment order for this incident with a one-sentence reason per step, then write the scope
+          statement in which every claim points at one specific timeline record.
+  refs:
+  - nist-sp-800-61r3
+  - mitre-attack
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: An analyst sorts audit records by time and lists identity, action and outcome on each line. What has
+        the analyst produced?
+      options:
+      - A) A retention schedule for the account
+      - B) A packet capture of network traffic
+      - C) A timeline of the attacker's control-plane activity
+      - D) A cost report for the account's storage
+      answer: C
+    - question: Records show an access key used from an unknown address, then a new administrator identity created.
+        What is the first containment step?
+      options:
+      - A) Rotate the trail's storage password only
+      - B) Wait for the next scheduled review to confirm
+      - C) Delete the records of the compromised identity
+      - D) Disable the compromised key and the identities it created
+      answer: D
+    - question: The timeline shows a serverless function that no engineer owns, created during the intrusion and
+        running nightly. What is it?
+      options:
+      - A) A cost anomaly worth a budget review
+      - B) Persistence planted in the account
+      - C) Normal deployment drift by the platform team
+      - D) A data event the trail failed to record
+      answer: B
+    - question: Which scope statement is supported by the audit records of the incident?
+      options:
+      - A) Listed buckets were read by the compromised identity at recorded times
+      - B) The account must be clean because no alerts fired anywhere in that whole week
+      - C) The attacker has left the account and will not return
+      - D) Every object in the account was copied out
+      answer: A
+    - question: The incident report claims an exfiltration of stored data. What must the report include to back that
+        claim?
+      options:
+      - A) The analyst's reasoned opinion without record citations
+      - B) The matched records showing the copy actions and their destination
+      - C) The count of alerts the detection rules raised that week
+      - D) The destination name without times or identities
+      answer: B

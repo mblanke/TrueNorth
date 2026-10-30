@@ -1,0 +1,525 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C557
+title: Threat Actor Profiling with ATT&CK
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C555
+- C210
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - "NICE work roles: Threat Analyst."
+  - "NIST CSF 2.0: ID.RA, DE.AE."
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Campaign clustering basics
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Cluster reported intrusions into campaign groups using shared victim sector, timing and behaviour
+  - Distinguish a campaign from an isolated incident using recurrence and reuse criteria
+  - Justify which evidence items support a clustering decision and which do not
+  topics:
+  - "What a campaign is: repeated intrusions attributed to one operator or set of operators."
+  - "Clustering criteria: victim profile, timing, objective and shared behaviour."
+  - "Reading published reporting critically: marketing names and overlaps between vendors."
+  - "The clustering worksheet: rows of evidence and counts of shared attributes."
+  - "When to merge or split clusters: weak links and single shared indicators."
+  lab: >-
+    Lab: On the small-enterprise range, apply the clustering method to activity the range itself shows:
+    the administration path from the management network and the domain logon path from the user network.
+    Evidence: each fw-01 rule in order with its source network, destination network and services; the
+    domain accounts and groups holding administrative rights; the services dc-01 answered during one
+    workstation logon; the name given to each cluster and one sentence of shared evidence for it.
+    Pass: at least two clusters are named, each with a shared attribute; every rule and account is
+    listed exactly as the range shows it; each cluster is marked "reads as intrusion activity" or
+    "reads as expected activity" with a one-sentence reason.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH as the analyst account the instructor assigned, open a terminal and note the start time.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, list the rules on fw-01 in order and record each rule's source network, destination network and allowed services.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, query dc-01 for the domain accounts and groups that hold administrative rights and record each name.
+    - hosts: [ws-01, dc-01]
+      action: From ws-01, sign in to the domain as the standard user the instructor assigned and record the services dc-01 answered with during the logon.
+    - hosts: [jump-box]
+      action: Group the recorded activity into clusters that share a purpose, name each cluster, and mark it "reads as intrusion activity" or "reads as expected activity" with a one-sentence reason.
+  refs:
+  - mitre-attack
+  - oasis-cti
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: Three logistics firms are hit over eight months, and each intrusion uses the same unusual
+        tooling and follows the same sequence of actions. Which finding best supports one campaign?
+      options:
+      - A) The three victims operate in the same country and industry sector
+      - B) The same distinctive behaviour and tooling recur at each victim
+      - C) Each victim is a large organisation
+      - D) The intrusions all began on a weekday
+      answer: B
+    - question: An analyst holds four summaries of intrusions at law firms. Two share a victim profile
+        and timing; the other two share nothing with them. What is the best first step?
+      options:
+      - A) Merge all four summaries into one campaign
+      - B) Discard the two summaries that do not match
+      - C) Cluster only the pair that repeats shared attributes
+      - D) Attribute all four summaries to a named actor before clustering
+      answer: C
+    - question: "A vendor publishes an intrusion report under a catchy group name. In clustering work,
+        that name is best treated as:"
+      options:
+      - A) A convenient label, not evidence of a distinct operator
+      - B) Proof that a distinct operator exists behind every report
+      - C) An attribution statement accepted as fact
+      - D) A version number for the vendor's reporting
+      answer: A
+    - question: Two candidate clusters share one reused address and nothing else. What is the soundest
+        judgement?
+      options:
+      - A) Merge them, because the address matches
+      - B) Keep them separate; one shared indicator is weak clustering evidence
+      - C) Delete the smaller cluster as noise
+      - D) Treat both clusters as one confirmed actor and record it as fact
+      answer: B
+    - question: A report describes an actor's objectives and choice of victims but names no techniques.
+        Which profiling task can it still support?
+      options:
+      - A) Mapping events in the report to specific techniques
+      - B) Building detection rules for the actor's tooling
+      - C) Writing signatures for the actor's files
+      - D) Clustering by victim profile and objective
+      answer: D
+- ordinal: 2
+  title: Mapping reporting to ATT&CK
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Map each event in a written intrusion report to the ATT&CK tactic it represents
+  - Select the technique that matches a described behaviour and state why its neighbours fail
+  - Mark where a report leaves the adversary's actions vague or missing before mapping
+  topics:
+  - Tactics as adversary goals and techniques as the ways of reaching them.
+  - Reading an intrusion report event by event before mapping anything.
+  - Choosing between near-neighbour tactics, discovery against collection.
+  - "Recording gaps: what the report does not say about the adversary's path."
+  - Shared tactic vocabulary between intelligence, detection and response teams.
+  lab: >-
+    Lab: On the small-enterprise range, map three observed activities to the ATT&CK tactic each would
+    represent if an adversary performed them. Evidence: the account that authenticated during the
+    remote administration session to ws-01; the services dc-01 answered during a domain logon from
+    ws-01; the start-up entries recorded on ws-01; and for each activity, the tactic name and a
+    one-sentence reason. Pass: all three activities are mapped to a tactic name; each mapping carries
+    a one-sentence reason; any activity that could not be mapped is marked with the missing
+    information stated.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the three range networks and the role of the host on each.
+    - hosts: [jump-box, ws-01]
+      action: From jump-box, open a remote administration session to ws-01 and record the account that authenticated and one action the session performed.
+    - hosts: [ws-01, dc-01]
+      action: From ws-01, sign in to the domain as the standard user and record the services dc-01 answered with, such as Kerberos, LDAP and SMB.
+    - hosts: [ws-01]
+      action: On ws-01, record the non-Microsoft scheduled tasks and start-up folder entries, with each name and trigger.
+    - hosts: [jump-box]
+      action: For each recorded activity, write the ATT&CK tactic an adversary performing the same action would be showing, with a one-sentence reason, and mark any activity that could not be mapped with the information missing.
+  refs:
+  - mitre-attack
+  - nist-sp-800-150
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: Soon after entering a file server, an adversary lists its shared folders and the domain
+        groups. Which tactic does this activity represent?
+      options:
+      - A) Collection
+      - B) Persistence
+      - C) Discovery
+      - D) Credential Access
+      answer: C
+    - question: A report states that the actor moved to the backup server and removed the archived
+        copies. Which tactic does removing the archives most directly serve?
+      options:
+      - A) Impact
+      - B) Lateral Movement
+      - C) Collection
+      - D) Defence Evasion
+      answer: A
+    - question: A summary says only that the intruder "stayed in the environment for months". What does
+        the report lack for technique-level mapping?
+      options:
+      - A) The victim's industry sector and the size of the organisation
+      - B) The public name of the malware family the report mentions
+      - C) The total number of incidents the vendor has reported
+      - D) The actions that kept access, with hosts and times
+      answer: D
+    - question: One event enumerates user accounts; a later event copies documents to a staging folder.
+        Which pairing is correct?
+      options:
+      - A) Both events show Collection
+      - B) Both events show Discovery
+      - C) Discovery for the enumeration, Collection for the staging
+      - D) Collection for the enumeration, Discovery for the staging
+      answer: C
+    - question: Why map a campaign report to tactics instead of only recording its malware names?
+      options:
+      - A) Malware names are usually kept confidential by vendors
+      - B) Behaviour maps across campaigns even when tooling changes
+      - C) Tactic mapping removes the need for written reporting
+      - D) Tactic names establish who is responsible for attacks
+      answer: B
+- ordinal: 3
+  title: Behaviour over indicators
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Classify each item of campaign evidence as an indicator, a behaviour or a judgement
+  - Predict which profile elements survive a change of infrastructure and tooling
+  - Select profile content that keeps its value after the indicators expire
+  topics:
+  - "Indicators: addresses, domains, file hashes and their short useful life."
+  - "Behaviours: what the actor does, expressed independently of any one tool."
+  - "Judgements: attribution, motivation and intent, with their supporting evidence."
+  - "Indicator expiry and rotation: why address-based detection ages quickly."
+  - "Behaviour chains: sequences of actions that persist across campaigns."
+  lab: >-
+    Lab: On the small-enterprise range, separate what an observer would record as indicators from
+    the behaviours those indicators point to. Evidence: the address of each workstation and of
+    dc-01 as the range currently shows it; each fw-01 rule that allows user-network traffic, with
+    the services it allows towards the server network; the services one ws-02 domain logon touched; and three recorded
+    facts each written once as an indicator and once as a behaviour. Pass: each of the three items
+    is written both ways; each behaviour form names no fixed address or hash; each item is marked
+    with which form survives a change of address and why.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the current address of each workstation and of dc-01.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, list the fw-01 rules that allow traffic from the user network and record the services each rule allows towards the server network.
+    - hosts: [ws-02, dc-01]
+      action: From ws-02, sign in to the domain on dc-01 as the standard user and record the services the logon touched, matching them to the fw-01 rules observed.
+    - hosts: [jump-box]
+      action: Write three recorded facts once as indicators (addresses, ports or names) and once as behaviours that name no fixed address or tool.
+    - hosts: [jump-box]
+      action: Mark each pair with the form that would survive a change of range addresses and a one-sentence reason for the choice.
+  refs:
+  - oasis-cti
+  - nist-sp-800-150
+  - mitre-attack
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: Six months after a campaign ends, which piece of campaign evidence is most likely still
+        useful?
+      options:
+      - A) The source addresses the actor used during the campaign
+      - B) The hashes of the files the actor dropped
+      - C) The staging domain names the actor registered
+      - D) The sequence of tactics the actor used
+      answer: D
+    - question: A blocking rule for one address stops this week's activity. What does that outcome show
+        about the profile?
+      options:
+      - A) The campaign is over
+      - B) One indicator was blocked; the behaviour can continue elsewhere
+      - C) The actor has changed motivation
+      - D) The profile needs more file hashes for the actor's tooling
+      answer: B
+    - question: "The line \"reached the second server with stolen sign-in rights, during the victim's
+        night hours\" is best classified as:"
+      options:
+      - A) Behaviour
+      - B) An indicator
+      - C) A judgement
+      - D) An asset
+      answer: A
+    - question: An actor returns after every removal using new addresses but the same access path. What
+        should the profile carry forward?
+      options:
+      - A) The current address list only
+      - B) A warning to watch file hashes
+      - C) The date of each removal and the time between them
+      - D) The access path and how it is re-established
+      answer: D
+    - question: An analyst reviews an actor profile a year after the campaign it describes ended. Which
+        profile line keeps its value longest?
+      options:
+      - A) A staging domain the actor used last month and then abandoned entirely
+      - B) Relies on a contractor's stolen sign-in rights to reach the finance share
+      - C) The hash of a loader seen once
+      - D) The victim's former firewall model
+      answer: B
+- ordinal: 4
+  title: Confidence and source quality
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Grade each statement in a profile as observed, inferred or assumed
+  - Apply a confidence level to a profiling claim and state the evidence behind it
+  - Identify in a vendor report the claims that rest on single-source or inherited evidence
+  topics:
+  - Observed, inferred and assumed statements in campaign reporting.
+  - Confidence levels and what raises or lowers them.
+  - Single-source claims and inherited reporting copied between vendors.
+  - Distinguishing the actor's behaviour from the responder's view of it.
+  - Recording disagreement between sources instead of averaging it.
+  lab: >-
+    Lab: On the small-enterprise range, grade profiling statements by how the evidence was obtained.
+    Evidence: the fw-01 rules that allow administration traffic from the management network; the
+    domain password policy values read from dc-01; the result of one deliberate failed sign-in from
+    ws-03, including the exact error text and whether the account locked; and each recorded statement
+    graded observed, inferred or assumed with a confidence word. Pass: every statement carries a grade
+    and a confidence word; each inferred or assumed statement names the observation it rests on; one
+    statement is rewritten as the question that would raise its confidence.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the fw-01 rules that allow administration traffic from the management network.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, read the domain password policy on dc-01 over the network and record the minimum length, lockout threshold and lockout duration.
+    - hosts: [ws-03, dc-01]
+      action: From ws-03, make one sign-in attempt with a wrong password as the standard user and record the exact error text and whether the account locked.
+    - hosts: [jump-box]
+      action: Grade each recorded statement observed, inferred or assumed, give each a confidence word, and name the underlying observation for every inferred or assumed one.
+    - hosts: [jump-box]
+      action: Rewrite one low-confidence statement as the question a new observation would need to answer to raise its confidence.
+  refs:
+  - nist-sp-800-150
+  - nist-sp-800-30r1
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: "A report calls a group state-sponsored, citing only another vendor's earlier post. In
+        profiling vocabulary, that claim is:"
+      options:
+      - A) An inherited judgement with single-source support
+      - B) A direct observation made by the reporting vendor itself
+      - C) A technical indicator
+      - D) Proof of attribution
+      answer: A
+    - question: "After seeing logons from a supplier's address range, an analyst writes that the actor
+        likely used a compromised supplier account. This statement is:"
+      options:
+      - A) An observed fact
+      - B) A false statement that should be deleted from the notes
+      - C) An inference that should carry a confidence level
+      - D) An indicator to block
+      answer: C
+    - question: An analyst is grading a claim that an actor used a supplier path during an intrusion.
+        Which evidence raises confidence most in a behaviour claim?
+      options:
+      - A) The claim appears in three separate posts written by the same vendor
+      - B) Two independent sources describe the same behaviour with evidence
+      - C) The claim is repeated widely on social media
+      - D) The vendor's report layout is professional
+      answer: B
+    - question: Two reports disagree about whether an actor encrypted files before extortion. What is the
+        best practice for the profile?
+      options:
+      - A) Record both claims and the disagreement
+      - B) Average them into "sometimes encrypts"
+      - C) Keep the newer report and drop the other
+      - D) Leave the behaviour out of the profile
+      answer: A
+    - question: The line "the actor operates from Eastern Europe" appears in a profile with no cited
+        evidence. How should it be treated?
+      options:
+      - A) A mapping-ready fact
+      - B) A detection criterion
+      - C) A blocking indicator to deploy on the firewall now
+      - D) An assumption to mark low confidence or remove
+      answer: D
+- ordinal: 5
+  title: Writing actor profiles
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write an actor profile with behaviour, targets, capability and confidence separated
+  - Support each profile line with the observation or report it rests on
+  - Revise a profile to remove lines that no evidence in the record supports
+  topics:
+  - "The profile structure: summary, behaviour, targets, capability, confidence."
+  - Separating what was observed from what the analyst concluded.
+  - Naming actors without over-claiming attribution to a named group.
+  - "Keeping profiles current: review dates and superseded lines."
+  - "Writing for two readers: operators and leadership."
+  lab: >-
+    Lab: On the small-enterprise range, write a short profile of the administration behaviour the
+    range shows, using the structure taught in this module: summary, behaviour, targets, capability,
+    confidence. Evidence: the fw-01 rules and dc-01 groups re-checked against the earlier module
+    notes; the result of repeating the module 2 domain logon check from ws-01; and the one-page
+    profile itself. Pass: every profile line is marked observed with its evidence, or assumed; every
+    line marked observed matches a recorded item from this course; any line without support is
+    removed in a final revision.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and open the notes recorded in the earlier module labs.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, list the fw-01 rules again and record any rule that differs from the earlier notes.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, re-query dc-01 for the administrative accounts and groups and record the count of each.
+    - hosts: [ws-01, dc-01]
+      action: From ws-01, repeat the domain logon check from module 2 and record the services dc-01 answered with.
+    - hosts: [jump-box]
+      action: Write a one-page profile with summary, behaviour, targets, capability and confidence, mark each line observed or assumed with its evidence, and remove unsupported lines.
+  refs:
+  - nist-sp-800-150
+  - mitre-attack
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A draft actor profile holds four lines about one incident. Which profile line is written
+        to house standard?
+      options:
+      - A) The actor is dangerous and highly capable
+      - B) Reached the finance share by the supplier path (observed)
+      - C) The actor holds a grudge against the victim
+      - D) The actor will certainly attack the sector again after this incident
+      answer: B
+    - question: During revision, a profile line is found to have no evidence behind it. What happens to
+        that line?
+      options:
+      - A) It moves to the summary
+      - B) It gains a high confidence mark and a review date
+      - C) It is reworded as a behaviour
+      - D) It is removed or marked as an open question
+      answer: D
+    - question: An analyst completes an actor profile at the close of a two-week incident response. Who
+        is a finished actor profile written for?
+      options:
+      - A) Only the incident responders
+      - B) Only the executive team
+      - C) Operators and leadership, each able to use their parts
+      - D) The vendor that published the report and its subscribers
+      answer: C
+    - question: A profile uses the label "group X". When is carrying such a label justified?
+      options:
+      - A) Never, in any circumstance
+      - B) When the label comes with the evidence that links the activity
+      - C) Only when a court has decided
+      - D) When the name sounds credible and other vendors use it too
+      answer: B
+    - question: An operator reads only the behaviour lines; a director reads only the summary. What must
+        the writer check?
+      options:
+      - A) That both sections are the same length
+      - B) That every line cites a tool name
+      - C) That each reader gets usable content without the other's section
+      - D) That the summary names the malware family and lists the tooling used
+      answer: C
+- ordinal: 6
+  title: Profiles in detection and briefing
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Map each profile behaviour to the telemetry that would detect its change
+  - Rank the detection gaps a profile exposes and propose the first one to close
+  - Write a leadership brief of three sentences drawn from a full profile
+  topics:
+  - "From profile to detection: each behaviour needs a telemetry source."
+  - Coverage mapping against the behaviours a profile describes.
+  - "Briefing leadership: objectives, targets and the change to watch."
+  - Feeding profile updates back from incidents and hunts.
+  - Keeping the profile and the detections in step as campaigns change.
+  lab: >-
+    Lab: On the small-enterprise range, turn the module 5 profile into detection and briefing
+    material. Evidence: for each profile behaviour, the one telemetry source on the range that would
+    record a change, or "no telemetry" where none exists; the audit categories dc-01 currently
+    records; and a three-sentence leadership brief. Pass: every behaviour line has a telemetry source
+    or an explicit "no telemetry" mark; the first gap to close is chosen and justified in one
+    sentence; the brief states the target, the access path and the change to watch.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and open the profile written in the module 5 lab.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, list the fw-01 rules and record which profile behaviours fw-01's logs could evidence.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, read the audit categories the domain currently records on dc-01 over the network and record each logon-related category.
+    - hosts: [jump-box]
+      action: For each profile behaviour, record the one range telemetry source that would detect a change, or mark "no telemetry".
+    - hosts: [jump-box]
+      action: Choose the first gap to close and justify it in one sentence, then write a three-sentence leadership brief naming the target, the access path and the change to watch.
+  refs:
+  - nist-sp-800-61r3
+  - nist-cswp-29
+  - mitre-attack
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A profile behaviour reads "sign-ins to the finance server outside working hours". Which
+        telemetry detects it?
+      options:
+      - A) The DNS resolver logs
+      - B) The backup schedule
+      - C) The asset inventory and its last review date
+      - D) Authentication logs on the finance server
+      answer: D
+    - question: A profile lists six behaviours; telemetry exists for one. What does the resulting gap list
+        drive?
+      options:
+      - A) The order to build the missing telemetry and detections
+      - B) The retirement of the profile
+      - C) A change of actor name
+      - D) A longer log retention policy for the whole organisation
+      answer: A
+    - question: A security manager condenses a two-page actor profile into a briefing for the executive
+        team. Which leadership brief line is strongest?
+      options:
+      - A) We are watching the actor closely
+      - B) The actor is very sophisticated
+      - C) The actor targets finance servers by a supplier path; watch new logons
+      - D) The actor has been active for years and is a persistent threat
+      answer: C
+    - question: A threat hunt at a law firm finds a behaviour the actor profile lacks. What is updated
+        first?
+      options:
+      - A) The vendor's original report and every other vendor's posts
+      - B) The expired indicators
+      - C) The course notes
+      - D) The profile's behaviour section, with the new evidence
+      answer: D
+    - question: An analyst reviews a year-old actor profile against the detections and briefs the team
+        has since produced. What shows that a profile is actually being used?
+      options:
+      - A) Its file has many versions
+      - B) Detections and briefs cite its behaviour lines
+      - C) Its length grows each quarter
+      - D) It names more actors each year and gains new sections
+      answer: B

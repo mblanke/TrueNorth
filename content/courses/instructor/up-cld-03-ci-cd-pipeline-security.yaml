@@ -1,0 +1,179 @@
+# Instructor pack for C545 CI/CD Pipeline Security. Staff only: carries quiz keys and range
+# preparation. Students never receive this file.
+course_code: C545
+audience: staff_only
+overview: 'CI/CD Pipeline Security is a five-hour intermediate course of six 50-minute modules on the
+  cloud-security range. Modules 1 to 3 follow the attack surface: threat modelling the pipeline, then the
+  secrets and signing that protect it, then artefact integrity and provenance from build to cluster.
+  Modules 4 and 5 turn to defence: hardening the build estate and detecting pipeline attacks centrally.
+  Module 6 integrates all of it in a poisoned-pipeline drill that the Student traces, times and contains.
+  Every module has a 10-minute teach, a 30-minute range lab and a 10-minute quiz passed at 70 percent.
+  Say ''Student'' throughout; keep every description defensive and observable.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 teach (pipeline anatomy and trust boundaries on the board), 30 range lab (attack surface
+    mapping on fw01, gitlab01, jenkins01 and registry01), 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '10 teach (secret types, secret stores, signing and rotation), 30 range lab (secret exposure
+    audit on gitlab01, terraform01 and azure-mock01), 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '10 teach (digests, signatures, provenance records), 30 range lab (registry01 pull policy and
+    digest comparison against k3s-master), 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '10 teach (runner isolation, least privilege, benchmarks), 30 range lab (hardening review of
+    jenkins01, gitlab01 runner settings and k3s-master privileged pods), 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '10 teach (audit sources, retention, baseline-tuned detections), 30 range lab (cloud-siem01
+    coverage, falco01 events, prowler01 assessment and triage), 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '10 teach (the poisoned pipeline pattern and containment order), 40 integrated drill (gitlab01 to
+    jenkins01 to registry01 to cloud-siem01, then containment plan); the quiz runs in the final 10
+    minutes of the drill window'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (Deployment to production), M1-O01: The runner holds production deployment credentials, so
+    a compromised runner puts the deployment stage at risk; source review (A), documentation (C) and test
+    reporting (D) are not reachable with those credentials. Q2 C (Over-shared cloud key), M1-O03: A cloud
+    access key readable by every job is the highest-rated finding; the readme address (A), slow-test list
+    (B) and reviewer comment (D) expose nothing. Q3 D (Unacceptable), M1-O01: An unreviewed build file
+    running with runner credentials is the entry point the threat model exists to catch; the isolation,
+    automation and branch arguments (A to C) do not remove the credential exposure. Q4 A (Registry write
+    credential), M1-O02: Write access to the registry lets an attacker publish images deployments trust;
+    the other three assets confer no publish rights. Q5 B (Trust boundary violation), M1-O01: One job
+    reading another''s workspace crosses a boundary the threat model must record; it is not a compliance,
+    performance or documentation item.'
+- module: 2
+  notes: 'Q1 C (Central secret store, short-lived), M2-O01: A store issuing short-lived
+    credentials removes the standing value; a committed file (A), the runner image (B) and the build log
+    (D) all widen exposure. Q2 D (Private key never leaves its store), M2-O02: The signature''s value is
+    unforgeability without sharing the key; A is a true description of what a checksum is but says
+    nothing about who produced it, B and C are speed and algorithm claims that do not address
+    authenticity. Q3 A (Rotate
+    now), M2-O03: Repository history keeps deleted files; rotation is the only response that removes the
+    value. Q4 B (Managed store, audited signing), M2-O02: Custody in a managed store with an audited
+    process removes the single-laptop dependency; emailing (A), copying into CI variables (C) and
+    documenting the fingerprint (D) do not. Q5 C (Fail printing jobs, rotate), M2-O03: The leak is
+    behavioural, so the control is a rule plus rotation; a longer name (A), a more complex value (B) and
+    disabling logs (D) do not address the printing.'
+- module: 3
+  notes: 'Q1 D (Digest pinning), M3-O01: A digest is immutable, so the deployment always gets the built
+    artefact; clearer tags (A), a second registry (B) and a release note (C) leave the tag overwritable.
+    Q2 A (Source, pipeline, inputs), M3-O02: Provenance attests how the artefact was made; it says nothing
+    about vulnerabilities (B), licensing (C) or approval (D). Q3 C (Unrestricted reads and pushes), M3-O03:
+    Anonymous access exposes private images and lets pushes bypass review; the other options are
+    operational noise. Q4 B (Later vulnerabilities), M3-O03: A scan is a point-in-time check; it cannot
+    prove absence of later discoveries, though it does prove the artefact was scanned (A) and stored (C).
+    Q5 A (Verification too late or absent), M3-O01: Alteration between signing and pull means verification
+    is not re-run at deployment; the signature algorithm (B) is not the failure.'
+- module: 4
+  notes: 'Q1 A (Scoped short-lived credential), M4-O02: The job needs exactly one push, so the grant is
+    scoped and short-lived; the year token (B), the shared pool credential (C) and root (D) all exceed the
+    need. Q2 B (Destroyed at job end), M4-O01: Ephemerality removes whatever the attacker left; speed (A),
+    log size (C) and queue balance (D) are not security effects. Q3 D (Full control and stored
+    credentials), M4-O02: An unauthenticated console is server takeover, including every credential the
+    server holds; the other options are minor operational effects. Q4 C (Blast radius to the node), M4-O02:
+    Host mounts extend a compromised job''s reach to the whole node; disk use (A), DNS (B) and pull time
+    (D) are not the security concern. Q5 A (Defaults removed, plugins pruned), M4-O03: Benchmark reviews
+    check configuration state; counts, durations and branch age measure throughput, not hardening.'
+- module: 5
+  notes: 'Q1 C (Not shipped centrally), M5-O01: Runner activity that never reaches central storage leaves
+    the token use invisible however the pipelines are named or tagged. Q2 A (Evidence must survive
+    tampering), M5-O01: Log integrity underpins every later timeline; the storage, speed and cost claims
+    in B to D are not the reason. Q3 B (No tuned baseline), M5-O02: Hundreds of normal-build alerts mean
+    the rule lacks a baseline of expected secret use, so nothing can be actioned. Q4 D (Direct push to the
+    protected branch), M5-O02: Bypassing review on the production branch is the pipeline event worth its
+    own rule; scheduled builds, documentation merges and passing tests are normal. Q5 B (Fix now), M5-O03:
+    The broad policy matches the credential-theft path taught in modules 1 and 2, so it is fix-now, not
+    archive (A) or track (C); re-running (D) only delays it.'
+- module: 6
+  notes: 'Q1 D (Trusted runner, unreviewed code), M6-O01: The poisoned pipeline is exactly unreviewed code
+    executing with pipeline credentials from a trusted position; A to C all describe controls that do not
+    hold or do not matter here. Q2 B (Off-window push by the build identity), M6-O02: A build-identity
+    push outside the release window is the registry indicator; storage shrinkage (A), a readme change (C)
+    and slower pulls (D) are not attack evidence. Q3 A (Freeze the pipeline), M6-O03: Containment stops
+    the bleeding first: freeze so no further poisoned builds run; customer notice (B) and rebuilding from
+    the same branch (C) come later, and deleting logs (D) destroys evidence. Q4 C (Review plus provenance
+    before privileged runners), M6-O02: The repeat is prevented at the entry point the drill exposed;
+    longer logs (A), faster releases (B) and faster runners (D) do not close it. Q5 D (Quarantine by
+    digest, roll back to verified), M6-O03: Containment is digest quarantine plus rollback to the last
+    verified artefact; renaming tags (A), waiting (B) and notifying without action (C) leave the backdoor
+    deployed.'
+lab_setup:
+- module: 1
+  setup: Provision the cloud-security range before the module. Confirm fw01 rules, the gitlab01 project
+    settings and CI variables, the jenkins01 script console and the registry01 pull policy are in their
+    seeded state, and that each Student can reach all four from jump01.
+- module: 2
+  setup: Reset the gitlab01 repository history to include the seeded committed credential, confirm the
+    terraform01 working directory contains the exposed state and variable files, and that the azure-mock01
+    dev-secrets policy is attached. Brief Students that secret values are never copied into notes.
+- module: 3
+  setup: Ensure registry01 holds the pipeline's pushed image with its digest visible and anonymous pull
+    enabled, and that k3s-master runs the images the drill expects. Have a digest comparison table ready
+    on the board for the debrief.
+- module: 4
+  setup: Confirm the jenkins01 script console is reachable unauthenticated, the gitlab01 runner shares the
+    seeded projects, and k3s-master runs the privileged pods. Print or project a short hardening benchmark
+    excerpt for the comparison step.
+- module: 5
+  setup: Point cloud-siem01 at its seeded inputs, leave recent falco01 events on the cluster, and confirm
+    prowler01 can run its assessment against the deployment estate within the lab window. Keep a known-normal
+    baseline summary available for the detection-rule step.
+- module: 6
+  setup: Seed the drill before the module with the suspect gitlab01 change and its triggered jobs, the
+    matching jenkins01 job history, the pushed registry01 image and the correlated cloud-siem01 events.
+    Do not announce which change is suspect. Reserve the final 10 minutes for the quiz inside the drill
+    window.
+common_faults:
+- module: 1
+  fault: Students list the pipeline stages but draw no trust boundaries, so every component looks equally
+    trusted.
+  remedy: Have them mark on the board diagram where a credential changes hands; each handover is a
+    boundary the threat model must record.
+- module: 1
+  fault: The attack surface map stops at the first system that answers, and the unauthenticated jenkins01
+    console goes unrecorded.
+  remedy: Require all four evidence items before the judgement step is accepted.
+- module: 2
+  fault: Students record that a deleted secret file is now safe because it is gone from the working tree.
+  remedy: Show the commit history on gitlab01 and let them find the file themselves; deletion is not
+    revocation.
+- module: 2
+  fault: Masked variables are treated as proof that a leak is impossible.
+  remedy: Point at the build script that prints the environment and ask what the mask protects and what
+    it cannot.
+- module: 3
+  fault: Students compare image tags between registry01 and k3s-master and call them equal, missing that
+    tags are mutable.
+  remedy: Require digests in the evidence, not tags, before the admission path is discussed.
+- module: 3
+  fault: A passed scan is described as proving the artefact vulnerability-free.
+  remedy: Ask what the scan could not have seen; steer to the point-in-time nature of the check.
+- module: 4
+  fault: Hardening steps come out as products to buy instead of configuration to change.
+  remedy: Insist each step names a setting on a range host, such as disabling the jenkins01 script console
+    for unauthenticated users.
+- module: 4
+  fault: The privileged pods on k3s-master are recorded without saying what they could reach.
+  remedy: Ask 'from that pod, what is one step away?' and have them write the answer per pod.
+- module: 5
+  fault: The drafted detection rule has no baseline, so it would fire on every build.
+  remedy: Have Students state what normal looks like first, then write the rule as a deviation from it.
+- module: 5
+  fault: The prowler01 findings are triaged by severity label alone, with no link to the attack path.
+  remedy: Ask for each fix-now finding which module 1 or 2 finding it corresponds to on the range.
+- module: 6
+  fault: The attack path is written as a conclusion ('the pipeline was poisoned') without times or
+    systems.
+  remedy: Require the path as ordered events with times from the four systems before containment is
+    discussed.
+- module: 6
+  fault: Containment starts with rebuilding from the same branch, which re-runs the poisoned change.
+  remedy: Walk the containment order aloud, freeze, revoke, quarantine, restore; ask what rebuilding
+    before freezing would do.

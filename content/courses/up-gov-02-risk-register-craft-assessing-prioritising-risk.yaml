@@ -1,0 +1,579 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# C502 - Risk Register Craft - Assessing & Prioritising Risk - DRAFT course content.
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C502
+title: Risk Register Craft - Assessing & Prioritising Risk
+version: '1.0'
+difficulty: intermediate
+duration_hours: 4
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C501
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cybersecurity Risk Manager, Authorizing Official.'
+  - 'NIST CSF 2.0: GV.RM, ID.RA.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Likelihood and Impact Scales That Survive Debate
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Define likelihood and impact bands a second reviewer can apply without the author present
+  - Classify a stated scenario on a three-band likelihood scale and justify the band chosen
+  - Judge whether an impact definition measures harm to the organisation or only harm to one asset
+  topics:
+  - Likelihood as a probability statement, not a feeling.
+  - Impact measured against a stated worst case, not the average day.
+  - Three-band and five-band scales and where the boundaries sit.
+  - Anchor examples that make a band repeatable between reviewers.
+  - Disagreements about scores as missing definitions, not missing arithmetic.
+  lab: >-
+    Lab: On the small-enterprise range, collect the facts that anchor a likelihood and impact
+    scale: which rules on fw-01 allow traffic between networks, what password policy dc-01
+    enforces, and whether a workstation reaches dc-01. Draft a three-band impact scale with one
+    anchor example per band, each naming a host on this range. Evidence: the fw-01 rule names
+    and source networks; the minimum password length and lockout threshold from dc-01; the
+    reachability result from ws-01 to dc-01; three anchor examples, one per impact band. Pass:
+    each band has an anchor example that names a real host and a concrete harm; each anchor is
+    marked "a reviewer could apply this without me" or "needs a sharper definition"; every band
+    marked "needs a sharper definition" is rewritten once.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and note the start time.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, list the rules on fw-01 in order and record each rule name with the
+        source network it allows traffic from.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, query dc-01 for the domain password policy and record the minimum
+        password length and the lockout threshold.
+    - hosts: [ws-01, dc-01]
+      action: From ws-01, resolve the name of dc-01 and open one sign-in session to it, and record
+        the evidence that both worked.
+    - hosts: [jump-box]
+      action: Draft a three-band impact scale for this environment and write one anchor example
+        per band, each naming a host on the range and the harm its loss would cause.
+    - hosts: [jump-box]
+      action: Mark each anchor example "a reviewer could apply this without me" or "needs a sharper
+        definition", and rewrite every band marked "needs a sharper definition" once.
+  refs:
+  - nist-sp-800-30r1
+  - nist-cswp-29
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A risk workshop spends thirty minutes arguing whether a finding is a medium or a
+        high likelihood and reaches no decision. What is missing that would have ended the debate?
+      options:
+      - A) A larger matrix with more colour-coded cells
+      - B) Anchor examples showing which observations belong in each likelihood band
+      - C) A second workshop with more attendees present
+      - D) A software tool that calculates scores automatically
+      answer: B
+    - question: A hospital defines its highest impact band as any event a patient notices. Why
+        does this definition fail to survive debate?
+      options:
+      - A) It sets the bar far below what any organisation could accept
+      - B) Patients should never notice anything under any band
+      - C) It measures visibility rather than harm, so two reviewers cannot apply it consistently
+      - D) Impact bands must always be expressed as a financial figure
+      answer: C
+    - question: An organisation records likelihood for every risk in the same middle band because
+        nobody can say what the bands mean. Which fix addresses the cause?
+      options:
+      - A) Writing anchor examples for each band before the next assessment round
+      - B) Removing the likelihood column from the register
+      - C) Reporting every risk at high until the bands are agreed
+      - D) Leaving likelihood blank until an incident provides data
+      answer: A
+    - question: Two reviewers score the same unsupported operating system, one high and one
+        moderate, and both have read the same policy. What is the most defensible next step?
+      options:
+      - A) Average the two scores and record the midpoint value
+      - B) Keep whichever score the senior reviewer prefers, since seniority settles scoring
+          disputes between reviewers
+      - C) Record both scores side by side with no comment
+      - D) Record one agreed score with each reviewer's reasons and the evidence that settled it
+      answer: D
+    - question: A risk entry says the impact of losing the single domain controller is bad. What
+        makes this unusable in a register review?
+      options:
+      - A) The entry is too short to store in most register tools
+      - B) The word bad cannot be checked against a band, so two reviewers reach different scores
+      - C) Impact should only ever describe financial loss to the organisation, never harm to
+          operations or service delivery
+      - D) Domain controllers are never a single point of failure
+      answer: B
+- ordinal: 2
+  title: Asset Criticality from the Range Floor
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Rank the hosts of a described environment into criticality tiers from evidence of what depends on them
+  - Justify a criticality rating with the dependency that drives it rather than the host role label
+  - Distinguish asset criticality from the sensitivity of the data an asset holds
+  topics:
+  - Criticality as a question about dependencies, not about hardware.
+  - Single points of failure and the services that quietly depend on them.
+  - Tiering assets so the register compares like with like.
+  - Sensitivity of data and criticality of the asset as separate judgements.
+  - Recording the dependency evidence beside the rating so a reviewer can challenge it.
+  lab: >-
+    Lab: Establish on the small-enterprise range what depends on each host, then place the six
+    hosts into criticality tiers and justify every tier with a dependency. Evidence: the directory
+    and DNS results from dc-01; the name-resolution result from ws-01; the fw-01 paths that would
+    close if routing stopped; a tier for each of the six hosts with one dependency sentence each.
+    Pass: every tier carries a dependency sentence naming what else stops if that host fails; each
+    rating that rests on the role label alone rather than an observed dependency is marked and
+    reworded; data sensitivity is recorded beside asset criticality as a separate judgement.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and note the start time.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, confirm dc-01 answers a directory query and a DNS lookup, and record
+        both results.
+    - hosts: [ws-01, dc-01]
+      action: From ws-01, resolve the name of dc-01 and record the answer, since every workstation
+        depends on that lookup to sign in.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, list the rules on fw-01 and record which paths between networks would
+        close if fw-01 stopped routing.
+    - hosts: [jump-box]
+      action: Record the observed dependency facts for jump-box, dc-01, ws-01, ws-02, ws-03 and
+        fw-01 in one table, one line per host.
+    - hosts: [jump-box]
+      action: Place each host in a tier of critical, important or ordinary, write one dependency
+        sentence per placement, and mark any rating that rests on the role label alone.
+  refs:
+  - nist-sp-800-30r1
+  - nist-cswp-29
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: A register rates a backup server as low criticality because it is rarely used.
+        During an outage every workstation waits on it. What does this show?
+      options:
+      - A) The register should list only servers that run every day
+      - B) Rarely used assets never need a criticality rating
+      - C) The rating was taken from the role label and the review never tested what depends on it
+      - D) Backup servers must always be rated the same as domain controllers
+      answer: C
+    - question: Which pair shows why data sensitivity and asset criticality are recorded as
+        separate judgements?
+      options:
+      - A) A locked filing cabinet and an open-plan office
+      - B) A fast network link and a slow one
+      - C) An old operating system and a patched one
+      - D) A public price list every till depends on, and secret salary data nobody depends on
+      answer: D
+    - question: A workstation cannot sign in because it cannot resolve the domain controller's
+        name. Which dependency does this observation evidence?
+      options:
+      - A) Sign-in depends on the name service the domain controller provides
+      - B) The workstation has no network connection at all
+      - C) The domain controller holds every file on the workstation
+      - D) Name resolution depends on workstations being online
+      answer: A
+    - question: A reviewer challenges the high criticality rating of fw-01. What evidence settles
+        the challenge fastest?
+      options:
+      - A) The purchase invoice and support contract for the device, which proves the organisation
+          paid for it and expects it to keep working
+      - B) The list of network paths that close when fw-01 stops routing
+      - C) The vendor brochure page for the firewall model
+      - D) The number of staff who have heard of the device
+      answer: B
+    - question: Why does a register need criticality tiers at all?
+      options:
+      - A) They let auditors skip the assets in the lowest tier entirely
+      - B) They replace the need to record impact for individual risks
+      - C) They let a reviewer compare the loss of a workstation and of a domain controller on one scale
+      - D) They assign every asset the same rating as the rest of its tier, so a reviewer never has
+          to weigh one asset against another individually
+      answer: C
+- ordinal: 3
+  title: Writing Risk Statements That Are Testable
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a risk statement with cause, event and consequence that a reviewer can verify
+  - Rewrite a vague risk entry so each claim can be checked against the environment
+  - Select the observable evidence that shows a stated risk condition currently holds
+  topics:
+  - Cause, event and consequence as the three parts of a statement.
+  - Risk entries written so a reviewer can prove or disprove them.
+  - Separating the risk from the control that already limits it.
+  - Vague words that make an entry impossible to check.
+  - Attaching the evidence source and its date to the entry.
+  lab: >-
+    Lab: Collect three facts from the small-enterprise range - the fw-01 rule that allows every
+    service from the management network, the password policy dc-01 enforces, and whether the
+    default deny on fw-01 holds from ws-01 - and turn each into a risk statement with cause,
+    event and consequence. Evidence: the rule name and source network; the minimum password
+    length and lockout threshold; the connection result from ws-01 to the unlisted service on
+    dc-01; three written statements, each naming its evidence source. Pass: every statement
+    carries all three parts; each statement names evidence a reviewer could re-check; every
+    statement marked untestable is rewritten once.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and note the start time.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, list the rules on fw-01 and record the name and source network of the
+        rule that allows every service from the management network.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, query dc-01 for the domain password policy and record the minimum
+        password length and the lockout threshold.
+    - hosts: [ws-01, dc-01]
+      action: From ws-01, attempt one connection to a service on dc-01 that no fw-01 rule lists
+        and record whether the default deny blocks it.
+    - hosts: [jump-box]
+      action: Write one risk statement per recorded fact, each with cause, event and consequence,
+        and name the evidence that shows the condition holds today.
+    - hosts: [jump-box]
+      action: Mark each statement testable or untestable, and rewrite every untestable statement
+        once, removing any word a reviewer could not check.
+  refs:
+  - nist-sp-800-30r1
+  - nist-cswp-29
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: Which register entry can a reviewer test against the environment this quarter?
+      options:
+      - A) Attackers may target the organisation because it is well known
+      - B) The management network can reach every service on the server network, read from the
+          rule set and dated
+      - C) Cyber threats keep growing and the organisation must remain vigilant
+      - D) The network is probably weaker than that of comparable organisations
+      answer: B
+    - question: A statement reads only "weak passwords could lead to a breach". What is missing
+        before a reviewer can act on it?
+      options:
+      - A) A longer sentence with more technical words in it
+      - B) The name of the register the entry lives in
+      - C) A severity score copied from a peer organisation
+      - D) The cause, the event and the consequence spelled out so each can be checked
+      answer: D
+    - question: A register entry lists a working control, "the firewall blocks unused services",
+        as if it were a risk. What is wrong with the entry?
+      options:
+      - A) A control that is working describes the absence of a risk, not a risk
+      - B) Controls never belong anywhere inside a risk register
+      - C) A firewall is not a control until an auditor has approved it
+      - D) Risk entries must always be written by the control owner
+      answer: A
+    - question: Which word makes a risk entry hardest to test?
+      options:
+      - A) Annually
+      - B) Workstation
+      - C) Probably
+      - D) Administrator
+      answer: C
+    - question: An entry claims the domain controller is exposed to repeated password guessing
+        because the lockout threshold is high. What evidence proves the condition holds today?
+      options:
+      - A) A news article about password guessing at another organisation of similar size and
+          industry
+      - B) The lockout settings read from the domain controller itself, with the date
+      - C) The vendor's published recommendation for account lockout settings
+      - D) A screenshot of a different organisation's security console
+      answer: B
+- ordinal: 4
+  title: Scoring Risks and Ranking the Register
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Apply the course scales to score drafted risk statements and order them for treatment
+  - Defend a ranking to a reviewer who questions why one entry outranks another
+  - Identify entries whose score rests on a band nobody can evidence
+  topics:
+  - Scoring as a likelihood band and an impact band, recorded with the bands chosen.
+  - Ranking entries so the highest score names the first treatment.
+  - Ties and how to break them with dependency evidence.
+  - Scores that outrun the evidence behind their bands.
+  - Keeping the score and its reasons together on one register line.
+  lab: >-
+    Lab: Re-confirm on the small-enterprise range the facts behind the risk statements drafted
+    earlier, score each statement with the module 1 scales and the module 2 tiers, and rank the
+    register. Evidence: the fw-01 rule name confirmed still present, with the check date; the
+    dc-01 lockout threshold; a likelihood band and an impact band per statement with the
+    anchoring fact named; a ranked list with ties marked. Pass: every band cites an observable
+    fact from the range; every tie names the dependency evidence that breaks it; the highest
+    ranked entry is the one a reviewer would treat first.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and note the start time.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, list the rules on fw-01 and confirm the management-network rule is
+        still present; record the rule name and the date of the check.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, query dc-01 for the domain password policy and record the current
+        lockout threshold.
+    - hosts: [jump-box]
+      action: Assign a likelihood band and an impact band to each risk statement from the earlier
+        labs, citing the range fact that anchors each band.
+    - hosts: [jump-box]
+      action: Rank the scored statements highest first and mark every pair that ties on score.
+    - hosts: [jump-box]
+      action: For each tie, record the dependency evidence that decides which entry is treated
+        first and one sentence of reason.
+  refs:
+  - nist-sp-800-30r1
+  - nist-cswp-29
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: Two entries carry the same score but only one can be treated this month. What is
+        the most defensible way to break the tie?
+      options:
+      - A) The entry the manager mentioned most recently
+      - B) The entry with the longer written statement
+      - C) The dependency evidence showing which failure stops more of the business
+      - D) Whichever entry was added to the register first
+      answer: C
+    - question: A score of high rests on a likelihood band nobody can evidence. What should the
+        reviewer record?
+      options:
+      - A) The score with the missing evidence named as a gap to close before the next review
+      - B) Nothing, until someone more senior makes the decision
+      - C) A lower score so the entry stops attracting questions
+      - D) The same score with the word assumed added and nothing further
+      answer: A
+    - question: Why keep the chosen bands on the same register line as the score?
+      options:
+      - A) Register tools refuse to save a score without them
+      - B) A reviewer can re-derive the score and challenge the bands rather than the arithmetic
+      - C) It makes the register look complete to external auditors
+      - D) The tool then recalculates the score automatically each night
+      answer: B
+    - question: An entry scores high impact because losing the domain controller stops sign-in
+        everywhere. Which fact anchors that impact band?
+      options:
+      - A) The number of accounts created in the domain so far
+      - B) The age of the server hardware in the rack, which suggests how long it will keep running
+          without replacement
+      - C) The annual licence cost of the server operating system
+      - D) The dependency evidence that every workstation needs the sign-in service to reach a desktop
+      answer: D
+    - question: A register is sorted by score alone and the team treats entries strictly in that
+        order. What does that order ignore?
+      options:
+      - A) The colour of the matrix cell behind each score
+      - B) The total number of entries in the register
+      - C) That treatment effort and dependency evidence differ between entries with equal scores
+      - D) The date the register was first created, which shows how long the team has kept the
+          record going
+      answer: C
+- ordinal: 5
+  title: Register Reviews and Entry Outcomes
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Verify each register entry against the live environment during a scheduled review
+  - Record a review outcome of current, stale or wrong with the observation behind it
+  - Set a review cadence that matches how fast each entry can change
+  topics:
+  - The review as a re-test of the entry against the environment, not a re-read.
+  - Outcomes of current, stale and wrong, and what each one triggers.
+  - Owner, review date and next-review fields that keep a register maintainable.
+  - Cadence set by how fast the underlying condition changes.
+  - Retiring an entry and recording why it left the register.
+  lab: >-
+    Lab: Review the register entries drafted in this course against the live small-enterprise
+    range and record an outcome for each. Evidence: for the rule-naming entries, the observed
+    fw-01 rule set; for the password entries, the dc-01 policy values; for the default-deny
+    entry, the ws-01 connection result; an outcome of current, stale or wrong for every entry
+    with the observation beside it. Pass: no outcome is recorded without an observation taken
+    today; every stale or wrong entry carries a dated correction; each cadence states how fast
+    its condition can change.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and note the start time.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, list the rules on fw-01 and mark every register entry that names a
+        rule as current, stale or wrong, with the observation beside it.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, re-read the domain password policy on dc-01 and mark the password
+        entries current, stale or wrong against the observed values.
+    - hosts: [ws-01, dc-01]
+      action: From ws-01, repeat the connection test behind the default-deny entry and record
+        the result as today's observation.
+    - hosts: [jump-box]
+      action: For each entry marked stale or wrong, record the correction and the date of the
+        observation that prompted it.
+    - hosts: [jump-box]
+      action: Set a review cadence for each entry and record one sentence on how fast its
+        underlying condition can change.
+  refs:
+  - nist-sp-800-30r1
+  - nist-sp-800-37r2
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: A reviewer re-reads every entry on screen and marks them all current. What did
+        the review miss?
+      options:
+      - A) The chance to re-test each entry against the environment as it stands today
+      - B) The chance to update the register document template
+      - C) The chance to print the register for the meeting pack
+      - D) The chance to reassign the register owner role
+      answer: A
+    - question: An entry names the firewall rule that allows all traffic from the management
+        network. Today that rule is gone and a narrower one replaced it. What is the outcome?
+      options:
+      - A) Current, because a firewall rule still exists on the device
+      - B) Stale, because the last review is more than a year old
+      - C) Wrong, because registers should never name individual rules
+      - D) Wrong, because the entry no longer matches the environment, so the risk has changed
+      answer: D
+    - question: Which register entry justifies the shortest review interval?
+      options:
+      - A) An entry about a document archive that changes once a year
+      - B) An entry about a printer that no department depends on
+      - C) An entry tied to a firewall rule the network team edits monthly
+      - D) An entry that has no owner recorded against it
+      answer: C
+    - question: An entry is marked stale after a review. What must the correction carry?
+      options:
+      - A) The approval signature of the risk owner
+      - B) The observation and the date the observation was made
+      - C) A lower score so the entry needs less attention at the next review and the audit passes
+          quietly
+      - D) Removal of the entry from the register at once
+      answer: B
+    - question: When is retiring an entry the right review outcome?
+      options:
+      - A) When the condition it described no longer exists anywhere in the environment
+      - B) When the entry has failed two reviews in a row
+      - C) When the owner asks for a smaller register to maintain because the review workload has
+          grown too heavy
+      - D) When the score drops below the top band of the scale
+      answer: A
+- ordinal: 6
+  title: Risk Acceptance and Exception Handling
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Draft a risk acceptance that names the risk, the accepted level, the compensating controls and the expiry
+  - Identify which accepted risks a reviewer must re-examine first when a compensating control fails
+  - Distinguish accepting a risk from transferring it or from ignoring it without a decision
+  topics:
+  - Acceptance as a recorded decision by a named approver.
+  - Residual risk and the compensating controls that hold it down.
+  - Expiry dates that force the decision to be made again.
+  - What breaks an acceptance when a control fails or the environment changes.
+  - Accepting, transferring, avoiding and ignoring as different answers.
+  lab: >-
+    Lab: Draft a risk acceptance for the residual risk the small-enterprise range really carries:
+    the fw-01 rule that allows every service from the management network. Evidence: the rule name
+    and source network; the dc-01 password policy values recorded as compensating-control
+    evidence; a written acceptance naming the accepted level, the compensating controls, the
+    approver role and an expiry date. Pass: the acceptance names the risk exactly as the register
+    entry reads; the compensating control listed is one the range actually shows; the expiry
+    forces a new decision rather than running open-ended; the decision is labelled accept,
+    transfer, avoid or ignore with a one-sentence reason.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and note the start time.
+    - hosts: [jump-box, fw-01]
+      action: From jump-box, list the rules on fw-01 and record the rule that allows every service
+        from the management network, the residual risk this lab accepts.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, record the current domain password policy from dc-01 as the
+        compensating-control evidence for the acceptance.
+    - hosts: [jump-box]
+      action: Draft an acceptance for the management-network risk naming the accepted level, the
+        compensating controls observed, the approver role and an expiry date.
+    - hosts: [jump-box]
+      action: Name the one change on the range that would void the acceptance first and record it
+        beside the expiry date.
+    - hosts: [jump-box]
+      action: Label the decision accept, transfer, avoid or ignore, and record one sentence of
+        reason for the choice.
+  refs:
+  - nist-sp-800-30r1
+  - nist-sp-800-37r2
+  - nist-cswp-29
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: An acceptance on the register reads "accepted until further notice" with no
+        expiry date. What is the main defect?
+      options:
+      - A) The wording is too informal for a formal register document
+      - B) The risk owner was not named inside the same sentence
+      - C) Accepted risks are not allowed to appear in a register
+      - D) Nothing forces the organisation to look at the risk again, so the acceptance outlives
+          its conditions
+      answer: D
+    - question: The compensating control behind an acceptance is the domain password policy.
+        Which event voids the acceptance first?
+      options:
+      - A) A new workstation joins the user network of the range
+      - B) The lockout threshold on the domain controller is raised so guesses get cheaper
+      - C) The register is exported to a spreadsheet for a meeting
+      - D) The acceptance document is moved to a different shared folder
+      answer: B
+    - question: Buying insurance against a fire in the server room answers the risk of fire by what
+        treatment?
+      options:
+      - A) Avoiding it
+      - B) Accepting it
+      - C) Transferring it
+      - D) Ignoring it
+      answer: C
+    - question: Which line belongs in a defensible acceptance record?
+      options:
+      - A) Accepted at moderate residual impact with the enforced lockout policy as compensating
+          control, expiring 31 March, approved by the Head of IT
+      - B) Accepted because the team is too busy to treat it until further notice
+      - C) Accepted indefinitely at whatever level the next review happens to find, since a level
+          fixed now would only need checking again at every review until then
+      - D) Accepted on the condition that nobody raises it at the next audit
+      answer: A
+    - question: A department keeps an unsafe practice running because no acceptance exists and no
+        one has objected. Which risk treatment is the department applying?
+      options:
+      - A) Transferring the risk to the organisation's insurer, who now holds the loss on the
+          department's behalf
+      - B) Avoiding the risk by not using the practice
+      - C) Accepting the risk with documented approval in place
+      - D) Ignoring the risk, which is not acceptance because nobody decided
+      answer: D

@@ -1,0 +1,637 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+course_code: C515
+title: Network Monitoring with Zeek & Suricata
+version: '1.0'
+difficulty: intermediate
+duration_hours: 5
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C513
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Analyst (PR-CDA-001).'
+  - 'NIST CSF 2.0: DE.CM (Continuous Monitoring), DE.AE (Adverse Event Analysis).'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Sensor placement — tap vs SPAN
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Distinguish a network tap from a SPAN port by what each does to traffic under failure and load
+  - Select sensor placement positions on a network map that close the visibility gaps a policy states
+  - Classify the traffic a given placement misses and name the monitoring position that would see it
+  topics:
+  - Passive network taps, SPAN ports and how each handles errors, load and failure.
+  - Inline versus passive monitoring positions and the traffic each one can observe.
+  - Placement at the internet edge, the core and internal network segments.
+  - East-west traffic, encrypted traffic and the blind spots a placement leaves.
+  - Monitor interfaces, mirrored traffic volumes and sensor capacity.
+  lab: >-
+    Lab: On the SOC training range, confirm that the monitoring mirror delivers traffic to the Zeek
+    sensor, observe one connection between two hosts from the sensor side and judge the placement
+    against the stated monitoring policy. Evidence: the state and counters of the monitor interface
+    on the sensor; the connection record the generated traffic produced, with both endpoints; one
+    traffic type the placement cannot see, named from the sensor's own view. Pass: the monitor
+    interface shown receiving mirrored traffic; the generated connection observed from the sensor
+    with both endpoints recorded; one blind spot identified, with the position that would close it.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: >-
+        Log on to the jump host (jump01) over SSH, open a terminal and connect onward to the Zeek
+        sensor (zeek01), then write the start time in the lab notes.
+    - hosts: [zeek01]
+      action: >-
+        On the Zeek sensor (zeek01), identify the monitor interface that receives the mirrored
+        traffic and record its state and its packet counters.
+    - hosts: [v-ws01, v-web01, zeek01]
+      action: >-
+        From the designated workstation (v-ws01), request one page from the internal web server
+        (v-web01), then find that exchange in the sensor's view and record both endpoints and the
+        byte counts.
+    - hosts: [zeek01]
+      action: >-
+        List the logs the sensor has written in the monitoring window and record which protocols
+        appear there and which do not.
+    - hosts: [jump01]
+      action: >-
+        Mark the placement adequate or not adequate for the stated policy, write one blind spot it
+        leaves and name the position that would close it.
+  refs:
+  - nist-sp-800-94
+  - nist-sp-800-92
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: >-
+        A monitoring port on the core switch mirrors a heavily loaded link, and during peak periods
+        the capture shows gaps that the link itself does not have. What most likely explains this?
+      options:
+      - A) The switch forwards frames to the monitor port only after it forwards them onward
+      - B) The switch drops mirrored frames first when its forwarding fabric is congested
+      - C) A tap on the link removes the frames it cannot copy
+      - D) The mirror copies frames the switch has not seen before
+      answer: B
+    - question: >-
+        An engineer must monitor a link without changing how it behaves, and monitoring must survive
+        a sensor power failure. Which placement fits?
+      options:
+      - A) A SPAN port that stops mirroring when the sensor is off
+      - B) An inline appliance placed in the path ahead of the sensor
+      - C) A passive tap, which passes traffic whether or not the sensor is powered
+      - D) A SPAN port configured on the same switch as the sensor
+      answer: C
+    - question: >-
+        A site monitors only its internet edge, and an analyst can see every external connection but
+        nothing between two internal workstations. Which gap does this placement leave?
+      options:
+      - A) Traffic that stays between internal hosts, which the edge sensor never sees
+      - B) Traffic bound for the internet, which arrives too late to analyse
+      - C) Broadcast traffic, which switches never forward to monitor ports
+      - D) Encrypted traffic, which a passive sensor cannot record at all
+      answer: A
+    - question: >-
+        A monitoring policy requires full visibility of the traffic between the server segment and
+        the user segment. Where should the feed for the sensor be taken from?
+      options:
+      - A) The outside interface of the internet edge router
+      - B) A mirror of the wireless controller's management network
+      - C) The management segment's uplink to the data centre
+      - D) A tap or mirror on the link that joins the server segment to the user segment
+      answer: D
+    - question: >-
+        A sensor's monitor interface is a single one-gigabit port, while the link it mirrors carries
+        more than that at busy times. What should the sensor operator expect to see?
+      options:
+      - A) A complete capture, because the switch queues mirrored traffic until the interface frees
+      - B) Gaps in the capture at busy times, as the interface discards frames it cannot take
+      - C) Duplicate frames for every connection on the mirrored link
+      - D) A shutdown of the monitored link to protect the sensor
+      answer: B
+- ordinal: 2
+  title: Zeek logs in practice
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Match each common Zeek log to the protocol or activity that produces it
+  - Interpret the fields of a connection record to describe who talked to whom, when and how
+  - Trace one activity across several Zeek logs by following the identifier that links them
+  topics:
+  - The connection record and the unique identifier that ties related log entries together.
+  - Connection log fields for addressing, service, duration and volume, and what each records.
+  - Protocol logs for web, DNS and file transfer activity, and when each one is written.
+  - Notice log entries and the conditions under which the sensor raises them.
+  - Following one activity across logs instead of reading each log in isolation.
+  lab: >-
+    Lab: On the Zeek sensor, generate one connection from a workstation to the internal web server,
+    then follow that single activity across the logs it touches. Evidence: the connection record
+    with its endpoints, duration and byte counts; the protocol log entry for the same exchange; the
+    identifier that links the two entries. Pass: the connection record located and its fields read
+    correctly; the matching protocol log entry found through the shared identifier; one sentence
+    stating what the exchange was, backed by both entries.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: >-
+        Log on to the jump host (jump01) over SSH and connect onward to the Zeek sensor (zeek01),
+        then write the start time in the lab notes.
+    - hosts: [zeek01]
+      action: >-
+        Confirm the sensor (zeek01) is running, then list the logs written in the current monitoring
+        window and record the protocols they cover.
+    - hosts: [v-ws01, v-web01]
+      action: >-
+        From the designated workstation (v-ws01), request one page from the internal web server
+        (v-web01) and record the request time in the lab notes.
+    - hosts: [zeek01]
+      action: >-
+        Find the connection record for that exchange in the connection log and record its endpoints,
+        duration and byte counts.
+    - hosts: [zeek01]
+      action: >-
+        Use the record's identifier to find the matching web log entry and record where the two
+        entries agree.
+    - hosts: [zeek01]
+      action: >-
+        Judge the exchange: write one sentence stating what happened, supported by both log entries,
+        and mark it confirmed or not confirmed.
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-115
+  source_gaps:
+  - Zeek project documentation (docs.zeek.org) is not yet in the reference library.
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: >-
+        A sensor watches a site where users resolve internal server names before they connect. Which
+        Zeek log records each name-to-address step?
+      options:
+      - A) The file log, because each name lookup writes a file entry the sensor keeps
+      - B) The web log, because browsers issue the lookups
+      - C) The DNS log, because it records each name resolution the sensor observes
+      - D) The notice log, because name lookups are anomalies
+      answer: C
+    - question: >-
+        An analyst opens a connection record and must describe the exchange in a ticket without
+        reopening the capture. Which pair of fields states the endpoints directly?
+      options:
+      - A) The duration and the byte counts of the whole exchange
+      - B) The connection identifier and its opening timestamp
+      - C) The service name and the transport protocol in use
+      - D) The source and destination address fields
+      answer: D
+    - question: >-
+        Two log entries describe the same exchange, and the analyst must show that they belong to
+        one activity. What links the two entries?
+      options:
+      - A) The shared connection identifier recorded in both entries
+      - B) The identical byte counts carried in both entries
+      - C) The timestamp, which both entries share to the second
+      - D) The log file that both entries were written to
+      answer: A
+    - question: >-
+        A connection record carries a notice entry flag, and the analyst must explain what that
+        means. Which statement is correct?
+      options:
+      - A) The sensor blocked the connection before it completed
+      - B) The sensor raised an entry about the connection in the notice log
+      - C) The endpoints exchanged encrypted data on that connection
+      - D) The connection failed partway through the exchange
+      answer: B
+    - question: >-
+        A user reports a slow download, and the analyst must show what the workstation actually
+        requested during the exchange. Beyond the connection record, which log gives the path?
+      options:
+      - A) The DNS log, which shows the server name only
+      - B) The notice log, which records every download in full
+      - C) The connection log, which keeps paths in a second field
+      - D) The web log, which records the requested path and the reply
+      answer: D
+- ordinal: 3
+  title: Suricata rules and tuning
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Read a Suricata rule header and state the action, protocol, endpoints and direction it matches
+  - Distinguish the alert, pass and drop actions by what each does to traffic and to the record
+  - Apply threshold and suppression settings to a signature and predict how alert volume changes
+  topics:
+  - Rule headers with action, protocol, source and destination, ports and direction.
+  - Rule options, message text, signature identifiers and metadata.
+  - Alert, pass and drop actions and the traffic handling each one causes.
+  - Threshold settings that limit the repeats one signature may raise.
+  - Suppression entries that silence one signature for chosen endpoints.
+  lab: >-
+    Lab: On the SOC console, open the Suricata alerts for the monitoring window, read the rule
+    behind one alert and follow its records into the event stream. Evidence: the alert's message
+    text and signature identifier; the action, protocol, direction and endpoints the rule header
+    declares; the matching event records with their endpoints and count. Pass: one alert opened
+    from the console and its rule identified by signature identifier; the header read as action,
+    protocol, direction and endpoints; the event records matched to the alert and counted.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, seconion01]
+      action: >-
+        Log on to the jump host (jump01), open the SOC console (seconion01) in the browser from
+        there and sign in with the analyst account the instructor assigned.
+    - hosts: [seconion01]
+      action: >-
+        Open the Suricata alerts view for the current monitoring window and record the total count
+        it shows.
+    - hosts: [seconion01]
+      action: >-
+        Pick one Suricata alert, record its message text and signature identifier, then open the
+        rule details the console shows for it.
+    - hosts: [seconion01]
+      action: >-
+        Read the rule header and record the action, protocol, direction and endpoints it declares.
+    - hosts: [seconion01]
+      action: >-
+        Find the event records behind the alert and record their endpoints and their count.
+    - hosts: [seconion01]
+      action: >-
+        State in one sentence what behaviour the rule matches, and mark the alert volume as fitting
+        that reading or not fitting it.
+  refs:
+  - nist-sp-800-94
+  - sigma
+  source_gaps:
+  - Suricata documentation (docs.suricata.io) is not yet in the reference library.
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: >-
+        A rule in the loaded ruleset begins with the word pass before its protocol and endpoints.
+        What does that rule do to traffic it matches?
+      options:
+      - A) It lets the traffic through without raising an alert
+      - B) It raises an alert and lets the traffic through
+      - C) It stops the traffic and ends the session
+      - D) It writes the traffic to storage without judging it
+      answer: A
+    - question: >-
+        Two analysts discuss the same alert in different tools and must refer to one rule without
+        quoting its message text. What do they exchange?
+      options:
+      - A) The rule's message text, pasted from the console
+      - B) The rule's signature identifier
+      - C) The timestamp of the alert they both saw
+      - D) The host name of the sensor that raised it
+      answer: B
+    - question: >-
+        One signature fires forty times an hour for a single scan, and the team wants one alert per
+        source address per hour without losing the rule. Which setting fits?
+      options:
+      - A) Removing the signature from the ruleset entirely
+      - B) A pass rule covering the scanner's address
+      - C) A threshold that limits the signature to one alert per source per hour
+      - D) A suppression that removes the signature for every endpoint
+      answer: C
+    - question: >-
+        An inline rule carries the drop action and matches a session. What happens on the wire and
+        in the record as a result?
+      options:
+      - A) The matching traffic is stopped and the block is recorded
+      - B) The traffic continues, flagged for later review
+      - C) The traffic is queued until an analyst decides
+      - D) The rule is ignored while the sensor runs inline
+      answer: A
+    - question: >-
+        A noisy rule alerts on every backup job, and the team decides to silence it for the backup
+        host alone. Which tuning change did they apply?
+      options:
+      - A) A threshold of one alert per hour on the signature
+      - B) A pass rule that replaces the signature ruleset-wide
+      - C) A lower rate limit applied to the whole ruleset
+      - D) A suppression scoped to that host and that signature
+      answer: D
+- ordinal: 4
+  title: Building custom detections
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a local signature whose header and options match one stated behaviour on the network
+  - Test a new signature against traffic that matches and traffic that must not match
+  - Record each custom signature with its identifier and metadata so others can maintain it
+  topics:
+  - Local rulesets and where custom signatures live beside the shipped set.
+  - Header choices that bind a signature to one protocol, direction and endpoint pair.
+  - Rule options that carry the message text and the metadata for each signature.
+  - Testing a signature against matching and benign traffic before it goes live.
+  - Review and version records for signatures kept in the local set.
+  lab: >-
+    Lab: On the sensor, add one custom signature that matches a stated behaviour, test it against
+    benign and matching traffic and confirm it alerts once and only once. Evidence: the signature
+    text with its identifier and metadata; the ruleset reload confirmation; the alert count for
+    benign traffic and for matching traffic. Pass: the signature written with a unique identifier
+    and metadata; the reload completed without errors; zero alerts on benign traffic and exactly
+    one on matching traffic.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, seconion01]
+      action: >-
+        Log on to the jump host (jump01) and connect to the sensor host (seconion01) with the sensor
+        account the instructor assigned, then open the console.
+    - hosts: [seconion01]
+      action: >-
+        Open the local rules file the instructor points to and add one signature whose header binds
+        it to the stated protocol and endpoints.
+    - hosts: [seconion01]
+      action: >-
+        Give the signature a message that names the behaviour, record its identifier and metadata,
+        then reload the ruleset and record the result.
+    - hosts: [v-ws01, v-web01]
+      action: >-
+        From the designated workstation (v-ws01), run the benign action first against the internal
+        web server (v-web01) and record the alert count the new signature produces for it.
+    - hosts: [v-ws01, v-web01]
+      action: >-
+        Run the matching action next and confirm the signature alerts exactly once; record the
+        count beside the benign count.
+    - hosts: [seconion01]
+      action: >-
+        Judge the signature: mark it fit or not fit to stay in the local ruleset, with one reason
+        taken from the two counts.
+  refs:
+  - sigma
+  - nist-sp-800-94
+  source_gaps:
+  - Suricata documentation (docs.suricata.io) is not yet in the reference library.
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: >-
+        A custom signature must not clash with anything in the shipped ruleset. What identifies it
+        uniquely across every rule the sensor loads?
+      options:
+      - A) Its message text, which the analyst words with care each time it is edited
+      - B) The name of the file the signature sits in
+      - C) Its position in the local rules file
+      - D) Its signature identifier, unique across the loaded set
+      answer: D
+    - question: >-
+        Six months later, another analyst must tell who wrote a custom signature, when, and against
+        which behaviour. What makes that possible?
+      options:
+      - A) Metadata recorded with the signature when it was written
+      - B) The alert count the signature has produced since it went live
+      - C) The signature identifier's number alone
+      - D) The modification date of the rules file
+      answer: A
+    - question: >-
+        A new signature alerts twice on a single benign file transfer during testing. What should
+        the analyst conclude and do?
+      options:
+      - A) Leave it in place; duplicate alerts are normal overhead
+      - B) Raise a threshold so the duplicates stop appearing
+      - C) Treat it as unready and correct the signature before it goes live
+      - D) Shorten testing, since the target behaviour also matched
+      answer: C
+    - question: >-
+        During signature testing, the analyst sends traffic that must not match, and the signature
+        stays quiet. What has this test shown?
+      options:
+      - A) The signature is too narrow to be worth keeping
+      - B) The signature does not fire on benign traffic of this kind
+      - C) The signature will also catch its target behaviour
+      - D) The path from the test host to the sensor is broken
+      answer: B
+    - question: >-
+        The team upgrades the sensor and the shipped ruleset is replaced wholesale. What happens to
+        a signature kept in the local rules file?
+      options:
+      - A) It survives, because the local file is outside the shipped set
+      - B) It is removed and must be rewritten from the alert history
+      - C) It is promoted into the shipped set automatically
+      - D) It keeps running but stops raising alerts
+      answer: A
+- ordinal: 5
+  title: Cutting false positives
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Classify alerts as true or false positives using the session context around each one
+  - Apply threshold and suppression settings that remove noise while keeping the detection active
+  - Measure alert volume before and after a tuning change and state the effect in numbers
+  topics:
+  - True positives, false positives and the session context that separates them.
+  - Reading one alert against the connection records around it.
+  - Threshold settings, their scope and the repeat alerts they prevent.
+  - Suppression entries scoped to endpoints that legitimately trigger one signature.
+  - Baseline counts that show whether a tuning change worked.
+  lab: >-
+    Lab: On the SOC console, take one noisy signature, classify a sample of its alerts with
+    reasons, apply one tuning change and measure the volume change. Evidence: the signature's
+    baseline alert count for the window; the sample, with a classification and reason per alert;
+    the tuned signature's alert count for a fresh window. Pass: every sampled alert classified
+    true or false positive with a one-line reason; one threshold or suppression applied that
+    leaves the signature active; the post-change count recorded against the baseline.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, seconion01]
+      action: >-
+        Log on through the jump host (jump01), open the SOC console (seconion01) and find the noisy
+        signature the instructor names.
+    - hosts: [seconion01]
+      action: >-
+        Record the signature's alert count for the current monitoring window as the baseline.
+    - hosts: [seconion01]
+      action: >-
+        Sample the alerts, open the session context around each one and classify it true or false
+        positive with a one-line reason.
+    - hosts: [seconion01]
+      action: >-
+        Apply one threshold or suppression that silences the benign pattern but leaves the
+        signature active for every other endpoint.
+    - hosts: [seconion01]
+      action: >-
+        Re-open the alert view for a fresh window and record the new count beside the baseline.
+    - hosts: [seconion01]
+      action: >-
+        Judge the change: state whether the tuning kept the detection while cutting the noise,
+        citing both numbers.
+  refs:
+  - nist-sp-800-94
+  - nist-sp-800-61r3
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: >-
+        A file-transfer signature alerts on the backup server every night at the same hour, and the
+        backup schedule is documented. How should the analyst classify the alert?
+      options:
+      - A) A true positive, because the file transfer really did happen overnight
+      - B) A false positive, because the activity is authorised and expected
+      - C) A broken signature that must be rewritten from scratch
+      - D) A hidden attack that the documented schedule covers
+      answer: B
+    - question: >-
+        The same noisy signature fires on twelve endpoints, and only the backup server's alerts are
+        benign. Which tuning keeps coverage everywhere else?
+      options:
+      - A) Removing the signature from the ruleset outright
+      - B) Raising the signature's threshold for every endpoint
+      - C) A pass rule that stops the signature network-wide during the backups
+      - D) A suppression scoped to the backup server and that signature
+      answer: D
+    - question: >-
+        An analyst sets a threshold of one alert per source per hour on a scan signature. What
+        happens to the detection itself?
+      options:
+      - A) It stops running for an hour after each alert it raises
+      - B) It fires only on the first source address it sees
+      - C) It keeps matching the behaviour; the extra repeat alerts are removed
+      - D) It moves into the local ruleset for the tuning to apply
+      answer: C
+    - question: >-
+        A tuning change is applied at noon, and the team must show whether it worked. What evidence
+        settles the question?
+      options:
+      - A) Alert counts for comparable windows before and after the change
+      - B) The number of rules the ruleset holds after the change
+      - C) The analyst's impression of quietness in the console
+      - D) The date the signature was last edited by the team
+      answer: A
+    - question: >-
+        After tuning, a rare alert fires from a workstation that never appeared in the baseline.
+        What should the analyst do first?
+      options:
+      - A) Suppress the source address at once to clear the noise
+      - B) Raise the threshold for that signature immediately
+      - C) Classify the alert with its session context before touching tuning
+      - D) Delete the alert from the queue as a duplicate
+      answer: C
+- ordinal: 6
+  title: Network alert triage and escalation
+  content_type: reading
+  duration_minutes: 50
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Pivot from a Suricata alert to the matching Zeek connection record and reconcile the two views
+  - Decide whether an alert warrants escalation and record the evidence behind the decision
+  - Propose one placement or detection change that would improve the monitoring a gap shows
+  topics:
+  - Correlating a signature alert with the connection record for the same exchange.
+  - Session context as triage evidence with endpoints, service, duration and volume.
+  - The escalation decision and the recorded facts that support it.
+  - Follow-up checks that confirm or dismiss an alert from the monitoring side.
+  - Feeding triage findings back into placement and detection tuning.
+  lab: >-
+    Lab: With the drill scenario loaded, take one Suricata alert, find the Zeek connection record
+    behind the same exchange and decide escalate or dismiss on recorded evidence. Evidence: the
+    alert's signature identifier, message and endpoints; the connection record with the same
+    endpoints, its service, duration and volume; the decision with its evidence lines. Pass: both
+    records located and matched to one exchange; the decision stated with at least two recorded
+    facts; one monitoring change proposed that would have made the decision easier.
+  lab_range:
+    template: soc-training
+    scenario: incident-response-drill
+    steps:
+    - hosts: [jump01, seconion01]
+      action: >-
+        Log on through the jump host (jump01) and open the SOC console (seconion01) for the drill
+        monitoring window.
+    - hosts: [seconion01]
+      action: >-
+        Pick one Suricata alert from the drill and record its signature identifier, message text
+        and endpoints.
+    - hosts: [zeek01]
+      action: >-
+        On the Zeek sensor (zeek01), find the connection record for the same endpoints and time, and
+        record its service, duration and byte counts.
+    - hosts: [seconion01, zeek01]
+      action: >-
+        Compare the two records and write down where they agree and where the alert alone would
+        mislead a reader.
+    - hosts: [seconion01]
+      action: >-
+        Decide escalate or dismiss, and record at least two facts from the two views that support
+        the decision.
+    - hosts: [seconion01, zeek01]
+      action: >-
+        Propose one placement or detection change that would have made this decision faster, and
+        record it with a reason.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-115
+  - mitre-attack
+  source_gaps:
+  - Zeek project documentation (docs.zeek.org) is not yet in the reference library.
+  - Suricata documentation (docs.suricata.io) is not yet in the reference library.
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: >-
+        An alert names two endpoints, and the analyst must find the same exchange in the connection
+        log. What identifies the record?
+      options:
+      - A) The endpoint pair and time, confirmed by the record's identifier
+      - B) The signature identifier, which the connection log also carries
+      - C) The alert's message text, repeated inside the connection record entry
+      - D) The sensor's host name, present in both systems' output
+      answer: A
+    - question: >-
+        An alert reads as a possible scan, and the connection records show the same source touching
+        one port on one host, once. What does the context suggest?
+      options:
+      - A) Confirmation of a wide scan across the whole segment
+      - B) Evidence of data theft in progress from the workstation host
+      - C) A single ordinary connection, which argues against the alert
+      - D) A fault in the sensor's clock or its configuration
+      answer: C
+    - question: >-
+        An analyst escalates an alert to the next team. What must the escalation note carry so that
+        team can act?
+      options:
+      - A) The analyst's opinion of how severe the case feels
+      - B) The alert identifier alone, for the team to look up
+      - C) An assurance that monitoring continues in the background
+      - D) The recorded facts, with endpoints, time, service, volume and the alert
+      answer: D
+    - question: >-
+        A signature alerts on the mail server's nightly replication, and both the schedule and the
+        connection records agree. What is the sound decision?
+      options:
+      - A) Escalate anyway, because the transfer volume is large
+      - B) Dismiss as a false positive, citing the schedule and the records
+      - C) Suppress every signature that covers the mail server
+      - D) Restart the sensor to clear the repeating alert
+      answer: B
+    - question: >-
+        Triage shows a real behaviour that no signature covers, on a link that no sensor watches.
+        Which changes follow from this finding?
+      options:
+      - A) A threshold on the signature that fires most often nearby
+      - B) A suppression entry for the signatures on that link
+      - C) A rewrite of the escalation note format the team uses
+      - D) A new signature for the behaviour and a feed from that link
+      answer: D

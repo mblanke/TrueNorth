@@ -1,0 +1,176 @@
+# Instructor pack for C532 - Live Triage & Containment Lab. Staff only: this file carries the
+# answer keys, the range preparation and the common faults, and is never shown to a Student.
+
+course_code: C532
+audience: staff_only
+overview: >-
+  Live Triage & Containment Lab is a five-hour individual lab course of six 50-minute modules on the
+  small-enterprise range, run end to end on the ransomware-lite exercise: a phish at 00:05, a dropper
+  execution on ws-02 at 00:15 and a command-channel DNS spike at 00:25. Every module follows the same
+  split: 10 minutes teaching the module's three objectives, 25 minutes on the range, 5 minutes recording
+  and comparing results, 10 minutes quiz. The Student works alone at every stage: one Student scopes the
+  intrusion, builds the timeline, decides and executes containment, verifies it held and writes the
+  handoff. Each module ends with a five-item quiz passed at 70 percent.
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 teaching scoping questions and indicators, 25 range lab (scope the seeded intrusion), 5
+    recording and review, 10 quiz'
+- module: 2
+  minutes: 50
+  plan: '10 teaching timelines and volatility, 25 range lab (build and rate the timeline), 5 recording and
+    review, 10 quiz'
+- module: 3
+  minutes: 50
+  plan: '10 teaching isolation versus blockade criteria, 25 range lab (score and decide), 5 recording and
+    review, 10 quiz'
+- module: 4
+  minutes: 50
+  plan: '10 teaching the volatility order and artefacts, 25 range lab (live collection on ws-02), 5
+    recording and review, 10 quiz'
+- module: 5
+  minutes: 50
+  plan: '10 teaching costs and trade-offs, 25 range lab (execute isolation and blockade), 5 recording and
+    review, 10 quiz'
+- module: 6
+  minutes: 50
+  plan: '10 teaching verification and handoff, 25 range lab (verify, record, hand off), 5 recording and
+    review, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (scope statement), M01-O03: Scoping produces the statement naming affected and unconfirmed
+    hosts; an inventory overreaches, isolation and reimage are containment actions that come later. Q2 C
+    (suspected), M01-O02: A known destination with unexplained traffic is neither confirmed nor unrelated;
+    the check against the vendor record is exactly what the classification records. Q3 A (domain
+    controller log), M01-O02: The primary log of the event itself is direct evidence; memory, averages and
+    summaries are not. Q4 D (revise the statement), M01-O03: Scope widens as new indicators arrive; the
+    first statement is never left standing and the whole network is not marked compromised on one beacon.
+    Q5 B (earliest indicator to last activity), M01-O03: The window is evidence-bounded; a fixed day or a
+    feeling is not.'
+- module: 2
+  notes: 'Q1 C (normalise timestamps), M02-O01: Ordering events across sources needs one time zone first;
+    dropping, averaging or keeping both times corrupts the order. Q2 A (memory first), M02-O02: Running
+    state dies at reboot, so memory is the most volatile artefact; size and convenience are not criteria.
+    Q3 D (collect the volatile evidence first), M02-O02: Unplugging destroys memory and live state; the
+    responder delays the state change until collection is done. Q4 B (single-source), M02-O03: One record
+    is single-source until something corroborates it; trust in the tool does not make it direct. Q5 D
+    (note the missing sources), M02-O01: A gap is recorded as missing sources, not as idleness or as a
+    finished timeline.'
+- module: 3
+  notes: 'Q1 A (host isolation), M03-O01: Cutting one host from the network while it stays powered on is
+    isolation; blockade acts on a channel for many hosts, eradication removes the cause, continuity is not
+    a containment action. Q2 C (firewall rule for the network), M03-O02: A rule on fw-01 touches every
+    workstation at once; per-host work does not scale and passwords do not cut a channel. Q3 B (evidence
+    loss), M03-O01: The tension is between stopping the beacon and keeping the only memory copy; impact
+    and awareness are real criteria but not the one in conflict here. Q4 A (isolate and keep collecting),
+    M03-O02: One weak indicator on an unscoped host gets isolation that preserves evidence; a network-wide
+    blockade is disproportionate and reimaging destroys the record. Q5 D (the concrete justification),
+    M03-O03: A successor can only judge a decision that states what was accepted and what remains; feel,
+    absence of disruption and agreement are not records.'
+- module: 4
+  notes: 'Q1 D (memory, network state, disk), M04-O01: That is the volatility order; every other sequence
+    risks losing the most volatile first. Q2 B (autorun listing), M04-O02: Persistence at boot and logon
+    shows in autoruns and scheduled tasks; routing tables, histograms and hash lists answer other
+    questions. Q3 C (process entry with path and parent), M04-O02: A user-folder path and an unusual parent
+    are visible directly in the process listing; the other artefacts do not carry it. Q4 A (verify the set
+    is unchanged), M04-O03: The hash lets another responder prove nothing was altered; speed, antivirus
+    matching and schedules are not the purpose. Q5 C (record the gap), M04-O03: A failed capture is
+    recorded and every later conclusion notes it; it neither clears the host nor makes memory optional.'
+- module: 5
+  notes: 'Q1 B (revoke network access, stay powered on), M05-O01: Isolation keeps the host running for
+    collection; reimaging, account deletion and power-off destroy state or evidence. Q2 D (cost record),
+    M05-O02: A lost service with its owner belongs in the cost record; complaints are containment costs,
+    not adversary events or nothing. Q3 A (disruption and residual risk), M05-O03: The drill compares the
+    two options on what each breaks and what each leaves open; preference and tooling output are not
+    criteria. Q4 C (widen the plan and justify), M05-O03: A second beaconing host widens scope with a
+    written justification; ignoring it or shutting everything down is neither measured nor recorded. Q5 B
+    (before the action), M05-O02: Service owners are told before containment breaks their service; after
+    the fact or never leaves the cost undiscovered until it fails.'
+- module: 6
+  notes: 'Q1 C (a blocked-channel attempt that succeeded), M06-O01: Containment failed exactly when the
+    blocked channel is reached again; falling counters and quiet evenings are the opposite signal. Q2 A
+    (sign-in log against baseline), M06-O01: Verification compares observations against what was expected;
+    summaries, waiting and ticket counts are not checks. Q3 D (decision, timestamp, evidence location),
+    M06-O02: The successor needs each decision tied to a time and a location; opinion, chat and reassurance
+    are not actionable records. Q4 B (open risks with owners and next actions), M06-O03: The handoff
+    carries what the next team must act on; a full alert replay buries it and a configuration copy is not
+    a plan. Q5 A (open risk with an owner), M06-O03: A stolen credential that containment did not remove
+    stays an open risk with a named owner and a next action; it is not closed by success or deferred to a
+    report.'
+lab_setup:
+- module: 1
+  setup: Provision the small-enterprise range and load the ransomware-lite exercise before the module. The
+    phish arrives at 00:05, the dropper executes on ws-02 at 00:15, the DNS spike to the command channel
+    starts at 00:25. Give the Student the analyst account on jump-box and confirm the alert feed and the
+    fw-01 and dc-01 logs are readable from it.
+- module: 2
+  setup: Same range state as module 1; do not reset or reboot ws-02 between modules, or the memory and
+    live-state steps have nothing to observe. Confirm the Student can open the firewall log on fw-01 and
+    the sign-in events on dc-01 from jump-box.
+- module: 3
+  setup: Same range state as module 2. The lab scores options on paper against the live range, so nothing
+    is changed yet; confirm the Student still has read access to fw-01 rules and to ws-02 state. Keep the
+    scope statement from module 1 available as the starting point.
+- module: 4
+  setup: Before this module, confirm the live response toolkit is staged on ws-02 or reachable from it,
+    and that there is disk space for a memory capture. ws-02 must still be running and uncontained, because
+    the collection happens before containment. If the capture tool is unavailable, run the lab read-only and
+    record the gap as the quiz's fifth question teaches.
+- module: 5
+  setup: This module changes the range — the Student revokes ws-02's network access and writes the blocking
+    rule on fw-01. Snapshot ws-02 beforehand if the range supports it. Have a service list ready so the
+    cost record names real services, and re-arm the exercise alert feed for the scope-widening check.
+- module: 6
+  setup: ws-02 is isolated and the fw-01 rule is in force from module 5; do not lift either before the lab.
+    Confirm the firewall log shows the blocked-channel attempts so verification has something to find, and
+    that the exercise alert feed is quiet, so the Student's checks distinguish held containment from new
+    activity.
+common_faults:
+- module: 1
+  fault: The scope statement lists only the host that alerted and misses the hosts that received the same
+    message.
+  remedy: Ask for the account and destination list beside the statement; every name on those lists must
+    appear in or be explicitly ruled out of scope.
+- module: 1
+  fault: Every indicator gets marked confirmed because an alert raised it.
+  remedy: Drill the three markings against the exercise feed; an alert is a prompt to classify, not a
+    verdict.
+- module: 2
+  fault: The timeline is built per source instead of in time order across sources.
+  remedy: Have the Student read the timeline aloud in time order and name the source of each line before
+    moving on.
+- module: 2
+  fault: The collection list puts disk first because it is the largest or easiest artefact.
+  remedy: Walk the volatility order against what a reboot destroys on ws-02; the destroyed-first artefact
+    is collected first.
+- module: 3
+  fault: The Student blockades the whole network because it feels stronger, with no scoring.
+  remedy: Insist both options are scored on the same three criteria before the choice; the justification
+    must quote the scores.
+- module: 3
+  fault: The escalation trigger is written as a mood ('if it gets worse').
+  remedy: Rewrite the trigger as a condition the range can show, such as a second host beaconing to the
+    same channel.
+- module: 4
+  fault: The Student touches the disk before memory because the toolkit opens there by default.
+  remedy: Check the recorded order before checking any finding; the order itself is the pass condition.
+- module: 4
+  fault: Artefacts are recorded by name only, with no hash or collection time.
+  remedy: Reject the artefact table until each row carries a hash and a time; tie this to the review
+    question 'could another responder trust this set?'
+- module: 5
+  fault: The blocking rule on fw-01 is written so broadly that it cuts unrelated traffic.
+  remedy: Have the Student state which traffic the rule must leave alone and check the rule against it
+    before accepting it.
+- module: 5
+  fault: The cost record stops at technical breaks and never names the service owner.
+  remedy: Ask 'who noticed this break?' for every recorded line; an entry without an owner is not
+    finished.
+- module: 6
+  fault: Verification stops at 'nothing happened' without naming what was checked.
+  remedy: Require the three checks by name (beaconing, sign-ins, open channels) and their results in the
+    record.
+- module: 6
+  fault: The handoff note lists open risks without owners or next actions.
+  remedy: Reject any risk line that does not name who acts next and what they do; the next team starts
+    from this note alone.

@@ -1,0 +1,556 @@
+# Unsourced draft -- not validated by Standards. TAZ upskilling catalogue v1 (GLM draft).
+# `refs` are keys into content/catalogue/references.yaml.
+
+course_code: C525
+title: Linux Forensics
+version: '1.0'
+difficulty: intermediate
+duration_hours: 4
+provenance: unsourced
+status: draft
+is_published: false
+readiness: draft
+prerequisites:
+- C108
+- C208
+source:
+  origin: TAZ upskilling catalogue v1 (2026-10-28)
+  notes:
+  - 'NICE work roles: Cyber Defense Forensics Analyst (IN-FOR-002).'
+  - 'NIST CSF 2.0: RS.AN, DE.AE.'
+  - Self-paced upskilling, outside DP1/DP2.
+  - Unpublished pending Standards review.
+modules:
+- ordinal: 1
+  title: Filesystem Timelines
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Build a chronology of file activity on a Linux filesystem from inode timestamps
+  - Distinguish modification, metadata change and access times and predict how each changes
+  - Identify timestamp values that deliberate tampering has planted and record what reveals it
+  topics:
+  - 'The inode and its timestamps on ext4: modification, metadata change, access and creation (birth).'
+  - The relatime policy and when the access time of a file actually updates.
+  - Mounting evidence read-only so examination does not alter the timestamps under review.
+  - Building an ordered timeline from stat output with sort.
+  - Timestamp tampering with touch and which fields the touch command cannot set.
+  lab: >-
+    Lab: On the small-enterprise range, find out what each inode timestamp on jump-box records, what
+    ordinary file actions change and what a backdated file leaves behind. Evidence: the system date,
+    time zone and the four stat fields of a copy of the hosts file; which timestamp moves after a
+    permission change; which timestamp still shows the moment a backdating command ran; and the ten
+    most recently modified files under /var/log in order. Pass: all four stat fields recorded before
+    each change; the permission-change and backdating effects each named with the field that moved;
+    the ten-file timeline present and in descending order of modification time.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the system date, the time zone
+        and the start time in the lab notes.
+    - hosts: [jump-box]
+      action: Copy the hosts file into the analyst account's home directory, run stat on the copy and
+        record its Access, Modify, Change and Birth fields.
+    - hosts: [jump-box]
+      action: Change the permissions on the copy, run stat again and record which of the four fields
+        moved and which stayed.
+    - hosts: [jump-box]
+      action: Run a touch command that backdates the copy's modification time to the previous week,
+        run stat again and record which fields the command reset and which it could not set.
+    - hosts: [jump-box]
+      action: List the files under /var/log with their modification times, sort them into a timeline
+        and record the ten most recent entries in order.
+    - hosts: [jump-box]
+      action: Mark each recorded effect as expected behaviour or as a sign of tampering, with one
+        sentence of reason for each.
+  refs:
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 1
+    pass_threshold: 70
+    questions:
+    - question: A file's Change time sits hours after its Modify time, and the file's contents match a
+        known-good copy byte for byte. What most likely happened?
+      options:
+      - A) The file was read once and never altered
+      - B) Metadata such as its permissions changed after the last content write
+      - C) The system clock drifted backwards during the write
+      - D) The filesystem journal replayed an old block
+      answer: B
+    - question: Under the Linux relatime policy, on which occasion is a file's access time updated?
+      options:
+      - A) On every read of the file, without exception
+      - B) Never again, once the file is created and written to stable storage
+      - C) Only when older than the change time or a day old
+      - D) Only at the moment the file is deleted
+      answer: C
+    - question: A Student must show when a file first appeared on an ext4 filesystem. Which stat field
+        gives the closest answer?
+      options:
+      - A) Birth
+      - B) Modify
+      - C) Change
+      - D) Access
+      answer: A
+    - question: An intruder backdates a staged file's Modify time with a touch command. Which timestamp
+        on the same inode still shows the moment of the tampering?
+      options:
+      - A) Access time, because reading the file is unavoidable
+      - B) Modify time, because the contents also changed
+      - C) The inode number, which the command rewrites
+      - D) Change time, which the command cannot set to a past value
+      answer: D
+    - question: 'Before examining timestamps on a seized disk, the analyst first images it and mounts
+        the image read-only. The reason is that:'
+      options:
+      - A) A write-enabled image compresses the timestamps it holds
+      - B) Read-only mounts make the timeline sort run faster
+      - C) Every mount or read can alter the very timestamps under examination
+      - D) Time zone settings reset on any writable mount
+      answer: C
+- ordinal: 2
+  title: Logs
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Extract authentication events from Linux log sources and place them in order
+  - Distinguish a routine session from one that warrants review by source, account and outcome
+  - Explain what rotation and off-host forwarding mean for the survival of log evidence
+  topics:
+  - 'The journal, the authentication log and syslog: what each records and who may read it.'
+  - 'Wtmp, btmp and lastlog: session records and the last and lastlog views of them.'
+  - Log rotation, compression and retention on the host.
+  - Forwarding logs off the host and why a remote copy defeats local tampering.
+  lab: >-
+    Lab: On the jump-box of the small-enterprise range, recover the host's recent sign-in history from
+    the journal and the session records and judge how well each source would survive tampering.
+    Evidence: the time zone; the sign-in records from the session database with account, source address
+    and time; the count of failed password records in the journal with two example lines; the date of
+    the oldest sign-in record the journal still holds; and the most recent sign-in time per account
+    from lastlog. Pass: each list complete and in time order; each count matches the source; each
+    finding marked routine or needs-review with a one-sentence reason.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH and record the start time and the host's time zone.
+    - hosts: [jump-box]
+      action: Read the session database with last and record each sign-in with its account, source
+        address and time, in order.
+    - hosts: [jump-box]
+      action: Search the journal with journalctl for failed password records and record the total
+        count plus two example lines with their timestamps.
+    - hosts: [jump-box]
+      action: Find the oldest sign-in record the journal still holds and record its date, then note
+        the retention window the journal covers.
+    - hosts: [jump-box]
+      action: Read lastlog and record the most recent sign-in time for each account that has one.
+    - hosts: [jump-box]
+      action: Mark each recorded item routine or needs-review with one sentence of reason, and state
+        which of the sources an attacker with root could alter and which a forwarded copy protects.
+  refs:
+  - nist-sp-800-92
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 2
+    pass_threshold: 70
+    questions:
+    - question: An analyst needs every SSH authentication attempt from the past month on a host whose
+        logs rotate weekly. Where does the complete set live?
+      options:
+      - A) Only in the live authentication log
+      - B) In the wtmp session database
+      - C) In lastlog, one attempt per account
+      - D) In the live log plus its rotated, compressed files
+      answer: D
+    - question: The output of last on a compromised host lists prior sign-ins. Which file holds those
+        records?
+      options:
+      - A) wtmp
+      - B) btmp
+      - C) lastlog
+      - D) The kernel ring buffer
+      answer: A
+    - question: What does forwarding authentication logs off the host to a separate log server
+        primarily protect?
+      options:
+      - A) Disk space on the monitored host
+      - B) The records against deletion or edits on the host itself
+      - C) The network path from replay attacks
+      - D) The log parser from schema drift
+      answer: B
+    - question: 'A log shows a burst of failed password records from one external address, then an
+        accepted sign-in from the same address. The best finding is:'
+      options:
+      - A) A service restart, recorded and closed
+      - B) Routine noise that the analyst deletes
+      - C) An event worth review, since failures before success can indicate guessed credentials
+      - D) Proof that the kernel has been compromised
+      answer: C
+    - question: Which record answers, for every account on a host, the time of that account's most
+        recent sign-in?
+      options:
+      - A) lastlog
+      - B) wtmp
+      - C) The firewall session table
+      - D) The DHCP lease file
+      answer: A
+- ordinal: 3
+  title: Cron and Persistence Hunting
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Enumerate scheduled jobs and startup hooks on a compromised Linux host
+  - Distinguish an administrator's scheduled job from attacker persistence by ownership and target
+  - Select the evidence sources that show persistence surviving a reboot
+  topics:
+  - 'Cron: user crontabs, /etc/cron.d and the periodic directories, and who owns each entry.'
+  - Systemd timer units as the other recurring scheduler on a modern distribution.
+  - Shell startup files and the authorized_keys file as durable access for an account.
+  - 'A hunting method: enumerate every location, compare each item against a known-good baseline,
+    record deltas.'
+  lab: >-
+    Lab: On the jump-box of the small-enterprise range, hunt for persistence by enumerating every
+    scheduled and startup location and judging each item. Evidence: every crontab and /etc/cron.d
+    entry with its schedule, owner and command; every systemd timer with its schedule; the shell
+    startup file entries and the authorized_keys entries for the analyst account, with the
+    modification times of those files; a delta against the baseline notes; and one additional
+    persistence location outside those five that an attacker could use, with a one-sentence
+    reason. Pass: all five locations enumerated; each item marked expected or needs-review with
+    a one-sentence reason; any needs-review item recorded with the evidence that put it there;
+    one additional location named with a one-sentence reason it is usable.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the start time in the lab
+        notes.
+    - hosts: [jump-box]
+      action: List the analyst account's crontab and the files under /etc/cron.d and the periodic
+        directories, and record each job with its schedule, owner and command.
+    - hosts: [jump-box]
+      action: List the systemd timers with their schedules and record each one with its next run time.
+    - hosts: [jump-box]
+      action: Read the shell startup files and the authorized_keys file in the analyst account's home
+        directory, and record each entry with the file's modification time.
+    - hosts: [jump-box]
+      action: Compare every recorded item against the baseline notes from provisioning and record
+        each delta found.
+    - hosts: [jump-box]
+      action: Mark each item expected or needs-review with one sentence of reason, and name one
+        additional persistence location an attacker could use that the enumeration did not cover,
+        with a one-sentence reason.
+  refs:
+  - mitre-attack
+  - nist-sp-800-83r1
+  quiz:
+    title: Quiz 3
+    pass_threshold: 70
+    questions:
+    - question: 'Malware on a compromised server resumes on its own after a reboot, with nobody signing
+        in. In forensics vocabulary, this capability is:'
+      options:
+      - A) Privilege escalation
+      - B) Lateral movement
+      - C) Persistence
+      - D) Collection
+      answer: C
+    - question: Besides cron, which mechanism on a modern distribution schedules recurring jobs and
+        belongs in every persistence hunt?
+      options:
+      - A) The resolv.conf file
+      - B) The motd banner
+      - C) The kernel ring buffer
+      - D) A systemd timer unit
+      answer: D
+    - question: 'A crontab entry runs a script out of world-writable temporary storage every ten
+        minutes and was added long after provisioning. The best finding is:'
+      options:
+      - A) Routine maintenance by the platform
+      - B) An item needing review, since jobs out of temporary storage are unusual
+      - C) Proof that data left the network
+      - D) A logging error on the scheduler
+      answer: B
+    - question: Which artefact lists the public keys that grant sign-in to an account without its
+        password?
+      options:
+      - A) The account's authorized_keys file
+      - B) /var/log/lastlog
+      - C) The hostname file
+      - D) The shell history file
+      answer: A
+    - question: A persistence hunt on one compromised host is most defensible when it takes which
+        approach?
+      options:
+      - A) Deletes anything unfamiliar as soon as it appears
+      - B) Enumerates every scheduled and startup location, comparing each item against a baseline
+      - C) Reads only the newest log file on the host
+      - D) Trusts the file names the items carry
+      answer: B
+- ordinal: 4
+  title: Memory Capture on Linux
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Verify a supplied memory image with a cryptographic hash before any analysis begins
+  - Interpret process listing and shell history recovered from a memory image
+  - Justify capturing memory before the host loses power, by reference to volatile data
+  topics:
+  - 'Volatile data and the order of acquisition: memory before disk, with reasons.'
+  - Capture on a live Linux host and why the method itself must be recorded.
+  - Hashing the image and recording tool versions for a reproducible record.
+  - Recovering process lists and shell history from an image with Volatility 3.
+  lab: >-
+    Lab: On the small-enterprise range, analyse a memory image captured earlier from jump-box; the
+    instructor supplies the image and the Volatility 3 installation. Evidence: the image's hash; the
+    process list with each process name and start time; the shell history lines recovered from
+    memory; and the tool version used. Pass: the hash recorded and matches the value the instructor
+    holds; the process list and history lines complete as the image shows them; each recovered item
+    marked expected or needs-review with a one-sentence reason.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal, record the start time and confirm the
+        image file the instructor placed is present with its size.
+    - hosts: [jump-box]
+      action: Hash the image file with the hash utility and record the digest and the exact command
+        used.
+    - hosts: [jump-box]
+      action: Run the Volatility 3 process listing against the image and record each process name with
+        its start time.
+    - hosts: [jump-box]
+      action: Run the shell history recovery against the image and record each command line the image
+        yields, in recovery order.
+    - hosts: [jump-box]
+      action: Record the Volatility 3 version and the exact arguments used, so the run can be repeated.
+    - hosts: [jump-box]
+      action: Mark each recovered item expected or needs-review with one sentence of reason, and state
+        whether the image alone confirms that a given program ran.
+  refs:
+  - volatility3
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 4
+    pass_threshold: 70
+    questions:
+    - question: Why does an analyst capture memory from a suspect host before the host loses power?
+      options:
+      - A) Memory contents vanish at power-off, so they must be taken first
+      - B) Disk evidence is inadmissible in every hearing without it
+      - C) Memory images are always smaller than disk images
+      - D) The operating system refuses to start again after imaging
+      answer: A
+    - question: 'An analyst records a cryptographic hash of a memory image immediately after its
+        capture. The hash primarily:'
+      options:
+      - A) Speeds up the later analysis of the image
+      - B) Lets another analyst confirm the image is unchanged since capture
+      - C) Compresses the image for storage
+      - D) Encrypts the image in transit
+      answer: B
+    - question: Which Volatility 3 output most directly shows the commands someone typed in a shell?
+      options:
+      - A) A network connection listing recovered from the image
+      - B) The disk partition table
+      - C) A file listing of the image
+      - D) The shell history recovered from memory
+      answer: D
+    - question: Capturing memory from a running Linux host necessarily has which side effect on the
+        data?
+      options:
+      - A) Begins only after the host is shut down
+      - B) Corrupts the disk beyond recovery
+      - C) Alters some of the memory it captures, so the method is recorded
+      - D) Cannot be done on any Linux distribution
+      answer: C
+    - question: Which memory artefact best corroborates that a program ran, even though its file has
+        been deleted from the disk?
+      options:
+      - A) The total size of the image
+      - B) The process entry recovered from memory
+      - C) The swap partition's identifier, as kept by the running kernel
+      - D) The boot menu order
+      answer: B
+- ordinal: 5
+  title: Timeline Correlation
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Merge timestamped entries from log and filesystem sources into one chronology
+  - Normalise the time zones of artefacts from different sources before comparing them
+  - Locate the earliest supporting entry for a finding and mark it in the chronology
+  topics:
+  - Why separate artefact lists mislead without a common clock and a common format.
+  - Normalising sources such as journald and application logs to one time zone and format.
+  - Correlating a log entry with the file activity it explains, and recording the link.
+  - 'Scoping a chronology: the sources used, the time window and the known gaps.'
+  lab: >-
+    Lab: On the jump-box of the small-enterprise range, build one chronology out of journal entries and
+    file timestamps and mark the earliest entry that supports a sign-in finding. Evidence: the host's
+    time zone; three sign-in entries from the journal with time, account and source
+    address; the stat timestamps of the session record file and the shell history file; one merged,
+    ordered chronology; and the entry marked as earliest supporting evidence. Pass: all source values
+    recorded with their original time zones; the chronology in one stated time zone and format; the
+    earliest supporting entry marked with a one-sentence reason; one thing the chronology cannot show
+    stated.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the start time and the host's
+        time zone.
+    - hosts: [jump-box]
+      action: Select three sign-in entries in the journal and record each with its time,
+        account and source address, exactly as the journal shows them.
+    - hosts: [jump-box]
+      action: Run stat on the session record file that last reads and on the shell history file and
+        record the modification and change times of each.
+    - hosts: [jump-box]
+      action: Merge the recorded entries into one chronology, normalised to the host's time zone and
+        one stated format, and record it in order.
+    - hosts: [jump-box]
+      action: Mark the earliest entry that supports the sign-in finding with one sentence of reason,
+        and record one question the chronology cannot answer.
+  refs:
+  - nist-sp-800-92
+  - mitre-attack
+  quiz:
+    title: Quiz 5
+    pass_threshold: 70
+    questions:
+    - question: 'A log records an action at 02:10 and a file''s modification time reads 22:10 the evening
+        before. Both describe one action. The first step is to:'
+      options:
+      - A) Discard the log entry as corrupt
+      - B) Treat the two values as two separate events in the record
+      - C) Trust the file value, since files do not lie
+      - D) Normalise both values to one time zone before comparing
+      answer: D
+    - question: A merged chronology adds value over separate artefact lists because of which
+        property?
+      options:
+      - A) Increases the volume of log data kept
+      - B) Removes the need to keep any disk evidence
+      - C) Links entries across sources into one sequence of events
+      - D) Hides the routine entries from the record
+      answer: C
+    - question: While scoping an intrusion, why does the analyst search for the earliest supporting
+        entry?
+      options:
+      - A) The first entry bounds when the activity began, which frames the scope
+      - B) Earlier entries always carry the highest severity
+      - C) The earliest entry names the adversary responsible
+      - D) Rotation destroys later entries first
+      answer: A
+    - question: A merged chronology of log entries and file times cannot show which of these things?
+      options:
+      - A) The whole order in which the events happened, first to last
+      - B) The intent of the person or program behind the events
+      - C) The time stamps of the entries
+      - D) The file names the events touched
+      answer: B
+    - question: 'Journald records coordinated universal time while an old application log records local
+        time. After normalising, the analyst records:'
+      options:
+      - A) Only the local-time values, as the team prefers
+      - B) Only the coordinated universal time values
+      - C) The average of the two values, as an estimate
+      - D) Both original values and the normalised values, with the rule used
+      answer: D
+- ordinal: 6
+  title: Packaging Findings for Handoff
+  content_type: reading
+  duration_minutes: 40
+  is_required: true
+  pass_threshold: 70
+  objectives:
+  - Write a finding note that keeps observation, evidence and interpretation apart
+  - Package artefacts with hashes and tool versions so another analyst can reproduce the work
+  - Review a draft handoff for unsupported claims and missing reproduction steps
+  topics:
+  - 'Finding notes: observation, evidence, source artefact and interpretation kept distinct.'
+  - 'Manifests: file names, SHA-256 hashes, sizes and capture times.'
+  - Tool versions, exact commands and environment details in the methods record.
+  - 'Reproduction: enough detail for an independent analyst to reach the same output.'
+  lab: >-
+    Lab: On the jump-box of the small-enterprise range, package the analysis done in this course so
+    another analyst can reproduce it. Evidence: a package directory holding a timeline extract, a log
+    extract, a manifest, a methods record and one finding note. Pass: the manifest lists every file
+    with name, size, SHA-256 hash and capture time; the methods record states the tool versions and
+    the exact commands; each sentence of the finding note is marked observation or interpretation; a
+    reviewer following the methods record alone reaches the same extracts.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal, record the start time and create a working
+        directory for the package.
+    - hosts: [jump-box]
+      action: Produce a timeline extract of the ten most recently modified files under /var/log and a
+        sign-in extract of the latest session records, and save each as a file in the directory.
+    - hosts: [jump-box]
+      action: Hash every file in the directory and record the name, size, SHA-256 hash and capture
+        time of each in a manifest file.
+    - hosts: [jump-box]
+      action: Record in a methods file the tool versions and the exact commands that produced each
+        extract.
+    - hosts: [jump-box]
+      action: Write one finding note from the extracts, marking every sentence observation or
+        interpretation, and list the reproduction steps a receiving analyst would follow.
+  refs:
+  - nist-sp-800-61r3
+  - nist-sp-800-86
+  quiz:
+    title: Quiz 6
+    pass_threshold: 70
+    questions:
+    - question: A draft note reads that an intruder returned at 03:00 with an authorised key. Which
+        part is interpretation rather than observation?
+      options:
+      - A) Intruder, since the record shows a sign-in, not who made it
+      - B) The time, since clocks are never trustworthy
+      - C) The key reference, since keys are always renamed
+      - D) Nothing, because the whole line is observed fact
+      answer: A
+    - question: A manifest prepared for handed-over evidence should record which details for each
+        file?
+      options:
+      - A) A colour-coded priority for the receiving team
+      - B) The analyst's opinion of its importance
+      - C) Only the file name and its folder
+      - D) The name, hash, size and capture time
+      answer: D
+    - question: 'Another analyst hashes a received artefact and the digest matches the manifest. This
+        shows that:'
+      options:
+      - A) The artefact contains no malware
+      - B) The artefact is complete for every analytic purpose the team may have
+      - C) The artefact is byte for byte what the first analyst recorded
+      - D) The artefact's timestamps are accurate
+      answer: C
+    - question: Which line in a handoff lets an independent analyst reproduce the recorded output?
+      options:
+      - A) A screenshot of the terminal without its command
+      - B) The command, tool version and input file that produced each output
+      - C) A summary of the conclusions, with the sources omitted
+      - D) A verbal debrief arranged for the receiving analyst
+      answer: B
+    - question: Reviewing a draft handoff for a finding, which sentence must be cut or re-labelled?
+      options:
+      - A) The adversary was a state actor, where the evidence shows one sign-in
+      - B) The log records a sign-in at 02:14 from the management network
+      - C) The file hash matches the value in the manifest
+      - D) The image was captured at 01:55 and hashed at 01:58
+      answer: A

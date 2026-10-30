@@ -1,0 +1,165 @@
+course_code: C546
+audience: staff_only
+overview: 'Cloud Logging & Detection is a six-module practical course of six 50-minute sessions (300 minutes,
+  5 hours) on the cloud-security range. Each module has the same split: about 10 minutes teaching, 30 minutes
+  lab on the range and 10 minutes quiz, passed at 70 percent. The course runs the cloud-security template
+  throughout; module 6 adds the cloud-breach scenario as the capstone incident. Say ''student'' throughout and
+  keep every description defensive and observable.'
+timings:
+- module: 1
+  minutes: 50
+  plan: '10 teach (record structure, management versus data events), 30 lab on localstack01, jump01 and
+    cloud-siem01, 10 quiz and debrief'
+- module: 2
+  minutes: 50
+  plan: '10 teach (delivery path, retention, tamper signals), 30 lab mapping the pipeline end to end, 10 quiz
+    and debrief'
+- module: 3
+  minutes: 50
+  plan: '10 teach (behaviour over syntax, tactics and techniques), 30 lab mapping a chain on localstack01,
+    10 quiz and debrief'
+- module: 4
+  minutes: 50
+  plan: '10 teach (query structure, baselining), 30 lab writing and tuning three queries on cloud-siem01,
+    10 quiz and debrief'
+- module: 5
+  minutes: 50
+  plan: '10 teach (aggregation designs, correlation), 30 lab on prowler01 and cloud-siem01 across accounts,
+    10 quiz and debrief'
+- module: 6
+  minutes: 50
+  plan: '10 teach (incident walkthrough method), 30 lab on the cloud-breach scenario data, 10 quiz and
+    debrief'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 A: data events are recorded separately and were not enabled; B misreads a permission problem into a
+    logging gap, C invents a root-only rule and D confuses encryption with logging. Q2 C (identity and resource
+    fields): those two fields name the actor and the target; A, B and D describe metadata that never attributes
+    action to principal. Q3 D (policy change, console sign-in): both are control-plane management events; A and
+    C are data events and B mixes the classes. Q4 B (write events change state): each write needs an owner and a
+    check; A mistakes size for risk, C is false because read records carry identities and D treats every write
+    as incident. Q5 A (record validation): it is the only setting aimed at silent alteration; B aids storage, C
+    removes the separation that protects records and D reduces coverage.'
+- module: 2
+  notes: 'Q1 B (service, delivery target, searchable store, query): that is the observed order on the range; A
+    and C reverse the flow and D invents an analyst workstation stage. Q2 D (evasion step needing escalation): a
+    deleted trail with a silence gap is not rotation, expiry or a recoverable collector failure; A, B and C each
+    describe a process that leaves records rather than removing them. Q3 C (retain beyond the longest likely
+    investigation window): the need is six weeks; A, B and D all cut the record below that need. Q4 C (alert on
+    trail and destination changes): it makes logging changes visible events; A protects content, not visibility,
+    B concentrates rather than monitors the privilege and D adds capacity, not oversight. Q5 B (normalization):
+    it maps per-source field names to common ones; compression, network speed and retention never change names.'
+- module: 3
+  notes: 'Q1 C (what the adversary gains by holding that key): mapping is by behaviour served, not syntax; A
+    mistakes vendor naming for intent, B and D record trivia with no tactical meaning. Q2 A (escalation, then
+    persistence): the policy attachment raises privilege and the new user keeps access; B through D misorder or
+    misname those goals. Q3 D (defence evasion): disabling logging only helps an adversary already inside; A, B
+    and C are goals the logging change does not serve. Q4 B (outside the recorded baseline): the judgement rests
+    on the identity''s normal cadence; A overstates every policy change as malicious, C is false and D is a
+    detail without tactical weight. Q5 D (collection staged after escalation): enumeration, then administrator
+    rights, then bulk copies is a classic escalation-to-collection chain; A, B and C each explain away the
+    administrator step.'
+- module: 4
+  notes: 'Q1 D (error or result field): only the outcome field separates attempted from successful actions; A, B
+    and C are context, not outcome. Q2 B (policy attachments granting administrator rights): it is the identity
+    change that owns the account; A, C and D are volume counts with no privilege meaning. Q3 C (threshold from
+    the recorded baseline): the noise comes from a threshold set with no evidence; A loses the detection, B
+    blinds the alert and D delays rather than fixes. Q4 A (fires on stated behaviour, rarely on benign work):
+    that is precision in operations; B, C and D describe rule failure modes, not quality. Q5 C (matched
+    record''s identity, action, resource and time): those fields let a triage analyst judge intent immediately;
+    A and B are summaries without record content and D is provenance of the rule, not of the event.'
+- module: 5
+  notes: 'Q1 B (one story split across expiring accounts): differing retention destroys the shared timeline; A is
+    backwards, C and D describe problems split retention does not cause. Q2 C (dedicated aggregation account):
+    cross-account delivery into one searchable place is the design; A keeps summaries outside the records, B
+    narrows coverage and D does not scale or preserve evidence. Q3 A (identity and source address): those fields
+    follow the principal across accounts; B through D are per-account context that never joins events. Q4 D
+    (whether stored objects were read or copied): data events are the only records of object access; A, B and C
+    are all answerable from management events. Q5 A (coverage assessment against expected sources): comparing
+    expected with received is the only check that finds silent gaps; B, C and D each accept a signal that
+    survives missing sources.'
+- module: 6
+  notes: 'Q1 C (timeline of control-plane activity): sorted records with identity, action and outcome per line are
+    the timeline; A, B and D are other artefacts with no reconstruction value. Q2 D (disable the compromised key
+    and created identities): it stops the access actually observed; A touches storage, B waits on an attacker and
+    C destroys evidence. Q3 B (persistence planted in the account): an unowned scheduled function created during
+    the intrusion is a persistence mechanism; A reduces it to money, C assumes a benign owner that does not exist
+    and D confuses event classes. Q4 A (buckets read by the compromised identity at recorded times): every claim
+    points at records; B infers safety from silence, C predicts intent the records do not show and D overstates
+    scope without per-object evidence. Q5 B (matched records showing copy actions and destination): an
+    exfiltration claim needs the copy records themselves; A is opinion, C counts alerts not copies and D names a
+    destination without the actions or times that tie it to the account.'
+lab_setup:
+- module: 1
+  setup: 'Range: cloud-security. Ensure the trail on localstack01 records management events and its cloudtrail_sim
+    service holds recent records; expect students to find write events with acting identity dev-deploy or admin,
+    source addresses from the internal range, and no data-event records for bucket reads unless data logging is
+    enabled. Give students the cloud command-line profile on jump01 before the lab.'
+- module: 2
+  setup: 'Range: cloud-security. The trail''s delivery target must point at the ingest that feeds cloudtrail_ingest
+    on cloud-siem01; expect the delivered records in the OpenSearch index within minutes, retention as configured
+    on the index, and at least one historical configuration event touching logging in the trail data for the
+    tamper search.'
+- module: 3
+  setup: 'Range: cloud-security. Seed enough history that the deployment identity''s normal cadence is visible:
+    expect weekday automation events and a small set of policy or key events that fall outside it. The mapping
+    reference (tactics and techniques) should be available to students; no scenario injects are needed this
+    module.'
+- module: 4
+  setup: 'Range: cloud-security. Confirm the audit index on cloud-siem01 is queryable and holds key creations,
+    console sign-ins, policy attachments and logging changes; expect baseline counts dominated by routine key
+    creations and sign-ins, with policy attachments and logging changes rare enough that a threshold is
+    meaningful. The baselines are counted on the delivered records in that index, on cloud-siem01 itself, so each
+    threshold has evidence at the same target the queries run against; raw counts read on localstack01 can differ
+    through delivery delay and normalization and are not the tuning evidence.'
+- module: 5
+  setup: 'Range: cloud-security. Prowler and ScoutSuite on prowler01 must reach the simulated accounts; expect the
+    coverage report to list the accounts and their delivery status, with at least one account showing a gap so
+    students have a real finding. The same deployment identity should appear in records from more than one source
+    for the correlation work.'
+- module: 6
+  setup: 'Range: cloud-security with the cloud-breach scenario loaded. Expected timeline anchors: use of the
+    dev-deploy access key from 203.0.113.66, GetCallerIdentity as the first recorded attacker event, the
+    AdministratorAccess attachment, the backdoor function and its nightly rule, bulk object copies toward the
+    attacker bucket, the StopLogging and DeleteTrail events at 01:00, and the persistence events at 01:10 that
+    occur after logging stopped (a new access key for admin, a new user svc-monitor with the administrator policy
+    attached). Note: the scenario''s own text labels that last phase as persistence before logging stops, but its
+    timestamp follows the trail deletion, so the StopLogging anchor is not the final event; teach the order the
+    timestamps give. The phase-10 events at 01:10 will be absent from the delivered records on cloud-siem01;
+    students should find them only in the recorded incident data, and that absence is the module 6 step 4 finding.
+    Confirm the records are visible both raw on localstack01 and delivered on cloud-siem01 before students start.'
+common_faults:
+- module: 1
+  fault: Students read the event name alone and state what happened, skipping identity, source address and outcome.
+  remedy: Make them fill the six-field template per record on the board before they write their own reconstruction;
+    the outcome field is the one most often dropped and it changes the judgement.
+- module: 2
+  fault: The delivery path is drawn as service-to-platform with the delivery target and collector missing.
+  remedy: Have them trace one record by its identifiers across each hop on the range; a stage that cannot show the
+    record passing through it is not on the path.
+- module: 3
+  fault: Events are mapped by the call name instead of the behaviour served, so every key creation is labelled the
+    same tactic.
+  remedy: Ask of each record 'what does the actor hold or reach afterwards that they did not before?'; the answer
+    names the tactic, not the API name.
+- module: 4
+  fault: Thresholds are chosen as round numbers with no reference to the recorded baseline.
+  remedy: Refuse any threshold that does not cite the count observed in the lab window; make students show the
+    benign events their rule would also fire on.
+- module: 5
+  fault: The coverage check is skipped once records are visible in the search platform.
+  remedy: Point at the account with the gap and ask which question yesterday's incident would have left unanswered;
+    visibility of some records is not evidence of coverage of all sources.
+- module: 6
+  fault: Containment starts with rotating credentials of the platform rather than disabling the observed access.
+  remedy: Anchor on the timeline; the first step must stop the access the records show, then widen. Have students
+    cite the record that justifies each containment step.
+- module: 6
+  fault: Students expect every attacker event in the delivered records and treat the missing phase-10 persistence
+    events (after 01:00) as an error in their own timeline.
+  remedy: Point at the StopLogging and DeleteTrail records at 01:00; events with later times exist only in the
+    recorded incident data, and their absence from cloud-siem01 is the gap step 4 asks them to name, not a mistake.
+- module: 6
+  fault: The scope statement asserts impact ('all data was taken') the records do not support.
+  remedy: Strike any claim without a record citation and replace it with what the records show plus an explicit
+    confidence statement.
