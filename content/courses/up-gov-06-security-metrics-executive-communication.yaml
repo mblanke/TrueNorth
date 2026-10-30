@@ -8,7 +8,7 @@ provenance: unsourced
 status: draft
 is_published: false
 readiness: draft
-prerequisites: [C505, C502]
+prerequisites: [C505]
 source:
   origin: TAZ upskilling catalogue v1 (2026-10-28)
   notes:

@@ -40,9 +40,9 @@ def _all_docs():
 
 
 def _is_upskilling(doc):
-    """C500 and up: the self-paced upskilling catalogue, outside the DP1/DP2 programme."""
+    """C500-C599: the self-paced upskilling catalogue, outside the DP1/DP2 programme."""
     digits = "".join(ch for ch in str(doc["course_code"]) if ch.isdigit())
-    return int(digits) >= 500 and not str(doc["course_code"]).upper().startswith("RMC")
+    return 500 <= int(digits) < 600 and not str(doc["course_code"]).upper().startswith("RMC")
 
 
 def _library():

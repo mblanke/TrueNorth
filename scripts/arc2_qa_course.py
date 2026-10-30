@@ -220,9 +220,9 @@ def adapt(
 
 
 def is_upskilling(code: str) -> bool:
-    """C500 and up: the self-paced upskilling catalogue, outside the DP1/DP2 programme."""
+    """C500-C599: the self-paced upskilling catalogue, outside the DP1/DP2 programme."""
     digits = "".join(ch for ch in str(code) if ch.isdigit())
-    return bool(digits) and int(digits) >= 500 and not str(code).upper().startswith("RMC")
+    return bool(digits) and 500 <= int(digits) < 600 and not str(code).upper().startswith("RMC")
 
 
 def run_arc2(

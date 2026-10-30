@@ -49,6 +49,13 @@ NAMING_EXCEPTIONS = {"iot-security-foundations.yaml": "C304"}
 NEAR_DUPLICATE = 0.25
 
 
+def _is_upskilling(code: str) -> bool:
+    """C500-C599: the self-paced upskilling catalogue, outside the DP1/DP2 programme, so it
+    has no catalogue row and no term."""
+    digits = "".join(ch for ch in str(code) if ch.isdigit())
+    return bool(digits) and 500 <= int(digits) < 600 and not str(code).upper().startswith("RMC")
+
+
 def _load(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
@@ -73,7 +80,7 @@ def test_the_schema_is_a_valid_draft7_schema():
 
 
 def test_the_corpus_is_not_empty():
-    assert len(COURSE_FILES) == 44
+    assert len(COURSE_FILES) == 44 + 60  # the programme, plus the C501-C560 upskilling set
 
 
 @pytest.mark.parametrize("path", COURSE_FILES, ids=lambda p: p.name)
@@ -112,6 +119,10 @@ def test_file_name_and_title_follow_the_catalogue(path):
     doc = _load(path)
     code = doc["course_code"]
     catalogue = _catalogue()
+    if _is_upskilling(code):
+        assert code not in catalogue, f"{path.name}: {code} is upskilling but has a catalogue row"
+        assert path.name.startswith(re.sub(r"\s+", "-", code.lower()) + "-") or path.name.startswith("up-"), path.name
+        return
     assert code in catalogue, f"{path.name}: {code} is not in the catalogue"
     if path.name in NAMING_EXCEPTIONS:
         assert NAMING_EXCEPTIONS[path.name] == code
@@ -138,6 +149,12 @@ def test_declared_prerequisites_are_catalogue_courses_from_an_earlier_term(path)
     doc = _load(path)
     terms = _terms()
     when = terms.get(doc["course_code"])
+    if _is_upskilling(doc["course_code"]):
+        # no term to compare: a prerequisite must still be a real course, never the course itself
+        known = terms.keys() | {_load(p)["course_code"] for p in COURSE_FILES}
+        for code in doc.get("prerequisites") or []:
+            assert code in known and code != doc["course_code"], f"{path.name}: prerequisite {code} is not a course"
+        return
     for code in doc.get("prerequisites") or []:
         assert code in terms, f"{path.name}: prerequisite {code} is not in the catalogue"
         assert when is not None and terms[code] < when, (

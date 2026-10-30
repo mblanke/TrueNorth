@@ -10,7 +10,6 @@ is_published: false
 readiness: draft
 prerequisites:
 - C539
-- C210
 source:
   origin: TAZ upskilling catalogue v1 (2026-10-28)
   notes:

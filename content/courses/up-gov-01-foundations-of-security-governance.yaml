@@ -9,7 +9,6 @@ status: draft
 is_published: false
 readiness: draft
 prerequisites:
-- C105
 - C110
 source:
   origin: TAZ upskilling catalogue v1 (2026-10-28)
