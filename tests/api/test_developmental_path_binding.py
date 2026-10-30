@@ -14,8 +14,10 @@ import uuid
 
 import pytest
 import yaml
+from _spine_snapshot import restore
 from app import course_content_ingest, programme_ingest, qsp_ingest, qsp_paths
 from app.models import Course, CourseModule, LearningPath
+
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 COURSE_DIR = ROOT / "content/courses"
@@ -43,14 +45,21 @@ def _import_catalogues(db):
     programme_ingest.import_programme(db, SPECIALIST.read_text(encoding="utf-8"))
 
 
+def _import_courses(db):
+    for f in sorted(COURSE_DIR.glob("*.yaml")):
+        course_content_ingest.import_course_content(db, f.read_text(encoding="utf-8"))
+
+
 @pytest.fixture
 def spine(db_session):
     """Ingested QSP spine + programme catalogue + all authored content."""
-    qsp_ingest.import_crosswalk(db_session, CROSSWALK.read_text(encoding="utf-8"))
-    _import_catalogues(db_session)
-    for f in sorted(COURSE_DIR.glob("*.yaml")):
-        course_content_ingest.import_course_content(db_session, f.read_text(encoding="utf-8"))
-    return db_session
+
+    def build(db):
+        qsp_ingest.import_crosswalk(db, CROSSWALK.read_text(encoding="utf-8"))
+        _import_catalogues(db)
+        _import_courses(db)
+
+    return restore(db_session, "spine", build)
 
 
 def _course_doc(name):
@@ -231,12 +240,14 @@ def spine_paths_first(db_session):
     This is the order a real instance hits: the stubs already hold every objective by
     the time the courses land. `_claim_po` is what makes authored content win.
     """
-    qsp_ingest.import_crosswalk(db_session, CROSSWALK.read_text(encoding="utf-8"))
-    _import_catalogues(db_session)
-    qsp_paths.generate_learning_paths(db_session)
-    for f in sorted(COURSE_DIR.glob("*.yaml")):
-        course_content_ingest.import_course_content(db_session, f.read_text(encoding="utf-8"))
-    return db_session
+
+    def build(db):
+        qsp_ingest.import_crosswalk(db, CROSSWALK.read_text(encoding="utf-8"))
+        _import_catalogues(db)
+        qsp_paths.generate_learning_paths(db)
+        _import_courses(db)
+
+    return restore(db_session, "spine_paths_first", build)
 
 
 @pytest.fixture
@@ -247,12 +258,14 @@ def spine_paths_after(db_session):
     PO an authored module already claimed. Every resolver takes the lowest ordinal, so
     the stub silently shadowed the authored module and real coursework stopped counting.
     """
-    qsp_ingest.import_crosswalk(db_session, CROSSWALK.read_text(encoding="utf-8"))
-    _import_catalogues(db_session)
-    for f in sorted(COURSE_DIR.glob("*.yaml")):
-        course_content_ingest.import_course_content(db_session, f.read_text(encoding="utf-8"))
-    qsp_paths.generate_learning_paths(db_session)
-    return db_session
+
+    def build(db):
+        qsp_ingest.import_crosswalk(db, CROSSWALK.read_text(encoding="utf-8"))
+        _import_catalogues(db)
+        _import_courses(db)
+        qsp_paths.generate_learning_paths(db)
+
+    return restore(db_session, "spine_paths_after", build)
 
 
 def _delivering(db, qsp_code, po_code):
@@ -436,17 +449,19 @@ def spine_placed(db_session):
     onto each qualification. Without it every qualification sits at DP0 and the map has
     no columns to place anything in, so placement cannot be tested without it.
     """
-    qsp_ingest.import_crosswalk(db_session, CROSSWALK.read_text(encoding="utf-8"))
-    qsp_paths.import_competency_crosswalk(
-        db_session,
-        TAXONOMY.read_text(encoding="utf-8"),
-        COMPETENCY.read_text(encoding="utf-8"),
-    )
-    _import_catalogues(db_session)
-    for f in sorted(COURSE_DIR.glob("*.yaml")):
-        course_content_ingest.import_course_content(db_session, f.read_text(encoding="utf-8"))
-    qsp_paths.generate_learning_paths(db_session)
-    return db_session
+
+    def build(db):
+        qsp_ingest.import_crosswalk(db, CROSSWALK.read_text(encoding="utf-8"))
+        qsp_paths.import_competency_crosswalk(
+            db,
+            TAXONOMY.read_text(encoding="utf-8"),
+            COMPETENCY.read_text(encoding="utf-8"),
+        )
+        _import_catalogues(db)
+        _import_courses(db)
+        qsp_paths.generate_learning_paths(db)
+
+    return restore(db_session, "spine_placed", build)
 
 
 def _codes(courses):
