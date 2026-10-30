@@ -18,7 +18,6 @@ from _spine_snapshot import restore
 from app import course_content_ingest, programme_ingest, qsp_ingest, qsp_paths
 from app.models import Course, CourseModule, LearningPath
 
-
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 COURSE_DIR = ROOT / "content/courses"
 CATALOGUE = ROOT / "content/catalogue/cyber_operator_programme.csv"
