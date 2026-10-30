@@ -1,0 +1,176 @@
+# C403 - Capstone Implementation - instructor pack (staff only).
+# Answer keys, expected range values and lab setup live here, never in the course file.
+course_code: C403
+audience: staff_only
+overview: 'Capstone Implementation is an intermediate course of six 60-minute modules for Students in a
+  cyber-operator programme who are carrying a capstone implementation project. Each module pairs short
+  teaching with a lab on the medium-enterprise range: the Students capture a configuration baseline and
+  commit it (module 1), test one increment of allowed and denied flows (module 2), collect log evidence
+  from the siem01 log store (module 3), turn range status into a supervision pack (module 4), verify the
+  range services end to end into a traceability matrix (module 5) and have a peer reproduce a verification
+  from their instructions alone (module 6). Every lab produces recorded evidence the Student hands in, and
+  each module ends with a five-item quiz passed at 70 percent.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 C: small, described commits make a two-week-old change findable by reading history; A keeps
+    the record outside version control where no one else can search it; B tests too late to localise the
+    change; D dates files but says nothing about what changed. Q2 A: a committed baseline of versions and
+    configuration is the record a re-run can be compared against; B, C and D record effort, appearance or
+    discussion, none of which names the versions. Q3 D: a service version can drift when the deployment is
+    re-run; node names, roles and networks are fixed by the template. Q4 B: a decision record earns its
+    keep by carrying the options, the choice and the reason; A defers to authority, C and D record
+    scheduling and attendance, not the decision. Q5 C: pinning the version each component uses removes the
+    drift; A and D act on frequency, B records less.'
+- module: 2
+  notes: 'Q1 B: each increment verified against its success criteria catches the failure while the
+    increment is small; A and D lengthen testing without connecting it to the criteria; C is the practice
+    that already failed. Q2 C: the rule set decides whether the behaviour is a fault; A and B repeat the
+    test, D is irrelevant to reachability. Q3 A: record first, then compare with the written design; B
+    changes the system before the observation is understood; C discards evidence; D jumps to attribution
+    the observation does not support. Q4 D: accepted technical debt is written down with its reason and
+    the repayment trigger; A hides it, B and C leave no record. Q5 B: works but misses the criterion means
+    the increment is not done; A confuses working with finished, C blames the measurement without evidence,
+    D moves the target instead of the work.'
+- module: 3
+  notes: 'Q1 C: one saved query returning a count per host is repeatable and a reviewer can re-run it; A
+    and B produce impressions and estimates, D selects a sample day. Q2 A: an absent host is a finding
+    because the gap may be the result; B collects until the data looks right, C deletes evidence, D
+    asserts a cause the gap alone does not prove. Q3 D: finish the planned collection and report the
+    mismatch; A and C discard data, B rewrites the hypothesis to fit the data already seen. Q4 B: three of
+    eight counts matched is what the evidence shows; A overstates, C overstates in the other direction, D
+    dismisses the method without a reason. Q5 A: naming a claim the counts cannot decide, with the reason,
+    marks the real limit of the evidence; B denies the limit, C and D answer with effort and new work.'
+- module: 4
+  notes: 'Q1 D: concealed failure surfaces when the schedule can no longer absorb the repair; A, B and C
+    are the hoped-for outcomes that keep the concealment going. Q2 B: a recorded test run of two components
+    communicating is observable evidence; A is feeling, C is intention, D measures effort, not
+    integration. Q3 C: a useful supervision question names the decision and the rejected options; A wastes
+    the session, B delegates everything, D postpones. Q4 A: escalate once the schedule effect is
+    estimated, while options remain; B and C wait until options are gone, D reports it when only the
+    record can benefit. Q5 D: a documented re-scope with an evidenced estimate is the honest adaptation; A
+    and B misreport, C restarts without cause.'
+- module: 5
+  notes: 'Q1 D: a recorded connection test from a workstation to the share is the observation that verifies
+    the requirement end to end; A is paper evidence, not the running system, B tests the reverse path, C
+    mistakes a rule that permits traffic for proof that traffic flows. Q2 D: one path between one pair of
+    hosts at a time narrows the fault; A discards working code, B buries the signal, C reverses the order
+    without narrowing anything. Q3 A: no evidence entry means unverified, and the claim behind it untested;
+    B confuses importance with verification, C asserts belief, D blames the tool. Q4 C: test each
+    requirement and scope the claim to the results; A repeats the overclaim, B hides the requirements, D
+    multiplies one result into claims it does not support. Q5 B: what was tested, what was observed and
+    when the last passing run was, is the record a reviewer needs; A gives up, C and D speculate about
+    people.'
+- module: 6
+  notes: 'Q1 C: a peer repeating the verification unaided is the test the instructions claim to pass; A
+    and B measure familiarity and bulk, D is not the deliverable. Q2 B: a verbal question marks a
+    documentation gap to repair in writing; A fixes it once for one person, C blames the reader, D shrinks
+    the instructions. Q3 D: each result pointing to its recorded evidence answers the belief question; A
+    and C change presentation, B changes subject. Q4 A: record the environment and supply it; B, C and D
+    avoid the reproducibility problem instead of solving it. Q5 C: an instruction that names a value it
+    does not supply is the gap; A and D blame people, B blames the range for existing.'
+lab_setup:
+- module: 1
+  setup: 'Revert the range to its baseline. From siem01, confirm the analyst account can resolve dc01,
+    fs01, web01 and mail01 by name, that SSH to web01 and mail01 works with the ubuntu account the
+    Students are supplied, and that the fw01 administration page opens from siem01. Expected values
+    Students should find: fw01 has five rules in order (corp-to-servers allow, corp-to-dmz allow,
+    dmz-to-servers allow, logs-to-siem allow, mgmt-to-all allow).'
+- module: 2
+  setup: 'Revert the range to its baseline. Confirm a standard domain user can sign in to ws01, that the
+    file share on fs01 opens from ws01, that HTTPS to web01 and the mail service on mail01 are reachable
+    from ws01, and that the ws01-to-siem01 HTTPS connection on port 443 the lab step names, which no rule
+    allows, is refused by the default deny. Note the logs-to-siem rule (src "*", dst management) still allows every
+    zone, ws01 included, to reach siem01 on 514, 5044 and 9200, so the denied test must use a port outside
+    that set. Give the Students the standard user credentials for ws01.'
+- module: 3
+  setup: 'Revert the range to its baseline and let it run long enough to accumulate events from all zones
+    before the lab. Confirm the siem01 log store holds events from every zone in the collection window and
+    that the analyst account can query it. If a zone is intentionally quiet, note which one, since the
+    Students will report hosts with no events.'
+- module: 4
+  setup: 'Revert the range to its baseline. Decide before the lab which host, if any, will be down or
+    unreachable, so the blocker statements have real evidence to price; a fully healthy range leaves
+    Students inventing a blocker. Confirm the analyst account on siem01 can reach every other host for the
+    response checks.'
+- module: 5
+  setup: 'Revert the range to its baseline. Confirm from ws01 that the fs01 file share and HTTPS to web01
+    work, and that fw01 and dc01 events appear in the siem01 log store, since the three requirements must
+    be verifiable. Hand out the three written requirements exactly as the lab brief words them.'
+- module: 6
+  setup: 'Revert the range to its baseline. Pair the Students and confirm each pair has the file-share
+    verification steps from module 5 and that ws01 can reach fs01. Brief the peer acting as assessor to
+    follow the instructions only and to say aloud at each stall; the implementing Student must not prompt.'
+common_faults:
+- module: 1
+  fault: Students mark every baseline value "fixed by the template" because the template file lists
+    versions.
+  remedy: Re-run one value live, such as a service version on web01, and ask what would happen if the
+    image were rebuilt; the version is deployment-dependent even though it is written down.
+- module: 1
+  fault: The baseline file is edited but never committed, so there is no commit identifier in the
+    evidence.
+  remedy: Have the Student run the commit again in front of you and read the identifier back; connect it
+    to the Quiz 1 scenario of finding a two-week-old change.
+- module: 2
+  fault: Students record "works" and "blocked" with no destination or service named.
+  remedy: Require the three-part line (source, destination and service, outcome) on the board before the
+    lab starts; a line without the destination cannot be matched to a rule later.
+- module: 2
+  fault: The denied flow to siem01 is reported as a fault in the range.
+  remedy: Walk the rule set once and show that no rule allows corporate to management on the port tested,
+    so the default deny is the design working; point out that logs-to-siem (src "*") does allow every zone
+    to ship logs to siem01 on 514, 5044 and 9200, which is why the denied test must use a port outside
+    that set; tie this back to the module topic on implicit default deny.
+- module: 3
+  fault: Students widen the window or re-run until the counts look decisive.
+  remedy: Point at the fixed window they recorded in step 1 and ask whether a reviewer could repeat the
+    collection from their record; the query and window are the evidence, not the conclusion.
+- module: 3
+  fault: A host with no events in the window is reported as an empty row, not as a finding.
+  remedy: Use the Quiz 3 distinction - an absent host is a finding with a possible cause, not an empty row;
+    ask what an absent host would mean during an incident.
+- module: 4
+  fault: Progress summaries state achievements with no evidence, for example "integration is going well".
+  remedy: Ask for the recorded check behind each line, exactly as the lab brief requires; a line that
+    cannot name what was run and what it showed is rewritten before the session.
+- module: 4
+  fault: Blocker statements price the delay with no evidence, for example "this costs a week".
+  remedy: Ask what observation the days figure rests on; if none, the Student records the observation
+    first and the estimate second.
+- module: 5
+  fault: The matrix is filled with verdicts before the tests are run, from the expected results.
+  remedy: Collect the observation lines first, then let verdicts be written; a verdict with no observation
+    behind it is marked unverified by the Student's own rule.
+- module: 5
+  fault: Two failing requirements are reported as one fault with no narrowing.
+  remedy: Have the Student test one path between one pair of hosts and say aloud which requirement that
+    test speaks to; repeat until the failing interface is named.
+- module: 6
+  fault: The peer completes the walkthrough with the implementing Student prompting at every stall, and
+    the record shows no gaps.
+  remedy: Separate the pair and restart the walkthrough; prompting hides exactly the gaps the lab exists
+    to find.
+- module: 6
+  fault: Repaired steps fix the wording but still name a value only the implementer holds, such as an
+    account or path.
+  remedy: Search the final instructions for values the peer had to be told; each one either enters the
+    instructions or the step names where the instructor supplies it.

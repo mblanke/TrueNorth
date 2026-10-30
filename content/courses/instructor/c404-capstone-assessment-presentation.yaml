@@ -1,0 +1,184 @@
+# C404 - Capstone Assessment & Presentation - instructor pack (staff only).
+# Answer keys, expected range values and lab setup live here, never in the course file.
+course_code: C404
+audience: staff_only
+overview: 'Capstone Assessment & Presentation is the C404 capstone: six 60-minute modules in which Students
+  assess the medium-enterprise range, write the assessment report and defend it. The labs build one
+  deliverable across the course: Module 1 collects the evidence set, Module 2 turns it into analysis with
+  limitations, Module 3 shapes it into a briefing, Module 4 defends the central ranking in a mock viva,
+  Module 5 has Students review each other''s drafts against the live range, and Module 6 closes with a
+  structured reflection and development plan. Students hand in the evidence set, the report sections, a
+  briefing deck plan and a written reflection. Say ''Student'' throughout and keep every description
+  defensive and observable.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: the rule table alone shows what was read, not that the configuration is weak, so the claim
+    outruns the evidence; A treats any primary source as proof of the conclusion, C confuses a limitation
+    with an overclaim, D mistakes the problem for precision. Q2 A: host, command, timestamp and version
+    answer the provenance question on the spot; B discards context, C delays the answer the assessor is owed,
+    D replaces the traceable output with a summary. Q3 C: the second finding states what was observed and
+    lets the assessor verify it; A and B prefer hedged wording that cannot be checked, D keeps both, letting
+    the unsupported impression stand beside the evidence. Q4 B: the structure exists so a reader can tell
+    observation from interpretation; A denies that interpretation belongs in a report at all, C hides the
+    data, D merges them. Q5 D: the edit replaces the claim with a statement the recorded SIEM output
+    supports; A strengthens an unsupported claim, B loses the point entirely, C files it where no reader
+    looks for findings.'
+- module: 2
+  notes: 'Q1 C: reachability from workstations is expected for a web service, and the risk depends on what
+    the service holds; A reads exposure without impact, B dismisses the finding, D treats
+    interpretation as impossible without an interview. Q2 D: the limitation is the accounts and the window,
+    so only what was visible then was tested; A invents an approval requirement, B turns an absence of
+    findings into proof of security, C states a rule with no basis. Q3 A: chaining is plausible but not
+    demonstrated, so it stays only when labelled speculation; B bans forward-looking analysis, C gives it
+    finding-level confidence, D puts speculation in the results. Q4 C: comparison with published practice
+    locates agreement and shortfalls; A claims compliance the comparison cannot establish, B dismisses the
+    guidance, D denies that a lab range teaches anything. Q5 B: three findings from one afternoon indicate
+    the tested paths, not every host; A overstates coverage, C discards real evidence, D generalises beyond
+    the sample.'
+- module: 3
+  notes: 'Q1 A: the problem and why it matters, stated up front, gives both halves of the audience
+    a reason to listen; B delays the point further, C serves the engineers at the cost of everyone else,
+    D removes the frame the findings need. Q2 C: a slide should carry one point readable from the back row;
+    A swaps a chart for a data dump, B keeps the defect, D strips the evidence the briefing exists to present.
+    Q3 D: eighteen minutes in a fifteen-minute slot means three minutes cut or merged in rehearsal; A and B
+    count on luck, C assumes time the slot does not have. Q4 B: an unexplained jump usually means knowledge
+    was assumed rather than established; A blames the audience, C prescribes more depth when the gap is
+    framing, D treats a design detail as the cause. Q5 A: rehearsing aloud surfaces the rambling lines and
+    the timing, so the opening lands inside the slot; B mistakes silence for preparation, C is refuted by
+    the timed read, D confuses rehearsal with a flat delivery.'
+- module: 4
+  notes: 'Q1 D: defending a decision means naming the alternative and the reason for the choice; A invents
+    inevitability, B appeals to authority instead of reasons, C refuses a fair question. Q2 B: a genuine
+    flaw is acknowledged and its bounding effect on the conclusions stated; A redefines scope after the
+    fact, C assigns blame, D shrugs off a real gap. Q3 C: say the number is not at hand and commit to supply
+    it; A fabricates precision, B attacks the panel, D dodges. Q4 A: a defensible reply rests on the recorded
+    evidence and the ranking criteria; B, C and D substitute confidence, the assessor''s view or a deflection
+    for evidence. Q5 C: repetition without evidence stalls the discussion the assessor is trying to have;
+    A mistakes stubbornness for rigour, B and D treat ending the questioning as winning it.'
+- module: 5
+  notes: 'Q1 B: a finding cited with no command lacks the evidence an assessor can verify, which is a
+    substantive defect; A guesses at the truth instead of checking, C and D are style points. Q2 D: slide
+    colour is a stylistic point, not the biggest weakness; A promotes it to validity, B invents a blocking
+    severity, C mislabels the category. Q3 A: a critique that shows a misreading is verified against the
+    recorded output and the ranking corrected; B answers without checking, C accepts a known error, D
+    shops for a kinder reviewer. Q4 B: praise with no issue and no evidence gives the author nothing to act
+    on; A mistakes courtesy for review, C and D inflate it. Q5 C: reviewing trains the critical eye the
+    reviewer then applies to the matching section of the own draft; A invites copying, B and D treat review
+    as marks or a delay.'
+- module: 6
+  notes: 'Q1 C: reflection that records only external factors misses what the Student''s own decisions
+    contributed; A is the safe half of the story, B imports the assessor''s judgement, D imports grades.
+    Q2 A: the failure, the fix and the capability it exposed are all recorded, because the gap is the
+    finding; B discards the useful half, C files a solvable problem as external, D narrows reflection to
+    results. Q3 D: a plan with no verifiable action, target or date cannot be checked or met; A mistakes
+    sincerity for a plan, B hides it, C denies the capability exists. Q4 B: external attribution avoids
+    the learning about own practice reflection exists to produce; A mistakes constraint-reciting for
+    honesty, C and D reward the avoidance. Q5 C: the durable value is the demonstrated ability to scope,
+    execute and evaluate independent technical work; A ties value to the artefact, B and D tie it to the
+    grade or the deck.'
+lab_setup:
+- module: 1
+  setup: 'Revert the range to its baseline. Confirm from the jump path that ws01 reaches dc01 for name
+    lookups, that fs01 shares are listable by a domain user signing in at ws01, and that fw01 shows the
+    corp-to-servers rule. Expected values the Student should record: the rule name, source and destination
+    networks; the lookup command, its exact output and the first-attempt outcome, with what a retry changed
+    if the first attempt failed; the fs01 share names; the siem01 log sources and the address each ships
+    from. Confirm the analyst login on siem01 works before class.'
+- module: 2
+  setup: 'Revert the range to its baseline. On fw01 confirm the dmz-to-servers rule (ports 53, 88, 389, 636)
+    and the corp-to-dmz rule (ports 80, 443, 25, 587, 143, 993), and on web01 and mail01 that nginx and
+    postfix/dovecot are running. Expected values: the two rule names with their port lists; the services
+    web01 and mail01 expose; which examined hosts ship logs to siem01 (all zones do, under logs-to-siem).'
+- module: 3
+  setup: 'Revert the range to its baseline. On siem01 confirm the OpenSearch dashboards answer event counts
+    per log source for the last hour, and that the analyst login can read them. Expected values: one count
+    series per log source; the fw01 inward rule summary (corp-to-dmz and dmz-to-servers). Have a timer
+    visible for the timed opening minute.'
+- module: 4
+  setup: 'Revert the range to its baseline. On fw01 confirm the rule the Students ranked highest in Module 2
+    still matches the baseline (typically corp-to-servers), and on dc01 the domain setting the ranking
+    assumed (the account lockout policy the baseline holds; read the value yourself before class so you can
+    mark the evidence). On siem01 confirm which log sources exist that the report did not query. Check each
+    Student''s report names the ranked rule and the two rejected alternatives the lab step asks them to
+    restate. Arrange the mock-viva pairs and a two-minute-per-question time box.'
+- module: 5
+  setup: 'Revert the range to its baseline. Pair the Students and exchange draft reports. Confirm the cited
+    lookups are reproducible: ws01 reaches dc01, and the fw01 rule table matches the baseline the drafts
+    quote. Expected values: the re-run output must match the draft''s cited output line for line, or the
+    differing lines are the evidence to record.'
+- module: 6
+  setup: 'Revert the range to its baseline and restore any host a Student flagged during the course. Confirm
+    the earlier labs'' evidence still reproduces: the ws01-to-dc01 lookup, the fw01 rule table and the
+    siem01 log sources. Bring each Student''s recorded failures from Modules 1 to 5, including the
+    first-attempt outcome of the Module 1 ws01-to-dc01 lookup (or have Students bring their own lab notes)
+    so the reflection anchors to recorded events.'
+common_faults:
+- module: 1
+  fault: Students record conclusions in place of output, so the evidence section holds claims no command
+    supports.
+  remedy: Have each Student read one recorded item aloud and point to the command that produced it; anything
+    that cannot be traced goes back on the range.
+- module: 1
+  fault: The rule table is recorded but the source and destination networks are dropped, making the rule
+    unverifiable.
+  remedy: Show one fw01 rule and ask what a reader needs besides the name to check the rule against the
+    policy; insist on source and destination.
+- module: 2
+  fault: Exposures are ranked by gut feel, with no impact reason attached.
+  remedy: Make Students write the confidentiality, integrity or availability impact in one sentence per
+    ranking before the paragraph is accepted.
+- module: 2
+  fault: Speculation enters the analysis unmarked, usually as an attack chain the report did not test.
+  remedy: Read the paragraph back and stop at every sentence the range did not demonstrate; ask how it is
+    labelled.
+- module: 3
+  fault: The deck plan is all evidence tables with no problem or method, and the opening minute never gets
+    rehearsed aloud.
+  remedy: Enforce the timed read in class; a plan that has not been spoken once gets cut live until it fits.
+- module: 3
+  fault: Evidence slides name no host or command, so the audience cannot connect slide to source.
+  remedy: Require every evidence slide to carry its source host and command in a footer before the plan is
+    marked.
+- module: 4
+  fault: Students answer viva questions with the conclusion repeated louder instead of the recorded output.
+  remedy: Stop the viva at the first unsupported answer and have the Student open the recorded output; the
+    rewrite happens before the viva continues.
+- module: 4
+  fault: The ranked finding is defended from memory against a rule table that no longer matches the draft.
+  remedy: Make the pre-viva re-check of the live fw01 table a gate; a mismatch means the ranking is defended
+    against the recorded evidence, with the discrepancy stated.
+- module: 5
+  fault: Reviewers accept the draft's cited output without re-running it.
+  remedy: The lab requires the re-run beside the draft; mark any review whose re-run column is empty as
+    incomplete.
+- module: 5
+  fault: Received critique is answered in writing without a range check, or dismissed as style.
+  remedy: Have each Student mark every received point substantive or stylistic with a reason, then verify
+    each substantive point on the range before acting on it.
+- module: 6
+  fault: The reflection attributes every failure to the range or the window, with no recorded event cited.
+  remedy: Require the recorded failure behind each stated gap; a gap with no event behind it is rewritten
+    until it names one.
+- module: 6
+  fault: Development plan entries are aspirations with no verifiable action or date.
+  remedy: Test each entry with the question an assessor would ask in twelve months, namely what would show
+    this happened; entries that cannot answer are rewritten.

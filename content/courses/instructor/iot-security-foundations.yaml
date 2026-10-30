@@ -1,0 +1,195 @@
+# Instructor pack for IoT Security Foundations (C304). Staff-only material: the answer key
+# below is the course's key, and each note says why the keyed option is right and what the
+# distractors test. Lab setup names only hosts the large-enterprise template provides.
+course_code: C304
+audience: staff_only
+overview: 'IoT Security Foundations is a reading course of six 60-minute modules (360 minutes). Each
+  module has the same split: 15 minutes teaching the topics, 35 minutes in the range lab on the
+  large-enterprise template, and 10 minutes for the five-item quiz passed at 70 percent. Each module
+  teaches three objectives; every lab records evidence exactly as the range shows it and ends in the
+  judgement the Student writes. Say ''Student'' throughout and keep every description defensive and
+  observable.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (device anatomy, constraints and protocols), 35 lab (map the device segment:
+    the ids01 protocol view, the fw01 interface and rule lists, the confinement record), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (STRIDE categories and attack surface), 35 lab (enumerate the device segment
+    surface from the fw01 rule list and the ids01 mirror view), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (lifecycle phases, signed updates and provisioning), 35 lab (trace ca01
+    enrolment, wsus01 approvals, sccm01 compliance and the device segment coverage gap from the
+    ids01 mirror), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (segmentation and least privilege for device traffic), 35 lab (fw01 rule
+    review, one ws01 to sql01 connection test, one ws01 to plc01 isolation test, the ids01
+    protocol view), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (what firmware analysis reveals and what signed updates prevent), 35 lab (vuln01
+    scan reach for the device segment, edr01 agent coverage, wsus01 update groups, the ids01
+    service view), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (containment, evidence sources and timelines), 35 lab (siem01 log sources,
+    syslog01 forwarding, ntp01 time sync, the ids01 traffic record), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 A (Constrained memory), M01-O02: No room for an agent or an update mechanism is a memory
+    and compute limit; wired links, cable runs and sensor inputs do not limit the defences a device
+    can carry. Q2 B (Protocol translation and enforcement), M01-O01: A gateway translates protocols
+    and is the point where device traffic can be enforced; it is not a sensor, a backup or a signer.
+    Q3 B (A shared default credential), M01-O03: 60 000 identical cameras fall to one fleet-wide
+    credential; a kernel flaw in one camera does not scale. Q4 C (A telemetry protocol such as MQTT),
+    M01-O03: Plain telemetry protocols carry values with no authentication; LDAP, SMTP and DNS serve
+    directory, mail and name resolution. Q5 A (A device-to-console data path), M01-O01: Device,
+    gateway, platform and console is the anatomy data path, not a matrix, a cycle or a playbook.'
+- module: 2
+  notes: 'Q1 B (The STRIDE categories), M02-O01: Six question categories beside one element is
+    STRIDE; CVSS scores a vulnerability and the risk formula combines likelihood and impact. Q2 A
+    (A flat-segment escalation path), M02-O01: Writing to every sensor after reaching one is
+    escalation across a flat segment, not a supply chain, data-at-rest or physical finding. Q3 B
+    (The unauthenticated control service), M02-O02: A reachable, unauthenticated control service
+    ranks above an update feed, a pin header or a browser cache. Q4 D (Spoofing), M02-O03: Adding
+    TLS that authenticates the endpoint answers spoofing, the category where an identity is faked;
+    it does not answer repudiation or disclosure. Q5 C (An omitted entry point), M02-O02: An element
+    assumed never to connect is still on the attack surface; the error is omission, not a copied
+    threat or a double score.'
+- module: 3
+  notes: 'Q1 A (An embedded shared secret), M03-O03: One factory password across 20 000 lamps is a
+    shared secret where a per-device identity belongs; it is not a tamper, transport or debug
+    finding. Q2 B (Signed firmware verification), M03-O02: Verifying each update against the vendor
+    signing key is signed firmware verification; attestation reports the running state instead. Q3 B
+    (Rollback protection at boot), M03-O02: An old but validly signed image is stopped only by
+    refusing versions older than the running one; a longer key or encryption does not help. Q4 C
+    (A single leaked credential), M03-O03: Per-device enrolment means one leak is one device; a
+    pre-shared key turns one leak into a fleet event. Q5 D (Retirement with revocation), M03-O01:
+    An identity that still authenticates after decommissioning means the retirement phase never
+    revoked it.'
+- module: 4
+  notes: 'Q1 B (A dedicated device zone), M04-O01: Least privilege needs a boundary first; encryption,
+    password rotation or a firmware upgrade create none. Q2 B (Least privilege), M04-O02: An
+    allow-everything rule so nobody updates it later is the opposite of one service at a time. Q3 C
+    (The endpoints, timing and volume), M04-O03: Encryption hides payloads but not who talks to whom,
+    when and how much; the credential and the plaintext stay hidden. Q4 D (Zero trust with mutual
+    authentication), M04-O01: One platform endpoint per device with device verification is zero trust
+    on each path, not perimeter trust or translation. Q5 A (A flat shared zone), M04-O01: A scan
+    reaches neighbours because they share one flat zone; encryption, signing or a root of trust do
+    not segment traffic.'
+- module: 5
+  notes: 'Q1 B (The credential is identical on every device), M05-O01: An extracted credential
+    matters because every copy of that image ships the same one; extraction changes nothing on the
+    device itself. Q2 A (A modified image installed on a device), M05-O03: Signature verification at
+    install time blocks modified images; it does not touch source credentials, inventory age or
+    covers. Q3 C (Unsupported firmware), M05-O02: A vendor that stopped supporting the release leaves
+    the fleet unsupported; the other terms name unrelated controls. Q4 B (A software bill of
+    materials), M05-O03: A software bill of materials lists components and versions for a buyer; a
+    build log, a capture or a scan answer different questions. Q5 D (A hardware root of trust),
+    M05-O02: A key burned into the chip that verifies boot code is the hardware root of trust;
+    revocation lists and bills of materials live elsewhere.'
+- module: 6
+  notes: 'Q1 A (Isolating the host from the network), M06-O01: Containment keeps the host running so
+    evidence survives; powering off destroys volatile state and re-imaging destroys it entirely. Q2 C
+    (A chain of custody log with each transfer signed), M06-O03: Admissibility needs a record of
+    every transfer; a hash alone shows integrity at one moment, not custody. Q3 B (Time
+    synchronisation to one source), M06-O02: Timestamps that disagree by minutes cannot be ordered
+    until every host syncs to one source; retention and duplication do not align clocks. Q4 D (The
+    most volatile evidence), M06-O02: Memory state that dies with the crash is the top of the order
+    of volatility. Q5 B (Periodic beaconing from the device), M06-O02: The same outbound connection
+    on a fixed interval is beaconing; an update check is not fixed to the second and a rollback is
+    not a connection.'
+lab_setup:
+- module: 1
+  setup: 'Range on the large-enterprise template. Confirm the ids01 mirror is collecting device
+    segment traffic and the fw01 rule list is readable from jump01. Values the Student should
+    find: fw01 holds interfaces on dmz, corporate_lan, server_vlan, security_vlan, management,
+    ad_forest_b and cloud_hybrid, and none on the device segment; the rule list holds ot-isolation
+    (deny ot_scada to corporate_lan), which fw01 lists but cannot enforce without an interface on
+    that segment; the device segment is isolated with ot-fw01 as its gateway (transit network
+    pending, issue #235).'
+- module: 2
+  setup: 'Range on the large-enterprise template. Confirm the fw01 rule list is readable from
+    jump01 and the ids01 mirror view of the device segment is collecting.'
+- module: 3
+  setup: 'Range on the large-enterprise template. Confirm the ca01, wsus01 and sccm01 management
+    views open from jump01 over the management path (mgmt-to-all permits management to all hosts on
+    the management ports) and the ids01 mirror shows the device segment hosts.'
+- module: 4
+  setup: 'Range on the large-enterprise template. Confirm the fw01 rule list is readable from
+    jump01, ws01 is on the corporate network and the ids01 protocol view is collecting. Values
+    the Student should find: the ws01 to sql01 test on port 1433 succeeds by the corp-to-server
+    rule; the ws01 to plc01 test fails on the device segment isolation before any firewall rule,
+    and no fw01 rule names that path because fw01 holds no interface on the device segment.'
+- module: 5
+  setup: 'Range on the large-enterprise template. Confirm vuln01, edr01 and wsus01 open from
+    jump01. The device segment is unrouted in this baseline, so the scan records no answers there;
+    the expected evidence is that no device segment host answers the scan, reports an agent or
+    appears in an update group.'
+- module: 6
+  setup: 'Range on the large-enterprise template. Confirm siem01 collects the device segment log
+    sources, syslog01 receives host logs and ntp01 serves time; no device segment host appears in
+    any of them, and the ids01 record of plc01 traffic is the device-side evidence.'
+common_faults:
+- module: 1
+  fault: Students record a device protocol from its name alone and never open the ids01 protocol
+    view, so the plain-or-authenticated marking is guessed.
+  remedy: Have them read the protocols the ids01 mirror shows for the device segment hosts before
+    marking anything, and require the protocol name beside every marking.
+- module: 1
+  fault: The confinement of the device segment is attributed to fw01 and its ot-isolation rule
+    without checking fw01's interface list.
+  remedy: Insist on the interface list beside the rule list; fw01 holds no interface on the device
+    segment, so the confinement evidence is the segment isolation plus ot-fw01 as gateway, with the
+    unenforceable ot-isolation rule as corroboration.
+- module: 2
+  fault: Entry points are ranked by intuition and the exposure reason repeats the rank instead of
+    justifying it.
+  remedy: Require the reason to name reachability and authentication as the topics do, one sentence
+    citing both.
+- module: 2
+  fault: A STRIDE category is assigned per host instead of per threat, so one host carries a single
+    category for everything.
+  remedy: Walk one plc01 service through all six questions on the board before they rank.
+- module: 3
+  fault: The device segment coverage gap is recorded as an update problem rather than a lifecycle
+    phase gap.
+  remedy: Ask which phase owning the question "what state is this device in" belongs to before they
+    mark the gap.
+- module: 3
+  fault: Enrolment at ca01 is described as one certificate issued to everything.
+  remedy: Make them record the certificate roles ca01 shows and the enrolment path per role, then map
+    one role to a lifecycle phase.
+- module: 4
+  fault: The ws01 to plc01 connection test result is recorded as blocked without the exact behaviour
+    the range shows, or is attributed to a fw01 rule that does not exist.
+  remedy: Record the result exactly as shown; the block is the device segment isolation, not a
+    firewall rule, and the evidence for that is that fw01 holds no interface on the device segment
+    and no fw01 rule names the path. The ws01 to sql01 test is the one a fw01 rule decides.
+- module: 4
+  fault: Every over-broad path gets the same proposed change, a vague instruction to tighten the
+    rules.
+  remedy: Require a rule change with source, destination and port per path, as the topics state least
+    privilege one service at a time.
+- module: 5
+  fault: The scan record is treated as evidence about the device segment hosts even though none of
+    them answers, so versions and weaknesses are never separated into version evidence and
+    configuration evidence.
+  remedy: Cap the record at what each tool shows for the segment and force the two-way marking on
+    each line drawn from the ids01 service view.
+- module: 5
+  fault: The ranking orders hosts by name instead of by the evidence recorded.
+  remedy: Ask for the one-sentence reason for the top host first; if the reason cannot cite a
+    recorded weakness, the ranking is not done.
+- module: 6
+  fault: The first containment step written is isolation with no reason, or it is powering the host
+    off.
+  remedy: Require the one-sentence reason and discuss what volatile state a power-off destroys before
+    they commit.
+- module: 6
+  fault: The evidence gap is named as missing logs without checking siem01 and syslog01 first.
+  remedy: Make the siem01 and syslog01 records come before the gap; the gap must be a source those
+    records show is absent.

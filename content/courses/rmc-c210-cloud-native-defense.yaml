@@ -9,6 +9,7 @@ difficulty: intermediate
 duration_hours: 100
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: TEMP67
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
@@ -33,16 +34,40 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Describe cloud-native architectural patterns.
-  - Threat model a microservices architecture.
-  - Identify security properties that differ from monoliths.
+  - Trace a request through a microservices application and name each trust boundary it crosses
+  - Identify the parts of a cloud-native estate that form its external and internal attack surface
+  - Classify the security effect of ephemerality and immutable infrastructure on evidence and persistence
   topics:
-  - Microservices and service mesh.
-  - Ephemerality and immutable infrastructure.
-  - Cloud-native threat modelling.
-  - Differences from traditional architectures.
-  lab: 'Lab: Threat model a microservices application including its service mesh and control plane, and
-    identify the three trust boundaries most often overlooked.'
+  - Microservices, the service mesh and the sidecar proxy as a new trust boundary.
+  - The orchestrator control plane and why it can alter routing and policy across every service.
+  - 'Trust boundaries in a distributed estate: network, identity and control plane.'
+  - 'Ephemerality and immutable infrastructure: short evidence windows and no in-place patching.'
+  - Threat modelling a distributed application and ranking entry points by exposure.
+  lab: >-
+    Lab: On the cloud-security range, enumerate the attack surface of the simulated cloud estate and rank
+    its entry points. Evidence: the object stores exposed by localstack01 and the identity and secret
+    services exposed by azure-mock01, each with its permissive setting; the sensitive values held in the
+    state and variable files on terraform01; the networks each fw01 rule allows traffic between; a ranked
+    list of the three most exposed entry points. Pass: every finding recorded as the range shows it; each
+    entry point marked "external" or "internal" with a one-sentence reason; the ranking justified against
+    the recorded findings.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab notes.
+    - hosts: [jump01, localstack01, azure-mock01]
+      action: From jump01, list the storage and identity services exposed by localstack01 and azure-mock01,
+        and record each service with any permissive access setting it shows.
+    - hosts: [jump01, terraform01]
+      action: From jump01, examine the state and variable files on terraform01 and record each sensitive
+        value they hold, such as credentials or connection details.
+    - hosts: [jump01, fw01]
+      action: From jump01, list the rules on fw01 and record which networks each rule allows traffic
+        between.
+    - hosts: [jump01]
+      action: Rank the three most exposed entry points from the recorded findings, mark each "external" or
+        "internal", and give a one-sentence reason for the ranking.
   refs:
   - nist-sp-800-190
   - nist-sp-800-207
@@ -50,40 +75,44 @@ modules:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'Immutable infrastructure improves security by:'
+    - question: A compromised container is replaced with a fresh copy built from the same signed image
+        rather than patched in place. Which property of immutable infrastructure does this rely on?
       options:
-      - A) Preventing all compromise
-      - B) Replacing rather than patching instances, limiting persistence and drift
-      - C) Encrypting disks
-      - D) Reducing cost
+      - A) The instance keeps a full history of every change made to it
+      - B) Running instances are replaced, so attacker changes do not survive
+      - C) The signed image encrypts the workload's data while it runs
+      - D) The orchestrator rolls the network policy back to its last good state
       answer: B
-    - question: 'A service mesh introduces a new trust boundary at:'
+    - question: 'A team adds a service mesh so that every call between services passes through a sidecar
+        proxy. The mesh introduces a new trust boundary at:'
       options:
-      - A) The database
-      - B) The sidecar proxy and mesh control plane
-      - C) The load balancer
-      - D) The CDN
-      answer: B
-    - question: 'Microservices increase attack surface relative to a monolith because:'
+      - A) The database tier
+      - B) The physical network switch
+      - C) The developer's workstation
+      - D) The sidecar proxy and the mesh control plane
+      answer: D
+    - question: An investigator responds to a compromised pod, but the orchestrator has already replaced
+        it twice in the past hour. Which property of ephemeral workloads most affects the investigation?
       options:
-      - A) They are larger
-      - B) Internal calls become network calls requiring their own authn and authz
-      - C) They are slower
-      - D) They use more memory
-      answer: B
-    - question: 'Ephemeral workloads complicate security by:'
+      - A) Evidence held on the workload disappears when it is replaced
+      - B) The pod cannot be reached over the network
+      - C) Container images cannot be signed
+      - D) The orchestrator deletes all central logs permanently
+      answer: A
+    - question: Which statement about microservices compared with a monolith is the most accurate security
+        assessment?
       options:
-      - A) Reducing logging
-      - B) Making traditional host-based inventory and investigation unreliable
-      - C) Preventing monitoring
-      - D) Requiring more identities
-      answer: B
-    - question: 'The mesh control plane is high value because it can:'
+      - A) Microservices remove the need for network defences
+      - B) A monolith always exposes a larger attack surface
+      - C) Internal calls become network calls, so each service needs its own authorisation
+      - D) Microservices cannot be patched in place once they are deployed, unlike a monolith
+      answer: C
+    - question: An attacker gains control of a mesh control plane. Why is this position valuable?
       options:
-      - A) Read application data
-      - B) Alter routing and policy across every service
-      - C) Scale workloads
-      - D) Issue certificates only
+      - A) It stores the application's customer data
+      - B) It can change routing and policy for every service in the mesh
+      - C) It holds the long-term database backups
+      - D) It replaces the need for monitoring, logging and incident response
       answer: B
 - ordinal: 2
   title: Workload Identity and Service-to-Service Authorisation
@@ -92,16 +121,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Implement strong workload identity.
-  - Enforce service-to-service authorisation.
-  - Manage certificate lifecycle at scale.
+  - Distinguish authentication from authorisation in a service-to-service call and select the control each needs
+  - Classify the risks of long-lived credentials against short-lived, automatically rotated workload identities
+  - Judge whether a workload identity configuration follows least privilege from its issued rights
   topics:
-  - Workload identity issuance.
-  - Mutual TLS between services.
-  - Authorisation policy for service calls.
-  - Automated certificate rotation.
-  lab: 'Lab: Configure mutual TLS and an authorisation policy between two services so that only the intended
-    caller is permitted, then demonstrate an unauthorised call being rejected.'
+  - 'Workload identity: issuing an identity to a service rather than to a person.'
+  - Mutual TLS between services and where the handshake terminates.
+  - Authentication proves who is calling; authorisation decides what the call may do.
+  - Short-lived certificates and automated rotation at scale.
+  - 'Authorisation policy for service calls: allow-listing the intended callers only.'
+  lab: >-
+    Lab: On the cloud-security range, find out what identities the estate issues to workloads and judge
+    each against least privilege. Evidence: the service accounts on k3s-master and the workloads that use
+    them; the validity period of the cluster's serving certificate; the identity users on localstack01 with
+    the permissions each policy grants; a mark of short-lived or long-lived for each identity. Pass: every
+    identity recorded as the range shows it; each marked short-lived or long-lived with its rotation
+    method; each over-broad permission grant given a one-sentence reason and one change proposed.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab notes.
+    - hosts: [jump01, k3s-master]
+      action: From jump01, connect to k3s-master and list the service accounts in the cluster, recording
+        each account name and the workload that uses it.
+    - hosts: [k3s-master]
+      action: On k3s-master, read the certificate details of the cluster's serving certificate and record
+        its validity period and issuer.
+    - hosts: [jump01, localstack01]
+      action: From jump01, query localstack01 for the identity users and their attached policies, recording
+        each user with the permissions its policy grants.
+    - hosts: [jump01]
+      action: Mark each recorded identity "short-lived" or "long-lived" with its rotation method, and mark
+        each permission grant "least privilege" or "over-broad" with a one-sentence reason.
   refs:
   - nist-sp-800-207
   - nist-sp-800-52r2
@@ -110,41 +162,45 @@ modules:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'In a service mesh, mutual TLS is typically terminated by:'
+    - question: A payment service calls a records service over mutual TLS. What does the successful
+        handshake prove, and what does it still not decide?
       options:
-      - A) The application process itself
-      - B) The sidecar proxy alongside the workload
-      - C) The ingress gateway only
-      - D) The orchestrator control plane
-      answer: B
-    - question: 'Authentication alone is insufficient between services because:'
+      - A) It proves the caller's request is authorised; it does not encrypt the call in transit
+      - B) It proves both services are healthy; it does not identify either service to the other
+      - C) It proves each side's identity; it does not decide what the caller may do
+      - D) It proves the network path is private; it does not authenticate either service by name
+      answer: C
+    - question: In a service mesh, where is mutual TLS typically terminated for a workload?
       options:
-      - A) It is slow
-      - B) Knowing who is calling does not decide whether they may perform the action
-      - C) Certificates expire
-      - D) It lacks encryption
-      answer: B
-    - question: 'Short-lived workload certificates reduce risk by:'
+      - A) The sidecar proxy alongside the workload
+      - B) The application process itself
+      - C) The organisation's boundary firewall
+      - D) The certificate authority's signing service
+      answer: A
+    - question: A stolen workload credential remains usable long enough for an attacker to move freely.
+        Which change limits that window most directly?
       options:
-      - A) Improving performance
-      - B) Limiting the window in which a stolen credential is useful
-      - C) Simplifying rotation
-      - D) Reducing storage
-      answer: B
-    - question: 'Network-level controls alone are insufficient in a mesh because:'
+      - A) Encrypting the credential where it is stored
+      - B) Keeping the credential out of shared repositories
+      - C) Logging every use of the credential
+      - D) Replacing it with a short-lived identity that rotates automatically
+      answer: D
+    - question: Two teams restrict access by network segment only, and thirty services share one segment.
+        Why is identity the meaningful boundary here?
       options:
-      - A) They are slow
-      - B) Many services legitimately share network paths and identity is the meaningful boundary
-      - C) They cannot be configured
-      - D) Encryption prevents them
+      - A) Network rules are impossible to configure at all for thirty services in one segment
+      - B) Many legitimate callers share the path, so the rule cannot name the intended one
+      - C) Encryption hides the traffic from the network rules that enforce segmentation
+      - D) The segments change so often that no rule can name them reliably
       answer: B
-    - question: 'Automated certificate rotation is essential at scale because:'
+    - question: An operator renews a certificate by hand once a year, and one expires during a holiday
+        weekend. What does automated rotation primarily prevent?
       options:
-      - A) Certificates are weak
-      - B) Manual rotation cannot keep pace and expiry causes outages
-      - C) It reduces cost
-      - D) Policy requires it
-      answer: B
+      - A) Outages and insecure workarounds caused by manual renewal at scale
+      - B) Attackers reading the certificate's public key from the issued certificates
+      - C) The need for a certificate authority
+      - D) Expiry of the private key itself
+      answer: A
 - ordinal: 3
   title: Kubernetes and Orchestrator Security
   content_type: reading
@@ -152,16 +208,42 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Secure an orchestrator control plane.
-  - Apply workload security policy.
-  - Detect orchestrator-level attack activity.
+  - Audit the role bindings in an orchestrator cluster and identify grants that exceed least privilege
+  - Classify the isolation risk of a workload from its pod security settings
+  - Detect control plane activity that indicates abuse of cluster administration
   topics:
-  - Control plane security and access.
-  - RBAC in orchestrators.
-  - Pod security and workload constraints.
-  - Orchestrator attack detection.
-  lab: 'Lab: Audit a cluster''s role bindings for excessive privilege, restrict the two worst, and configure
-    detection for suspicious control plane activity such as privileged pod creation.'
+  - 'Control plane access: who reaches the API server and how requests are authenticated and audited.'
+  - Roles, bindings and least privilege in orchestrator RBAC.
+  - 'Pod security: privileged containers, host namespaces and mounted service account tokens.'
+  - Reading cluster audit records for control plane abuse.
+  lab: >-
+    Lab: On the cloud-security range, audit who holds administrative power in the cluster and what the
+    workloads can reach, then judge each finding against least privilege. Evidence: the roles and bindings
+    listed on k3s-master with their subjects and verbs; the privilege and namespace settings of the debug
+    workload on k3s-worker01; the dashboard's authentication setting and account permissions on
+    k3s-worker02; the audit record on cloud-siem01 for a privileged pod creation. Pass: every grant
+    recorded as the range shows it; each marked "follows least privilege" or "does not" with a
+    one-sentence reason; one change proposed for every finding marked "does not".
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab notes.
+    - hosts: [jump01, k3s-master]
+      action: From jump01, connect to k3s-master and list the roles and bindings in the cluster, recording
+        each binding with the subject it grants and the verbs it allows.
+    - hosts: [k3s-worker01]
+      action: On k3s-worker01, inspect the settings of the running debug workload and record whether it
+        runs privileged and whether it shares the host PID namespace.
+    - hosts: [k3s-worker02]
+      action: On k3s-worker02, find the dashboard workload and record its authentication setting and the
+        permissions of the account it signs in with.
+    - hosts: [cloud-siem01]
+      action: In the SIEM on cloud-siem01, search the cluster audit records for the creation of a
+        privileged pod and record the time, the requesting account and the pod name.
+    - hosts: [jump01]
+      action: Mark each recorded grant "follows least privilege" or "does not" with a one-sentence reason,
+        and propose one change for every grant marked "does not".
   refs:
   - nist-sp-800-190
   - mitre-attack
@@ -169,41 +251,46 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'A container running privileged is dangerous because it:'
+    - question: A pod is configured to run privileged and to share the host's PID namespace. What does
+        this combination let the workload reach?
       options:
-      - A) Uses more CPU
-      - B) Can typically access host resources and escape isolation
-      - C) Cannot be logged
-      - D) Bypasses the scheduler
-      answer: B
-    - question: 'Orchestrator RBAC bindings granting cluster-admin should be:'
+      - A) Only the pod's own filesystem
+      - B) The cluster's stored container images
+      - C) The orchestrator's build pipeline
+      - D) Host resources and the processes of other workloads on the same node
+      answer: D
+    - question: A binding grants cluster administration to a service account used by one dashboard. How
+        should an auditor classify this grant?
       options:
-      - A) The default
-      - B) Rare, justified and closely monitored
-      - C) Applied per namespace
-      - D) Automated
+      - A) Standard practice for shared tooling
+      - B) Excessive privilege that should be reduced to the dashboard's actual needs
+      - C) Acceptable because a service account holds it, not a person
+      - D) Safe while the dashboard stays on an internal network
       answer: B
-    - question: 'Mounting the host filesystem into a container enables:'
+    - question: A pod inherits the identity of the service account token mounted into it. What does a
+        compromised pod therefore gain?
       options:
-      - A) Better performance
-      - B) Potential host compromise from within the container
-      - C) Persistent storage safely
-      - D) Faster builds
-      answer: B
-    - question: 'The orchestrator API server should be:'
+      - A) Administrative access to every node's operating system
+      - B) The ability to read the container images it runs
+      - C) Whatever API access that service account's roles grant
+      - D) Permanent credentials that cannot be revoked
+      answer: C
+    - question: Which control plane setting best reduces the chance that an attacker's API requests go
+        unrecorded?
       options:
-      - A) Publicly accessible for convenience
-      - B) Restricted, authenticated and audited
-      - C) Unauthenticated internally
-      - D) Exposed to all pods
-      answer: B
-    - question: 'Service account tokens automatically mounted into pods are risky because:'
+      - A) Auditing enabled on the API server, with records shipped off the cluster
+      - B) The API server reachable only from the management network
+      - C) Role bindings reviewed once a year
+      - D) Container images scanned before deployment
+      answer: A
+    - question: Which observation in a cluster audit record most strongly indicates abuse of cluster
+        administration?
       options:
-      - A) They expire
-      - B) A compromised pod inherits whatever API access the token grants
-      - C) They are encrypted
-      - D) They cannot be rotated
-      answer: B
+      - A) A developer reads a configuration map in their own namespace during a normal change
+      - B) A deployment is updated during a scheduled change window
+      - C) A pod is deleted by its owning controller
+      - D) A new pod requests privileged mode and a host mount it does not need
+      answer: D
 - ordinal: 4
   title: Supply Chain for Cloud-Native Workloads
   content_type: reading
@@ -211,16 +298,42 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Secure the build and deployment pipeline.
-  - Establish artefact provenance and verification.
-  - Manage dependency risk continuously.
+  - Map the stages of a build and deployment pipeline where artefact integrity can be lost
+  - Interpret a provenance attestation and decide whether a deployed image matches a verified build
+  - Select the controls that keep a compromised pipeline from shipping unreviewed code
   topics:
-  - Pipeline security and access.
-  - Provenance, attestation and signing.
-  - SBOM and dependency monitoring.
-  - Deployment verification.
-  lab: 'Lab: Implement signing and verification for build artefacts so that only attested images deploy,
-    and demonstrate rejection of an unsigned image.'
+  - 'Pipeline access: credentials, runners and the blast radius of a compromised build service.'
+  - 'Provenance, attestation and signing: verifiable claims about how an artefact was built.'
+  - Verifying signatures at deployment, not only at build.
+  - Software bills of materials and continuous dependency monitoring.
+  lab: >-
+    Lab: On the cloud-security range, find where artefact integrity and pipeline credentials are exposed,
+    and judge which findings could let unreviewed code reach deployment. Evidence: the credentials and
+    variables exposed in the repository on gitlab01; whether registry01 allows pulls without signing in
+    and the scanner's severity counts for one image; whether the script console on jenkins01 is reachable
+    unauthenticated; whether argocd01 still accepts its default account. Pass: every finding recorded as
+    the range shows it; each marked "breaks artefact integrity" or "does not" with a one-sentence reason;
+    the two most direct routes to deployment named with one control proposed for each.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab notes.
+    - hosts: [jump01, gitlab01]
+      action: From jump01, open the public repository on gitlab01 and record each credential or pipeline
+        variable exposed in it and what each could reach.
+    - hosts: [jump01, registry01]
+      action: From jump01, connect to registry01 and record whether an image can be pulled without signing
+        in, and the severity counts the scanner reports for that image.
+    - hosts: [jump01, jenkins01]
+      action: From jump01, open the build server's script console on jenkins01 and record whether it can be
+        reached without signing in.
+    - hosts: [jump01, argocd01]
+      action: From jump01, sign in to argocd01 with its default account and record whether the password is
+        still accepted, and list the applications it deploys.
+    - hosts: [jump01]
+      action: Mark each finding "breaks artefact integrity" or "does not" with a one-sentence reason, name
+        the two most direct routes to deployment, and propose one control for each.
   refs:
   - nist-sp-800-218
   - nist-sp-800-190
@@ -228,41 +341,46 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'A compromised build pipeline is severe because it:'
+    - question: An attacker takes over a build service and inserts a change into every artefact it
+        produces. Why is this position more damaging than a leaked source repository?
       options:
-      - A) Slows delivery
-      - B) Can inject malicious code into artefacts that pass all downstream trust checks
-      - C) Costs more
-      - D) Breaks tests
-      answer: B
-    - question: 'Artefact attestation records:'
+      - A) The altered artefacts pass every downstream trust check and ship as trusted build output
+      - B) The artefacts fail their signature checks, so nothing compromised ships
+      - C) The change reaches the build logs but not the artefacts
+      - D) The pipeline can build artefacts but cannot change their contents
+      answer: A
+    - question: A security reviewer compares a signed image with the provenance attestation that
+        accompanies it from the builder. What does the attestation record about the artefact?
       options:
-      - A) The artefact size
-      - B) Verifiable claims about how and from what the artefact was built
-      - C) Deployment time
-      - D) Runtime behaviour
-      answer: B
-    - question: 'Continuous dependency monitoring is needed because:'
+      - A) The names of the engineers who approved the release
+      - B) The runtime behaviour of the artefact in production
+      - C) Verifiable claims about the source, builder and instructions that produced it
+      - D) The licence of every dependency the artefact bundles
+      answer: C
+    - question: A team scans images at build time and deploys the same tag a month later. What gap does
+        verifying signatures at deployment close?
       options:
-      - A) Dependencies change
-      - B) Vulnerabilities are disclosed after deployment in already-running software
-      - C) Licences expire
-      - D) Builds drift
+      - A) It replaces the need for vulnerability scanning
+      - B) It confirms what actually deploys is what was built and approved, not something swapped in
+      - C) It speeds up the deployment pipeline
+      - D) It proves the image has no newly disclosed vulnerabilities
       answer: B
-    - question: 'Verifying signatures at deployment rather than only at build:'
+    - question: A vulnerability is published for a library inside a service already running in production.
+        Which control finds the affected deployments first?
       options:
-      - A) Duplicates effort
-      - B) Ensures what actually deploys is what was built and approved
-      - C) Slows deployment unnecessarily
-      - D) Replaces scanning
-      answer: B
-    - question: 'Pipeline credentials should be:'
+      - A) A longer manual testing cycle before every release, run by the platform team
+      - B) Signing the running images again
+      - C) Blocking the build pipeline until patched
+      - D) A software bill of materials checked continuously against new disclosures
+      answer: D
+    - question: 'A platform team reviews its build pipeline after a runner leak and lists how long each
+        credential lives and what it can reach. Pipeline credentials should be:'
       options:
-      - A) Long-lived for stability
-      - B) Short-lived, scoped and auditable
-      - C) Shared across pipelines
-      - D) Stored in the repository
-      answer: B
+      - A) Long-lived so that builds never fail on expiry
+      - B) Shared between the build and deployment pipelines
+      - C) Short-lived, limited to one purpose and auditable
+      - D) Stored beside the pipeline definition in the repository
+      answer: C
 - ordinal: 5
   title: Cloud-Native Detection and Response
   content_type: reading
@@ -270,16 +388,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Detect attacks against cloud-native workloads.
-  - Investigate ephemeral and distributed systems.
-  - Respond without disrupting legitimate scaling.
+  - Interpret runtime detection signals for a container workload and distinguish escape activity from expected behaviour
+  - Capture evidence from an ephemeral workload before the orchestrator replaces it
+  - Select containment actions that hold under an orchestrator's automatic reconciliation
   topics:
-  - Runtime detection for containers.
-  - Distributed tracing for investigation.
-  - Evidence capture from ephemeral workloads.
-  - Response in auto-scaling environments.
-  lab: 'Lab: Detect a container escape attempt in a lab cluster, capture evidence from the ephemeral workload
-    before it is replaced, and contain without disrupting the wider service.'
+  - 'Runtime detection for containers: what host-level signals reveal about a workload.'
+  - Evidence capture from ephemeral workloads before replacement.
+  - Distributed tracing and reconstructing a request's path across services.
+  - Containment that accounts for auto-scaling and reconciliation.
+  lab: >-
+    Lab: On the cloud-security range, investigate unusual runtime behaviour in the cluster, capture what
+    will be lost when the workload is replaced, and choose a containment that holds. Evidence: the runtime
+    rules that fired on falco01 and the workloads they name; the outbound connections of the affected
+    workload from cloud-siem01; the identifier and start time of the affected pod on k3s-worker02; a mark
+    of true or false positive for each alert. Pass: the evidence captured before any restart is recorded;
+    each alert marked true or false positive with a one-sentence reason; the chosen containment action
+    named and stated to survive automatic reconciliation.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab notes.
+    - hosts: [falco01]
+      action: On falco01, read the runtime alerts and record each rule that has fired with the workload it
+        names and the time it fired.
+    - hosts: [cloud-siem01]
+      action: In the SIEM on cloud-siem01, search the runtime and network records for the affected workload
+        and record the destination of each outbound connection.
+    - hosts: [k3s-worker02]
+      action: On k3s-worker02, record the identifier and start time of the affected pod, so the workload
+        can be identified after it is replaced.
+    - hosts: [jump01]
+      action: Mark each runtime alert true or false positive with a one-sentence reason, and select a
+        containment action that survives the orchestrator replacing the pod.
   refs:
   - nist-sp-800-190
   - nist-sp-800-61r3
@@ -288,41 +429,46 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'Investigating an ephemeral workload requires:'
+    - question: An alert reports a container reading the host's process table and opening a connection to
+        an address no other workload contacts. What does this pattern most suggest?
       options:
-      - A) Waiting for it to terminate
-      - B) Capturing evidence before the workload is replaced or scaled away
-      - C) Disk imaging only
-      - D) Provider support
-      answer: B
-    - question: 'Killing a compromised pod in an auto-scaling deployment may:'
+      - A) Routine application profiling
+      - B) A misconfigured health probe
+      - C) Container escape activity, because the workload is interacting with host resources
+      - D) A scheduled backup job
+      answer: C
+    - question: A compromised pod is deleted, and the orchestrator schedules a replacement from the same
+        image. What has the response achieved?
       options:
-      - A) Resolve the incident
-      - B) Simply cause a replacement to be scheduled, possibly re-compromised
-      - C) Stop the service
-      - D) Preserve evidence
-      answer: B
-    - question: 'Container escape detection relies on observing:'
+      - A) The incident is closed
+      - B) The evidence is preserved on the deleted pod
+      - C) The service is stopped
+      - D) Very little, because the replacement may carry the same weakness and be compromised again
+      answer: D
+    - question: An orchestrator is about to replace a compromised container in a production cluster.
+        Which action preserves the most evidence from the ephemeral workload?
       options:
-      - A) Image contents
-      - B) Runtime behaviour indicating interaction with host resources
-      - C) Network volume
-      - D) Build metadata
-      answer: B
-    - question: 'Distributed tracing aids investigation by:'
+      - A) Capturing logs, process state and network records before the workload is replaced
+      - B) Waiting for the orchestrator to finish its reconciliation
+      - C) Imaging the physical host after the workload terminates
+      - D) Requesting the cloud provider's monthly report
+      answer: A
+    - question: An investigation follows one payment request that crossed eight services in a microservices
+        estate. What does distributed tracing add to that investigation?
       options:
-      - A) Storing payloads
-      - B) Reconstructing a request's path across many services
-      - C) Detecting malware
-      - D) Blocking traffic
+      - A) It stores full request payloads for later review by the investigation team
+      - B) It reconstructs the path of one request across the services it touched
+      - C) It detects the malicious code inside a request
+      - D) It blocks traffic from a suspicious source
       answer: B
-    - question: 'Containment in cloud-native environments should consider:'
+    - question: A team isolates a compromised pod by editing its network policy by hand. Hours later the
+        pod can reach the network again. What explains this?
       options:
-      - A) Host isolation only
-      - B) The orchestrator's reconciliation behaviour, which may undo manual actions
-      - C) Network only
-      - D) Nothing specific
-      answer: B
+      - A) The policy change was never saved
+      - B) Another administrator reversed the change
+      - C) The pod restarted into a different network segment after the edit
+      - D) The orchestrator's reconciliation restored its declared state
+      answer: D
 - ordinal: 6
   title: Cloud-Native Security Operations
   content_type: reading
@@ -330,16 +476,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Operate security for rapidly changing environments.
-  - Embed security into delivery workflows.
-  - Measure security posture in a dynamic estate.
+  - Design the automated, gated and monitored parts of a security operating model for a platform team
+  - Select guardrails that keep the secure path the easiest path for developers
+  - Evaluate the security posture of a fast-changing estate from continuous findings
   topics:
-  - Security in continuous delivery.
-  - Policy as code operations.
-  - Developer enablement and friction.
-  - Dynamic posture measurement.
-  lab: 'Lab: Design a security operating model for a platform team shipping many times per day, specifying
-    what is automated, what is gated and what is monitored after the fact.'
+  - 'Security embedded in continuous delivery: gates, guardrails and the secure default.'
+  - 'Policy as code: expressing a control once and evaluating it on every deployment.'
+  - Developer enablement, friction and the cost of circumvention.
+  - Continuous posture measurement in a dynamic estate.
+  lab: >-
+    Lab: On the cloud-security range, assess the estate's current security posture and design the
+    operating model a platform team would run it under. Evidence: the failed configuration checks from
+    prowler01 grouped by severity; the log sources arriving at cloud-siem01 and the expected ones missing;
+    how deployments are declared on argocd01 and whether a policy check applies; a proposed model naming
+    what is automated, what is gated and what is monitored after deployment. Pass: each part of the model
+    tied to a recorded finding; every gate given the check it enforces; the model states how each control
+    behaves when deployments change.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab notes.
+    - hosts: [jump01, prowler01]
+      action: From jump01, run the cloud configuration assessment on prowler01 and record the failed checks
+        by severity with the service each fails against.
+    - hosts: [cloud-siem01]
+      action: In the SIEM on cloud-siem01, record which log sources are arriving and which expected sources
+        are missing.
+    - hosts: [argocd01]
+      action: On argocd01, record how the deployed applications are declared and whether any policy check
+        gates a change before it applies.
+    - hosts: [jump01]
+      action: 'Propose the operating model: name what the team automates, what a gate blocks and what is
+        monitored after deployment, and tie each choice to a recorded finding.'
   refs:
   - nist-sp-800-218
   - nist-cswp-29
@@ -348,38 +517,43 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Security gates that block frequent deployment tend to:'
+    - question: A security gate adds a two-day manual review to every deployment on a team that ships
+        many times a day. What is the most likely outcome?
       options:
-      - A) Improve quality
-      - B) Be circumvented or removed under delivery pressure
-      - C) Reduce incidents
-      - D) Increase adoption
+      - A) The team works around the gate or removes it
+      - B) Deployment quality improves steadily
+      - C) The gate reduces incidents as intended
+      - D) Developers adopt the gate willingly
+      answer: A
+    - question: A platform team supports developers who deploy dozens of changes each day across a
+        fast-changing estate. Which investment most reliably keeps those deployments secure?
+      options:
+      - A) A quarterly configuration audit
+      - B) Automated guardrails that make the secure path the easiest path
+      - C) An additional approval layer for every change
+      - D) A larger team for manual code review
       answer: B
-    - question: 'In a high-velocity environment, the most effective security investment is usually:'
+    - question: A platform team writes its access rules once as code and evaluates them on every
+        deployment. What is this practice, and what does it improve?
       options:
-      - A) More manual review
-      - B) Automated guardrails that make the secure path the easy path
-      - C) Additional approvals
-      - D) Quarterly audits
-      answer: B
-    - question: 'Measuring posture in a dynamic estate requires:'
+      - A) Continuous integration; it speeds up the build
+      - B) Infrastructure monitoring; it tracks service uptime
+      - C) Policy as code; it applies one control consistently across a changing estate
+      - D) Configuration drift; it records manual changes made by operators
+      answer: C
+    - question: Why does continuous posture measurement suit a dynamic estate better than a periodic
+        review?
       options:
-      - A) Annual assessment
-      - B) Continuous, automated evaluation tied to current state
-      - C) Asset registers
-      - D) Manual sampling
-      answer: B
-    - question: 'Developer friction from security controls matters because:'
+      - A) The estate changes faster than a periodic review can observe
+      - B) Continuous measurement costs nothing to run
+      - C) Periodic reviews cannot read configuration files
+      - D) Continuous measurement replaces the need for patching and for configuration hardening
+      answer: A
+    - question: A team runs pre-deployment gates on every change to a continuously deployed service. What
+        does post-deployment monitoring add that those gates cannot provide?
       options:
-      - A) Developers complain
-      - B) High friction predicts circumvention and shadow infrastructure
-      - C) It slows delivery only
-      - D) It increases cost
-      answer: B
-    - question: 'Post-deployment monitoring complements pre-deployment gating because:'
-      options:
-      - A) Gates are unnecessary
-      - B) Not every risk can be evaluated before deployment
-      - C) It is cheaper
-      - D) It replaces testing
+      - A) Proof that no vulnerability will ever reach production, at any point in the future
+      - B) Coverage of risks that only appear once the workload is running
+      - C) A reduction in the number of deployments
+      - D) A replacement for integration testing
       answer: B

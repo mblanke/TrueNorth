@@ -1,0 +1,214 @@
+# C303 - Cloud Security (AWS/Azure) - DRAFT instructor pack.
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# Staff-only companion to content/courses/c303-cloud-security-aws-azure.yaml. Every answer
+# letter below is that course's key; the notes say why the keyed option is right and what each
+# distractor tests. Lab setup names node ids of content/ranges/cloud-security/template.yaml.
+
+course_code: C303
+audience: staff_only
+overview: 'Cloud Security (AWS/Azure) is an intermediate, hands-on course for first- and second-year
+  cyber-operator Students: six 60-minute modules (360 minutes) on the cloud-security range template. Each
+  module follows the same split: 15 minutes teaching the module''s objectives, 35 minutes in the range lab
+  on the simulated AWS and Azure environments, and 10 minutes for the five-item quiz passed at 70 percent.
+  Every lab starts on the jump host jump01, works against the simulated services (localstack01,
+  azure-mock01, registry01, k3s-master, cloud-siem01, prowler01), and ends with the Student recording a
+  judgement, not just command output. Across the six labs the Student hands in a responsibility matrix, a
+  least-privilege policy rewrite with its rerun result, a bucket exposure marking with each fix''s retry
+  result, a container privilege finding list with proposed hardening, a classified audit log sample, and a
+  ranked posture assessment with two drafted guardrails.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (shared responsibility and service models), 35 lab (responsibility matrix from the
+    localstack01 and azure-mock01 service inventory), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (identity policy structure and workload identity), 35 lab (permission audit and
+    least-privilege rewrite for the deployment user on localstack01), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (network filters, encryption and key management), 35 lab (public-bucket exposure audit
+    and fix on localstack01), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (shared kernel, image provenance and runtime privilege), 35 lab (registry01 anonymous
+    pull check and k3s-master pod privilege inspection), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (audit log delivery and behaviour-keyed detection), 35 lab (audit-log delivery
+    verification on localstack01 and log sample classification on cloud-siem01), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (guardrails, landing zones and posture), 35 lab (posture assessment from prowler01
+    against localstack01 and azure-mock01, ranking and guardrail drafting), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 C, M01-O01: The database engine is part of the managed service, so the provider patches it;
+    the customer still owns the data and access (which is what distractor A tests - data ownership does
+    not transfer engine patching). B tests the misconception that managed means nothing to do; D
+    invents alternating duties. Q2 A, M01-O01: Data classification and access decisions stay with the
+    customer in every service model; B, C and D are all provider-side physical or hypervisor duties.
+    Q3 D, M01-O01: Paying only for consumed storage and compute is measured service; A tests confusing
+    self-provisioning with metering, C is multi-tenancy, not billing. Q4 B, M01-O02: The customer
+    manages the operating system up from rented hardware and virtualisation, which is IaaS; A and C
+    swap the SaaS and PaaS boundaries, D tests hardening as a model marker. Q5 C, M01-O03: Sharing
+    settings are access configuration, which never transfers to the provider; A and B test operating
+    the suite or owning the network, neither of which owns the customer''s access decisions, and D
+    states the boundary misconception the module exists to correct.'
+- module: 2
+  notes: 'Q1 A, M02-O01: A long-lived key is a standing credential - anyone who reads the variable acts
+    as that identity until it is rotated; B and C attribute properties of short-lived or scoped
+    credentials to a static key, D is invented. Q2 D, M02-O02: A trust policy trusting every principal
+    with no condition lets any principal assume the role and inherit its permissions; A inverts the
+    wildcard, B tests the belief that wildcards are invalid, C invents a network condition that is not
+    present. Q3 B, M02-O03: Least privilege for one write-and-list job is write and list on the single
+    location it fills; A tests fear of breakage, C over-shares read access account-wide, D is identity
+    administration the job never performs. Q4 C, M02-O02: Workload identity issues short-lived
+    credentials to the workload automatically, removing the standing secret; A tests the misconception
+    that identity replaces authorisation, B and D invent performance and audit-hiding effects. Q5 A,
+    M02-O03: Unused grants are standing risk - they widen what a compromise of the workload reaches;
+    B distrusts the audit tool, C invents a billing effect, D reverses which actions are the problem.'
+- module: 3
+  notes: 'Q1 C, M03-O03: Public storage exposure is a customer misconfiguration - an access policy left
+    open to everyone; A and B blame the provider or break the encryption model, D invents a downgrade.
+    Q2 A, M03-O02: A customer-managed key lets the customer cut off data access by disabling the key;
+    B and C invent algorithm strength and price advantages, D describes the provider-managed case the
+    question contrasts. Q3 D, M03-O01: A stateful filter group denies by default and drops inbound
+    packets no rule allows; A and B and C invent routing, logging-then-delivering, or flag-and-forward
+    behaviour. Q4 B, M03-O01: A private subnet whose filter group allows only the application tier''s
+    traffic keeps the database reachable where it must be and unreachable from the internet; A tests
+    password-only protection of a public address, C is the flat public design the module warns against,
+    D is encryption, not reachability. Q5 C, M03-O03: Private connectivity keeps office-to-cloud
+    traffic off the public internet; A and B test the misconception that it replaces identity or
+    encryption, D invents a price effect.'
+- module: 4
+  notes: 'Q1 D, M04-O01: Containers share the host kernel, so a kernel escape reaches the host, which a
+    virtual machine''s hardware boundary prevents; A and C invent performance and logging differences,
+    B is impossible. Q2 A, M04-O02: One poisoned or vulnerable base image is inherited by every service
+    built on it - that is the supply chain fan-out; B, C and D invent hardware, billing and scanner
+    refusals. Q3 C, M04-O03: Privileged mode with the node''s process namespace means code breaking out
+    of the pod can act on the node itself; A denies the risk, B understates it to the pod''s own files,
+    D invents a logging loss. Q4 B, M04-O03: An execution role that reads every object turns one flaw
+    in the function into every object in the account''s storage for an attacker; A denies execution
+    roles, C invents a start-time cost, D is a false statement about encryption. Q5 A, M04-O02: The
+    build-time scan saw only what was disclosed then - vulnerabilities disclosed since the build were
+    never part of it; B invents self-modifying images, C invents nightly rebuilds, D is false about
+    layer scanning.'
+- module: 5
+  notes: 'Q1 B, M05-O01: Logs belong in a separate write-once location the account''s administrators
+    cannot empty, so an attacker with administrator rights still cannot erase the trail; A and C keep
+    the logs inside the attacker''s reach, D exposes them publicly. Q2 C, M05-O03: Disabling logging is
+    a recognised evasion step, so the monitoring design alerts on the logging change itself; A and D
+    accept the visibility gap, B normalises it. Q3 A, M05-O03: Ephemeral workloads force detection
+    keyed on identities and behaviour - which principal acted from where - not fixed hostnames; B and
+    D are hardware attributes the cloud abstracts away, C is a stale manual inventory. Q4 D, M05-O02:
+    Unused-region instances minutes after an unusual sign-in read as possible compromise, such as
+    staging or resource abuse; A, B and C reach for benign explanations that the correlation with the
+    sign-in does not support. Q5 B, M05-O01: Control plane audit logging records who changed the
+    account''s configuration and identity model anywhere; A, C and D are host-level or network-level
+    captures the control plane log does not carry.'
+- module: 6
+  notes: 'Q1 C, M06-O01: Rejecting a public bucket at deployment time is preventive - the insecure
+    configuration is never created; A describes the detective version of the same check, B invents
+    auto-remediation, D reduces it to a written rule. Q2 A, M06-O02: Separate accounts are a
+    blast-radius boundary - one account''s compromise or mistake stops at its edge; B, C and D invent
+    billing, network and patching benefits. Q3 D, M06-O03: The healthy response to a legitimate
+    constraint is a time-bound exception with a compensating control and a review date; A abandons the
+    guardrail for everyone, B is the friction-driven refusal that breeds workarounds, C is
+    disproportionate. Q4 B, M06-O02: A cloud environment changes continuously, so a point-in-time
+    audit''s picture is stale as soon as it is taken; A, C and D make false claims about tooling,
+    provider policy or coverage. Q5 A, M06-O03: Checking infrastructure definitions as code before
+    deployment means the error never reaches the environment, so nothing insecure runs or needs
+    cleanup; B invents a licence from review, C is false, D is a real but irrelevant difference.'
+lab_setup:
+- module: 1
+  setup: Provision the cloud-security range template. Verify jump01 accepts SSH from the Student
+    accounts, and that localstack01 and azure-mock01 respond to queries from jump01. Have the blank
+    responsibility matrix template ready; no changes to either simulator are needed in this module.
+- module: 2
+  setup: Provision the cloud-security range template. On localstack01, seed the identity users
+    including the deployment user with an over-permissive attached policy (identity and write grants
+    well beyond its task) and a working deployment task the Students can rerun after the rewrite.
+    Snapshot localstack01 before the module so the audit starts from the seeded baseline.
+- module: 3
+  setup: Provision the cloud-security range template. On localstack01, seed the object-storage buckets
+    with the access state the lab expects - one public website image bucket, the remaining buckets
+    including company-backups and secret-configs left readable by anyone. Verify the intended uses
+    (website image fetch, backup write) work before class so a post-fix retry has a known-good result.
+- module: 4
+  setup: Provision the cloud-security range template. Verify registry01 is reachable with
+    anonymous_pull_enabled and publishes at least one image, and that k3s-master accepts kubectl from
+    jump01 with the privileged-debug pod running on k3s-worker01. No cluster changes are made in this
+    module; Students propose hardening only.
+- module: 5
+  setup: Provision the cloud-security range template. Verify localstack01 delivers its control plane
+    audit logs to the configured destination and that cloud-siem01 has the supplied log sample loaded
+    in its search interface, including routine change entries and the suspicious lines (logging
+    disabled, unusual principal, unused region). Confirm Students can make one harmless configuration
+    change on localstack01 and see its audit entry.
+- module: 6
+  setup: Provision the cloud-security range template. Verify prowler01 can run its posture assessment
+    against both localstack01 and azure-mock01 and that both simulators carry the seeded drift the lab
+    expects (public buckets, over-broad vault access, and comparable findings). Have the guardrail
+    rule template and exception form ready for the drafting step.
+common_faults:
+- module: 1
+  fault: Students assign engine patching to the customer because the customer owns the data in the
+    database, conflating data ownership with service administration.
+  remedy: Rebuild the responsibility matrix line by line on the board, asking for each element whether
+    the provider or the customer operates it, and separate 'who owns the data' from 'who patches the
+    engine'.
+- module: 1
+  fault: Students read SaaS as transferring every security duty to the provider, then cannot explain
+    the exposure in the sharing-setting quiz scenario.
+  remedy: Point back to the Module 1 lab matrix, where access configuration stayed on the customer's side
+    of every line; have them mark which matrix lines the SaaS scenario touches.
+- module: 2
+  fault: In the rewrite step, Students strip the deployment user's policy down to nothing or to
+    read-only, then report the rerun failure as proof least privilege is unusable.
+  remedy: Have them list the actions the rerun actually used first, and compare the rewrite against
+    that list before concluding the task is broken.
+- module: 2
+  fault: Students mark the wildcard trust policy as invalid rather than dangerous, expecting the
+    service to reject it.
+  remedy: Show the policy on localstack01 being assumed from an unexpected principal; a policy that
+    parses is enforced exactly as written.
+- module: 3
+  fault: Students close every public bucket including the website image bucket, breaking the intended
+    use, and treat the failed retry as success.
+  remedy: The lab requires the intended use of each changed bucket to be retried and recorded; walk the
+    website image fetch as the known-good case before they start.
+- module: 3
+  fault: Students answer the reachability quiz scenario with encryption or a long password, mixing data
+    protection with network reachability.
+  remedy: Draw the subnet and filter group on the board and ask which answers change where packets can
+    arrive at all; encryption acts after arrival.
+- module: 4
+  fault: Students list every pod as a finding, including ordinary workloads, instead of the pods that
+    run as root, in privileged mode or with a host mount.
+  remedy: Have them record the exact setting that makes each pod a finding; a pod without one of the
+    three named settings is not in scope.
+- module: 4
+  fault: Proposed hardening removes a privilege with no statement of what legitimate work it might
+    obstruct, producing guardrails that break the debug workflow silently.
+  remedy: The lab pass criteria require each change to state what it removes and what it might
+    obstruct; reject any hardening line missing the second half.
+- module: 5
+  fault: Students classify the audit entry they created as suspicious because it is new, rather than
+    reading its identity, time and action.
+  remedy: Compare their own entry against the sample's suspicious lines - theirs is a change they made
+    knowingly from jump01 with their own identity.
+- module: 5
+  fault: Students mark the log destination tamper-resistant because it is remote, without stating what
+    an account administrator could still do to it.
+  remedy: Have them name the specific alteration an administrator could attempt on the destination and
+    which design feature resists it; 'remote' alone is not the answer.
+- module: 6
+  fault: Students rank findings by scanner severity alone, never marking a response type for each.
+  remedy: The ranking must name preventive guardrail, detective control or manual review per failure;
+    have them justify one ranking choice where severity and response type disagree.
+- module: 6
+  fault: Drafted guardrails name only what they block, with no exception path or review date, repeating
+    the friction problem the module teaches.
+  remedy: Use the exception form from lab setup; a guardrail without a review date is the vendor
+    appliance scenario from the quiz all over again.

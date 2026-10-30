@@ -6,9 +6,10 @@ course_code: RMC C209
 title: Cyber Threat Intelligence
 version: '1.0'
 difficulty: intermediate
-duration_hours: 100
+duration_hours: 6
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: TEMP67
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
@@ -33,57 +34,83 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain the intelligence cycle and its application to cyber.
-  - Distinguish data, information and intelligence.
-  - Define intelligence requirements that drive collection.
+  - Distinguish data, information and intelligence by classifying each item in a supplied reporting sample
+  - Sequence the phases of the intelligence cycle and describe what each phase passes to the next
+  - Write priority intelligence requirements that name the decision each requirement will inform
   topics:
-  - The intelligence cycle.
-  - Data, information and intelligence.
-  - Priority intelligence requirements.
-  - Strategic, operational and tactical levels.
-  lab: 'Lab: Define five priority intelligence requirements for a described organisation, and for each
-    state what decision the resulting intelligence would inform.'
+  - 'The intelligence cycle: direction, collection, processing, analysis, dissemination and feedback.'
+  - Data, information and intelligence, and the decisions each can support.
+  - Priority intelligence requirements and how requirements drive collection.
+  - Strategic, operational and tactical intelligence and the audiences each serves.
+  lab: >-
+    Lab: On the soc-training range, describe the victim organisation the range simulates and write five
+    priority intelligence requirements for it. Evidence: the role of each victim-network host recorded
+    from the range; each SOC platform and its role; five requirements, each naming the decision the
+    resulting intelligence would inform and one source capable of answering it. Pass: all five requirements
+    state a decision, not only a topic; each names at least one plausible source; the host and platform
+    roles recorded match what the range shows.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [dfir-ws01]
+      action: Log on to dfir-ws01 over SSH as the analyst account the instructor assigned and open a terminal.
+    - hosts: [dfir-ws01, v-dc01, v-fs01, v-web01, v-mail01, v-ws01, v-ws02, v-ws03, v-ws04]
+      action: From dfir-ws01, confirm which victim-network hosts answer and record every host with its role, from
+        the domain controller to the four workstations.
+    - hosts: [dfir-ws01, siem01, misp01, thehive01]
+      action: From dfir-ws01, confirm which SOC platforms are reachable and record each platform with its role.
+    - hosts: [dfir-ws01]
+      action: Write five priority intelligence requirements for the victim organisation, each naming the decision
+        the resulting intelligence would inform.
+    - hosts: [dfir-ws01]
+      action: For each requirement, record one source that could answer it, then rank the requirements in
+        collection order and record the order.
   refs:
   - nist-sp-800-150
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'Intelligence differs from information because it is:'
+    - question: 'A feed lists an address that served the loader in last month''s hospital
+        intrusion, and the SOC blocks it at the perimeter. In intelligence vocabulary, the
+        product is:'
       options:
-      - A) More voluminous
-      - B) Analysed and produced to inform a specific decision
-      - C) Classified
-      - D) Machine readable
-      answer: B
-    - question: 'A priority intelligence requirement should be tied to:'
+      - A) Data
+      - B) Information
+      - C) Intelligence
+      - D) A vulnerability
+      answer: C
+    - question: An intelligence team has collected six weeks of sign-in logs and finished structuring them
+        for analysis. Which cycle phase comes next?
       options:
-      - A) Available data
-      - B) A decision that the intelligence will inform
-      - C) A threat actor
-      - D) A tool
-      answer: B
-    - question: 'The intelligence cycle begins with:'
+      - A) Direction
+      - B) Collection
+      - C) Processing
+      - D) Analysis
+      answer: D
+    - question: Which statement works best as a priority intelligence requirement for a regional bank?
       options:
-      - A) Collection
-      - B) Direction and requirements
-      - C) Analysis
-      - D) Dissemination
+      - A) Learn about every possible threat that could affect the banking sector
+      - B) Which groups are targeting credit-union payment systems this quarter
+      - C) Collect every indicator available from every feed the bank finds
+      - D) Monitor general news outlets each day for new cyber headlines
       answer: B
-    - question: 'Tactical intelligence primarily supports:'
+    - question: A board asks whether to fund a second SOC shift next year, while a night analyst decides
+        whether to block an address now. Which pairing levels the two questions correctly?
       options:
-      - A) Board investment decisions
-      - B) Immediate detection and response actions
-      - C) Long-term strategy
-      - D) Procurement
-      answer: B
-    - question: 'Collecting without defined requirements typically produces:'
+      - A) Board strategic, analyst tactical
+      - B) Board tactical, analyst strategic
+      - C) Board operational, analyst operational
+      - D) Board tactical, analyst tactical
+      answer: A
+    - question: A team collects from forty feeds but cannot answer its director's question about regional
+        extortion groups. What should the programme have defined first?
       options:
-      - A) Better coverage
-      - B) Volume that consumes analyst time without informing decisions
-      - C) Strategic insight
-      - D) Higher confidence
-      answer: B
+      - A) Published more reports from the feeds it already had
+      - B) Collected from more feeds before asking a question
+      - C) Requirements tied to the director's decision
+      - D) Hired more analysts to work through the backlog
+      answer: C
 - ordinal: 2
   title: Collection and Sources
   content_type: reading
@@ -91,57 +118,85 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Plan collection against defined requirements.
-  - Evaluate source reliability and information credibility.
-  - Manage collection ethically and lawfully.
+  - Plan collection by mapping each priority intelligence requirement to the sources capable of answering it
+  - Grade source reliability and information credibility separately for three supplied sources, with a reason each
+  - Identify the legal and ethical limits that apply to a proposed collection activity
   topics:
-  - Source types and collection planning.
-  - Source reliability and credibility grading.
-  - Open source collection practice.
-  - Legal and ethical collection limits.
-  lab: 'Lab: Build a collection plan mapping each of your intelligence requirements to specific sources,
-    and grade three sources for reliability with justification.'
+  - 'Source types: open source, human, commercial feeds and internal telemetry.'
+  - Collection planning that maps each requirement to the sources able to answer it.
+  - Source reliability and information credibility, graded separately.
+  - Corroboration across independent sources to raise confidence and detect deception.
+  - Legal and ethical limits, authorisation and the terms of commercial feeds.
+  lab: >-
+    Lab: On the soc-training range, build a collection plan that maps the five requirements from Module 1
+    to specific sources, and grade three of those sources for reliability and credibility. Evidence: the
+    collection plan with at least one source per requirement; for each of three sources, a reliability grade
+    and a credibility grade with a one-sentence justification; any source marked as needing authorisation.
+    Pass: every requirement maps to at least one source; each of the three grades carries a separate
+    justification; at least one source is marked as needing authorisation or policy review before use.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [dfir-ws01]
+      action: Log on to dfir-ws01 over SSH as the analyst account the instructor assigned and open the Module 1
+        requirements.
+    - hosts: [dfir-ws01, misp01]
+      action: From dfir-ws01, open the threat intelligence platform on misp01 and record each configured source as
+        feed, community or internal.
+    - hosts: [dfir-ws01]
+      action: Select three sources and grade each for reliability and for credibility, recording one sentence of
+        justification per grade.
+    - hosts: [dfir-ws01]
+      action: Map each of the five requirements to the sources capable of answering it and record the mapping.
+    - hosts: [dfir-ws01]
+      action: Mark any source that needs authorisation or a policy check before use, and state the limit that
+        applies to it.
   refs:
   - nist-sp-800-150
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Source reliability and information credibility are graded separately because:'
+    - question: A well-known researcher reports an intrusion, but the reported sample does not match any known
+        tool. How should the report be treated before use?
       options:
-      - A) Convention requires it
-      - B) A reliable source can report incorrect information and vice versa
-      - C) Sources vary in cost
-      - D) It simplifies analysis
-      answer: B
-    - question: 'Collection from a closed forum may raise:'
+      - A) Rejected as worthless
+      - B) Accepted at face value
+      - C) Graded for reliability and credibility
+      - D) Shared onward to partners without grading it first
+      answer: C
+    - question: A feed that has been accurate for months publishes one wrong claim about a new malware family.
+        What does this show?
       options:
-      - A) No concerns
-      - B) Legal and ethical questions requiring authorisation and policy
-      - C) Only cost concerns
-      - D) Technical issues only
-      answer: B
-    - question: 'A collection plan links:'
+      - A) The feed's reliability was overstated from the start
+      - B) A feed should be dropped after its very first error
+      - C) Consistent malware naming is impossible for anyone
+      - D) Reliability and credibility are separate judgements
+      answer: D
+    - question: Two independent sources report the same intrusion details with matching dates. What does the
+        corroboration change?
       options:
-      - A) Analysts to reports
-      - B) Requirements to the sources capable of satisfying them
-      - C) Indicators to detections
-      - D) Budget to tools
-      answer: B
-    - question: 'Relying on a single source for a significant assessment is unwise because:'
+      - A) It raises confidence in the shared details
+      - B) It proves the attribution
+      - C) It removes the need for grading
+      - D) It doubles the report volume the team must review
+      answer: A
+    - question: An analyst considers joining a closed criminal forum to watch for stolen-card sales. What does
+        this collection need first?
       options:
-      - A) It is slow
-      - B) Corroboration is needed to raise confidence and detect deception
-      - C) It costs more
-      - D) Sources expire
+      - A) A faster laptop and a private place to work
+      - B) Authorisation under policy and legal review
+      - C) Nothing, because anything online counts as public
+      - D) A second analyst assigned to witness the work
       answer: B
-    - question: 'Commercial intelligence feeds should be evaluated on:'
+    - question: A new analyst is handed the team's collection plan to update for the coming quarter. What is
+        that document?
       options:
-      - A) Indicator volume
-      - B) Relevance, timeliness, accuracy and context provided
-      - C) Price
-      - D) Brand
-      answer: B
+      - A) A map from each requirement to sources that answer it
+      - B) A list of purchased tools
+      - C) A schedule of analyst shifts
+      - D) A log of the indicators collected and where they came from
+      answer: A
 - ordinal: 3
   title: Analysis and Analytic Rigour
   content_type: reading
@@ -149,16 +204,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Apply structured analytic techniques.
-  - Manage cognitive bias in assessment.
-  - Express confidence and uncertainty precisely.
+  - Apply analysis of competing hypotheses to an ambiguous intrusion and record the evidence each hypothesis rests on
+  - Express each assessment with a confidence level and the estimative language the evidence supports
+  - Check a draft assessment for anchoring and confirmation bias and record what the check changed
   topics:
-  - Structured analytic techniques.
-  - Analysis of competing hypotheses.
-  - Cognitive bias in intelligence.
-  - Confidence language and estimative probability.
-  lab: 'Lab: Apply analysis of competing hypotheses to an ambiguous intrusion scenario, and produce an
-    assessment with explicit confidence levels and the evidence driving each.'
+  - Structured analytic techniques and why they discipline judgement.
+  - 'Analysis of competing hypotheses: list hypotheses, test evidence, keep the rejected.'
+  - Cognitive bias in analysis, including anchoring and confirmation bias.
+  - Estimative probability and confidence language a consumer can act on.
+  - Absent evidence as a possible collection gap rather than proof of absence.
+  lab: >-
+    Lab: On the soc-training range, query the log platform for failed sign-ins over the past day and
+    assess whether the activity indicates an intrusion. Evidence: the query used; the count and source
+    addresses of the failed sign-ins; three hypotheses, including at least one that does not involve an
+    adversary; the evidence for and against each; an assessment with a confidence level. Pass: all three
+    hypotheses are tested against the recorded evidence; the assessment names its confidence level and the
+    evidence driving it; the possibility that the activity is benign is evaluated, not assumed.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [dfir-ws01]
+      action: Log on to dfir-ws01 over SSH as the analyst account the instructor assigned and open the log platform.
+    - hosts: [dfir-ws01, siem01]
+      action: From dfir-ws01, query the log platform on siem01 for failed sign-ins in the past day and record the
+        query used.
+    - hosts: [dfir-ws01, siem01]
+      action: Record the count of failed sign-ins and the source addresses the platform shows, with the times of
+        the bursts.
+    - hosts: [dfir-ws01]
+      action: Write three hypotheses that could explain the recorded activity, including at least one that does
+        not involve an adversary.
+    - hosts: [dfir-ws01]
+      action: Judge which hypothesis the evidence supports, state the assessment with a confidence level, and
+        record which evidence a collection gap could still change.
   refs:
   - nist-sp-800-150
   - mitre-attack
@@ -166,40 +244,45 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Analysis of competing hypotheses guards against:'
+    - question: An analyst believes one intrusion used one tool, credits every matching log line and quietly
+        discounts the lines that contradict it. Which bias does this show?
       options:
-      - A) Data shortage
-      - B) Anchoring on the first plausible explanation
-      - C) Source unreliability
-      - D) Slow analysis
+      - A) Anchoring on a first estimate
+      - B) Confirmation bias
+      - C) Availability bias
+      - D) Overconfidence in sources
       answer: B
-    - question: 'Confirmation bias in intelligence analysis manifests as:'
+    - question: A first quick judgement says an outage was a failed patch, and later findings keep being fitted
+        to it. Which technique would have guarded against this?
       options:
-      - A) Rejecting all evidence
-      - B) Weighting evidence that supports the favoured hypothesis more heavily
-      - C) Over-collection
-      - D) Excessive caution
-      answer: B
-    - question: 'Estimative language such as likely should be:'
+      - A) Collecting from more feeds
+      - B) Raising the confidence level of the judgement
+      - C) Listing competing hypotheses before judging
+      - D) Waiting for newer data
+      answer: C
+    - question: An assessment calls an attack likely, but the team never agrees what likely means. What is the
+        main risk?
       options:
-      - A) Used interchangeably with possible
-      - B) Defined consistently so consumers interpret it the same way
-      - C) Avoided
-      - D) Quantified precisely always
-      answer: B
-    - question: 'Evidence that is absent should be treated as:'
+      - A) Consumers read different probabilities into the same word
+      - B) The assessment becomes classified without an authorised marking
+      - C) Every source must be regraded before anyone acts
+      - D) Collection planning must stop until the team defines the word
+      answer: A
+    - question: An analyst finds no sign of data theft in the logs and writes that the adversary did not steal
+        data. What else could the absence reflect?
       options:
-      - A) Proof of absence
-      - B) Potentially reflecting a collection gap rather than reality
-      - C) Irrelevant
-      - D) Disconfirming
-      answer: B
-    - question: 'High confidence in an assessment requires:'
+      - A) Proof that the data never left the estate
+      - B) The adversary's exceptional technical skill
+      - C) Log tampering, and log tampering alone
+      - D) A collection gap in what the logs cover
+      answer: D
+    - question: An assessment rests on three independent, corroborated sources, and no competing explanation
+        fits the evidence. What confidence is warranted?
       options:
-      - A) A senior analyst
-      - B) Corroborated, reliable evidence with few competing explanations
-      - C) Recent reporting
-      - D) Consensus
+      - A) Low, because certainty is never possible in intelligence work
+      - B) High, because corroborated evidence leaves few alternatives
+      - C) Moderate, pending a senior review before it is published
+      - D) None, because a confidence level is never stated at all
       answer: B
 - ordinal: 4
   title: Adversary Tracking and Attribution
@@ -208,16 +291,40 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Track adversary activity over time.
-  - Apply attribution methodology rigorously.
-  - Communicate attribution confidence responsibly.
+  - Cluster intrusion activity into candidate groups using several evidence types, and name the types used
+  - Build a diamond model record for one activity cluster, marking which features are observed and which unknown
+  - State an attribution judgement with its confidence and the evidence types that would raise it
   topics:
-  - Activity clustering and tracking.
-  - Attribution methodology and evidence types.
-  - Diamond model and kill chain analysis.
-  - Responsible attribution communication.
-  lab: 'Lab: Cluster a set of intrusion activity into candidate groups using multiple evidence types,
-    and state what additional evidence would be required to raise attribution confidence.'
+  - Activity clustering from infrastructure, tooling and behavioural overlap.
+  - 'The diamond model: adversary, capability, infrastructure and victim features.'
+  - Evidence types for attribution and why a single type is weak.
+  - False flags and deliberate misdirection designed to mislead attribution.
+  - Communicating attribution with confidence levels and defensive value.
+  lab: >-
+    Lab: On the soc-training range, cluster a week of recorded events into candidate activity groups and
+    model one of them. Evidence: the clusters with the events each contains; the shared characteristics that
+    defined each cluster; a diamond model record for one cluster with adversary, capability, infrastructure
+    and victim features marked observed or unknown; two additional evidence types that would raise attribution
+    confidence. Pass: clusters are defined by shared characteristics, not by victim or date alone; the diamond
+    record marks unobserved features unknown rather than guessed; the attribution statement names its
+    confidence level.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [dfir-ws01]
+      action: Log on to dfir-ws01 over SSH as the analyst account the instructor assigned and open the case
+        management platform.
+    - hosts: [dfir-ws01, thehive01]
+      action: From dfir-ws01, open the case management platform on thehive01 and record the events over
+        the past seven days.
+    - hosts: [dfir-ws01]
+      action: Group the events into candidate clusters by shared infrastructure, tooling or behaviour, and record
+        which events each cluster contains.
+    - hosts: [dfir-ws01]
+      action: Choose one cluster and build a diamond model record for it, marking each feature observed or unknown.
+    - hosts: [dfir-ws01]
+      action: State an attribution judgement for the cluster with its confidence level, and record two evidence
+        types that would raise it.
   refs:
   - mitre-attack
   - nist-sp-800-150
@@ -225,41 +332,46 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Attribution based on a single evidence type is:'
+    - question: Attribution for three intrusions rests on one tool recompiled from leaked source. Why is this
+        weak evidence on its own?
       options:
-      - A) Sufficient if technical
-      - B) Weak, as any single type can be spoofed or coincidental
-      - C) Standard
-      - D) Definitive
-      answer: B
-    - question: 'Activity clustering groups intrusions by:'
+      - A) Leaked source is never real
+      - B) Tool recompilation always fails and makes the evidence useless
+      - C) Any single evidence type can be spoofed or coincidental
+      - D) Three intrusions are too few
+      answer: C
+    - question: Six intrusions across three victims share one command pattern, one staging server type and the
+        same off-hours rhythm. What does this suggest?
       options:
-      - A) Victim only
-      - B) Shared characteristics across infrastructure, tooling and behaviour
-      - C) Date
-      - D) Severity
-      answer: B
-    - question: 'Publicly attributing an intrusion carries risk because:'
+      - A) One activity cluster worth tracking
+      - B) Six unrelated actors
+      - C) A defect in logging
+      - D) A random coincidence across victims
+      answer: A
+    - question: An intrusion plants tooling associated with a group the victim has already read about in the
+        news. What should the analyst consider?
       options:
-      - A) It is difficult
-      - B) Error causes reputational, legal and potentially diplomatic harm
-      - C) It aids the adversary
-      - D) It requires classification
+      - A) That the case can be closed on the tooling evidence alone
+      - B) A deliberate false flag designed to mislead attribution
+      - C) Nothing unusual, because the tooling simply matches the group
+      - D) The victim's own staff acting without any outsider
       answer: B
-    - question: 'Deliberate false flags are designed to:'
+    - question: 'A team records one intrusion cluster: the suspected actor, the ransomware build, the leased
+        staging server and the clinics hit. Which four features does the diamond model capture?'
       options:
-      - A) Improve stealth
-      - B) Mislead attribution toward another actor
-      - C) Evade detection
-      - D) Reduce footprint
+      - A) Actor, motive, cost and impact
+      - B) Adversary, capability, infrastructure and victim
+      - C) Threat, risk, control and asset
+      - D) Input, process, output and feedback across the cycle
       answer: B
-    - question: 'For most defenders, the operational value of attribution lies in:'
+    - question: After naming the group behind a retail intrusion, an analyst briefs which systems the group
+        usually hits first. What has the defence gained from the attribution work?
       options:
-      - A) Naming the actor
-      - B) Anticipating likely behaviour and prioritising defences accordingly
-      - C) Legal action
-      - D) Public reporting
-      answer: B
+      - A) Naming the specific person responsible for the intrusion
+      - B) Guaranteed prosecution of the group by law enforcement
+      - C) Anticipating likely behaviour and prioritising defences
+      - D) Publicity for the security operations centre
+      answer: C
 - ordinal: 5
   title: Production and Dissemination
   content_type: reading
@@ -267,16 +379,40 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Produce intelligence products suited to their consumers.
-  - Disseminate intelligence in usable form and time.
-  - Handle intelligence according to sharing restrictions.
+  - Produce tactical, operational and strategic products from one body of analysis for their matching audiences
+  - Package indicators in a structured, machine-readable format with handling caveats applied
+  - Judge when a product is late and choose the sharing choice that protects both timeliness and trust
   topics:
-  - Product types and audiences.
-  - Timeliness versus completeness.
-  - Machine-readable dissemination.
-  - Handling caveats and sharing restrictions.
-  lab: 'Lab: Produce three products from one body of analysis - a tactical indicator package, an operational
-    report and a strategic summary - and package the indicators in a structured format.'
+  - 'Product types: tactical, operational and strategic, and their audiences.'
+  - Timeliness versus completeness at the decision point.
+  - Structured, machine-readable exchange of indicators between sharing partners.
+  - Handling caveats and sharing restrictions on intelligence products.
+  - Trust between sharing partners and how breaches damage it.
+  lab: >-
+    Lab: On the soc-training range, turn one body of analysis into three products at different levels and
+    package the indicators. Evidence: an operational report for the incident response team and a strategic
+    summary for leadership, each drawn from the same analysis; an indicator package of at least three
+    indicators recorded in the threat platform, with the event identifier and attribute count; a handling
+    caveat on each product. Pass: each product matches the decision its audience must make; every product
+    carries a handling caveat; the recorded indicator count matches what the platform shows.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [dfir-ws01]
+      action: Log on to dfir-ws01 over SSH as the analyst account the instructor assigned and open the threat
+        intelligence platform.
+    - hosts: [dfir-ws01, misp01]
+      action: From dfir-ws01, create an event in the threat intelligence platform on misp01 and record at least
+        three indicators in it.
+    - hosts: [dfir-ws01, misp01]
+      action: Record the event identifier the platform assigns and the attribute count the platform shows for the
+        event, exactly as displayed.
+    - hosts: [dfir-ws01]
+      action: Write an operational report for the incident response team and a strategic summary for leadership,
+        both drawn from the same analysis.
+    - hosts: [dfir-ws01]
+      action: Attach a handling caveat to each product and judge whether each product matches the decision its
+        audience must make.
   refs:
   - oasis-cti
   - nist-sp-800-150
@@ -284,41 +420,46 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'STIX and TAXII exist to support:'
+    - question: A strategic summary for leadership is being drafted from one body of analysis. What should it
+        contain?
       options:
-      - A) Log storage
-      - B) Structured, machine-readable exchange of threat intelligence
-      - C) Malware analysis
-      - D) Incident tracking
+      - A) Host names and addresses
+      - B) Trends, risk and implications for investment
+      - C) Malware reverse engineering steps in exhaustive detail
+      - D) Sign-in log extracts
       answer: B
-    - question: 'Intelligence delivered after the decision point is:'
+    - question: A sharing partner wants to receive indicators automatically into its own tooling. Which
+        standards support this?
       options:
-      - A) Still valuable
-      - B) Of little operational use regardless of quality
-      - C) Archived
-      - D) Strategic
-      answer: B
-    - question: 'A strategic intelligence product should focus on:'
+      - A) Structured exchange plus automated transport of indicators
+      - B) Log forwarding rules
+      - C) Case ticket queues
+      - D) Signed email attachments that a shared mailbox collects each day
+      answer: A
+    - question: A flawless strategic report on a sector threat lands the day after the board's investment
+        decision. What is it worth to that decision?
       options:
-      - A) Indicators
-      - B) Trends, risk and implications informing investment and posture
-      - C) Technique details
-      - D) Malware analysis
-      answer: B
-    - question: 'Traffic light protocol style handling caveats specify:'
+      - A) Full value, because quality matters most to a board
+      - B) Half value, because some of the analysis still applies
+      - C) Its value grows over time as it is reused
+      - D) Little for that decision, whatever its quality
+      answer: D
+    - question: An intelligence product carries a handling caveat set by its originating team. What does the
+        caveat state?
       options:
-      - A) Product urgency
-      - B) With whom the information may be shared
-      - C) Confidence level
-      - D) Source reliability
+      - A) How urgent the report is
+      - B) Who may receive the information
+      - C) The confidence level of the assessment
+      - D) The source reliability grade
       answer: B
-    - question: 'Breaching a sharing restriction damages:'
+    - question: An analyst forwards a partner's restricted report to an unauthorised team. What is the main
+        consequence?
       options:
-      - A) Nothing if unintentional
-      - B) The trust relationships on which future sharing depends
-      - C) Only the source
-      - D) Product quality
-      answer: B
+      - A) Nothing, if the intent behind it was good
+      - B) A slower mailbox while the incident is reviewed
+      - C) Damage to the trust future sharing depends on
+      - D) A complaint about the report's formatting
+      answer: C
 - ordinal: 6
   title: Building an Intelligence Capability
   content_type: reading
@@ -326,16 +467,40 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Design an intelligence function fit for the organisation.
-  - Integrate intelligence with defensive operations.
-  - Measure intelligence value credibly.
+  - Design an intelligence function for a described organisation, naming its requirements process and consumers
+  - Map the integration points between the function and detection, hunting and response teams
+  - Select two effectiveness measures tied to decisions the function informed, not output counts
   topics:
-  - Capability design and sizing.
-  - Integration with detection, hunting and response.
-  - Stakeholder relationships.
-  - Measuring intelligence effectiveness.
-  lab: 'Lab: Design a threat intelligence function for a described organisation, specifying its requirements
-    process, consumers, integration points and the measures of effectiveness you would report.'
+  - 'Capability design: people, process and tooling sized to the organisation.'
+  - 'Requirements and consumers: the decisions the function exists to inform.'
+  - Integration points with detection, hunting and response.
+  - 'Effectiveness measures: decisions informed, not indicators counted.'
+  - Feedback and periodic review of requirements as the organisation changes.
+  lab: >-
+    Lab: On the soc-training range, design an intelligence function for the victim organisation and map how
+    it connects to the SOC platforms. Evidence: the requirements process with named consumers and the
+    decisions each owns; the direction and format of each exchange among the threat platform, log platform
+    and case platform; two effectiveness measures tied to decisions informed. Pass: every consumer names a
+    decision; each integration point states a direction and a format; both measures reference decisions
+    rather than counts of output.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [dfir-ws01]
+      action: Log on to dfir-ws01 over SSH as the analyst account the instructor assigned and open the Module 1
+        requirements.
+    - hosts: [dfir-ws01, misp01, siem01, thehive01]
+      action: From dfir-ws01, confirm which of the threat platform on misp01, the log platform on siem01 and the
+        case platform on thehive01 exchange data today, and record each direction and format.
+    - hosts: [dfir-ws01]
+      action: Design the intelligence function for the victim organisation, recording its requirements process,
+        its consumers, its products and the cadence of each product.
+    - hosts: [dfir-ws01]
+      action: Map the integration points between the function and detection, hunting and response, with the
+        direction of each.
+    - hosts: [dfir-ws01]
+      action: Select two effectiveness measures tied to decisions the function informs, and judge whether each
+        is an outcome rather than a count of output.
   refs:
   - nist-sp-800-150
   - nist-cswp-29
@@ -344,38 +509,40 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'An intelligence function without defined consumers will:'
+    - question: A new intelligence team starts with three feed subscriptions but no named consumers. What
+        happens first?
       options:
-      - A) Set its own direction well
-      - B) Produce output that nobody acts on
-      - C) Be more objective
-      - D) Cost less
+      - A) Output piles up that nobody acts on
+      - B) The feeds improve detection on their own
+      - C) Analysts set good direction anyway
+      - D) Costs fall
+      answer: A
+    - question: At the quarterly review, leadership asks what an intelligence function has delivered. What
+        shows the function earned its place?
+      options:
+      - A) A count of the intelligence reports it published
+      - B) A count of the indicators it ingested
+      - C) Decisions and defensive changes it informed
+      - D) A count of the feed subscriptions it holds
+      answer: C
+    - question: The hunting team asks the intelligence function for help. What should the hunters receive?
+      options:
+      - A) Raw dumps of every feed the team subscribes to
+      - B) Prioritised hypotheses grounded in reporting
+      - C) Finished verdicts on the hunts they already ran
+      - D) Nothing at all until they ask a second time
       answer: B
-    - question: 'Intelligence effectiveness is best measured by:'
+    - question: A metric counts the indicators ingested each month. What does the number measure?
       options:
-      - A) Reports produced
-      - B) Decisions and defensive changes it demonstrably informed
-      - C) Indicators ingested
-      - D) Feeds subscribed
-      answer: B
-    - question: 'Integration with hunting means intelligence should:'
+      - A) Defence quality
+      - B) Coverage of threats across the estate
+      - C) Activity, not outcome
+      - D) Analyst skill
+      answer: C
+    - question: The requirements were written two years ago and never touched. Why revisit them?
       options:
-      - A) Replace hunting
-      - B) Supply prioritised hypotheses for hunters to test
-      - C) Validate hunts
-      - D) Consume hunt output only
-      answer: B
-    - question: 'Counting ingested indicators as a value metric is misleading because it measures:'
-      options:
-      - A) Quality
-      - B) Activity rather than outcome
-      - C) Coverage
-      - D) Timeliness
-      answer: B
-    - question: 'The requirements process should be revisited because:'
-      options:
-      - A) Analysts rotate
+      - A) To refresh the wording without changing what they require
       - B) Organisational decisions and threats change over time
-      - C) Feeds expire
-      - D) Tools update
+      - C) To satisfy the auditors who ask about them each year
+      - D) Feed subscriptions expire yearly and need renewing
       answer: B

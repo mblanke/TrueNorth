@@ -9,6 +9,7 @@ difficulty: intermediate
 duration_hours: 20
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
@@ -33,57 +34,87 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Define an incident and distinguish it from an event.
-  - Describe the incident response lifecycle.
-  - Explain the purpose of an incident response plan.
+  - Distinguish an event, an alert and an incident in a written monitoring scenario and justify each classification
+  - Sequence the phases of the incident response lifecycle for a described intrusion from detection through review
+  - Judge whether a draft incident response plan gives a named role the authority to declare an incident
   topics:
-  - Event, alert and incident definitions.
-  - Response lifecycle phases.
-  - Plan, policy and procedure.
-  - Roles and authority during response.
-  lab: 'Lab: Classify ten supplied events as event, alert or incident with justification, and identify
-    which require formal declaration.'
+  - Event, alert and incident definitions drawn from NIST SP 800-61 revision 3.
+  - The response lifecycle phases and why they loop back instead of running once.
+  - Plan, policy and procedure documents and the authority each one grants.
+  - Declaration thresholds and the role empowered to declare an incident.
+  - How plans that have never been exercised behave under pressure.
+  lab: >-
+    Lab: On the range, separate a morning of SIEM alerts into events, alerts and candidate
+    incidents, and decide which one alert to declare formally. Evidence: for each of the five
+    most recent SIEM alerts, the host that raised it, its time and the classification with one
+    sentence of reason; the number of open cases in TheHive; the one alert to declare an
+    incident. Pass: all five alerts recorded and classified as event, alert or candidate
+    incident; the declaration decision names the plan role that holds the authority to declare;
+    the classifications match the instructor's key for at least four of the five alerts.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open a terminal and record the start time in the lab notes.
+    - hosts: [siem01]
+      action: Open the SIEM on siem01 with the analyst account, list the five most recent alerts and
+        record each alert name, the host that raised it and its timestamp.
+    - hosts: [thehive01]
+      action: Open TheHive on thehive01 with the analyst account, count the cases already open and
+        record their titles.
+    - hosts: [siem01]
+      action: For two of the five alerts, open the detail view on siem01 and record what each shows
+        about the affected host and the observed activity.
+    - hosts: [jump01]
+      action: From the jump01 terminal, classify each of the five alerts as event, alert or candidate
+        incident with one sentence of reason, and name the alert to declare plus the plan role
+        holding that authority.
   refs:
   - nist-sp-800-61r3
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'An incident differs from an event because an incident:'
+    - question: A monitoring queue shows one ticket where a user's file share permissions changed after an
+        unrecognised login to the payroll share. Why is this an incident rather than an event?
       options:
-      - A) Is logged
-      - B) Actually or imminently jeopardises confidentiality, integrity or availability
-      - C) Generates an alert
-      - D) Involves a user
-      answer: B
-    - question: 'The primary purpose of an incident response plan is to:'
+      - A) Events never involve user accounts
+      - B) An alert must escalate through three levels first
+      - C) The activity jeopardises the confidentiality of stored payroll data
+      - D) The share is used by more than one team
+      answer: C
+    - question: During a walkthrough of a draft response plan, a trainee asks when the response lifecycle
+        finishes. Which statement is correct?
       options:
-      - A) Satisfy audit
-      - B) Enable fast, consistent and authorised action under pressure
-      - C) Assign blame
-      - D) Reduce logging
-      answer: B
-    - question: 'Declaring an incident formally matters because it:'
+      - A) After review actions close, since the lifecycle loops back to preparation
+      - B) When containment succeeds
+      - C) When the malware is removed
+      - D) When the final report is filed and archived
+      answer: A
+    - question: A responder faces a suspected intrusion outside business hours and must declare an incident.
+        Which document gives them that authority?
       options:
-      - A) Notifies the vendor
-      - B) Activates authority, resources and communication obligations
-      - C) Stops the attack
-      - D) Creates evidence
-      answer: B
-    - question: Who should have authority to declare an incident?
+      - A) A runbook page for the affected application, stored with the service owner
+      - B) An email thread from the last incident
+      - C) The monitoring tool's escalation page
+      - D) The declaration threshold named in the incident response plan
+      answer: D
+    - question: A consultancy wrote a thorough incident response plan two years ago and has never run an
+        exercise against it. What can be said about the plan?
       options:
-      - A) Any user
-      - B) A defined role named in the plan
-      - C) The vendor
-      - D) The auditor
+      - A) It is compliant because it is documented
+      - B) Its effectiveness under real pressure is unproven
+      - C) It needs no changes until a real incident occurs and is declared
+      - D) It replaces the need for trained responders
       answer: B
-    - question: 'An incident response plan that has never been exercised is:'
+    - question: An analyst is tuning monitoring on a server that was reimaged while the written report is
+        still open. Which incident response lifecycle phase does this work belong to?
       options:
-      - A) Adequate
-      - B) Of unproven effectiveness
-      - C) Non-compliant
-      - D) A detective control
-      answer: B
+      - A) Preparation
+      - B) Detection and analysis
+      - C) Post-incident activity
+      - D) Containment
+      answer: C
 - ordinal: 2
   title: Preparation
   content_type: reading
@@ -91,56 +122,88 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Identify the capabilities required before an incident occurs.
-  - Establish communication and escalation paths.
-  - Prepare tooling and access in advance.
+  - Assemble a pre-incident readiness checklist for a described organisation and rank its two largest gaps
+  - Choose out-of-band communication channels and escalation contacts that survive a compromised primary network
+  - Verify that response tooling and account access work on the range before an incident occurs
   topics:
-  - Capability and readiness assessment.
-  - Contact lists and escalation paths.
-  - Tooling, access and jump kits.
-  - Training and exercises.
-  lab: 'Lab: Produce a readiness checklist for a small organisation covering people, process, technology
-    and information, and identify the two largest gaps.'
+  - Readiness assessment across people, process, technology and information.
+  - Contact lists, escalation paths and pre-authorised containment decisions.
+  - Out-of-band communication channels that remain reachable during an incident.
+  - Jump kits, trusted tooling and pre-provisioned responder access.
+  - Training and exercise cycles that keep preparation current.
+  lab: >-
+    Lab: Audit responder readiness on the range: confirm which incident tools accept the analyst
+    account, then turn the results into a readiness ranking. Evidence: for siem01,
+    velociraptor01 and thehive01, whether the analyst login succeeded and one value each tool
+    displays, such as the number of hosts reporting; the tools the jump01 terminal could not
+    reach. Pass: all three tools tested and recorded with the value each displays; a readiness
+    checklist covering people, process and technology items; the two largest gaps ranked with
+    one sentence of reason each.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open a terminal and record the start time in the lab notes.
+    - hosts: [siem01]
+      action: Sign in to the SIEM on siem01 with the analyst account and record whether the login
+        succeeded and the time span of queryable logs shown.
+    - hosts: [velociraptor01]
+      action: Sign in to velociraptor01 with the analyst account and record whether the login succeeded
+        and how many client hosts the interface lists.
+    - hosts: [thehive01]
+      action: Sign in to thehive01 with the analyst account, open a case view and record
+        the number of cases displayed.
+    - hosts: [jump01]
+      action: From the terminal on jump01, test reachability of each of the three tools and record any that
+        are unreachable.
+    - hosts: [jump01]
+      action: From the notes on jump01, write a readiness checklist covering people, process and technology,
+        and rank the two largest gaps with one sentence of reason each.
   refs:
   - nist-sp-800-61r3
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Out-of-band communication is prepared in advance because:'
+    - question: During an incident, responders suspect the corporate email system itself is watched. Why was a
+        messaging channel outside the corporate network prepared in advance?
       options:
-      - A) It is cheaper
-      - B) Primary channels may be compromised or unavailable during an incident
-      - C) It is faster
-      - D) Regulators require it
+      - A) It is cheaper to run than the primary system
+      - B) Regulators mandate a second messaging channel
+      - C) It keeps the incident off the primary ticket queue
+      - D) Primary channels may be unavailable or observed during an incident
+      answer: D
+    - question: Responders keep a laptop with verified tools that is never attached to the compromised
+        environment. What does this jump kit guarantee?
+      options:
+      - A) Faster account logins for affected users
+      - B) Tooling whose integrity does not depend on the compromised environment
+      - C) A complete record of the incident timeline
+      - D) Automatic network isolation of affected hosts
       answer: B
-    - question: 'A jump kit exists to ensure responders have:'
+    - question: Before flu season, a team approves disconnecting any outbreak-affected workstation without
+        further sign-off. What does this preparation deliver?
       options:
-      - A) Spare hardware for users
-      - B) Trusted tools and media not dependent on the compromised environment
-      - C) Documentation only
-      - D) Network access
-      answer: B
-    - question: 'Pre-authorised containment actions are valuable because they:'
+      - A) Faster containment when the trigger condition is met
+      - B) Removal of accountability from the decision
+      - C) A replacement for the incident response plan
+      - D) A lower volume of logging events recorded during the incident
+      answer: A
+    - question: An escalation contact cannot be found for a file server that has begun encrypting shares.
+        Which preparation item would have prevented the delay?
       options:
-      - A) Remove accountability
-      - B) Avoid delay waiting for approval during a fast-moving incident
-      - C) Reduce logging
-      - D) Replace the plan
-      answer: B
-    - question: 'Preparation includes knowing asset ownership because:'
+      - A) A tested out-of-band channel
+      - B) A larger jump kit
+      - C) A current asset ownership register naming the decision-maker
+      - D) A written severity classification matrix
+      answer: C
+    - question: Six months after a plan review, an escalation list still routes to two responders who have
+        left the organisation. Which preparation failure does this show?
       options:
-      - A) It assigns cost
-      - B) Responders must reach a decision-maker quickly for each affected system
-      - C) It sets severity
-      - D) It speeds scanning
-      answer: B
-    - question: 'The most common preparation failure is:'
-      options:
-      - A) Too many tools
-      - B) Contact and escalation information that is out of date
-      - C) Excessive training
-      - D) Over-documentation
+      - A) Too many monitoring tools in service
+      - B) Escalation contact information that has gone out of date
+      - C) Excessive tabletop exercise training across too many quarters
+      - D) Over-documentation of the response plan
       answer: B
 - ordinal: 3
   title: Detection and Analysis
@@ -149,16 +212,46 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Triage an alert to determine whether an incident has occurred.
-  - Establish initial scope and severity.
-  - Record findings in a defensible manner.
+  - Triage a set of alerts from the range to decide whether an incident has occurred
+  - Establish the initial scope of a suspected compromise across hosts, accounts and data
+  - Record triage findings and evidence sources in notes that another responder could rely on
   topics:
-  - Triage and initial assessment.
-  - Scoping and impact determination.
-  - Severity classification.
-  - Contemporaneous notes and evidence handling.
-  lab: 'Lab: Triage a supplied alert set, determine whether an incident has occurred, establish initial
-    scope, and write the declaration note with supporting evidence.'
+  - Alert triage and first assessment decisions in NIST SP 800-61 revision 3.
+  - Scoping a compromise across hosts, accounts and data.
+  - Severity classification based on actual and potential organisational impact.
+  - Log and network evidence sources, including SIEM, flow logs and full packet capture.
+  - Contemporaneous notes and defensible evidence handling.
+  lab: >-
+    Lab: Open the incident-response-drill scenario and triage the alerts it has staged: decide
+    whether an incident has occurred, set the initial scope and write the declaration note.
+    Evidence: each triaged alert with its source host and time; the hosts and accounts placed
+    in scope from the SIEM and endpoint views; the network observations cited from the
+    monitoring sensors; the declaration note with a severity and the citations behind it. Pass:
+    the incident decision stated yes or no with two cited observations; scope listing every host
+    the evidence shows and no host it does not; the note separating observed facts from
+    assumptions.
+  lab_range:
+    template: soc-training
+    scenario: incident-response-drill
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open a terminal and record the start time in the lab notes.
+    - hosts: [siem01]
+      action: On siem01, review the alerts staged by the drill and record each alert name, the host
+        that raised it and its timestamp.
+    - hosts: [velociraptor01]
+      action: On velociraptor01, inspect the endpoint the alerts point at and record the artefacts and
+        process listings that support or refute compromise.
+    - hosts: [siem01]
+      action: On siem01, open the Zeek connection records for the affected host and record the
+        destination addresses and times to cite as evidence.
+    - hosts: [thehive01]
+      action: On thehive01, open a case for the candidate incident and record the severity assigned
+        with the citations behind it.
+    - hosts: [jump01]
+      action: From the notes on jump01, state whether an incident has occurred with two cited
+        observations, list the hosts and accounts in initial scope, and mark each note line as
+        an observed fact or an assumption.
   refs:
   - nist-sp-800-61r3
   - nist-sp-800-92
@@ -166,41 +259,46 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Initial scoping seeks to determine:'
+    - question: 'An analyst faces two alerts about the same workstation: outbound connections to an unknown
+        address and failed logins against the domain controller. What must the triage decision state first?'
       options:
-      - A) Who is to blame
-      - B) What systems, accounts and data are potentially affected
-      - C) The cost
-      - D) The vendor
-      answer: B
-    - question: 'Contemporaneous notes are important because:'
+      - A) Whether the combined observations amount to an incident
+      - B) Which responder owns the workstation
+      - C) The cost of a full rebuild
+      - D) Which vendor signature matched
+      answer: A
+    - question: During scoping, evidence shows one workstation compromised and its domain account later used
+        on a second machine. What initial scope must the analyst record?
       options:
-      - A) They speed response
-      - B) Recollection degrades and decisions must be explainable later
-      - C) They satisfy the SIEM
-      - D) They replace evidence
-      answer: B
-    - question: 'Severity classification should be based primarily on:'
+      - A) Only the single workstation that raised the alert
+      - B) Only the domain controller
+      - C) Both machines and the account observed in use
+      - D) Every host in the environment
+      answer: C
+    - question: Two incidents raise the same alert volume, but one touches a payment system and the other an
+        isolated test lab. What should severity classification rest on?
       options:
-      - A) Alert count
-      - B) Actual and potential impact to the organisation
-      - C) The tool that detected it
-      - D) Time of day
-      answer: B
-    - question: 'Declaring scope too narrowly early in an incident risks:'
+      - A) The number of alerts raised
+      - B) The tool that detected each incident
+      - C) The hour the alerts fired
+      - D) Actual and potential impact to the organisation
+      answer: D
+    - question: A responder declares scope as one laptop to keep the incident small and stops looking further.
+        Which risk does this create?
       options:
-      - A) Over-response
-      - B) Missing compromised systems and incomplete eradication
-      - C) Excessive logging
-      - D) Delayed reporting
-      answer: B
-    - question: 'The analysis phase should conclude with:'
+      - A) Over-response across the estate
+      - B) Excessive logging on unrelated hosts
+      - C) Delayed regulatory reporting
+      - D) Missed compromised systems and incomplete eradication
+      answer: D
+    - question: An analyst records observations with times and sources as the investigation proceeds, instead
+        of writing them from memory afterwards. What does contemporaneous note taking protect?
       options:
-      - A) A fix applied
-      - B) An understanding sufficient to choose containment actions
-      - C) A press release
-      - D) System rebuild
-      answer: B
+      - A) The later explainability of every decision taken
+      - B) The performance and licence cost of the SIEM platform
+      - C) The secrecy of the investigation
+      - D) The speed of containment alone
+      answer: A
 - ordinal: 4
   title: Containment, Eradication and Recovery
   content_type: reading
@@ -208,57 +306,88 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Select containment actions proportionate to the threat.
-  - Eradicate the root cause rather than the symptom.
-  - Recover systems with verification before return to service.
+  - Select containment actions proportionate to a described compromise and justify the trade-offs
+  - Plan eradication that removes the persistence mechanism and not only the visible symptom
+  - Define recovery criteria that verify a host is clean before it returns to service
   topics:
-  - Short-term and long-term containment.
-  - Root cause identification.
-  - Eradication and rebuild decisions.
-  - Recovery verification and monitoring.
-  lab: 'Lab: For a described compromise, propose short-term and long-term containment, state the eradication
-    approach, and define the criteria for returning the system to service.'
+  - Short-term containment versus long-term containment and their trade-offs.
+  - Balancing damage limitation against evidence preservation and alerting the adversary.
+  - Root cause identification and eradication of the initial access route.
+  - Rebuild from known-good media versus in-place cleaning.
+  - Recovery verification and heightened monitoring before return to service.
+  lab: >-
+    Lab: For the compromise staged in the incident-response-drill scenario, choose containment
+    actions, plan eradication and define recovery criteria. Evidence: the short-term containment
+    action to take now and the business function it interrupts; the persistence to eradicate and
+    the initial access route that must close with it; the checks a host must pass and the
+    monitoring it needs before returning to service. Pass: containment named for each in-scope
+    host with its trade-off stated; eradication addressing both the observed malware and the
+    access route; recovery criteria a second responder could verify without further guidance.
+  lab_range:
+    template: soc-training
+    scenario: incident-response-drill
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open a terminal and record the start time in the lab notes.
+    - hosts: [velociraptor01]
+      action: On velociraptor01, examine the compromised endpoint and record the persistence artefacts
+        to eradicate and the service each would interrupt if contained now.
+    - hosts: [thehive01]
+      action: On thehive01, record a containment action for each in-scope host in the case, marking each
+        as short-term or long-term with its trade-off.
+    - hosts: [siem01]
+      action: On siem01, record what alerting exists for the affected hosts today and what heightened
+        monitoring to add during recovery.
+    - hosts: [jump01]
+      action: From the notes on jump01, write the eradication plan covering both the observed malware and
+        the initial access route, and recovery criteria a second responder could verify without
+        further guidance.
   refs:
   - nist-sp-800-61r3
   quiz:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Short-term containment aims to:'
+    - question: Ransomware is encrypting shares and the team isolates the affected switch ports while a fuller
+        plan is drafted. What does this short-term containment achieve?
       options:
-      - A) Permanently fix the issue
-      - B) Limit immediate damage while a fuller plan is developed
-      - C) Restore service
-      - D) Collect evidence only
-      answer: B
-    - question: 'Rebuilding from known-good media is preferred over cleaning because:'
+      - A) A permanent fix to the encryption
+      - B) Full restoration of service
+      - C) Collection of every remaining piece of evidence
+      - D) A limit on immediate damage while a fuller plan is developed
+      answer: D
+    - question: After eradication, the team rebuilds a server from known-good media rather than removing the
+        malware in place. Why is the rebuild preferred?
       options:
-      - A) It is faster
-      - B) It provides higher assurance that attacker persistence is removed
-      - C) It preserves evidence
-      - D) It is cheaper
-      answer: B
-    - question: 'Eradication that removes malware but not the initial access vector results in:'
+      - A) Higher assurance that attacker persistence is gone
+      - B) It preserves forensic evidence for the report
+      - C) It is always the faster option
+      - D) It reduces the number of open tickets
+      answer: A
+    - question: A team removes the malware from every host but never closes the exposed remote access route
+        the intruder used. What is the likely result?
       options:
-      - A) Successful closure
-      - B) Likely reinfection through the same route
-      - C) Better metrics
-      - D) Reduced scope
+      - A) Successful closure of the incident
+      - B) Reinfection of the hosts through the same route
+      - C) A lower severity rating at review
+      - D) Faster recovery of the affected hosts
       answer: B
-    - question: 'Before returning a system to service, responders should:'
+    - question: Before a reimaged web server returns to service at the end of recovery, what should
+        responders complete?
       options:
-      - A) Close the ticket
-      - B) Verify the system is clean and apply heightened monitoring
-      - C) Restore all access
-      - D) Delete logs
-      answer: B
-    - question: 'Containment decisions must balance damage limitation against:'
+      - A) Closure of the incident ticket
+      - B) Full restoration of all user access to the restored web service
+      - C) Verification that the host is clean plus heightened monitoring
+      - D) Deletion of the old disk images
+      answer: C
+    - question: Containment choices weigh damage limitation against evidence preservation. What is the other
+        side of that balance that responders must consider?
       options:
-      - A) Cost only
-      - B) Evidence preservation and alerting the adversary
-      - C) Staff availability
-      - D) Reporting deadlines
-      answer: B
+      - A) Cost alone
+      - B) Staff availability across the response rota
+      - C) Reporting deadlines
+      - D) The risk of alerting the adversary
+      answer: D
 - ordinal: 5
   title: Post-Incident Activity
   content_type: reading
@@ -266,16 +395,42 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Conduct a blameless post-incident review.
-  - Identify systemic causes and durable improvements.
-  - Track remediation actions to completion.
+  - Facilitate a blameless post-incident review that separates what happened from who caused it
+  - Distinguish systemic causes from proximate causes in a completed incident timeline
+  - Assign owned remediation actions with verification criteria and track them to completion
   topics:
-  - Post-incident review structure.
-  - Blameless culture and honest reporting.
-  - Systemic versus proximate cause.
-  - Action tracking and verification.
-  lab: 'Lab: Facilitate a post-incident review for a supplied scenario, produce a timeline, identify three
-    systemic causes, and define owned actions with verification criteria.'
+  - Post-incident review structure and the facilitation that keeps it blameless.
+  - Blameless culture and why honest disclosure improves later detection.
+  - Systemic versus proximate cause in timeline analysis.
+  - Owned actions, verification criteria and tracking to completion.
+  - Feeding lessons learned into detection, prevention, process and training.
+  lab: >-
+    Lab: Run the post-incident review for the incident-response-drill scenario: assemble the
+    timeline from the range evidence, name the systemic causes and write owned actions.
+    Evidence: timeline entries with their source and time; causes split into proximate and
+    systemic; each action with a named role, a due date and its verification criterion. Pass:
+    timeline entries cited from evidence rather than recalled; at least two causes judged
+    systemic with the condition each explains; every action owned and verifiable, with no action
+    assigned only to a team.
+  lab_range:
+    template: soc-training
+    scenario: incident-response-drill
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open a terminal and record the start time in the lab notes.
+    - hosts: [thehive01]
+      action: On thehive01, open the case from the earlier drill modules and record its milestones with
+        their times.
+    - hosts: [siem01]
+      action: On siem01, pull the alert and log times for the affected hosts and record each timeline entry
+        with the source it came from.
+    - hosts: [velociraptor01]
+      action: On velociraptor01, record the times of the endpoint artefacts and add them to the timeline in
+        order.
+    - hosts: [jump01]
+      action: From the notes on jump01, split the causes into proximate and systemic, name at least two
+        systemic causes with the condition each explains, and write owned actions with due dates and
+        verification criteria.
   refs:
   - nist-sp-800-61r3
   - nist-cswp-29
@@ -283,40 +438,45 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'A blameless review is adopted primarily to:'
+    - question: After an incident, a manager proposes a review that names conditions and decisions but never
+        individuals. What does a blameless review primarily encourage?
       options:
-      - A) Protect managers
-      - B) Encourage honest disclosure of what actually happened
-      - C) Avoid documentation
-      - D) Speed closure
+      - A) Protection for the managers involved in the response
+      - B) Honest disclosure of what actually happened
+      - C) Faster closure of the case
+      - D) Less documentation during response
       answer: B
-    - question: 'A systemic cause differs from a proximate cause because it:'
+    - question: A review finds the proximate cause was one clicked attachment, and the systemic cause was mail
+        filtering that never quarantined that class of message. What makes the second finding systemic?
       options:
-      - A) Happened first
-      - B) Explains why the conditions allowing the incident existed
-      - C) Is technical
-      - D) Is easier to fix
-      answer: B
-    - question: 'Post-incident actions without named owners typically:'
+      - A) It explains why the conditions allowing the incident existed
+      - B) It happened before everything else
+      - C) It is purely technical
+      - D) It is easier to fix this quarter
+      answer: A
+    - question: A review produces twelve improvement actions, none of them with a named owner. What happens
+        to these actions in practice?
       options:
-      - A) Complete faster
-      - B) Are not completed
-      - C) Require less tracking
-      - D) Are lower priority by design
-      answer: B
-    - question: 'The incident timeline is valuable because it:'
+      - A) They complete faster without supervision
+      - B) They merge into the next review
+      - C) They require less tracking by design
+      - D) They remain unfinished
+      answer: D
+    - question: Mapping an incident timeline shows detection took four days while the first log entry appeared
+        within the first hour. What does the timeline expose?
       options:
-      - A) Assigns fault
-      - B) Exposes detection and response delays that can be improved
-      - C) Satisfies insurers
-      - D) Replaces the report
-      answer: B
-    - question: 'Lessons learned should feed back into:'
+      - A) Which individual is at fault
+      - B) Whether insurers will pay the claim
+      - C) Detection and response delays that can be improved
+      - D) A replacement for the written report
+      answer: C
+    - question: A post-incident review is complete and its lessons learned are written down. Where should
+        they be fed back?
       options:
       - A) The final report only
       - B) Detection, prevention, process and training
-      - C) The risk register only
-      - D) Vendor selection
+      - C) The corporate risk register and its review cycle only
+      - D) Next year's budget alone
       answer: B
 - ordinal: 6
   title: Reporting and Communication
@@ -325,54 +485,80 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Communicate incident status appropriately to different audiences.
-  - Meet notification obligations.
-  - Write an incident report that supports decisions.
+  - Write incident status updates for technical and executive audiences from the same facts
+  - Separate confirmed facts from assumptions and open questions in an incident report
+  - Identify the notification obligations triggered by the data and systems an incident affects
   topics:
-  - Audience-appropriate communication.
-  - Notification and disclosure obligations.
-  - Report structure and content.
-  - Handling uncertainty in reporting.
-  lab: 'Lab: Write two status updates for the same incident - one for a technical team and one for executive
-    leadership - and identify what changes between them and why.'
+  - Audience-appropriate communication with technical teams and executives during incident response.
+  - Notification obligations driven by regulation, contract and affected data.
+  - Incident report structure that supports decisions and improvements.
+  - Handling uncertainty with facts, assumptions and stated confidence.
+  - Executive updates versus technical detail in timing and content.
+  lab: >-
+    Lab: Using the alerts visible on the range, write two status updates for the same suspected
+    incident: one for a technical team and one for executive leadership. Evidence: both updates
+    recorded in the lab notes; the list of facts judged confirmed and the assumptions still
+    open; the audiences to notify next if the incident were confirmed. Pass: the
+    executive update stating impact, decisions required and current confidence without tool
+    detail; the technical update citing hosts, times and sources; confirmed facts and
+    assumptions separated in both updates.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open a terminal and record the start time in the lab notes.
+    - hosts: [siem01]
+      action: 'On siem01, gather the facts for the updates: record the affected hosts, the alert times and
+        the sources behind each fact.'
+    - hosts: [thehive01]
+      action: On thehive01, check the status of the open case and record what has been confirmed so far
+        and what remains assumed.
+    - hosts: [jump01]
+      action: From the notes on jump01, write the executive update and the technical update, mark each
+        statement as confirmed fact or assumption, and name the audiences to notify next if the
+        incident were confirmed.
   refs:
   - nist-sp-800-61r3
   quiz:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Executive communication during an incident should emphasise:'
+    - question: A director receives an update two hours into an incident. What should executive communication
+        emphasise at that point?
       options:
-      - A) Technical detail
-      - B) Impact, decisions required and current confidence
-      - C) Tool output
-      - D) Log excerpts
-      answer: B
-    - question: 'Stating facts and uncertainties separately is important because:'
+      - A) Raw log excerpts from the SIEM
+      - B) The tool output behind each finding
+      - C) Impact, decisions required and current confidence
+      - D) The name of the malware family involved
+      answer: C
+    - question: An update states what is confirmed, then states what is only suspected so far. Why separate
+        facts and uncertainties in incident reporting?
       options:
-      - A) It is shorter
+      - A) It makes each update shorter to read
       - B) Decisions depend on knowing what is confirmed versus assumed
-      - C) It satisfies legal
-      - D) It reduces updates
+      - C) It satisfies the legal team only
+      - D) It reduces the number of updates needed
       answer: B
-    - question: 'Notification obligations are typically driven by:'
+    - question: A breach touches customer records in one province and employee records in another. What
+        typically drives the notification obligations in this situation?
       options:
-      - A) Internal preference
-      - B) Regulation, contract and the nature of affected data
-      - C) Incident severity alone
-      - D) Media interest
-      answer: B
-    - question: 'Speculating about attribution early in an incident is unwise because:'
+      - A) Internal preference for quiet handling
+      - B) Incident severity alone
+      - C) The amount of media interest
+      - D) Regulation, contract and the nature of the affected data
+      answer: D
+    - question: Early in an incident, a responder proposes publicly naming the group they believe is
+        responsible. Why is speculating about attribution early unwise?
       options:
-      - A) It is difficult
-      - B) Early conclusions are often wrong and can misdirect response
-      - C) It takes time
-      - D) It requires intelligence access
-      answer: B
-    - question: 'An incident report''s primary audience is:'
+      - A) Early conclusions are often wrong and can misdirect response
+      - B) Attribution is never possible for any adversary group in any case
+      - C) It takes too much time to write down
+      - D) It requires access to intelligence feeds
+      answer: A
+    - question: Once an incident closes, who is the primary audience of the incident report?
       options:
-      - A) The attacker
-      - B) Those who must make decisions and improvements from it
-      - C) The public
-      - D) The toolset
-      answer: B
+      - A) The adversary
+      - B) The general public
+      - C) Those who must make decisions and improvements from it
+      - D) The vendors of the security tools used during the incident
+      answer: C

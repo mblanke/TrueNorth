@@ -1,0 +1,156 @@
+# C203 - Identity & Access Management - instructor pack. Staff material: do not release to students.
+# Answers below are the course's keys; each note says why the keyed option is right and what the
+# distractors test. Labs run on the small-enterprise range (content/ranges/small-enterprise).
+course_code: C203
+audience: staff_only
+overview: >-
+  Identity and Access Management is a hands-on course of six 60-minute modules (360 minutes) on the
+  small-enterprise range: a jump-box the students reach over SSH, dc-01 holding the domain and DNS,
+  three Windows workstations on the user network and fw-01 between the networks. Each module teaches
+  three objectives, runs one lab on the range, and ends with a five-item quiz passed at 70 percent.
+  Reset the range to the template baseline before every module so the recorded values match.
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach, 35 lab (directory audit on dc-01), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach, 35 lab (password policy and ws-01 sign-in elements), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach, 35 lab (group inventory and administrative-share test), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach, 35 lab (privileged account inventory and fw-01 admin rules), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach, 35 lab (sign-in path trace across fw-01), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach, 35 lab (dc-01 sign-in event review), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 C: a mover that kept the payroll entitlement after the role change; joiner and proofing happened
+    before, leaver is not due. Q2 A: no claimed owner makes it orphaned; dormant means owned but unused.
+    Q3 D: the identity document was never checked, which is proofing, not provisioning or review. Q4 B: each
+    enabled account of a departed owner is a way in that no owner will miss, the leaver risk rather than a
+    dormancy one; reset workload, licensing and log format are secondary.
+    Q5 C: only a departure-record trigger removes the forgotten-signature failure mode; a longer checklist
+    keeps it.'
+- module: 2
+  notes: 'Q1 C: a FIDO2 key signs the real origin, so a look-alike page cannot use it; SMS, push and longer
+    passwords all travel through the fake page. Q2 B: repeated pushes without number matching wear a user
+    into approving; the password policy and logs are not what failed. Q3 D: SIM swap defeats the code sent
+    to that number; the key, the app code and the fingerprint do not depend on the carrier. Q4 C: password
+    plus maiden name is two knowledge factors, so it is not multi-factor; two prompts is not the test. Q5 A:
+    predictable patterns and reuse offset the longer length; complexity alone does not touch phishing or
+    stuffing.'
+- module: 3
+  notes: 'Q1 A: opening hours, device and branch are attributes a role cannot carry, so ABAC; one role per
+    branch still cannot read the clock. Q2 B: fine-grained exceptions multiplying roles is role explosion;
+    privilege creep is about old entitlements, not new roles. Q3 B: one person completes create-and-pay end
+    to end with no second pair of eyes; devices and logging are beside the point. Q4 D: splitting the group
+    is the change that narrows who can read, which least privilege asks for; granting all nine members the
+    access individually keeps the same exposure, encryption hides contents but leaves the entitlement, and
+    written confirmation removes nothing. Q5 A: time and the presence of a second person are attributes; the model
+    question asks what carries the condition, not which model the operator sits in.'
+- module: 4
+  notes: 'Q1 B: standing rights on every server turned one phished password into control of the domain;
+    length, rotation and logging did not stop the phish. Q2 B: a departed contractor holding standing
+    privilege is the finding; group size and description fields are hygiene. Q3 C: approval, an expiry and
+    a session record are the just-in-time shape; permanent membership and shared passwords are the opposite.
+    Q4 A: a long-lived credential three teams hold and cannot rotate safely is the risk; MFA is unavailable
+    to the account, not the reason it rates high. Q5 D: a sealed offline credential with an alert on use and
+    a next-day review; a permanently enabled account is a standing back door.'
+- module: 5
+  notes: 'Q1 A: the expenses system trusts an assertion from the identity provider; the portal never shares
+    the password. Q2 B: one stolen session reaches every service the federation trusts; the provider locking
+    the account is not what the malware caused. Q3 C: the audience claim binds a token to its service; the
+    signature and lifetime were fine here. Q4 B: the burden rose and the risk drop was small relative to it;
+    session length always affects both security and usability. Q5 C: segregating providers limits the blast
+    radius; keys, encryption and logging
+    do not narrow who can be impersonated.'
+- module: 6
+  notes: 'Q1 C: one failure per account across two hundred accounts from one host is spraying; lockouts would
+    cluster on single accounts. Q2 D: Ottawa at 09:00 and a distant country at 09:20 is impossible travel;
+    a correct password does not clear a location contradiction. Q3 C: ten minutes for two hundred approvals
+    is rubber-stamping, the appearance of review; it produced no removal. Q4 B: departure-to-removal time is
+    the measure that catches the five-week queue; directory size and reset counts do not see it. Q5 A: a
+    stated project with dates and need is a real review; forwarding, rechecking and asking the colleague
+    all dodge the judgement.'
+lab_setup:
+- module: 1
+  setup: Reset the range to the small-enterprise baseline and capture the account count before the lab. Print
+    the leaver list the lab compares against, with at least two names that match seeded accounts. Confirm
+    jump-box SSH access for every student.
+- module: 2
+  setup: Reset the range to the baseline password policy so the recorded values match. Assign each student a
+    standard user account on ws-01 and confirm the sign-in shows exactly the elements the lab expects. Have
+    the factor-category labels (knowledge, possession, inherence) on the board.
+- module: 3
+  setup: Reset the range to the baseline groups and memberships. Assign the standard user account and confirm
+    which group memberships it holds. Seed the administrative share on dc-01 and confirm the exact result a
+    standard user sees when opening it.
+- module: 4
+  setup: Reset the range to the baseline administrative groups and confirm the membership counts. Confirm the
+    fw-01 administrative rules match the template (mgmt-to-all and the user-to-srv rule set). Choose the
+    privileged action students attempt from ws-01 and record its exact failure output yourself first.
+- module: 5
+  setup: Reset the range and confirm the fw-01 rule names and ports (user-to-srv-ad allows 53, 88, 123, 135,
+    389, 445, 464, 636 and the high-port range; mgmt-to-all from the management network). Confirm dc-01 serves
+    the SYSVOL share and that ws-01 reaches it without a second sign-in after the domain sign-in, and that the
+    sign-in path trace works from every student seat.
+- module: 6
+  setup: 'Reset the range, then seed the sign-in event period the lab reviews: a spraying pattern against the
+    domain accounts from one source host, and note the event boundaries. Prepare the controlled sign-in from
+    ws-02 students run in step 4. Record the expected failure counts yourself so you can mark Evidence.'
+common_faults:
+- module: 1
+  fault: Students label every unused account dormant and stop there, missing the accounts that belong to
+    leavers on the printed list.
+  remedy: Have them work the leaver list first, account by account, before sorting the remainder by last
+    sign-in date.
+- module: 1
+  fault: The ranking of the three accounts to remediate first is asserted with no reason for the order.
+  remedy: Require one sentence per rank that names the exposure the account creates; an unexplained order
+    does not pass.
+- module: 2
+  fault: Students count sign-in prompts instead of factor categories, calling password plus security
+    question multi-factor.
+  remedy: Drill categories, not steps, on the ws-01 elements before the judgement step; the quiz Q4 tests
+    the same point.
+- module: 2
+  fault: The MFA judgement copies the range's design as the conclusion instead of arguing it.
+  remedy: Require the one-sentence reason to name the factor categories found, not the sign-in steps.
+- module: 3
+  fault: Students list group names but never connect a group to what it can reach, so the least-privilege
+    marks have no basis.
+  remedy: Walk one group from name to permission on the board; each mark must cite the permission.
+- module: 3
+  fault: The toxic combination is named as a single group rather than a pair that together completes a
+    sensitive process.
+  remedy: Ask 'which two, and what process?' and refuse single-group answers.
+- module: 4
+  fault: The inventory stops at the built-in administrators group and misses service accounts with
+    privileged reach.
+  remedy: Require the accounts inside each group and a shared-or-personal mark for each before the
+    judgement step.
+- module: 4
+  fault: The just-in-time proposal repeats the inventory in different words and never states the approval
+    step, the time limit or which account it removes from standing privilege.
+  remedy: Point at the lab Pass item and require all three parts; a change with no time limit is still
+    standing privilege.
+- module: 5
+  fault: Students describe the sign-in path as 'workstation to server' without naming the fw-01 rules it
+    crosses.
+  remedy: Have them read the rule names and ports off fw-01 and put each one in the path list.
+- module: 5
+  fault: The blast radius of a dc-01 compromise is written as 'everything' with no services listed.
+  remedy: Require the named services that accepted the silent sign-in; the radius is those services.
+- module: 6
+  fault: Students pick the account with the most failures rather than the account with successful sign-ins
+    inside a spraying pattern.
+  remedy: Point at the two successes mixed into the event list; those accounts go to investigation first.
+- module: 6
+  fault: Investigation notes cite counts with no account, source host or time.
+  remedy: Use the evidence format from module 1 again; every claim carries the events that support it.

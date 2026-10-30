@@ -1,0 +1,186 @@
+# RMC C204 - IoT Firmware Reverse-Engineering - staff-only instructor pack.
+# Companion to content/courses/rmc-c204-iot-firmware-reverse-engineering.yaml.
+# Answer keys, expected values and lab setup live here, never in the course file.
+
+course_code: RMC C204
+audience: staff_only
+overview: >-
+  IoT Firmware Reverse-Engineering is an intermediate course of six 60-minute modules for Students in the
+  cyber-operator programme who are new to firmware work. Module 1 acquires and verifies images, modules 2 to 4
+  unpack, statically analyse and emulate them, module 5 judges the update and secure boot design, and module 6
+  turns the accumulated findings into a disclosure package. Every lab runs on the large-enterprise range: a
+  Windows jump host and the Linux analysis host ansible01, where the instructor stages one device's vendor
+  update image, on-device image and tooling, and module 6 adds a review of scan results on vuln01. Students
+  hand in per-module evidence sheets: recorded hashes, section lists, inventories, traced input paths, update
+  findings and a draft advisory.
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: >-
+    Q1 B: a signed vendor update is non-destructive and vendor supplied, so it is the first route when one
+    exists; A overstates flash reading (the on-device image is not automatically newest), C and D jump to
+    invasive routes without need. Q2 D: an update image can lack device-specific data and local modifications,
+    which is exactly what the analyst needs; A, B and C invent obstacles that do not follow from the download
+    route. Q3 A: destructive extraction is justified only when no non-destructive route remains and the
+    device can be sacrificed; B, C and D test whether the Student treats cost, time or absolute rules as the
+    deciding factor. Q4 C: an accessible bootloader or shell on a UART header is an interactive console; A
+    confuses the debug route with flash removal, B with the update route, D with wireless material the header
+    does not expose. Q5 B: a vendor-published hash is the one check that ties the files to the vendor; A, C
+    and D test name, openability and source reputation, none of which establish provenance.
+- module: 2
+  notes: >-
+    Q1 C: uniform high entropy with no recognised sections means encryption or whole-image compression; A is
+    the readable case, B confuses padding (which would not fill the image uniformly) and D blames the tool
+    rather than reading the result. Q2 A: a model-wide root password works on every device of the model; B and
+    C invent expiry and first-boot rotation that firmware defaults do not have, D mistakes the scope of the
+    finding. Q3 D: a private key shared by every device forces replacement across the fleet; A, B and C are
+    benign artefacts that test whether the Student can rank findings. Q4 B: squashfs is a compressed read-only
+    root filesystem common in embedded images; A confuses it with secret storage, C with the bootloader and D
+    with debug symbols. Q5 C: comparing the same file across images of the model separates a model-wide default
+    from a per-device setting; A, B and D are actions on one device that cannot show what other devices ship.
+- module: 3
+  notes: >-
+    Q1 B: load-store patterns plus a system-on-chip report point to ARM or MIPS cores; A, C and D test whether
+    the Student recognises the common embedded families rather than guessing at exotic targets. Q2 C: fielded
+    devices rarely receive rebuilt binaries, so defects persist; A personifies devices, B is false about C, D
+    misstates where memory safety matters. Q3 A: a fixed buffer filled from a request field with no length
+    check is a likely overflow; B, C and D test the misconceptions that small buffers are safe, that proof of
+    exploit comes first and that stacks are unreachable. Q4 D: the build lacks common exploit mitigations; A,
+    B and C confuse missing mitigations with runability, language and safety. Q5 C: tracing establishes whether
+    attacker-controlled data reaches the unsafe operation; A, B and D are measurements the trace does not
+    deliver.
+- module: 4
+  notes: >-
+    Q1 C: the standard response to a polled peripheral the emulator lacks is to stub it so boot continues; A
+    gives up, B and D change the wrong variable. Q2 A: partial emulation of the one binary fits a single-binary
+    goal; B over-scopes to the whole image, C and D change the evidence base instead of the method. Q3 D:
+    triage re-runs each crash for reproducibility and cause before any report; A publishes prematurely, B
+    assumes a common cause, C edits the evidence. Q4 B: emulation trades fidelity for control and
+    instrumentation; A, C and D assert advantages emulation does not have. Q5 A: a buffer overrun under fuzzed
+    input is an input handling defect worth root-cause analysis; B, C and D blame the environment the Student
+    controls rather than the service.
+- module: 5
+  notes: >-
+    Q1 B: an unauthenticated download lets a network-path attacker substitute firmware the device accepts; A
+    and C understate the exposure, D is wrong because post-install checking happens after the damage. Q2 D:
+    verifying only after writing means a rejected image may already have replaced the running system; A, B and
+    C treat the timing as neutral or beneficial. Q3 C: rollback protection with a version counter refuses
+    older signed images; A and B are controls the attacker's image already satisfies, D is irrelevant. Q4 A:
+    the chain is as strong as its root of trust and weakest verification step; B, C and D single out one
+    component. Q5 B: an unpatchable device carries every discovered flaw for its service life; A, C and D
+    test whether the Student ties risk to patchability rather than age or contracts.
+- module: 6
+  notes: >-
+    Q1 C: one build under many brands means one fix coordinated across several vendors; A, B and D describe
+    properties of white-label devices that do not create the coordination problem. Q2 A: an unresponsive vendor
+    means escalate to a coordinating body and prepare mitigation advice; B abandons the process, C bypasses
+    the vendor, D drops a real finding. Q3 B: limited network exposure lowers real-world impact; A, C and D
+    are properties that do not measure reachability. Q4 D: many deployed devices never receive a patch, so
+    compensating measures are needed; A, B and C assume patching or blame the parties. Q5 A: an end-of-life
+    device stays deployed and reachable after fixes stop; B, C and D misstate what end of support changes.
+lab_setup:
+- module: 1
+  setup: Revert the range to its baseline. On ansible01, stage the two firmware image files for the lab device
+    in the lab directory and confirm Students can reach ansible01 over SSH from jump01. Note the sizes and
+    hashes of both images and whether a vendor-published hash for the update image is supplied, so Students'
+    recordings can be marked against them.
+- module: 2
+  setup: Revert ansible01 to its baseline and confirm the staged on-device image from module 1 is present with
+    the unpacking tooling installed. Record the sections and offsets the signature scan reports and the
+    filesystem type of the main content, plus which credential and key files the extraction yields, so Student
+    inventories can be marked.
+- module: 3
+  setup: Revert ansible01 to its baseline and stage the service binary on ansible01 with the disassembly
+    tooling installed. Note the binary architecture and endianness, the addresses of the input handler and the
+    memory copy it calls, and which mitigations the build carries, so traced input paths can be marked.
+- module: 4
+  setup: Revert ansible01 to its baseline and install the emulation profile, debugger and fuzzing harness for
+    the staged image. Start the profile once yourself to confirm which hardware errors appear and what stubs
+    satisfy them, and note the address and port the emulated service listens on, so Student recordings can be
+    marked.
+- module: 5
+  setup: Revert ansible01 to its baseline and confirm the extracted filesystem from module 2 is present. Note
+    the address and protocol the update script fetches from, where in the flow verification happens, whether
+    the version logic refuses older signed versions, and which boot stages verify the next, so the four
+    findings can be marked.
+- module: 6
+  setup: Revert the range to its baseline and ensure the latest scan results on vuln01 cover the enterprise
+    network segments. Note how many hosts the scan reports running the affected service, so the exposure count
+    Students record can be marked against it.
+common_faults:
+- module: 1
+  fault: Students hash only one of the two images, or record the hash of the directory listing rather than the
+    files.
+  remedy: Have each Student read both hash values aloud from their own terminal before the comparison step,
+    and re-run the command on the file, not the listing.
+- module: 1
+  fault: Students mark an image trusted because it opens without error.
+  remedy: >-
+    Revisit the module's verification topic: provenance comes from a vendor-published hash or signature,
+    not from the file being readable.
+- module: 2
+  fault: Students stop the inventory at the top level of the extracted tree and miss configuration
+    directories holding credentials.
+  remedy: Walk the agreed review order on the board (binaries, configuration, credentials, keys) and require
+    each Student's inventory to name the directory every finding came from.
+- module: 2
+  fault: A credential found in a configuration file is marked device-specific without evidence.
+  remedy: >-
+    Point back to the comparison check from the module quiz: only cross-image comparison shows scope;
+    ask what evidence the mark rests on.
+- module: 3
+  fault: Students read the disassembly of the wrong function and trace an input path that never touches the
+    copy operation.
+  remedy: Confirm the input handler address against the recorded call list first; have Students mark each
+    step of the path with the address they stepped through.
+- module: 3
+  fault: The bounds checking judgement states a conclusion with no reason, or is copied from a neighbour.
+  remedy: Require the one-sentence reason to name the buffer and the missing or present length check before
+    the mark is accepted.
+- module: 4
+  fault: The emulation profile stops at boot and Students conclude emulation failed instead of stubbing the
+    missing peripheral.
+  remedy: Read the hardware error from the console together and ask what the image is polling; demonstrate one
+    stub and let Students apply the rest.
+- module: 4
+  fault: Every fuzzing crash is reported as a separate critical vulnerability.
+  remedy: >-
+    Enforce the triage step: each crash must be re-run and marked reproducible or not with a proposed
+    next step before anything is called a vulnerability.
+- module: 5
+  fault: Students report the transport protocol but not where in the flow verification happens, and mark the
+    design authenticated on that basis alone.
+  remedy: Require all four findings (transport, verification point, version refusal, boot stages) before any
+    overall mark; the quiz's Q2 distractor covers this same misconception.
+- module: 5
+  fault: The boot configuration is skipped because it looks unrelated to updates.
+  remedy: >-
+    Point to the module topic on secure boot chains: the boot stages decide whether a modified image can
+    run even if the update transport is clean.
+- module: 6
+  fault: The exposure count is invented or copied from another group instead of read from the latest scan
+    results on vuln01.
+  remedy: Have each Student open the scan results and point at the figure they recorded before the advisory is
+    accepted.
+- module: 6
+  fault: Mitigation advice is generic (isolate the device) and not matched to a recorded exposure.
+  remedy: Require one compensating measure per recorded exposure, phrased so an operator who cannot patch can
+    apply it.

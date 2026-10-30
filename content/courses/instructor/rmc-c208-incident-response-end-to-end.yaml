@@ -1,0 +1,185 @@
+# RMC C208 - Incident Response - End-to-End - DRAFT instructor pack (staff only).
+# Unsourced generated draft: not validated by Standards, not for CAF learners.
+# Answer keys below MUST NOT appear in the learner-facing course file.
+
+course_code: RMC C208
+audience: staff_only
+overview: 'Instructor pack for Incident Response — End-to-End, an intermediate cyber-operator programme of six
+  60-minute modules that walk a single enterprise intrusion from command to programme learning. Each module has
+  the same split: 15 minutes teach, 35 minutes lab on the large-enterprise range working from the management
+  jump host jump01, and 10 minutes quiz passed at 70 percent. Modules 2 and 3 run the apt-nation-state scenario
+  so scoping and eradication work one continuous case. Students hand in command and decision records, scope
+  statements, eradication and recovery plans, holding statements and programme measures, and every deliverable
+  is judged on recorded facts with stated confidence, never on assertions.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (command roles, decision records, executive interface), 35 lab (command stand-up on the range),
+    10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (indicator and behaviour scoping, confidence), 35 lab (scope the apt-nation-state case), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (eradication order, simultaneous resets, hunting), 35 lab (plan eradication for the same case),
+    10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (recovery sequencing, rebuild trust, heightened monitoring), 35 lab (recovery plan from observed
+    state), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (holding statements, one voice, attribution risk), 35 lab (communication plan from recorded
+    facts), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (aggregate analysis, sponsorship, measures), 35 lab (programme learning from the case timeline),
+    10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 C, M01-O02: A decision record states what was decided, the information held and the assumptions made;
+    a ticket number (A) locates but does not capture the reasoning, an objection (B) is one input, and the outcome
+    (D) is only known later. Q2 A, M01-O03: Rotation with disciplined handovers directly addresses fatigue-driven
+    error; longer shifts (B) deepen it, a parallel commander (C) splits authority, and fewer workstreams (D)
+    hides work rather than sustaining it. Q3 B, M01-O01: The structure gives executives one cadence through one
+    interface role; a status page (A) cannot answer questions, silence (C) invites rumour, and direct lines to
+    every lead (D) recreate the interruption problem. Q4 D, M01-O03 (revising conclusions): Command expects the
+    scope owner to revise and communicate the change; holding the old conclusion (A) ignores evidence and
+    deferring to a report cycle (C) leaves responders acting on a wrong scope. Q5 B, M01-O02: With no further
+    evidence, the record must carry the decision, the information held and the assumptions made; costs alone (D)
+    and the bare choice (A) cannot be reviewed later.'
+- module: 2
+  notes: 'Q1 D, M02-O01: Recurrence on new servers means footholds existed outside the indicator matches; patch
+    levels (A), retention (B) and change approvals (C) do not explain reappearance after eradication. Q2 A,
+    M02-O02: Behaviour-driven scoping from the actions the adversary must have performed completes an
+    indicator-only picture; more hashes (C) add more of the same, and a vulnerability scan (D) measures exposure,
+    not compromise. Q3 C, M02-O03: New evidence about a segment triggers reassessment with stated confidence
+    before eradication; proceeding unchanged (A) repeats the premature-closure failure. Q4 B, M02-O03: The
+    disagreement is about completeness, so it needs a stated confidence in the current scope; attribution (C)
+    is out of scope for scoping and a new rule (D) does not resolve the reading. Q5 C, M02-O02: The behaviour
+    (creating a rogue account) persists while the infrastructure indicators change, so indicator-only scoping
+    loses the adversary; indicators can name accounts (B is false) and no vendor tooling is required to observe
+    behaviour (D).'
+- module: 3
+  notes: 'Q1 B, M03-O01: Staged removal lets the adversary observe each step and regain access with retained
+    credentials; the accounts reappearing is not self-reinstallation (A) and signatures (C) or admin rights (D)
+    do not explain the pattern. Q2 D, M03-O02: Service account credentials survive the rebuild and re-compromise
+    the clean hosts; clean hosts alone (A) do not end the incident. Q3 A, M03-O01: Resets across both compromised
+    forests execute simultaneously so neither can be used to regain the other; sequencing by risk tolerance (B)
+    or owner availability (D) leaves a live path. Q4 C, M03-O03: Verification is active hunting for the
+    adversary''s known behaviours; quiet alerts (A), ticket closure (B) and vendor attestations (D) are not
+    evidence of removal. Q5 D, M03-O02: The plan misses other credential and trust material — pre-shared keys,
+    inter-forest trusts, tokens and certificates — that the adversary may hold; user passwords alone are
+    insufficient.'
+- module: 4
+  notes: 'Q1 C, M04-O01: Restoring a service onto a directory eradication has not cleared reintroduces
+    compromised trust; the error is the sequence, not the application (A) or the backups (D). Q2 B, M04-O03:
+    Executive pressure applied before verification risks unsafe shortcuts in the rebuild sequence; it does not
+    improve customer reporting (C, D). Q3 D, M04-O02: The rebuild queue follows business criticality and
+    dependency order; host name (A), team availability (B) and system age (C) are convenience ordering. Q4 A,
+    M04-O02: Trust comes from verified sources, new credentials and validated configuration; a single scan of
+    the old image establishes none of these, and renaming (C) is cosmetic. Q5 C, M04-O03: Heightened monitoring
+    after recovery watches for residual or repeat access attempts following eradication; configuration drift
+    (A) and licence or backup housekeeping (B, D) are operational baselines, not post-incident watch.'
+- module: 5
+  notes: 'Q1 B, M05-O01: A holding statement acknowledges credibly while facts are being established; naming a
+    country (A) speculates, promising a full report tonight (C) commits to an unknown, and denial (D) is
+    retracted later. Q2 D, M05-O02: Early certainty that proves false forces a public retraction that damages
+    credibility; the short-term reassurance (C) is exactly the trap. Q3 A, M05-O03: Staff speculating to callers
+    means internal communication did not reach them early with approved facts; statement length (B), regulator
+    timing (C) and briefing frequency (D) do not explain it. Q4 C, M05-O02: Legal counsel owns the notification
+    and its timeline with obligations tracked deliberately; media (A), a free analyst (B) and the service desk
+    (D) hold neither the obligation nor the record. Q5 B, M05-O02: Early attribution is frequently wrong and
+    creates legal and diplomatic exposure; it is not forbidden for companies (A) and the other options (C, D)
+    are not the reason given.'
+- module: 6
+  notes: 'Q1 C, M06-O01: Analysed together, incidents with individually clean fixes reveal a systemic pattern no
+    single incident shows; attribution (A) and licence renewals (D) are not aggregate findings. Q2 A, M06-O02:
+    A change succeeds when sponsorship sits at a level able to change process and ownership; a tool (B), more
+    analysts (C) or a dashboard (D) leaves the unowned exception process intact. Q3 D, M06-O01: The same error
+    recurring three times shows earlier remediation addressed symptoms rather than the cause; coincidence (C)
+    and better detection (A) contradict the recurrence. Q4 B, M06-O03: Improvement shows in reduced detection
+    and containment times with fewer repeat causes; incident counts (A) and alert volume (C) move with reporting
+    behaviour, and headcount (D) measures spend. Q5 D, M06-O03: A drop in reported incidents may reflect
+    degraded detection or reporting rather than less risk; the other options (A, B, C) each assert the measure
+    cannot mislead, which is the mistake the module teaches.'
+lab_setup:
+- module: 1
+  setup: Revert the large-enterprise range to its baseline snapshot before class. Confirm from jump01 that
+    Students can reach the soar01 incident queue and the siem01 indexes. Students copy every recorded value
+    exactly as the range shows it; do not predetermine the alert list — whatever the queue holds at class time
+    is the case. Print or share a blank command-structure and decision-record template.
+- module: 2
+  setup: Revert the range, then load the apt-nation-state scenario and let its initial detections settle before
+    class. Confirm jump01 reaches soar01, siem01, edr01, dc01 and the aadconnect01 synchronisation records.
+    Students copy indicator matches, sign-in records and synchronisation results exactly as shown; any of those
+    values typed from memory rather than the range is a re-do.
+- module: 3
+  setup: Same range state as module 2 — reload apt-nation-state so the scoped case carries forward. Confirm
+    dc01 account listings and aadconnect01 synchronisation records are reachable from jump01. The eradication
+    order and reset time are planning artefacts Students write; the range provides the foothold evidence and
+    account lists they plan against, and nothing is executed on the range in this module.
+- module: 4
+  setup: Revert the range to baseline (no scenario; module 4 plans recovery from observed state). Confirm
+    jump01 reaches siem01, dc01 and ca01. Students record the inventory — reporting hosts and services, account
+    and trust lists, certificate expiries — exactly as the range reports it, then plan against that record.
+- module: 5
+  setup: Reload the apt-nation-state scenario so the case record holds times and facts to extract, and confirm
+    soar01 case history and siem01 detection and containment figures are reachable from jump01. Provide the
+    holding-statement template; Students source every line from the recorded case facts, never from instructor
+    narrative.
+- module: 6
+  setup: Revert the range, reload apt-nation-state and let the case run far enough to hold a complete timeline.
+    Confirm jump01 reaches siem01 measures and the soar01 case history. Provide a blank gap-classification and
+    change-proposal template; Students measure detection and containment times from the range, not from the
+    slide deck.
+common_faults:
+- module: 1
+  fault: Decision records state the choice but omit the assumptions and the review trigger.
+  remedy: Have Students read one of their records aloud and ask the class what the reader cannot tell about why
+    it was reasonable at the time; rewrite until the assumptions and trigger are named.
+- module: 1
+  fault: The command structure lists roles but leaves open alerts unassigned, so nobody owns scoping.
+  remedy: Require every open alert from the soar01 queue to appear against exactly one workstream lead before
+    the lab is handed in.
+- module: 2
+  fault: Students declare the scope complete because every indicator match was found.
+  remedy: Ask what the adversary must have done to reach each matched host and whether the telemetry shows it;
+    a segment with no answer is marked incomplete with the evidence that would expand it.
+- module: 2
+  fault: Sign-in evidence on dc01 is recorded without times or source addresses, so segments cannot be compared.
+  remedy: Insist the record carries account, source address and time for every sign-in; a scope statement that
+    cannot name its evidence is not complete.
+- module: 3
+  fault: The eradication order is written as a task list with no simultaneity, and resets are scheduled after
+    each host is cleaned.
+  remedy: Walk one foothold forward and ask which credential still works while the next host is cleaned; require
+    the single reset time and a simultaneous-or-staged mark with a reason on every action.
+- module: 3
+  fault: Service accounts and inter-forest trust material are left out of the reset list.
+  remedy: Have Students re-read their dc01 account record and mark which accounts are service accounts; anything
+    marked service account must appear in the reset plan.
+- module: 4
+  fault: The rebuild order follows convenience — easiest systems first — rather than dependency and criticality.
+  remedy: Ask for each service what must already be trusted before it returns; reorder until identity trust
+    precedes every dependent service.
+- module: 4
+  fault: Recovery is planned from memory of the architecture instead of observed state.
+  remedy: Check that the inventory section lists what siem01, dc01 and ca01 actually reported at lab time; a
+    service missing from the observed record cannot appear in the plan unexplained.
+- module: 5
+  fault: Holding statements assert causes or data findings the case record does not establish.
+  remedy: Mark each line of each statement fact-only or speculative against the recorded facts; the line to
+    remove before release must be named for every speculative statement.
+- module: 5
+  fault: Statements are written for the media only, with no internal staff line, so staff speculation repeats.
+  remedy: Require the staff audience statement alongside customers and regulators, each with a named owner in
+    the 24-hour cadence.
+- module: 6
+  fault: Gaps are classified as tooling by default and no change names a sponsor.
+  remedy: For each gap ask whether process or ownership alone would have prevented it; every proposed change
+    must name the sponsor level able to enact it.
+- module: 6
+  fault: Improvement is proposed in incident counts, which reporting behaviour moves.
+  remedy: Point Students back to the siem01 measures they defined — detection time, containment time, repeat
+    root causes — and require each ranked change to state its expected effect on one of those.

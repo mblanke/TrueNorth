@@ -6,10 +6,11 @@ course_code: C109
 title: Network Services & Protocols
 version: '1.0'
 difficulty: beginner
-duration_hours: 100
+duration_hours: 6
 provenance: unsourced
 status: draft
 is_published: false
+readiness: draft
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
 prerequisites:
@@ -33,57 +34,97 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain iterative and recursive DNS resolution.
-  - Describe common DNS record types and their use.
-  - Identify DNS-based attack and abuse techniques.
+  - Trace a DNS query from a client resolver through root, TLD and authoritative servers to the final answer
+  - Distinguish recursive from iterative resolution in a described query path
+  - Identify the indicators that separate DNS tunnelling and cache poisoning from normal query traffic
   topics:
-  - Resolver, root, TLD and authoritative servers.
-  - Record types and zone files.
-  - Cache poisoning and DNSSEC.
-  - DNS tunnelling and exfiltration.
-  lab: 'Lab: Trace a full resolution with dig +trace, then analyse a capture containing DNS tunnelling
-    and identify the indicators that distinguish it from normal queries.'
+  - Resolver, root, TLD and authoritative servers, and the part each plays.
+  - Common record types and the zone data each one publishes.
+  - Recursive versus iterative resolution, and where caching happens along the path.
+  - Cache poisoning, and how DNSSEC origin authentication and integrity counter it.
+  - DNS tunnelling and exfiltration, and the query patterns that reveal them.
+  source_gaps:
+  - The DNS specification RFCs (1034, 1035) and the DNSSEC suite (4033 to 4035) are not in the
+    reference library.
+  lab: >-
+    Lab: Ask dc01, the domain controller that runs DNS, to resolve the instructor's test domain, then
+    trace the same name from the root servers down, and tell the two resolution styles apart. Evidence:
+    the single answer dc01 returns; the ordered chain of servers the trace contacts; the mail exchanger
+    record and its time to live; the response code for a name that does not exist; the resolution style
+    each method used. Pass: the direct answer and the trace chain are both recorded; the record, time to
+    live and response code are recorded as the range shows them; each query is marked normal resolution
+    or tunnelling indicator with a one-sentence reason; one change that would make tunnelling easier to
+    detect is proposed.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 with the analyst account your instructor assigned, open a terminal and
+        note the start time.
+    - hosts: [siem01, dc01]
+      action: From siem01, query dc01 for the test domain your instructor names, and record the single
+        final answer dc01 returns.
+    - hosts: [siem01, dc01]
+      action: From siem01, run a full trace for the same domain, which walks the chain itself from the
+        root servers, and record each server the trace contacts, in order.
+    - hosts: [siem01, dc01]
+      action: From siem01, query dc01 for the mail exchanger and the name servers of the same domain, and
+        record each answer and its time to live.
+    - hosts: [siem01, dc01]
+      action: From siem01, query dc01 for a name that does not exist and record the response code the
+        server returns.
+    - hosts: [siem01]
+      action: Label the direct query and the trace as recursive or as iterative, with one sentence naming
+        the difference between the two styles.
+    - hosts: [siem01]
+      action: Mark each remaining recorded query as a normal resolution or as a tunnelling indicator, with
+        one sentence of reason, and propose one change that would make tunnelling easier to detect.
   refs:
   - nist-sp-800-94
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'A recursive resolver differs from an authoritative server because it:'
+    - question: A workstation asks its resolver for a name it has never seen, and the resolver contacts
+        root, TLD and authoritative servers itself. Which resolution style is this?
       options:
-      - A) Holds the zone data
-      - B) Queries other servers on the client's behalf until it has an answer
-      - C) Only serves TLDs
-      - D) Never caches
-      answer: B
-    - question: 'DNSSEC provides:'
+      - A) Iterative, because more than one server was contacted
+      - B) Broadcast, because the query reached several servers
+      - C) Recursive, because the resolver worked the chain on the client's behalf
+      - D) A zone transfer, because records moved between servers
+      answer: C
+    - question: A mail administrator troubleshoots delivery to a partner domain and first checks which
+        host accepts that domain's mail. Which record type holds the answer?
       options:
-      - A) Confidentiality of queries
-      - B) Origin authentication and integrity of DNS data
-      - C) Faster resolution
-      - D) Load balancing
-      answer: B
-    - question: 'DNS tunnelling is typically indicated by:'
-      options:
-      - A) Few short queries to common domains
-      - B) High volume of long, high-entropy subdomain labels to one domain
-      - C) Repeated NXDOMAIN for typos
-      - D) Use of TCP for zone transfer
-      answer: B
-    - question: 'An MX record specifies:'
-      options:
-      - A) The mail exchanger for a domain
-      - B) The IPv6 address
-      - C) A domain alias
-      - D) The name server
+      - A) The mail exchanger record
+      - B) The name server record
+      - C) The address record
+      - D) The canonical name record
       answer: A
-    - question: 'Cache poisoning aims to:'
+    - question: An operator claims that deploying DNSSEC makes DNS queries confidential. What does DNSSEC
+        actually provide?
       options:
-      - A) Exhaust resolver memory
-      - B) Insert a false record so clients are directed to an attacker host
-      - C) Disable DNSSEC
-      - D) Increase TTL values
+      - A) Encryption of every query sent to the resolver
+      - B) Origin authentication and integrity for the DNS data
+      - C) Faster resolution through signed caching
+      - D) Load balancing across authoritative servers
       answer: B
+    - question: A client is directed to a look-alike host after a resolver accepts an unsolicited record
+        with a matching transaction identifier. Which attack does this describe?
+      options:
+      - A) DNS tunnelling
+      - B) Zone transfer abuse
+      - C) Cache poisoning
+      - D) Response flooding
+      answer: C
+    - question: A firewall log shows hundreds of unusually long, high-entropy subdomain labels resolved
+        under one domain for one client. Which query pattern does this most suggest?
+      options:
+      - A) Tunnelling that carries data inside DNS queries
+      - B) A client with a misconfigured search list
+      - C) An authoritative server under heavy load
+      - D) Normal caching of popular names
+      answer: A
 - ordinal: 2
   title: Web Protocols and Services
   content_type: reading
@@ -91,16 +132,43 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Describe HTTP request and response structure.
-  - Explain how TLS integrates with HTTP.
-  - Identify security-relevant HTTP headers.
+  - Trace an HTTPS session from name lookup to application data and record the certificate and negotiated parameters
+  - Distinguish the same-origin policy, cookies and session state in a described web application
+  - Judge a web server's response headers against a recommended baseline and name each missing header
   topics:
-  - HTTP methods, status codes and headers.
-  - Cookies, sessions and same-origin policy.
-  - HTTPS and certificate handling.
-  - Security headers and their effect.
-  lab: 'Lab: Capture an HTTPS session setup, identify the certificate and negotiated parameters, then
-    audit a web server''s response headers against recommended security headers.'
+  - HTTP methods, status codes and headers, and what each tells an analyst.
+  - Cookies, session identifiers and the same-origin policy.
+  - "TLS in HTTPS: handshakes, certificates and certificate validation."
+  - Security headers and the browser behaviours they enforce.
+  - Reading a server's response headers for missing protections.
+  source_gaps:
+  - The HTTP semantics specification (RFC 9110) and the cookie specification (RFC 6265) are not in the
+    reference library.
+  lab: >-
+    Lab: From ws01 and siem01, set up an HTTPS session with web01, the web server in the DMZ, and audit
+    the response headers web01 returns against the baseline your instructor supplies. Evidence: the
+    certificate subject, issuer and validity dates web01 presents; the negotiated protocol version;
+    every response header name and value; each baseline header that is missing. Pass: the certificate
+    details and the protocol version are recorded exactly as presented; all response headers are listed
+    with their values; each missing header is named with one sentence on the browser behaviour it would
+    enforce.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 with the analyst account your instructor assigned and open a terminal.
+    - hosts: [siem01, web01]
+      action: From siem01, open an HTTPS session to web01, the web server in the DMZ, and record the
+        certificate subject, issuer and validity dates it presents.
+    - hosts: [siem01, web01]
+      action: From siem01, record the protocol version negotiated for the same session and every response
+        header web01 returns with its home page.
+    - hosts: [ws01, web01]
+      action: From ws01, open web01 in the browser, record whether the page is shown as secure and record
+        any warning the browser gives.
+    - hosts: [siem01]
+      action: Compare the recorded headers with the baseline your instructor supplies, name each missing
+        header and write one sentence on the behaviour each would enforce.
   refs:
   - rfc-8446
   - owasp-top-10
@@ -109,40 +177,45 @@ modules:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'The HTTP Strict-Transport-Security header instructs a browser to:'
+    - question: A browser receives a Strict-Transport-Security header with a one-year value from a web
+        server. What does the browser now do?
       options:
-      - A) Disable JavaScript
-      - B) Only connect to the host over HTTPS for a stated period
-      - C) Block cookies
-      - D) Cache responses
+      - A) It blocks all cookies from that host
+      - B) It caches the page for one year
+      - C) It connects to that host only over HTTPS for the stated period
+      - D) It disables scripting on the page
+      answer: C
+    - question: A page served from one origin tries to read a response from another origin's service.
+        Which triple does the same-origin policy compare to decide the outcome?
+      options:
+      - A) The user agent strings
+      - B) The scheme, host and port
+      - C) The cookie names
+      - D) The IP addresses
       answer: B
-    - question: 'The same-origin policy restricts based on:'
+    - question: An application sets a session cookie with the HttpOnly attribute. What does that attribute
+        change?
       options:
-      - A) IP address only
-      - B) Scheme, host and port
-      - C) User agent
-      - D) Cookie name
-      answer: B
-    - question: 'A cookie marked HttpOnly cannot be:'
+      - A) Client-side scripting cannot read the cookie
+      - B) The cookie travels only over encrypted connections
+      - C) The cookie expires when the browser closes
+      - D) The browser refuses to store the cookie
+      answer: A
+    - question: An analyst reads an access log entry that shows an HTTP 302 status code. What does the
+        status record?
       options:
-      - A) Sent over HTTP
-      - B) Accessed by client-side JavaScript
-      - C) Stored on disk
-      - D) Set by the server
-      answer: B
-    - question: 'An HTTP 302 response indicates:'
+      - A) A permanent move to a new address
+      - B) A server-side failure
+      - C) Content unchanged since the last request
+      - D) A temporary redirect to another address
+      answer: D
+    - question: A web team adds a Content-Security-Policy that allows scripts from the application's own
+        origin only. Which attack does this most directly reduce?
       options:
-      - A) Permanent redirect
-      - B) Temporary redirect
-      - C) Server error
-      - D) Not modified
-      answer: B
-    - question: 'Content-Security-Policy primarily mitigates:'
-      options:
-      - A) SQL injection
-      - B) Cross-site scripting by restricting allowed content sources
-      - C) Brute force
-      - D) DNS poisoning
+      - A) Password guessing against the sign-in page
+      - B) Script injection from untrusted content sources
+      - C) Domain name hijacking
+      - D) Request flooding against the server
       answer: B
 - ordinal: 3
   title: Email Protocols and Abuse
@@ -151,57 +224,90 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Describe SMTP message flow and envelope versus header addressing.
-  - Explain SPF, DKIM and DMARC and how they interact.
-  - Analyse an email header to establish provenance.
+  - Trace an email message from the sending client through SMTP transfer to delivery and storage
+  - Explain what SPF, DKIM and DMARC each check and how their results combine
+  - Analyse a full email header to establish the message's true origin and judge its trustworthiness
   topics:
-  - SMTP, IMAP and POP.
-  - Envelope sender versus From header.
-  - SPF, DKIM and DMARC alignment.
-  - Phishing indicators in headers.
-  lab: 'Lab: Analyse a suspicious email''s full headers, determine the true sending infrastructure, evaluate
-    SPF/DKIM/DMARC results, and state whether the From address is trustworthy.'
+  - SMTP, IMAP and POP, and the role each protocol plays.
+  - Envelope sender versus the From header, and why they differ.
+  - "SPF, DKIM and DMARC: authorisation, signatures and alignment."
+  - Received headers, hop order and reading a message's delivery path.
+  - Phishing indicators in headers and authentication result lines.
+  source_gaps:
+  - The email protocol specifications (RFC 5321 and 5322) and the SPF, DKIM and DMARC specifications
+    (7208, 6376 and 7489) are not in the reference library.
+  lab: >-
+    Lab: Analyse the suspicious exercise message your instructor assigns and decide whether its From
+    address is trustworthy. Evidence: every Received hop in order, read bottom to top, with its host,
+    address and timestamp; the SPF, DKIM and DMARC result lines the message carries; the connecting
+    address the mail transfer log on mail01 shows for the same message. Pass: the hop chain is complete
+    and read in delivery order; each authentication result is marked pass, fail or missing with a
+    one-sentence reason; the header evidence and the log line are compared and any difference is stated;
+    the trustworthiness verdict states which evidence carries it.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [ws01, mail01]
+      action: From ws01, open the suspicious exercise message in the mailbox your instructor assigned and
+        display its full headers.
+    - hosts: [ws01]
+      action: Read the Received headers from bottom to top and record each hop's host, connecting address
+        and timestamp in order.
+    - hosts: [siem01, mail01]
+      action: From siem01, read the mail transfer log on mail01 and record the delivery line for the same
+        message, including the connecting address it shows.
+    - hosts: [ws01]
+      action: Record the SPF, DKIM and DMARC result lines the message carries and the domain each result
+        applies to.
+    - hosts: [ws01]
+      action: Mark each authentication result as pass, fail or missing with one sentence of reason, and
+        state whether the From address is trustworthy, naming the evidence that carries the verdict.
   refs:
   - nist-sp-800-150
   quiz:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'SPF validates:'
+    - question: A mail server receives a message whose envelope sender domain publishes an SPF record.
+        What question does SPF answer for the server?
       options:
-      - A) The message body
-      - B) Whether the sending IP is authorised for the envelope sender domain
-      - C) The DKIM signature
-      - D) The recipient address
+      - A) The message body carries malicious code
+      - B) The connecting address may send for that domain
+      - C) The DKIM signature verifies
+      - D) The recipient exists in the directory
       answer: B
-    - question: 'DKIM provides:'
+    - question: A receiver wants proof that a message's selected headers and body were not altered after
+        signing. Which mechanism provides it?
       options:
-      - A) Transport encryption
-      - B) A cryptographic signature over selected headers and body
-      - C) IP reputation
-      - D) Spam scoring
-      answer: B
-    - question: 'DMARC adds to SPF and DKIM by specifying:'
+      - A) SPF authorisation
+      - B) DMARC reporting
+      - C) A reverse name lookup
+      - D) The DKIM signature
+      answer: D
+    - question: A domain owner already publishes SPF and DKIM records and now wants failing messages
+        rejected and reported. Which addition does that?
       options:
-      - A) The encryption algorithm
-      - B) Alignment requirements and a policy for handling failures
-      - C) The mail server address
-      - D) The message size limit
-      answer: B
-    - question: 'The envelope sender differs from the From header because the envelope sender is:'
+      - A) A DMARC policy
+      - B) A longer SPF record
+      - C) A second DKIM selector
+      - D) A pointer record
+      answer: A
+    - question: A phishing message shows a familiar sender in the mail client but bounces return to an
+        unrelated domain. Which pair is mismatched?
       options:
-      - A) Displayed to the user
-      - B) Used for transport and bounce handling, and often not shown
-      - C) Always identical
-      - D) Signed by DKIM
-      answer: B
-    - question: 'A Received header chain should be read:'
+      - A) Two Received headers
+      - B) The subject line and the body
+      - C) The envelope sender and the From header
+      - D) The display name and the signature block
+      answer: C
+    - question: An analyst opens a message with five Received headers. Which reading order follows the
+        delivery path as it happened?
       options:
-      - A) Top to bottom chronologically
-      - B) Bottom to top, earliest hop at the bottom
-      - C) Alphabetically
-      - D) By timestamp only
-      answer: B
+      - A) Top to bottom, trusting the timestamps
+      - B) In the order the mail client sorts them
+      - C) Bottom to top, earliest hop at the bottom
+      - D) Only the first and the last hop
+      answer: C
 - ordinal: 4
   title: Directory and Authentication Services
   content_type: reading
@@ -209,57 +315,88 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Describe directory service structure and query mechanics.
-  - Explain network authentication protocol operation.
-  - Identify weaknesses in authentication service deployment.
+  - Describe the structure of a directory tree and how a search finds an entry
+  - Trace a Kerberos authentication from initial logon to a service ticket
+  - Identify the directory and authentication exposures an unauthenticated client should never have
   topics:
-  - LDAP structure, DN and search.
-  - Kerberos tickets and the KDC.
-  - Single sign-on and federation.
-  - Common directory attack paths.
-  lab: 'Lab: Query a test directory with LDAP filters to enumerate users and group membership, then document
-    which of those queries an unauthenticated user should not be able to perform.'
+  - LDAP structure, distinguished names and search filters.
+  - Kerberos tickets, the key distribution centre and ticket lifetimes.
+  - Single sign-on and federation across trusting organisations.
+  - Anonymous binds and unauthenticated directory access.
+  - Common directory attack paths and the deployments that invite them.
+  source_gaps:
+  - The LDAP (4511) and Kerberos (4120) specifications are not in the reference library.
+  lab: >-
+    Lab: On the range, find out what the directory on dc01 returns to an unauthenticated bind (dc01 is
+    pre-configured to accept one for this exercise) and to a standard user, then judge each capability
+    against least exposure. Evidence: the exact response to the
+    anonymous bind before the instructor tightens directory access and again afterwards; the entry names
+    and count the standard-user search returns. Pass: both anonymous responses are recorded verbatim; the
+    search results are recorded as the range shows them; each capability is marked acceptable or
+    unacceptable with a one-sentence reason; one control is proposed for every unacceptable finding.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 with the analyst account your instructor assigned and open a terminal.
+    - hosts: [siem01, dc01]
+      action: From siem01, connect to the directory on dc01 without credentials and record exactly what the
+        unauthenticated bind returns.
+    - hosts: [siem01, dc01]
+      action: From siem01, bind to dc01 as the standard directory user your instructor assigned and record
+        the entry names and count a basic search returns.
+    - hosts: [siem01, dc01]
+      action: After the instructor applies the directory access change, repeat the anonymous bind from siem01
+        and record what changes in the response.
+    - hosts: [siem01]
+      action: Mark each recorded capability as acceptable or unacceptable for unauthenticated or standard
+        access, with one sentence of reason, and propose one control for every unacceptable finding.
   refs:
   - nist-sp-800-63-4
   quiz:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'In Kerberos, the ticket granting ticket is obtained from:'
+    - question: A workstation joins a domain and needs its first credential. Which component issues the ticket
+        granting ticket that starts the Kerberos exchange?
       options:
-      - A) The service server
-      - B) The key distribution centre's authentication service
-      - C) The client cache
-      - D) The DNS server
-      answer: B
-    - question: 'An LDAP distinguished name is:'
+      - A) The authentication service of the key distribution centre
+      - B) The file server the user first connects to
+      - C) The client's own ticket cache
+      - D) The domain's name server
+      answer: A
+    - question: An administrator writes the path that uniquely locates one entry in the directory tree, from
+        the top-level naming context down to the entry itself. What is that path called?
       options:
-      - A) A password hash
-      - B) The unique path identifying an entry in the directory tree
-      - C) A group alias
-      - D) A server address
-      answer: B
-    - question: 'Anonymous LDAP bind is a concern because it may permit:'
+      - A) Security identifier
+      - B) Globally unique identifier
+      - C) Distinguished name
+      - D) Relative identifier
+      answer: C
+    - question: A security review finds that a directory accepts unauthenticated binds and answers search
+        requests with them. Why is that a finding?
       options:
-      - A) Password changes
-      - B) Enumeration of directory contents without credentials
-      - C) Schema modification
-      - D) Replication
-      answer: B
-    - question: 'Kerberos mitigates replay attacks primarily using:'
+      - A) Anonymous binds corrupt the directory schema
+      - B) Anonymous binds consume the domain's ticket quota
+      - C) Directory contents can be enumerated without credentials
+      - D) Anonymous binds disable password policy enforcement
+      answer: C
+    - question: An attacker captures a Kerberos service ticket from network traffic and tries to reuse it
+        later. Which deployment choice limits that attempt?
       options:
-      - A) Long passwords
-      - B) Timestamps and limited ticket lifetimes
-      - C) TLS only
-      - D) IP allowlists
+      - A) Longer certificate chains on the domain controller
+      - B) Ticket lifetimes kept short with timestamp validation
+      - C) Encrypting the workstation's disk
+      - D) Publishing the service principal name in name service
       answer: B
-    - question: 'Federation allows a service to:'
+    - question: Two organisations run separate identity systems and one wants to let the other's staff sign
+        in to a shared service without copying accounts. Which approach fits?
       options:
-      - A) Store all user passwords locally
-      - B) Trust identity assertions issued by another identity provider
-      - C) Bypass authorisation
-      - D) Disable MFA
-      answer: B
+      - A) Federation with assertions from the partner's identity provider
+      - B) A shared administrative password on the service
+      - C) Mirroring every partner account into the local directory
+      - D) Granting the partner network region full trust
+      answer: A
 - ordinal: 5
   title: Time, Logging and Supporting Services
   content_type: reading
@@ -267,16 +404,40 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain why accurate time is a security requirement.
-  - Configure centralised logging transport.
-  - Describe network management protocol risks.
+  - Explain how unsynchronised clocks undermine the correlation of security events across systems
+  - Compare log transports and select one that resists loss and tampering
+  - Identify the management services a host exposes that its stated role does not require
   topics:
-  - NTP hierarchy and stratum.
-  - Syslog transport and reliability.
-  - SNMP versions and community strings.
-  - Service exposure review.
-  lab: 'Lab: Configure a host to synchronise with a trusted time source and forward logs to a central
-    collector over an authenticated transport; verify both from the collector side.'
+  - NTP hierarchy, stratum and the path to a reference clock.
+  - Clock accuracy as a requirement for event correlation and evidence.
+  - Syslog transport, reliability and tamper resistance.
+  - SNMP versions, community strings and management exposure.
+  - Reviewing listening services against the host's stated role.
+  source_gaps:
+  - The NTP (5905), syslog (5424) and SNMP (3411) specifications are not in the reference library.
+  lab: >-
+    Lab: Compare clock sources and log shipping across the range and judge each finding against the needs
+    of event correlation. Evidence: the synchronisation status and time source recorded from ws01 and from
+    siem01; the destination and transport web01 uses to ship its logs; the host names and record counts
+    siem01 received in the last hour. Pass: each status and source is recorded exactly as shown; the log
+    destination and transport are named; each finding is marked adequate or needing a change with a
+    one-sentence reason; a change is proposed for every finding marked as needing one.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [ws01, dc01]
+      action: From ws01, record the clock synchronisation status and the time source the workstation is using.
+    - hosts: [siem01]
+      action: Log on to siem01 with the analyst account your instructor assigned and record siem01's own
+        synchronisation status and time source the same way.
+    - hosts: [siem01, web01]
+      action: From siem01, record the destination and transport web01 uses to ship its log records.
+    - hosts: [siem01]
+      action: From siem01, list the hosts whose log records arrived in the last hour and record the count
+        each host contributed.
+    - hosts: [siem01]
+      action: Mark each recorded finding as adequate or as needing a change, with one sentence of reason,
+        and propose the change for every finding marked as needing one.
   refs:
   - nist-sp-800-92
   - nist-sp-800-41r1
@@ -284,41 +445,46 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'SNMP version 2c is weak primarily because it:'
+    - question: An incident responder compares two logs whose timestamps disagree by four minutes. Which
+        statement describes a time server at stratum 1?
       options:
-      - A) Uses UDP
-      - B) Transmits community strings without encryption
-      - C) Has no MIB
-      - D) Cannot be polled
-      answer: B
-    - question: 'Accurate NTP matters for security chiefly because it enables:'
+      - A) Synchronises from another network time server
+      - B) Is corrected by manual entry each day
+      - C) Is directly attached to a reference clock
+      - D) Serves clients but never synchronises
+      answer: C
+    - question: An investigator reconstructs an attack from logs on five systems. Accurate network time is
+        what makes this reconstruction possible?
       options:
-      - A) Faster networking
+      - A) Smaller log files on each system
       - B) Reliable correlation and ordering of events across systems
-      - C) Certificate issuance
-      - D) Better compression
+      - C) Faster transmission of log records
+      - D) Longer retention of log records
       answer: B
-    - question: 'Sending syslog over plain UDP risks:'
+    - question: A team ships log records from a DMZ host to a collector using syslog over plain UDP. What is
+        the security weakness of that transport?
       options:
-      - A) Duplicate messages only
-      - B) Loss and undetected spoofing or tampering of log records
-      - C) Excessive CPU
-      - D) Port exhaustion
-      answer: B
-    - question: 'An NTP server at stratum 1 is:'
+      - A) UDP limits each record to one character of severity
+      - B) The collector must poll the sender for each record
+      - C) UDP prevents the sender from writing records to disk
+      - D) Records can be lost, spoofed or altered without detection
+      answer: D
+    - question: A network team still polls devices with SNMP version 2c. Why does the security review flag
+        that choice?
       options:
-      - A) Furthest from a reference clock
-      - B) Directly attached to a reference clock
-      - C) A client only
-      - D) Unsynchronised
-      answer: B
-    - question: 'Reviewing exposed services periodically is important because:'
+      - A) Community strings travel without encryption
+      - B) Version 2c cannot carry interface counters
+      - C) Version 2c requires a management VLAN
+      - D) Community strings expire every hour
+      answer: A
+    - question: A review finds a file transfer service listening on a server whose role lists no file
+        transfer. Why is the listener a finding?
       options:
-      - A) Services expire
-      - B) Unneeded listening services expand attack surface over time
-      - C) It improves throughput
-      - D) It rotates keys
-      answer: B
+      - A) The listener slows the server's required services
+      - B) The listener changes the server's logged role
+      - C) The listener prevents time synchronisation
+      - D) The unneeded listener expands the attack surface
+      answer: D
 - ordinal: 6
   title: Service Hardening and Segmentation
   content_type: reading
@@ -326,16 +492,43 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Apply least-functionality principles to network services.
-  - Design segmentation appropriate to service sensitivity.
-  - Validate hardening through testing.
+  - Select, for each host in an inventory, the services its role requires and the exposure to remove
+  - Design a segmentation plan with an explicit allowed-flow matrix for a described network
+  - Validate implemented segmentation against the intended design by testing connections and scanning services
   topics:
-  - Service minimisation and secure defaults.
-  - Segmentation and micro-segmentation.
-  - Zero trust principles applied to services.
-  - Validation through scanning and review.
-  lab: 'Lab: Given a flat network hosting four services, propose a segmented design with an explicit allowed-flow
-    matrix, then validate the intended restrictions with a scan.'
+  - Service minimisation, secure defaults and least functionality.
+  - Segmentation zones and the allowed-flow matrix that records them.
+  - Micro-segmentation and per-workload rules.
+  - "Zero trust: no implicit trust from network location."
+  - Validation through connection tests and service scanning.
+  lab: >-
+    Lab: Read fw01's rule set, draw the allowed-flow matrix it describes, and validate the implemented
+    segmentation by testing and scanning. Evidence: the ordered rule list with each rule's source network,
+    destination and ports; the matrix drawn from it; the result of one test connection from ws01 to web01
+    on a port the rules do not list; every port that answers a scan of web01 and mail01 from siem01. Pass:
+    the rule list is complete and in order; the matrix matches the rule set; the test result and scanned
+    ports are recorded exactly as observed; one segmentation change is proposed for each unintended flow,
+    with the zone boundary it applies at.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01, fw01]
+      action: Log on to siem01 with the analyst account your instructor assigned and open the rule set of
+        fw01 from there.
+    - hosts: [siem01, fw01]
+      action: Record every rule in fw01's set in order, with the source network, destination and port list
+        each rule allows.
+    - hosts: [siem01]
+      action: From siem01, draw the allowed-flow matrix the rule set describes, with one row per source
+        network and one column per destination.
+    - hosts: [ws01, web01]
+      action: From ws01, attempt one connection to web01 on a port the rule set does not list and record
+        the result.
+    - hosts: [siem01, web01, mail01]
+      action: From siem01, run a service scan of web01 and mail01 and record every port that answers.
+    - hosts: [siem01]
+      action: Mark each recorded flow as intended or unintended under the matrix, propose one segmentation
+        change for each unintended flow and name the zone boundary where it applies.
   refs:
   - nist-sp-800-207
   - nist-sp-800-41r1
@@ -344,38 +537,43 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Zero trust architecture assumes:'
+    - question: A team replaces its flat network with a zero trust design. Which principle changes most for
+        a service that used to trust every internal client?
       options:
-      - A) The internal network is trusted
+      - A) Services no longer need authorisation checks
       - B) No implicit trust is granted based on network location
-      - C) Perimeter controls are sufficient
-      - D) VPNs remove the need for authorisation
+      - C) All traffic moves to a single flat zone
+      - D) Authorisation moves entirely to the firewall
       answer: B
-    - question: 'An allowed-flow matrix documents:'
+    - question: An architect documents, for every source zone, which destination zones it may reach and on
+        which services. What is that document called?
       options:
-      - A) Bandwidth per link
-      - B) Which sources may reach which destinations on which services
-      - C) Server uptime
-      - D) Patch levels
-      answer: B
-    - question: 'Micro-segmentation differs from traditional segmentation by operating at:'
+      - A) A patch baseline
+      - B) A service catalogue
+      - C) An allowed-flow matrix
+      - D) A network topology diagram
+      answer: C
+    - question: A platform enforces one policy per workload instance instead of one rule set per zone. Which
+        design does that show?
       options:
-      - A) The physical layer
-      - B) A finer granularity, often per workload
-      - C) The application layer only
-      - D) The perimeter
-      answer: B
-    - question: 'Running a service with the minimum required privileges limits:'
+      - A) Micro-segmentation at finer, often per-workload, granularity
+      - B) Traditional zone segmentation
+      - C) Network address translation
+      - D) A demilitarised zone design
+      answer: A
+    - question: A hardening plan removes the file transfer service from a web server and runs the web
+        service under a dedicated account. Which principles does the plan apply?
       options:
-      - A) Its performance
-      - B) The impact if the service is compromised
-      - C) Its logging
-      - D) Its availability
-      answer: B
-    - question: 'Validating segmentation with scanning is necessary because:'
+      - A) Encryption in transit and at rest
+      - B) Network address translation
+      - C) Redundancy and failover
+      - D) Least functionality, and least privilege for the service account
+      answer: D
+    - question: After a segmentation change, an engineer scans from inside each zone to check what still
+        connects. Why does the scan matter?
       options:
-      - A) Designs are always wrong
-      - B) Intended policy and implemented policy frequently diverge
-      - C) Scanners configure firewalls
-      - D) It replaces documentation
-      answer: B
+      - A) Scanning is faster than reading and testing the rule set by hand
+      - B) Scans encrypt the remaining traffic
+      - C) Implemented policy and intended policy frequently diverge
+      - D) Scans replace the need for an allowed-flow matrix
+      answer: C

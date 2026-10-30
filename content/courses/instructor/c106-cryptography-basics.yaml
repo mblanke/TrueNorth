@@ -1,0 +1,193 @@
+# C106 Cryptography Basics - instructor pack (staff only).
+# Answer keys, expected values, lab setup and common faults live here, never in the
+# course file the Student reads. scripts/check_course.py checks this pack against
+# content/courses/c106-cryptography-basics.yaml.
+course_code: C106
+audience: staff_only
+overview: Cryptography Basics is a beginner course of six 60-minute modules (360 minutes, 6 hours) for
+  Students new to cryptography in the cyber-operator programme. Modules 1 to 3 build the classical-to-modern
+  foundation (ciphers and cryptanalysis, symmetric modes, hashes and message authentication) and modules 4 to
+  6 apply it (public key exchange, certificates and TLS, key management and failure modes). Every module
+  teaches three objectives, runs one hands-on lab on the medium-enterprise range - usually on web01, with the
+  TLS session observed from siem01 - and ends with a five-item quiz passed at 70 percent. Students hand in lab
+  notes with the recorded evidence each lab brief names, and the instructor marks each Pass item yes or no.
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach, 35 lab, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: substitution preserves plaintext letter frequencies, so the ciphertext keeps the pattern
+    frequency analysis reads; A invents a physical detail, C treats age as the weakness, D describes a
+    polyalphabetic cipher that is not the one in the stem. Q2 C: a message-plus-plaintext pair is the
+    definition of a known-plaintext attack; A is guessing every key, B belongs to hash functions and D
+    misnames transposition. Q3 A: Kerckhoffs''s principle says the security may rest entirely on the key;
+    B is the opposite view, C and D name unrelated principles. Q4 D: once the design is public, only fresh
+    key material restores protection; A re-argues obscurity, B and C change nothing that matters. Q5 C: a
+    uniform shift keeps the frequency pattern one step apart and plainly readable, while a mixed alphabet
+    flattens it; A is false, B reverses the two ciphers and D overstates, since a mixed alphabet still
+    leaves digram and common-word evidence.'
+- module: 2
+  notes: 'Q1 C: electronic codebook mode maps identical plaintext blocks to identical ciphertext blocks,
+    which is exactly what draws the outline; A misstates the key length, B confuses corruption with a
+    deterministic property and D names a property codebook mode lacks. Q2 A: a stream cipher generates
+    keystream per bit or byte and needs no block buffering; B and C are block modes that need whole blocks
+    and D computes a digest, which encrypts nothing. Q3 D: reusing the vector makes the two keystreams
+    identical, so comparing ciphertexts exposes plaintext relationships; A, B and C assert effects the
+    reuse does not cause. Q4 B: Galois counter mode produces an authentication tag in the same pass; A
+    never detects tampering, C weakens the mode by reusing the vector and D has no tag. Q5 C: a shared
+    initialisation vector makes identical prefixes encrypt identically from the first block; A is wrong
+    because chaining starts from the vector, B invents a padding error and D misstates the length.'
+- module: 3
+  notes: 'Q1 B: a unique per-user salt forces a separate table per user and defeats the precomputed one;
+    A is a real property but irrelevant to a table attack, C shrinks nothing useful and D reverses the
+    goal, since stored values must not be reversible. Q2 D: a signature is made with the manager''s
+    private key and verifiable by anyone, giving non-repudiation before a third party; A lets every
+    verifier forge, B proves nothing about origin and C hides content but attributes nothing. Q3 A:
+    second preimage resistance is what stops the worm substituting a file with the same digest; B
+    describes collisions, which the worm does not need, C is wrong because digests are not secret and D
+    names length, not a binding property. Q4 C: the slow, memory-hard derivation raises the work cost of
+    each guess, which is the defence against offline guessing; A confuses password storage with record
+    confidentiality, B is false and D is wrong because salting is still required. Q5 B: the MAC detects
+    any change made without the shared secret; A confuses authentication with encryption, C and D name
+    the non-repudiation a shared key structurally cannot provide.'
+- module: 4
+  notes: 'Q1 D: Diffie-Hellman lets two parties derive a shared secret over a watched channel without
+    transmitting it; A and B derive nothing usable and C reuses a fixed secret the eavesdropper may
+    already hold. Q2 A: elliptic curve cryptography reaches RSA-equivalent strength with a far smaller
+    key, which is what the small device needs; B reverses the comparison, C is impossible and D
+    overstates the difference. Q3 A: with ephemeral exchange each session key existed only for that
+    session, so the long-term key reveals nothing about the recordings; B and C ignore forward secrecy
+    and D mistakes what the key protects. Q4 C: an unauthenticated exchange lets an attacker sit between
+    the parties and relay each side''s values; A and B name attacks on other constructions and D
+    understates the risk. Q5 D: protecting a fresh symmetric session key with the recipient''s public key
+    is hybrid encryption; A, B and C name unrelated mechanisms that neither scale nor protect a session
+    key.'
+- module: 5
+  notes: 'Q1 C: current guidance matches the reached name against the subject alternative name extension;
+    A and B are identity-unrelated or legacy fields and D is the negotiation result. Q2 D: validation
+    checks the dates of every certificate in the chain, so an expired intermediate fails it; A and B
+    describe checks that do not exist and C blames the wrong certificate. Q3 A: an OCSP responder answers
+    per-certificate queries in near real time; B is the validity window, not revocation, C is the
+    certificate revocation list with its longer update cycle and D has no revocation role. Q4 B: a
+    self-signed certificate fails because its issuer is not a trust anchor in the client''s store; A is
+    not the failing check, C is not required for the chain itself and D invents a length rule. Q5 C: TLS
+    1.3 removes legacy algorithms and mandates forward secrecy in its key exchange; A reverses the
+    suite-trimming, B names the RSA transport TLS 1.3 removed and D keeps certificates in place.'
+- module: 6
+  notes: 'Q1 B: a guessable seed makes the generated key reproducible, which defeats the generator''s
+    purpose; A, C and D name effects a predictable seed does not cause. Q2 C: rotation bounds how much
+    data any one key ever protects, capping the exposure of a later compromise; A, B and D name
+    properties rotation does not change. Q3 D: the missing property is crypto-agility, the ability to
+    replace an algorithm without redesign; A and B name other properties and C adds a second fixed
+    cipher, which does not make the first replaceable. Q4 A: implementation and key-management mistakes,
+    such as a compiled-in key, are the common real-world failure, not the primitives; B, C and D name
+    problems modern algorithms and open designs do not have. Q5 B: key material must come from a
+    cryptographically secure random number generator; A, C and D are predictable sources a guessing
+    attacker can enumerate.'
+lab_setup:
+- module: 1
+  setup: 'Revert the medium-enterprise range to its baseline. On web01, place the supplied monoalphabetic
+    ciphertext file where the Student account can read it; the plaintext is an English sentence with normal
+    letter frequencies (expect E, T, A, O, N among the most frequent ciphertext letters). Confirm the
+    Student account reaches web01 over SSH. Expected evidence: the six most frequent ciphertext letters and
+    their counts, and the recovered plaintext sentence.'
+- module: 2
+  setup: 'Revert the range to its baseline. On web01, confirm the openssl command-line tool is present and
+    place a sample file with a repeated visual pattern (an image or a file of repeated blocks). Supply the
+    encryption key on the staff wiki page. Expected evidence: two output files, the codebook-mode one
+    showing the repeated pattern byte for byte and the cipher-block-chaining one showing none.'
+- module: 3
+  setup: 'Revert the range to its baseline. On web01, place the supplied file for digesting and record the
+    one-byte change the lab will direct (offset and new value) on the staff wiki page. Supply the HMAC key
+    there too. Expected evidence: two SHA-256 digests that differ, a verifying HMAC tag over the original
+    and a failed verification over the altered file.'
+- module: 4
+  setup: 'Revert the range to its baseline. Confirm web01 serves its HTTPS endpoint and that the
+    management-to-all firewall rule lets siem01 reach the dmz network, so the TLS session can be opened.
+    Confirm the negotiated suite uses an ephemeral key exchange so forward secrecy can be judged.
+    Expected evidence: the negotiated TLS version, the full cipher suite string and the presented
+    certificate chain.'
+- module: 5
+  setup: 'Revert the range to its baseline. On web01, confirm the served certificate chain is complete
+    (leaf, intermediate, root) with the intermediate inside its validity dates, and note the SAN entries
+    and the name the service is reached by. Supply the revocation-checking method on the staff wiki page.
+    Expected evidence: the chain subjects and issuers in order, the leaf SAN entries, all validity dates
+    and the revocation result for the leaf.'
+- module: 6
+  setup: 'Revert the range to its baseline. On web01, place the supplied program that encrypts a file with
+    a predictable seed and a hardcoded key, at lines the Student can quote; keep the corrected version
+    staff-side for the debrief. Have the key-management guidance of NIST SP 800-57 Part 1 available.
+    Expected evidence: the quoted lines for the seed and the key, a failure ranking and one proposed
+    change per failure.'
+common_faults:
+- module: 1
+  fault: Students count letters but never test the mappings against short words, so plausible-frequency
+    guesses are left unconfirmed.
+  remedy: Have them read the partial plaintext aloud after each confirmed mapping; a wrong guess stops
+    reading like English immediately.
+- module: 1
+  fault: Students conclude that a published design is the vulnerability, and that re-secreting the design
+    fixes it.
+  remedy: 'Return to the dispatch box example and ask what the owner can change after a leak: the design is
+    fixed, the keys are not.'
+- module: 2
+  fault: Students read the ciphertext with a text viewer and report that neither output shows anything,
+    then cannot compare.
+  remedy: Show viewing the outputs as bytes on web01 first, and remind them the comparison is about the
+    repeated pattern, not readable text.
+- module: 2
+  fault: Students attribute the visible pattern to a weak key or corruption instead of the mode.
+  remedy: Re-encrypt with a second strong key in the same mode; the pattern persists, which isolates the
+    cause in the mode.
+- module: 3
+  fault: Students report the altered file's HMAC as still verifying, usually because they hashed the
+    original file a second time.
+  remedy: Have them print the file's digest before and after the byte change; when the digest differs, walk
+    back to which file each tag was computed over.
+- module: 3
+  fault: Students say a salt makes the password uncrackable.
+  remedy: 'Return to the table attack: the salt defeats precomputation and forces per-user work, not the
+    guessing itself.'
+- module: 4
+  fault: Students record the cipher suite but read the key exchange from memory instead of from the
+    negotiated string, and misjudge forward secrecy.
+  remedy: Have them underline the key exchange component inside the suite string they recorded before
+    writing the judgement.
+- module: 4
+  fault: Students confuse unauthenticated exchange with weak ciphers and name a cipher attack instead of
+    the machine-in-the-middle.
+  remedy: Draw the three-line relay diagram on the board and ask what each party actually verifies at that
+    point in the handshake.
+- module: 5
+  fault: Students check only the leaf's dates and pass the chain with the expired intermediate.
+  remedy: 'Make the chain walk explicit: one row per certificate, subject, issuer and dates, before any
+    validity mark.'
+- module: 5
+  fault: Students report the revocation check as done without recording the method or the result.
+  remedy: Require the method the wiki page names and the literal result; an unrecorded result is not
+    evidence.
+- module: 6
+  fault: Students find the hardcoded key but not the predictable seed, or quote the lines without line
+    numbers.
+  remedy: Send them back to the two generation lines specifically; the evidence list names both failures,
+    and quoting a line means its number.
+- module: 6
+  fault: Students propose replacing the algorithm as the fix for a randomness failure.
+  remedy: Map each finding to the lifecycle stage it breaks first; a generation-stage failure is fixed at
+    generation, which leads naturally into the crypto-agility discussion.

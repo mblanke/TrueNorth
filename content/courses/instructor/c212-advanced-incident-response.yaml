@@ -1,0 +1,229 @@
+# Instructor pack for C212 Advanced Incident Response. Staff material: contains the quiz keys and
+# facilitation notes. Do not publish to students. Range work uses the large-enterprise template;
+# revert it to baseline and confirm reachability of the lab hosts before the session starts.
+course_code: C212
+audience: staff_only
+overview: 'Advanced Incident Response is a course of six 60-minute modules for experienced responders. Each
+  module teaches three objectives, runs a hands-on lab on the large-enterprise range, and ends with a
+  five-item quiz passed at 70 percent. The hour splits as roughly 15 minutes of teaching, 35 minutes in the
+  lab and 10 minutes for the quiz. Say ''student'' throughout and keep every description defensive and
+  observable. The range must be reverted to baseline between sessions, and the lab hosts students need are
+  jump01, siem01, soar01, tip01, edr01, ws06, dc01, fs01, sql01, sql02, ids01 and syslog01.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (command at scale and the common operating picture), 35 lab (workstreams, handover and
+    alert routing on the range), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (process lineage and living-off-the-land), 35 lab (intrusion trace across the range with
+    the apt-nation-state scenario loaded), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (indicator pivoting and source rating), 35 lab (threat intelligence pivots on the range
+    with the instructor-supplied MISP event loaded), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (sequencing and the rebuild-or-remediate choice), 35 lab (recovery planning on the range
+    with the instructor-supplied compromise time), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (notification clocks and chain of custody), 35 lab (evidence preservation on the range
+    with the instructor-supplied breach summary), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (capability across people, process, technology and information), 35 lab (capability
+    assessment on the range with the instructor-supplied assessment brief), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: The shared case record gives every workstream one current understanding of the incident,
+    which is the common operating picture of objective 1; calling it a substitute for a response plan (A)
+    confuses the record with the plan it supports, the regulator-cost framing (C) treats documentation as an
+    accounting exercise, and a searchable log store (D) mistakes raw data for the picture. Q2 C: A written
+    handover per workstream carries state, evidence and next actions, so the night shift continues without
+    asking; a spoken summary at the door (A) leaves nothing the next shift can re-check, raw notes without a
+    summary (B) shift the work of reading onto the reader, and waiting for the morning meeting (D) leaves
+    the incoming shift blind for hours. Q3 D: A common operating picture that every workstream updates
+    before acting would have shown each workstream the other''s fw01 change; longer shifts (A) keep one
+    analyst with their changes but share nothing between workstreams, fewer workstreams (B) slows response
+    without fixing coordination, and an announcements-only channel (C) is one-way, so it is not a shared
+    picture. Q4 A: A fourteen-hour analyst''s judgement degrades, so rotating them out and handing the queue
+    to a rested responder with a written summary is the control; extending the shift (B) keeps degraded
+    judgement on the queue, disabling alerting (C) blinds the response, and documenting less (D) loses the
+    record the next shift needs. Q5 B: With one shift remaining, triage routes each alert to the workstream
+    that owns it, which is the routing objective; closing the oldest alerts to shorten the queue (A)
+    discards unreviewed alerts, escalating every alert to the lead (C) removes the triage step, and waiting
+    for a quieter window (D) leaves sixty alerts unowned.'
+- module: 2
+  notes: 'Q1 C: A signed hash says the file is unmodified, not that the run is benign, so detecting
+    living-off-the-land use turns on context such as parent process, time and target; reading the signed
+    hash as proof the activity is benign (A) takes one attribute for the whole judgement, believing signing
+    prevents misuse (B) confuses integrity with authorisation, and removing the tool everywhere (D) breaks
+    administration instead of learning to judge its use. Q2 A: Two near-simultaneous sign-ins with one
+    valid account, one from a host it never uses, fit replay of stolen credential material; roaming profile
+    synchronisation (B) copies files, not interactive sign-ins, a maintenance task run twice (C) follows the
+    task''s own schedule and host pattern, and site address translation (D) would rewrite the source for
+    everything from that gateway, not one account. Q3 D: A gap with no change record, ending three hours
+    before detection, is likely anti-forensic activity and narrows the investigation window; calling it
+    routine log rotation (A) asserts a schedule nobody verified, raising a storage fault (B) hands the
+    explanation to a team without the log evidence, and treating it as proof data left (C) leaps to
+    exfiltration the remaining logs do not show. Q4 B: Authentication from a host the account has never
+    used, soon after failed sign-ins elsewhere, is the strongest early credential-theft sign; the
+    normal-hours sign-in from the usual workstation (A) is the baseline, not a deviation, a standard role
+    without elevated rights (C) limits blast radius but says nothing about theft, and password expiry
+    proximity (D) is routine calendar noise. Q5 C: Listing the hosts that used the same account and the
+    shares the workstation touched scopes the intrusion before containment changes what is visible;
+    downtime costing (A) is a business figure, retention compliance (B) is paperwork this step does not do,
+    and choosing a logging format (D) is unrelated to scoping.'
+- module: 3
+  notes: 'Q1 B: Following one indicator to the domain it resolved to and the files it delivered is
+    indicator pivoting, which is objective 1; attribution (A) names an actor, which the searches do not
+    attempt, log normalisation (C) reformats events for the platform, and threat modelling (D) reasons
+    about future attack paths rather than tracing one indicator. Q2 D: Reliability and timeliness are
+    satisfied, so the missing rating is relevance — the indicators describe infrastructure this
+    organisation does not use; feed size (A) counts coverage, not fit, subscription price (B) is a
+    procurement fact, and parse difficulty (C) affects the tooling, not the decision to act. Q3 A:
+    Assuming the rest of the report applies and stopping the search is confirmation bias, which hides
+    activity that does not fit the pattern; losing legal evidence (B) is an evidence-handling failure the
+    behaviour does not describe, blocking legitimate traffic (C) is a blocking risk, not a search risk,
+    and understating cost (D) is a reporting error, not a narrowed search. Q4 C: Alerting on traffic to
+    the shared address and reviewing each hit before blocking keeps the intelligence actionable without
+    cutting off a service customers rely on; blocking outright (A) breaks the payment processor, ignoring
+    the feed entirely (B) discards a real indicator to avoid judgement, and publishing the address as
+    malicious (D) asserts certainty the shared hosting does not support. Q5 B: A log line showing a file
+    share receiving an archive tonight is what this environment''s evidence shows, so it is evidence-based;
+    the report''s staging claim (A), the feed''s confidence rating (C) and the peer''s sighting (D) are all
+    assertions from outside the environment.'
+- module: 4
+  notes: 'Q1 D: Restored systems reached with credentials the attacker still holds are reinfected, which is
+    why credential reset precedes restore; intact backups (A), lost data (B) and early finish (C) miss the
+    reinfection. Q2 B: Rebuild from a clean image removes persistence the team has not found, which is the
+    confidence argument; remediate keeps the data (A) and the risk, the replication partner (C) survives a
+    rebuild from image, and waiting (D) is not recovery. Q3 A: The Monday-night copy predates the Tuesday
+    compromise, so it is the soundest restore point; the newest copy (B) may carry the persistence, weekly
+    testing (C) says nothing about the compromise window, and waiting (D) leaves the service down. Q4 C:
+    User, service and trust credentials together with key material is the full reset set after a domain-wide
+    compromise; user passwords only (A) and administrators only (B) leave service paths open, and resetting
+    only what logs mention (D) trusts incomplete evidence. Q5 B: A manual process or a clean standalone
+    system holds the critical service while systems are rebuilt; restoring everything at once (A) is what
+    the sequencing avoids, less logging (C) blinds the response, and delaying notification (D) starts a
+    different clock.'
+- module: 5
+  notes: 'Q1 C: The clock starts when the organisation becomes aware of the qualifying breach, not at
+    closure (A), media reporting (B) or approval (D); approval can be a step inside the window, but the
+    window is already running. Q2 A: A recorded acquisition time, source and checksum with every handler
+    noted is what survives legal review; a summary that deletes the original (B) destroys the evidence,
+    encryption alone (C) proves integrity only if a baseline was recorded, and personal media (D) breaks
+    custody. Q3 B: Written speculation may be disclosable and the conclusion may be wrong, which is why
+    responders record facts; lost time (A) and confusion (C) are minor next to disclosure, and reserving
+    liability for closure (D) misses that the harm is the written speculation itself, whenever it is
+    written. Q4 D: Recording the request, agreeing a preservation window and planning
+    recovery around it serves both the case and the business; refusal (A) risks the legal position,
+    full-stop recovery (B) may exceed what the case needs, and abandonment (C) is unnecessary. Q5 A: The
+    organisation remains accountable to its own customers and regulators when a supplier is breached; the
+    supplier was breached (B) but the data relationship is the organisation''s, waiting (C) does not stop
+    the clock, and the regulator does not take over the duty (D).'
+- module: 6
+  notes: 'Q1 A: Process and decision authority are what tooling cannot supply, which is the assessment''s
+    spine; licence tier (B) and dashboards (C) are vendor features, and vendor statistics (D) describe other
+    customers. Q2 D: A falling median from detection to containment, proved by an exercise, is observable
+    evidence of value; incident counts (A) reward volume, praise (B) is not a measure, and tool count (C)
+    measures spending. Q3 B: If contracting starts the day the incident does, no retainer existed, and the
+    delay lands at the worst moment; calling it surge practice (A) mistakes the failure for the design, a
+    strong internal team (C) would not need same-day contracting, and a provider absorbs no notification
+    duty (D). Q4 C: The choice turns on the skills the organisation can keep in-house against the speed a
+    provider can supply; first-year cost alone (A) hides the surge problem, prestige (B) and logos (D) are
+    not capability. Q5 D: Untested process and unclear decision authority is the gap that recurs, because it
+    is invisible until an incident exposes it; dashboards (A) and slow feeds (B) are visible and fixable,
+    and a few missed agents (C) is a coverage gap, not the recurring one.'
+lab_setup:
+- module: 1
+  setup: >-
+    Revert the large-enterprise range to baseline and confirm jump01, siem01 and soar01 are reachable.
+    Seed the alert queue so several zones have open alerts, including two clearly older than the rest.
+    Bring the case record: a multi-site bank incident summary naming the sites and the morning incident.
+- module: 2
+  setup: >-
+    Revert the large-enterprise range to baseline and confirm jump01, siem01, edr01, dc01, fs01 and
+    ws06 are reachable. Load the apt-nation-state scenario on the template and let it run to the point
+    where traces exist on ws06. Bring the instructor value: which remote-administration and
+    scheduled-task events the students should find first.
+- module: 3
+  setup: >-
+    Revert the large-enterprise range to baseline and confirm jump01, tip01 and siem01 are reachable.
+    Create the instructor-supplied MISP event on tip01 with indicators of mixed confidence, including
+    one high-confidence indicator whose related activity the students should be able to find on siem01.
+- module: 4
+  setup: >-
+    Revert the large-enterprise range to baseline and confirm jump01, fs01, dc01, sql01 and sql02 are
+    reachable. Check that fs01 holds shadow copies created both before and after the compromise time
+    you will give. On sql01 and sql02, note the replication partner each names and whether sql01 holds a
+    local backup or restore point, so you can mark the recovery-list reasons against what the range shows.
+    Bring the instructor value: the compromise time, and the clean workstation image
+    the recovery list should reference.
+- module: 5
+  setup: >-
+    Revert the large-enterprise range to baseline and confirm jump01, siem01 and syslog01 are
+    reachable. Seed siem01 with the breach events the summary describes and confirm the export path
+    from siem01 works. Bring the instructor-supplied breach summary naming the supplier, the data and
+    the day.
+- module: 6
+  setup: >-
+    Revert the large-enterprise range to baseline and confirm jump01, ids01, edr01, siem01 and soar01
+    are reachable. Deliberately leave one zone with no endpoint reporting on edr01 and one log source
+    missing on siem01, so the assessment has real gaps to find. Bring the instructor-supplied
+    assessment brief stating the baseline the network is measured against.
+common_faults:
+- module: 1
+  fault: Students write a handover that lists alerts without the workstream state behind them, so the next
+    shift re-derives everything.
+  remedy: Read a good and a poor handover aloud, then have each student mark their own lines as state,
+    evidence or next action before the quiz.
+- module: 1
+  fault: Students route every alert to one catch-all workstream instead of the owning workstream.
+  remedy: 'Put the workstream list on the board and ask for each alert: who owns this? Route by ownership,
+    not by ease.'
+- module: 2
+  fault: Students treat every use of a built-in administrative tool as adversary activity.
+  remedy: 'For each event ask: who ran it, from where, against what, and does that fit a working pattern?
+    Context decides, not the tool name.'
+- module: 2
+  fault: Students accept the trace as complete when the logging gaps mean parts of it cannot be seen.
+  remedy: Point back to the step where they recorded the gaps, and ask what the adversary did in the hours
+    the logs do not cover.
+- module: 3
+  fault: 'Students accept an intelligence report''s attribution as if their own environment had shown it.'
+  remedy: 'Ask of each claim: did we see this, or did a report assert it? Sort the session''s findings into
+    two columns on the board.'
+- module: 3
+  fault: Students pivot only on the newest or loudest indicator instead of the highest-confidence one.
+  remedy: 'Have them rank the event''s indicators by confidence first, then pivot, and compare what each pivot found.'
+- module: 4
+  fault: Students order recovery by how quickly each system can be restored, ignoring dependencies and
+    trusts.
+  remedy: 'Draw the dependency arrows from their own sql02 and dc01 recordings on the board, then re-order
+    the list until no arrow points backwards.'
+- module: 4
+  fault: Students reset user passwords and call the credential work done.
+  remedy: >-
+    Ask what else in the domain can authenticate: service accounts, trusts, key material. Have them
+    extend their own reset list until no path is left.
+- module: 5
+  fault: Students export evidence without recording who has held it since, so the chain of custody has a
+    hole at its start.
+  remedy: 'Ask each student to recite, from their own record, every holder of the file from export to now.
+    A gap means re-record before the quiz.'
+- module: 5
+  fault: Students write notification decisions as recommendations in the incident record, mixing legal
+    judgement into responder notes.
+  remedy: Have them mark each line of their notification list as fact, decision or recommendation, and move
+    recommendations out of the record.
+- module: 6
+  fault: Students report only what the range shows well and miss the gaps you seeded, so their assessment
+    overstates capability.
+  remedy: Ask for the zones with no endpoint reporting and the missing log source by name; a capability
+    assessment that finds no gap has not looked.
+- module: 6
+  fault: Students rank gaps by how easy the fix is instead of by the risk each gap leaves.
+  remedy: 'For each gap ask: what incident would this let through, and how bad? Rank by that answer, then
+    name the control.'

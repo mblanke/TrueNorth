@@ -1,0 +1,181 @@
+# Instructor pack for C110 Introduction to Risk Management. Staff use only: answer keys,
+# timings and lab setup notes. Do not publish to Students.
+# Keys below must stay in step with content/courses/c110-intro-to-risk-management.yaml: when a
+# quiz answer moves, move the letter here in the same change and re-run scripts/check_course.py.
+course_code: C110
+audience: staff_only
+overview: 'Introduction to Risk Management is a reading-and-lab course of six 60-minute modules (360 minutes).
+  Each module has the same split: 15 minutes teaching the three objectives, 35 minutes on the medium-enterprise
+  range in the module lab, and 10 minutes for the five-item quiz passed at 70 percent. Students work on the
+  range from siem01 with the analyst account, which reaches every zone, and record what they observe —
+  host inventories, computed figures, rule lines and sign-in results — before each module''s last lab step
+  asks for a judgement. What Students hand in per module is their lab evidence sheet plus the quiz. Say
+  ''Student'' throughout.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (assets, threats, vulnerabilities, CIA, inherent vs residual vs accepted), 35 lab (inventory
+    and rate the range, classify one threat and one vulnerability per host group), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (qualitative vs quantitative, matrix ranking, SLE/ALE, uncertainty), 35 lab (gather outage
+    facts on fs01, compute the ALE, rank on the matrix, record one disagreement about the ranking), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (avoid/mitigate/transfer/accept, preventive/detective/corrective, cost vs residual risk),
+    35 lab (read fw01 rules as controls, test siem01 to web01, find one forbidden path, select a treatment),
+    10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (accountability and the three lines, evidence requirements, compliance vs risk-based
+    decisions), 35 lab (verify which log indices siem01 holds, test dc01 sign-in from siem01, map controls to owner and
+    assurance activity), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (BIA, RTO/RPO, exercising the plan, single points of failure), 35 lab (BIA for the fs01
+    file service and the web01 public service, name the SPOF and its consequence), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (supplier assessment, contractual requirements and right to audit, concentration and
+    fourth-party exposure), 35 lab (treat the DMZ web and mail services as supplier-operated, work one
+    offboarding, rank concentration), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 C: A ransomware attack on the file service makes encrypted files unusable, which is loss of
+    availability; the data was not disclosed (not B) and integrity loss means unauthorised change, not
+    unreadable data. Distractor B tests whether Students can tell a disclosure from a denial of use.
+    Q2 A: Residual risk is what is left after controls act on the inherent risk; B tests whether Students
+    know the pre-control figure is inherent, C tests acceptance vocabulary, D names a treatment outcome,
+    not a risk state. Q3 D: The owner reviewed the risk, recorded the decision and signed it, which is
+    acceptance with a documented owner; A and C are treatments the scenario does not take, B would need
+    a new control. Q4 B: A valuation supports the impact side of a risk decision; A profiles attacker
+    behaviour, C looks for weaknesses rather than value at stake, D needs loss figures the exercise does
+    not have. Q5 C: Risk appetite is the amount of risk the organisation will accept in pursuit of
+    objectives; A is what remains after controls, B is a control, D is a tolerance for a single metric.'
+- module: 2
+  notes: 'Q1 D: SLE is the single-event loss (40,000) and ALE multiplies by the annual frequency (2),
+    giving 80,000; A divides, B forgets the frequency, C swaps the inputs. Distractor B catches arithmetic
+    without the definition. Q2 B: The scenario has no measured figures, so the qualitative
+    likelihood-by-impact matrix is the method that fits; A needs loss data the scenario does not have,
+    C defers the decision instead of ranking, D refuses to rank at all. Q3 A: Both assessors let a past
+    incident set the likelihood input, which is estimation bias; B names a defect of calculated figures,
+    C names a scope fault, D is not what either did. Q4 C: The conclusion stops at the assessed boundary,
+    and saying so is the honest handling; A implies assessment work that was not done, B lowers a rating
+    for presentation reasons, D re-rates others without cause. Q5 A: A two-decimal rate from two
+    observations implies a precision the inputs do not support, which is false precision; B is absent but
+    not the named defect, C is a scope fault the scenario does not show, D is not part of the rate.'
+- module: 3
+  notes: 'Q1 B: Ending the public file upload service removes the exposure altogether, which is avoidance;
+    A and C are treatments the scenario does not describe, D would keep the service running. Q2 D: A
+    backup restores service after an incident, which is corrective; A stops nothing here, B watches and
+    alerts, C discourages rather than restores. Q3 A: The alternative control meets the standard''s intent
+    while the required second path cannot be funded, which is a compensating control; B and C name
+    functions the alternative happens to serve, D accepts the gap instead of covering it. Q4 B: An IDS
+    sensor records and alerts, which is detective; A is preventive, C is corrective, D discourages rather
+    than detects. Q5 C: A higher rating changes the picture the acceptance rested on, so the acceptance
+    must be reviewed against the new rating; A ignores the change, B switches treatment without reviewing,
+    D deletes the record the review needs.'
+- module: 4
+  notes: 'Q1 C: The business owner of payroll is accountable for the risk even though IT runs the system;
+    A confuses operator with owner, B names the second line''s advisory role, D is outside the three lines.
+    Q2 A: A finding needs evidence with a time, a source and the system observed; B and D are responses
+    that add no evidence, C is an approval, not a record. Q3 D: The security terms were added because a
+    regulation requires them, not because the team assessed which suppliers matter, so the obligation is
+    met without a risk-based choice; A names the decision that was skipped, B is an assurance activity,
+    C is a control type that plays no part. Q4 A: Internal audit is the third line, giving assurance over
+    both the first line''s operations and the second line''s oversight; B and C are first line, D is
+    second line. Q5 C: A point-in-time check says nothing about the day the risk was taken; A overstates,
+    B is beside the point, D reverses the meaning.'
+- module: 5
+  notes: 'Q1 B: Maximum tolerable downtime is the ceiling before the consequence becomes unacceptable;
+    A is the objective for restoring service, not the ceiling on consequence, C measures data loss, D is
+    a schedule. Distractor A tests RTO/MTD vocabulary. Q2 C: The hour of lost orders breaches the RTO;
+    no data was lost, so the RPO was met. Q3 A: An unexercised plan needs an exercise against its stated
+    RTO before anyone can trust it; B and D add paperwork, C duplicates it. Q4 D: A tighter RPO means less
+    tolerable data loss, which demands more frequent copies or continuous replication; A and B loosen the
+    objective, C adds an unrelated capacity. Q5 B: A BIA measures the consequence of unavailability over
+    time, which is what RTO and RPO are derived from; A measures how likely a loss is rather than what it
+    costs over time, C and D are outside consequence analysis.'
+- module: 6
+  notes: 'Q1 A: The supplier''s own upstream dependence is fourth-party; B is a process failure, C would
+    apply if the shop had many services on one provider, D is a contractual right. Distractor C is the
+    near neighbour — concentration means many dependencies on one provider, not one provider''s
+    dependencies. Q2 D: Three of five critical services on one platform is concentration, which exists
+    regardless of performance; A and B name other supply chain risks, C is not created by the arrangement.
+    Q3 B: A certificate shows the site was checked at a point in time, not how the customer''s own use
+    is configured; A, C and D are things the certificate does show or that are not in question.
+    Q4 C: Right to audit lets the customer verify the supplier''s own claims against its systems; A and
+    B are things right to audit does not do, D is a commercial matter. Q5 A: Offboarding ends with the
+    data returned or destroyed under verification and access revoked; B, C and D are commercial steps
+    that leave the risk in place.'
+lab_setup:
+- module: 1
+  setup: Revert the medium-enterprise range to its baseline snapshot before the module. Confirm Students
+    can sign in to siem01 as analyst and that siem01 reaches dc01, fs01, web01 and mail01. No
+    changes to the range are needed during the lab; Students only observe and record.
+- module: 2
+  setup: Revert the range to baseline. Confirm fs01 is serving its file share and that Students can reach
+    fs01 from siem01. Give Students the outage figures used in the lab (single-event loss and expected
+    outages per year) on the board or handout so the ALE computation is comparable across the class.
+- module: 3
+  setup: Revert the range to baseline. Confirm the fw01 rule set is the baseline one, with siem01 reaching
+    web01, and one deliberately forbidden path present for Students to find (state in the debrief which
+    one it is). Confirm siem01 can browse web01 during the lab.
+- module: 4
+  setup: Revert the range to baseline. Confirm filebeat on siem01 is shipping into the log store and that
+    the analyst account can read the indices; in the baseline only siem01 runs a shipper, so the lab asks
+    Students to record which indices exist rather than to expect every zone. Confirm the sign-in service
+    on dc01 answers a connection test from siem01 so Students can record the identity control operating.
+- module: 5
+  setup: Revert the range to baseline. Confirm fs01 file service and web01 public service are up so the
+    BIA questions have live services to reason about. No range changes during the lab; Students work from
+    the services' roles and the topology.
+- module: 6
+  setup: Revert the range to baseline. Brief Students that for this lab web01 and mail01 are treated as
+    supplier-operated even though they run on the range. Confirm siem01 reaches web01 and mail01 for the
+    offboarding checks.
+common_faults:
+- module: 1
+  fault: Students rate asset criticality by how new or expensive the host is instead of by the consequence
+    of losing it.
+  remedy: 'Ask for the consequence statement first (''if fs01 is gone, no one can fetch files''), then let
+    the rating follow from it.'
+- module: 1
+  fault: Students record inherent risk as residual because they assume controls are already working.
+  remedy: Have them name the control and where they saw it before allowing any reduction from inherent.
+- module: 2
+  fault: ALE arithmetic goes wrong by dropping the frequency term or dividing instead of multiplying.
+  remedy: Check the units aloud — cost per event times events per year — before the ranking step.
+- module: 2
+  fault: Students state findings as certainty instead of recording the uncertainty the inputs carry.
+  remedy: Ask 'what would change your number?' for each recorded figure; no answer means the number was
+    never uncertain enough to discuss.
+- module: 3
+  fault: Students label a control preventive because it is a firewall, even when the rule they read
+    restricts after a path already exists.
+  remedy: Point back to the definition — preventive stops it happening, detective tells you it happened —
+    and ask which one the rule line does.
+- module: 3
+  fault: The treatment is named without a residual risk statement, so nothing is left to accept or reject.
+  remedy: Require one sentence per treatment stating what remains and who now owns it.
+- module: 4
+  fault: Students accept a log entry as evidence of a control without noting its time or source system.
+  remedy: Have them mark each evidence line as fact (where and when observed) or interpretation.
+- module: 4
+  fault: The system operator is recorded as accountable for the risk.
+  remedy: Ask who decides to accept the residual risk; the person who can make that decision is the owner.
+- module: 5
+  fault: RTO and RPO are swapped — Students give a data-loss number as the downtime ceiling.
+  remedy: Drill the pair on one service — RPO is how much data may be lost, RTO is how long it may be down.
+- module: 5
+  fault: The BIA is written as a likelihood statement ('the server might fail') instead of a consequence
+    statement over time.
+  remedy: Insist on the pattern 'after X minutes/hours without this service, ...' before the RTO discussion.
+- module: 6
+  fault: Students accept the supplier's certificate as sufficient assessment for their own use.
+  remedy: Ask what the certificate covered — the site at a point in time — and what it did not cover —
+    the customer's tenancy configuration.
+- module: 6
+  fault: Offboarding is answered with the commercial close (invoice, renewal) and the access and data
+    steps are missing.
+  remedy: Have Students list every access the supplier held and every data copy, then tick each one off.

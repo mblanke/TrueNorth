@@ -1,0 +1,199 @@
+# C103 Intro to Networking - instructor pack. Staff only: answer keys, expected range values,
+# lab setup and common faults never appear in the course file Students read.
+course_code: C103
+audience: staff_only
+overview: >-
+  Intro to Networking is a beginner course of six 60-minute modules that walks a Student from the layered
+  models and addressing, through switching, routing and transport, to firewall controls and traffic
+  analysis. Every module teaches three objectives in about 15 minutes, runs one 35-minute lab on the
+  small-enterprise range (jump-box, dc-01, ws-01 to ws-03, fw-01), and closes with a five-item quiz.
+  The labs build on one another: the networks and hosts the Student records in Module 1 are the ones
+  segmented in Module 2, routed in Module 3, captured in Module 4, filtered in Module 5 and analysed in
+  Module 6. Students hand in lab notes with recorded addresses, traces, captures and their marked
+  judgements; the quiz is passed at 70 percent.
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (models, addressing, encapsulation), 35 lab (addressing survey on the range), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (MAC learning, VLANs, ARP), 35 lab (broadcast domains and cached tables), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (route selection, NAT, path tracing), 35 lab (route tables and path traces), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (TCP and UDP, DNS, DHCP), 35 lab (captures on jump-box), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (stateful filtering, default-deny, IDS placement), 35 lab (fw-01 rule set test), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (capture points, filters, traffic patterns), 35 lab (two captures and classification),
+    10 quiz'
+answer_key_notes:
+- module: 1
+  notes: >-
+    Q1 B: 255.255.255.192 is a /26, which holds 62 usable addresses and is the smallest mask listed that
+    covers 46 devices with room to grow; /28 and /29 hold 14 and 6, and /30 holds 2. A and C test miscounting usable hosts (forgetting network and broadcast), D tests assuming
+    every network needs a /30. Q2 B: each layer wraps the one above with its own header, which is
+    encapsulation; fragmentation (A) is one frame split to fit an MTU, resolution (C) maps addresses,
+    translation (D) rewrites them. Q3 C: link-local addresses self-configure on the segment without a
+    server; A needs assignment, B is a group address, D is the loopback. Q4 A: a /29 holds 8 addresses
+    minus network and broadcast, so 6 usable; B counts all addresses, C and D are /28 and /27 counts.
+    Q5 D: a switch forwards by hardware address, which is data link; A is where routers sit, B and C are
+    above the link.
+- module: 2
+  notes: >-
+    Q1 B: an unknown destination is flooded out every other port so it is not lost; A is what happens
+    after the table times out with no learning, C and D are not switch behaviours. Q2 A: the tag inside
+    the frame names the VLAN; B confuses transport ports with ports on a switch, C alone does not
+    distinguish frames on one cable, D is decoration. Q3 B: a gateway entry that now maps to a
+    workstation is the classic cached-table evidence of ARP spoofing; A changes an address lease, not a
+    hardware mapping, C changes forwarding paths, D is not a thing. Q4 A: different broadcast domains
+    mean different networks, so routing is required; B and C are layer 2 devices that stay inside one
+    domain, D denies the need. Q5 C: Spanning Tree Protocol blocks redundant paths to stop loops; ARP
+    resolves addresses, DHCP assigns them, DNS names them.
+- module: 3
+  notes: >-
+    Q1 B: longest match wins - the /24 route covers the destination more specifically than the /8; A
+    describes metric-only choice, C and D are not how forwarding works. Q2 C: typed in by hand with no
+    protocol advertising it is a static route; A is learned, B is the 0.0.0.0/0 catch-all, D is not a
+    route kind. Q3 A: port address translation multiplexes many internal hosts onto one public address
+    by source port; B shares routes, C separates broadcast domains, D resolves names. Q4 B: each router
+    decrements time to live and the expiry at zero draws the ICMP notice that reveals the hop; A checks
+    corruption, C and D belong to transport. Q5 D: with no specific match the default route is the route
+    of last resort; A is the rule that failed to match, B and C are not selection rules.
+- module: 4
+  notes: >-
+    Q1 B: a call tolerates loss but not delay, so the lightweight connectionless transport fits; A adds
+    retransmission and head-of-line delay, C is network-layer signalling, D resolves addresses. Q2 C:
+    SYN, SYN-ACK, ACK is the three-way handshake; A and B happen after connections exist, D belongs to
+    TLS, not the transport opening. Q3 B: a clean close is FIN and ACK in both directions; A is the
+    abrupt reset, C would start a new connection, D is not a TCP close. Q4 A: DHCP hands out address,
+    mask and gateway in one lease; B resolves names, C syncs clocks, D serves files. Q5 C: the mail
+    exchanger record names the server that accepts mail for the domain; A and B map names to addresses
+    and other names, D maps an address back to a name.
+- module: 5
+  notes: >-
+    Q1 B: the firewall tracked the connection and permits the return traffic without a rule for it; A
+    would have dropped the reply, C rewrites addresses but does not explain the unsolicited reply, D is
+    signature work. Q2 A: allow-any after the blocks is the opposite of default-deny, where anything not
+    permitted is blocked; B is not a design principle, C explains return traffic, D is irrelevant. Q3 B:
+    alert-but-not-drop is detection beside the path; A sits inline and can drop, C isolates hosts, D
+    proxies sessions. Q4 C: a screened subnet keeps a public-facing compromise away from internal
+    segments; A and B put it among hosts it must not endanger, D is the worst placement. Q5 C: a
+    first-match engine applies the earliest matching rule, which is the specific allow at line 2; A
+    invents a last-match engine, B invents double application, D invents a deny the rule set does not
+    have.
+- module: 6
+  notes: >-
+    Q1 A: a dedicated tap does not drop frames under load the way a shared mirrored port can; B is the
+    cheaper but lossy option, C and D are not capture points for wire traffic. Q2 B: keep everything with
+    a capture filter, then narrow the view with a display filter; A applied twice just keeps less, C
+    views only what was already captured, D keeps metadata, not packets. Q3 B: who-talked-to-whom metadata
+    without contents is a flow record; A keeps contents, C and D are not flow exports. Q4 A: one host
+    touching the same port on many addresses is a horizontal scan; B is regular low-volume callbacks, C
+    moves large data, D hammers one resolver. Q5 C: encryption hides contents but not timing, sizes and
+    destinations; A and B need payloads, D is not something a passive capture gives.
+lab_setup:
+- module: 1
+  setup: >-
+    Revert the range to its baseline and confirm jump-box is reachable over SSH with the analyst
+    account the Credentials panel shows. Expected values Students should find: jump-box at 10.0.1.10/24
+    with gateway 10.0.1.1, dc-01 at 10.0.2.10, ws-01 at 10.0.3.10, ws-02 at 10.0.3.11; a ping to an
+    unused address in the management network (for example 10.0.1.99) times out.
+- module: 2
+  setup: >-
+    Revert the range to its baseline. Clear or note the cached address table on jump-box and the address
+    resolution table on fw-01 before the lab so Students build the entries themselves by pinging the
+    workstations. Expected values: jump-box's own table lists its gateway 10.0.1.1 and no workstation,
+    because the pings travel through the gateway rather than resolving a host directly; after the pings,
+    fw-01's address resolution table lists ws-01 at 10.0.3.10 and ws-02 at 10.0.3.11 on the user
+    interface and jump-box at 10.0.1.10 on the management interface; one trace to ws-02 crosses fw-01 at
+    10.0.1.1, one to dc-01 also crosses fw-01; fw-01 shows the three VLANs mgmt, srv and user routed
+    between them. Supply Students the firewall configuration login if they do not have it.
+- module: 3
+  setup: >-
+    Revert the range to its baseline and confirm jump-box reaches dc-01 and ws-01. Expected values:
+    jump-box holds one connected route, for 10.0.1.0/24, plus a default route via 10.0.1.1; 10.0.2.0/24
+    and 10.0.3.0/24 are reached through that default route, not as connected routes. Traces to both
+    hosts show fw-01 as the single intermediate hop. Pick the blocked outside destination yourself (the
+    range allows nothing out but depot traffic) and tell Students the address.
+- module: 4
+  setup: >-
+    Revert the range to its baseline and confirm the packet capture tool on jump-box works and that
+    dc-01 answers name lookups (dc-01 at 10.0.2.10 is the range's DNS server). Choose the name Students
+    look up and the non-existent name for the failed lookup, and confirm the response code it returns on
+    this range so Evidence can be marked. The second SSH session is opened only after the capture is
+    running, so its handshake lands in the capture; confirm Students can open a second session from
+    their client.
+- module: 5
+  setup: >-
+    Revert the range to its baseline. Confirm fw-01 shows exactly two rules in order, user-to-srv-ad
+    (user to srv on the domain ports) and mgmt-to-all (mgmt to any), with pfSense's default deny behind
+    them. Create or confirm the standard user account on ws-01 that Students sign in with, and pick the
+    unnamed service they will test on dc-01 (any port outside the rule's list, which should time out).
+- module: 6
+  setup: >-
+    Revert the range to its baseline and confirm the capture tool on jump-box works and dc-01
+    answers name lookups. Expected values: the dc-01 conversation uses UDP 53 for the lookups and the
+    Students' own SSH session rides TCP 22; two pings to ws-01 about ten seconds apart show two request
+    and reply pairs separated by the interval Students record.
+common_faults:
+- module: 1
+  fault: Students propose a mask from the device count alone and forget network and broadcast addresses.
+  remedy: Have them write the 8-address block of a /29 on paper, cross out network and broadcast, then
+    recount before they answer.
+- module: 1
+  fault: Students call the management network's unused-address ping result an error and re-run it.
+  remedy: Point at the timeout as the expected finding - no device holds that address - and have them
+    record it as evidence.
+- module: 2
+  fault: Students read the cached table before pinging anything and conclude the switch 'already knew'
+    the addresses.
+  remedy: Make them clear the tables (or use a fresh session), ping one workstation, and watch the pair
+    appear in fw-01's address resolution table.
+- module: 2
+  fault: Students mark dc-01 and ws-01 as sharing a broadcast domain because both are reachable.
+  remedy: Send them back to the trace hop count - reaching a host through fw-01 is the evidence of
+    separation, not of sharing.
+- module: 3
+  fault: Students list the trace hops without attributing them and cannot say which device fw-01's
+    address belongs to.
+  remedy: Put the template's address plan on the board (fw-01 holds .1 in every network) and have them
+    match each hop to a host before moving on.
+- module: 3
+  fault: Students choose the /8 route because it is listed first or looks broader.
+  remedy: Drill longest-prefix match with the two table entries side by side, covering the destination
+    address in binary if needed.
+- module: 4
+  fault: Students call every three-packet opening they see a handshake, including retransmissions.
+  remedy: Have them check the flags on each packet - SYN, SYN-ACK, ACK in that order - before they label
+    the exchange.
+- module: 4
+  fault: Students record the failed name lookup as 'broken DNS' instead of the response code.
+  remedy: Show the response code field in the capture and explain that an authoritative 'no such name' is
+    the server working, not failing.
+- module: 4
+  fault: Students look for the handshake of the SSH session they first logged in with, which ended
+    before the capture started, and find no handshake in the capture.
+  remedy: Point at step 3 - open the second SSH session while the capture runs, and read that session's
+    handshake from the capture.
+- module: 5
+  fault: Students test from jump-box and conclude the user-to-server rule governs them, but jump-box sits
+    on mgmt and is governed by mgmt-to-all.
+  remedy: Make them check which network their source address belongs to before testing, and route the
+    user-network test through ws-01 as the steps say.
+- module: 5
+  fault: Students widen the rule set 'to make it work' when a connection times out instead of recording
+    the block.
+  remedy: Point at the default deny as the intended result for anything the rules do not name, and have
+    them record the timeout as evidence.
+- module: 6
+  fault: Students leave the capture running without a filter and drown in the range's background traffic.
+  remedy: Have them stop, re-read step 2, and start over with the filter recorded exactly as typed.
+- module: 6
+  fault: Students classify the two pings to ws-01 as scanning because packets repeat.
+  remedy: Have them compare the interval and volume with the scanning pattern from the topics - two pairs
+    ten seconds apart at the Student's own command is a poll, not a scan.

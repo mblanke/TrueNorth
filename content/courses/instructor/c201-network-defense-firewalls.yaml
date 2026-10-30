@@ -1,0 +1,220 @@
+# C201 Network Defense & Firewalls - instructor pack (staff only).
+# INSTRUCTOR MATERIAL - do not publish to learners. Every answer letter below is the course's
+# key; the notes say why the keyed option is right and what each distractor tests.
+# All labs run on the medium-enterprise range (content/ranges/medium-enterprise): nodes
+# dc01, fs01, web01, mail01, ws01, ws02, siem01, fw01. Only siem01 has a student-visible
+# account (analyst); every other account is assigned by the instructor at the start of a lab.
+course_code: C201
+audience: staff_only
+overview: 'Network Defense & Firewalls is an intermediate course of six 60-minute modules (360 minutes,
+  6 hours). Each module has the same split: about 15 minutes teaching the topics, 35 minutes on the
+  medium-enterprise range lab, and 10 minutes for the five-item quiz, which is passed at 70 percent.
+  Each lab asks the Student to record evidence as observed on the range, not as assumed, and the last
+  step of every lab is a judgement the Student makes from what they recorded. Say ''Student''
+  throughout and keep every description defensive and observable.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (zones, boundaries, north-south versus east-west), 35 lab (interface and rule
+    survey on fw01, one blocked-service test from ws01, one workstation-to-workstation test from
+    ws01 to ws02), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (filtering generations, state tables, encrypted-traffic limits), 35 lab (state
+    table entry and one session-content detail it does not record on fw01 during a ws01-to-web01
+    session, second-port HTTPS test), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (default deny, first-match order, documentation and logging), 35 lab (rule audit
+    of fw01 against the stated policy), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (detection types, sensor placement, tuning), 35 lab (SIEM log-source survey on
+    siem01, one generated east-west connection searched), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (802.1X, segmentation, decision and enforcement points), 35 lab (lateral-path
+    tests from ws01 to fs01 and web01), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (coverage monitoring, containment trade-offs, post-incident tuning), 35 lab
+    (incident-window review on siem01, containment recommendation), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (common security policy and trust level), M1-O01: A zone is a group under one policy,
+    not a subnetting or wiring fact; A and D describe addressing that can span zones, and C is
+    physical, not a policy. Q2 A (east-west), M1-O02: Both systems sit inside the same boundary, so
+    the flow never leaves the site; B and C confuse direction with server rank, and D reverses the
+    vocabulary. Q3 A (at the boundary the two zones share), M1-O03: A control inspects the traffic
+    that crosses it, so it belongs where the zones meet; D misses inter-zone traffic entirely.
+    Q4 B (it eroded), M1-O01: Remote access and cloud services bring traffic in without crossing
+    the firewall; C mistakes the firewall still running for the perimeter still holding. Q5 C (any
+    single layer can fail and the others still constrain the attacker), M1-O03: Layered defence
+    assumes failure; A claims perfection, B is a procurement myth, and D cannot replace prevention.'
+- module: 2
+  notes: 'Q1 C (the open connection''s entry in the state table matches the reply), M2-O01:
+    Stateful inspection permits reply traffic by matching the session, not the packet; B is wrong
+    because no mirror rule was written. Q2 B (an application proxy that reassembles the session),
+    M2-O01: Only payload-level inspection sees uploads hidden inside allowed web traffic; A, C and
+    D decide on addresses, ports or connection state alone. Q3 D (inspection of the payload inside
+    the session), M2-O01: Encryption without session termination hides the payload while address
+    and port decisions and state tracking all still work. Q4 B (inspection costs processing that
+    caps throughput), M2-O02: Deep inspection is paid for in processing; A, C and D each invent a
+    cause the change does not imply. Q5 C (the firewall binding policy to authenticated identity),
+    M2-O03: Identity-aware rules decide on who is authenticated, not on which address the laptop
+    holds; A, B and D never evaluate identity.'
+- module: 3
+  notes: 'Q1 B (the earlier general permit matches first, so line 3 never applies), M3-O01: First
+    match wins, so the specific rule is shadowed; A describes a specificity model no first-match
+    firewall uses. Q2 C (it is dropped and logged by the default action), M3-O01: Default deny
+    permits nothing that no rule names; A and D grant access the design never gave. Q3 A (a business
+    justification, an owner and a review date), M3-O02: Those three records let a reviewer decide
+    removal; B, C and D identify the rule but never justify it. Q4 D (the permit is broader than
+    the need and should be narrowed to the ports the application uses), M3-O03: One application''s
+    two ports do not justify every port; A accepts the over-broad rule and B delays it. Q5 B (log
+    its matches for a review period first), M3-O03: Logged matches
+    make removal safe; A risks an outage the log would have prevented, and C and D spread the rule
+    instead of retiring it.'
+- module: 4
+  notes: 'Q1 D (behaviour that fell outside the learned baseline), M4-O01: Anomaly detection alerts
+    on deviation from the baseline, and a legitimate backup running double volume is exactly that;
+    A is signature logic, C is inline prevention. Q2 B (lateral movement between two internal
+    servers), M4-O02: A sensor on the internet link sees only traffic that crosses it; internal
+    east-west traffic never does. Q3 A (a filtering error can stop the payment service itself),
+    M4-O02: Inline placement puts the sensor in the traffic path, so a false block becomes an
+    outage; B and D are backwards, and C describes passive detection. Q4 C (suppress that known
+    pattern with a documented reason and a review date), M4-O03: Documented suppression keeps the
+    rule alive for everything else; A and B destroy detection, and D deafens the whole sensor.
+    Q5 C (detect it once a matching signature is deployed), M4-O01: Signature detection
+    finds only what its signatures describe; A is the anomaly method, not the signature method.'
+- module: 5
+  notes: 'Q1 B (port-based network access control on the port), M5-O01: 802.1X holds the port closed
+    until the supplicant authenticates; the other three inspect or label traffic but never
+    authenticate the device first. Q2 C (the policy decision point), M5-O03: Zero trust separates
+    deciding from enforcing; the PDP evaluates and refuses before the PEP forwards anything, so A
+    enforces a decision it did not make. Q3 B (least-privilege rules between user and server zones),
+    M5-O02: Least-privilege segmentation bounds the next hop; A and C enlarge the
+    reachable set, and D encrypts traffic without constraining reachability. Q4 A (one compromised
+    host can reach every other host on the same network), M5-O02: Flatness removes the enforcement
+    points containment needs; the other options describe performance and addressing, not blast
+    radius. Q5 A (it is re-evaluated against the new context and risk), M5-O03: Continuous
+    verification re-decides access as context changes; B and C describe one-time grants, which zero
+    trust removes.'
+- module: 6
+  notes: 'Q1 B (alerting the adversary and ending visibility before the scope is known), M6-O02:
+    Immediate blocking tells the adversary it was noticed and stops the observation the team was
+    using to scope it; A overstates it, since blocking does not touch disk evidence. Q2 A
+    (sinkholing), M6-O02: Redirecting a destination domain to a controlled host is the definition
+    of a sinkhole; B throttles, C silences alerts, D describes detection baselining. Q3 B (whether
+    each control still sees the traffic it is assumed to see), M6-O01: Coverage monitoring checks
+    the assumption a control depends on; the other options measure cost, ownership and capacity.
+    Q4 C (what the incident revealed about detection and prevention gaps), M6-O03: Findings from the
+    incident are the evidence tuning acts on; release notes, alert volume and budget cycles do not
+    describe gaps. Q5 A (immediate blocking, which stops the activity but ends the observation),
+    M6-O02: The question asks for the option that does both; B keeps observing, C neither stops nor
+    hides, and D hides alerts while the activity continues.'
+lab_setup:
+- module: 1
+  setup: 'Revert the medium-enterprise range to its baseline before the lab. Confirm fw01, ws01, ws02
+    and web01 are reachable and the pfSense rules are the template default (note: the corp-to-servers
+    allow rule carries no port list). Assign ws01 accounts. Expected values: four interfaces on fw01
+    (corporate, servers, dmz, management); a workstation-to-web01 service on a port outside the
+    corp-to-dmz list (80, 443, 25, 587, 143, 993) — e.g. 8080 — does not connect: the attempt is
+    refused or times out, because no listener answers on the port and the rule set has no rule
+    allowing it (pfSense''s implicit default deny drops unmatched traffic silently); the Student
+    records the failed attempt and derives the default-deny conclusion from the rule set, not from
+    the cause of the failure; the ws01-to-ws02 shared-service test succeeds with no fw01 interface
+    or rule on the path, because both workstations sit in the corporate zone.'
+- module: 2
+  setup: 'Revert the range to baseline. Confirm ws01, web01 and fw01 are reachable. Expected values:
+    the corp-to-dmz rule allows ports 80, 443, 25, 587, 143 and 993; opening the web service on
+    web01 from ws01 creates one state table entry on fw01; that entry records only addresses,
+    ports and protocol, so the page the web service returns in the same session is the session
+    detail no field shows; a second port on web01''s web service (HTTPS on 443) succeeds without a
+    new rule; the debrief point is what an application-aware firewall would inspect that the
+    port-only rule never sees.'
+- module: 3
+  setup: 'Revert the range to baseline. Confirm fw01, ws01 and fs01 are reachable and enable rule
+    logging on fw01 before the module so matches appear in the rule log. State the audit policy to
+    the class verbatim: workstations may reach the server zone for domain services only, and only
+    the management zone may administer any host. Expected values: the ws01-to-fs01 file share
+    connects on port 445, and the corp-to-servers allow rule that carries it has no port list,
+    which is the main over-broad finding.'
+- module: 4
+  setup: 'Revert the range to baseline. Confirm the SIEM on siem01 receives its usual sources (fw01
+    firewall logs and host logs from the servers) and that the analyst account is ready to assign.
+    Expected values: the ws01-to-ws02 file share opens, and the SIEM search for that connection
+    finds nothing, because workstation-to-workstation traffic crosses no observation point; that
+    gap is the expected finding, not a fault.'
+- module: 5
+  setup: 'Revert the range to baseline. Confirm ws01, fs01, web01 and fw01 are reachable. Assign
+    ws01 accounts. Expected values: the ws01-to-fs01 file share succeeds under the over-broad
+    corp-to-servers rule; a ws01-to-web01 service outside the corp-to-dmz port list (80, 443, 25,
+    587, 143, 993) does not connect: the attempt is refused or times out, and the default-deny
+    conclusion comes from the rule set, which has no rule allowing the port.'
+- module: 6
+  setup: 'Revert the range to baseline, then seed an incident window on the SIEM: generate or inject
+    one outbound connection from ws01 that crosses fw01 under an existing rule or the default
+    action, and note the window''s start and end times. Do not generate offensive traffic; a plain
+    outbound connection the SIEM can record is enough. Name the window and flag the connection when
+    the lab starts. Expected values: the SIEM holds fw01 network logs covering the window, and the
+    flagged connection resolves to its deciding fw01 rule.'
+common_faults:
+- module: 1
+  fault: Students call every traffic flow through fw01 "north-south" because a firewall is involved.
+  remedy: Ask where both endpoints sit first; direction vocabulary follows the endpoints, not the
+    presence of a firewall.
+- module: 1
+  fault: The default-deny coverage question is answered from the template's reputation instead of
+    the recorded test result.
+  remedy: Require the step 4 observation (succeeds or refused) quoted in the pass evidence before
+    the boundary marking is accepted.
+- module: 2
+  fault: Students describe the state table entry as "the firewall allowing web", with no session
+    details recorded.
+  remedy: Have them record source, destination, ports and protocol from the actual entry while the
+    session is still open; a closed session shows no entry.
+- module: 2
+  fault: The second-port test is recorded as a failure because no separate rule allows HTTPS.
+  remedy: Point back to the recorded port list of the carrying rule; the observation is that a
+    port-only rule cannot distinguish HTTP from HTTPS.
+- module: 2
+  fault: Students call the state table entry itself application-layer inspection because it
+    appears only while the session runs.
+  remedy: Ask what the entry says about the page the session carried; addresses, ports and
+    protocol are the whole record, which is exactly the gap an application-aware firewall fills.
+- module: 3
+  fault: The over-broad finding is applied to whichever rule is longest, rather than to the rule
+    that allows more than the stated policy needs.
+  remedy: Have each marking quote the policy clause it is judged against; the corp-to-servers rule
+    with no port list is the expected finding.
+- module: 3
+  fault: Students propose deleting the undocumented rule immediately in the quiz and the lab.
+  remedy: Link quiz Q5 to the lab step that requires logged matches over a review period before
+    removal; deletion without evidence is how needed services break.
+- module: 4
+  fault: Students list the SIEM's log sources from memory of the template instead of from the log
+    search.
+  remedy: The pass item says "recorded as observed, not assumed"; reject any list that does not
+    match what the sources page shows.
+- module: 4
+  fault: The ws01-to-ws02 connection is reported as "lost" or "broken" when the SIEM search finds
+    nothing.
+  remedy: Reframe it as a visibility gap with an explanation (no sensor on that path, no log source
+    covering it) and move straight to the proposed sensor placement.
+- module: 5
+  fault: Students treat the successful ws01-to-fs01 share as proof segmentation is working.
+  remedy: Ask which rule carried it and what else that rule allows; the share succeeding under the
+    port-less corp-to-servers rule is the containment problem.
+- module: 5
+  fault: The proposed enforcement point is "a new firewall rule" with no location named.
+  remedy: Require the enforcement point to be named as a place (which fw01 interface or zone
+    boundary) and its effect on other zones stated.
+- module: 6
+  fault: Students recommend immediate blocking by default because it is the strongest action.
+  remedy: Force the three-column comparison first (what each option preserves, stops and tells the
+    adversary); with scope unknown, most defensible answers preserve observation.
+- module: 6
+  fault: The containment recommendation states no trade-off, only the action.
+  remedy: The pass item requires the trade-off stated; ask "what does this recommendation cost you
+    that the window held?" until the evidence-visibility point lands.

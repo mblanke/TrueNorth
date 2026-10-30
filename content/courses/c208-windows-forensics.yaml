@@ -6,9 +6,10 @@ course_code: C208
 title: Windows Forensics
 version: '1.0'
 difficulty: intermediate
-duration_hours: 100
+duration_hours: 6
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
@@ -34,57 +35,86 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Identify the principal forensic artefact sources on Windows.
-  - Explain what each artefact does and does not prove.
-  - Prioritise artefact collection for a given question.
+  - Identify the principal Windows forensic artefact sources and what each one records
+  - Explain what each artefact class proves and what it cannot establish on its own
+  - Rank candidate artefact sources by reliability and volatility for a stated investigative question
   topics:
-  - Registry hives and their purpose.
-  - Event logs and channels.
-  - Filesystem metadata and the MFT.
-  - Artefact reliability and interpretation limits.
-  lab: 'Lab: Given an investigative question about program execution, list the artefacts that could answer
-    it, rank them by reliability, and state what each would prove.'
+  - Registry hives as structured stores of system and user configuration.
+  - Event logs, channels and the records each channel holds.
+  - Filesystem metadata, the MFT and what file records retain after deletion.
+  - Artefact reliability, volatility and the limits of single-source interpretation.
+  - Matching artefact sources to the investigative question before collection begins.
+  lab: >-
+    Lab: On the soc-training range, inventory the Windows artefact sources available for an
+    investigation of v-ws01 and judge which can answer the question of which programs ran on it
+    last week. Evidence: the on-disk paths of the registry hives and of the Security event log on
+    v-ws01; the event log channels present and each one's newest record timestamp; the Windows
+    analysis tools installed on dfir-ws01 and the artefact class each tool reads. Pass: all three
+    items recorded exactly as the range shows them; each artefact source marked "can answer" or
+    "cannot answer" the execution question with a one-sentence reason; one source ranked first for
+    collection, with the reason.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH with the analyst account, open a terminal and note the start time.
+    - hosts: [v-ws01]
+      action: On v-ws01, record the on-disk paths of the registry hives and of the Security event log file.
+    - hosts: [v-ws01]
+      action: List the event log channels on v-ws01 and record each channel name with its newest record
+        timestamp.
+    - hosts: [dfir-ws01]
+      action: On dfir-ws01, record each installed Windows analysis tool and the artefact class that
+        each one reads.
+    - hosts: [jump01]
+      action: Mark each artefact source "can answer" or "cannot answer" the execution question with one
+        sentence of reason, and rank the first source to collect with the reason.
   refs:
   - nist-sp-800-86
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'The Master File Table on NTFS records:'
+    - question: An examiner must recover the configuration values a workstation held at acquisition,
+        including the settings specific to each user account. Which artefact source holds them?
       options:
-      - A) Only file contents
-      - B) Metadata for every file and directory on the volume
-      - C) Registry keys
-      - D) Event log entries
-      answer: B
-    - question: 'An artefact showing a program was present does NOT by itself prove:'
+      - A) The Master File Table, which stores file contents only
+      - B) The Security event log, which records every registry edit
+      - C) A registry hive, which stores system and user configuration state
+      - D) The change journal, which tracks file changes on the volume
+      answer: C
+    - question: A deleted file's name must be recovered from an imaged volume. Which record most likely
+        still holds the name after deletion?
       options:
-      - A) The file existed
-      - B) That the program was executed
-      - C) The file path
-      - D) The file size
-      answer: B
-    - question: 'Windows registry hives are best described as:'
+      - A) The MFT file record, whose metadata persists after deletion
+      - B) The Security event log, which archives deleted filenames
+      - C) A prefetch file, which stores the names of deleted files
+      - D) The boot configuration data, which indexes the volume's contents
+      answer: A
+    - question: A preliminary report says a suspicious program ran, citing one artefact that shows the
+        file was present on disk. What should the analyst add before the finding stands?
       options:
-      - A) Log files
-      - B) Structured configuration databases
-      - C) Executable images
-      - D) Temporary caches
-      answer: B
-    - question: 'Prioritising artefact collection should be driven by:'
+      - A) A hash of the Security event log file
+      - B) A second disk image of the host taken a week later
+      - C) The file's printing history from the spool records
+      - D) Confirmation of execution from an execution artefact such as prefetch
+      answer: D
+    - question: A first responder can collect only three sources from a live host, and the investigative
+        question is which accounts signed in that day. Which choice puts the strongest evidence first?
       options:
-      - A) Collection speed
-      - B) The specific investigative question and artefact volatility
-      - C) Tool availability
-      - D) Disk size
+      - A) Prefetch files, the Amcache hive and ShimCache entries
+      - B) Security event log records, then registry hives, then MFT records
+      - C) The change journal, the browser history and the print spool files
+      - D) Memory alone, because volatile evidence disappears from the host first
       answer: B
-    - question: 'Interpreting a single artefact in isolation risks:'
+    - question: A collected image shows a registry Run key value naming a program. What does this
+        artefact alone establish?
       options:
-      - A) Slower analysis
-      - B) Drawing a conclusion the evidence does not support
-      - C) Hash mismatch
-      - D) Chain of custody failure
-      answer: B
+      - A) The program ran at every boot since the value was written
+      - B) The program was removed by the user
+      - C) The value existed in the hive at acquisition time
+      - D) The program communicated over the network
+      answer: C
 - ordinal: 2
   title: Execution and Persistence Artefacts
   content_type: reading
@@ -92,16 +122,40 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Identify evidence of program execution.
-  - Locate common persistence mechanisms.
-  - Distinguish legitimate from suspicious autostart entries.
+  - Identify which Windows artefacts record program execution and which record only file presence
+  - Enumerate the autostart locations a Windows host can use for persistence
+  - Distinguish legitimate autostart entries from suspicious ones using a known-good baseline
   topics:
-  - Prefetch, Amcache and ShimCache.
-  - Run keys, services and scheduled tasks.
-  - WMI persistence.
-  - Baseline comparison for autostarts.
-  lab: 'Lab: Analyse an image to enumerate all autostart entries, compare against a known-good baseline,
-    and identify the entry established by the attacker.'
+  - Prefetch, Amcache and ShimCache as execution and presence evidence.
+  - Run keys, services, scheduled tasks and WMI event subscriptions as persistence.
+  - Baseline comparison of current autostarts against known-good state.
+  - 'Reading a persistence entry: trigger, program path and account context.'
+  - Program paths that do not belong in an autostart entry.
+  lab: >-
+    Lab: On the soc-training range, enumerate the autostart entries on v-ws01, compare them with
+    the known-good baseline supplied for the lab and judge which entry looks like attacker
+    persistence. Evidence: every autostart entry's name and program path; the entries absent from
+    the baseline; for each of those, whether its program path is a Windows directory or a
+    user-writable one. Pass: all entries listed with their paths; each entry absent from the
+    baseline marked "expected change" or "suspicious" with a one-sentence reason; the one entry
+    that most warrants investigation named with its evidence.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH with the analyst account, open a terminal and note the start time.
+    - hosts: [v-ws01]
+      action: On v-ws01, list the Run key entries, services and scheduled tasks, and record each entry's
+        name and program path.
+    - hosts: [jump01]
+      action: Obtain the known-good autostart baseline supplied for the lab and record which v-ws01
+        entries are absent from it.
+    - hosts: [v-ws01]
+      action: For each entry absent from the baseline, record the program path and note whether it lives in
+        a Windows directory or a user-writable one.
+    - hosts: [jump01]
+      action: Mark each new entry "expected change" or "suspicious" with one sentence of reason, and name
+        the single entry that most warrants investigation with its evidence.
   refs:
   - nist-sp-800-86
   - mitre-attack
@@ -109,41 +163,46 @@ modules:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Prefetch files are primarily evidence of:'
+    - question: A workstation image contains a prefetch entry naming a tool the assigned user denies
+        running. What does the entry most strongly support?
       options:
-      - A) File creation
-      - B) Program execution
-      - C) Network connection
-      - D) User logon
+      - A) That the program is still installed at its recorded path
+      - B) That the program executed at least once on this volume
+      - C) That an authorised user launched it by choice
+      - D) That the same program ran on other machines
       answer: B
-    - question: 'Comparing autostarts against a baseline is effective because:'
+    - question: An administrator finds no new file in the usual autostart folders, yet a process starts
+        after every boot. Which persistence mechanism fits these observations?
       options:
-      - A) Baselines are always current
-      - B) Malicious entries stand out against known-good state
-      - C) It is fast
-      - D) It requires no tooling
-      answer: B
-    - question: 'WMI event subscriptions are used by attackers because they:'
+      - A) A WMI event subscription stored in the repository
+      - B) A desktop shortcut on the public desktop
+      - C) A newly pinned taskbar item
+      - D) A browser extension installed for one user's browser profile
+      answer: A
+    - question: An examiner reads a ShimCache entry for a portable executable that is no longer on the
+        disk. What can the examiner state in a report?
       options:
-      - A) Are easy to detect
-      - B) Provide persistence without a file on disk in obvious locations
-      - C) Require admin rights only once
-      - D) Are logged verbosely by default
-      answer: B
-    - question: 'ShimCache entries indicate that a file was:'
+      - A) The program ran to completion at the recorded time
+      - B) The file was downloaded from the internet
+      - C) The user deleted the file deliberately
+      - D) The system saw the file, not proof of execution
+      answer: D
+    - question: A scheduled task on a server matches the baseline except that its action now points to a
+        program under a temp directory. What is the best first conclusion?
       options:
-      - A) Definitely executed
-      - B) Present and seen by the system, which is weaker than proof of execution
-      - C) Deleted
-      - D) Downloaded
-      answer: B
-    - question: 'A service configured to run a binary from a user temp directory is:'
+      - A) The task was always configured this way
+      - B) The operating system moved the program during an update
+      - C) The task was modified and warrants investigation as persistence
+      - D) Scheduled tasks cannot be modified after creation
+      answer: C
+    - question: A service on a member server runs a program whose path is inside a user temp directory.
+        What does the service configuration alone justify?
       options:
-      - A) Normal
-      - B) Highly suspicious and warrants investigation
-      - C) A performance optimisation
-      - D) A Windows default
-      answer: B
+      - A) Referring it for investigation as a suspicious autostart
+      - B) Declaring a confirmed data breach to the organisation
+      - C) Treating it as a normal Windows default configuration
+      - D) Deleting the service before recording anything about it
+      answer: A
 - ordinal: 3
   title: Windows Event Log Analysis
   content_type: reading
@@ -151,16 +210,40 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Navigate the Windows event log structure.
-  - Identify security-relevant event identifiers.
-  - Reconstruct authentication and process activity from logs.
+  - Locate the security-relevant channels and event identifiers in Windows event logs
+  - Classify logon events by type and account to reconstruct authentication activity
+  - Reconstruct a lateral movement sequence from event records across two hosts
   topics:
-  - Channels, providers and event IDs.
-  - Logon types and their meaning.
-  - Process creation auditing.
-  - Log clearing and anti-forensics.
-  lab: 'Lab: Reconstruct a lateral movement sequence from supplied event logs, identifying the logon type
-    used at each hop and the account involved.'
+  - Channels, providers and event identifiers in the Windows event log structure.
+  - Logon types 2, 3 and 10 and the access each represents.
+  - Process creation auditing and the parent and command line it records.
+  - Failed logons, lockouts and the records repeated attempts leave.
+  - Log clearing as anti-forensics and the record the act itself leaves.
+  lab: >-
+    Lab: On the soc-training range, reconstruct a lateral movement sequence from authentication
+    events in the SIEM, naming each hop, the logon type and the account involved. Evidence: the
+    logon events for v-ws01 and v-dc01 in the assigned window, with type, account and source
+    address for each; the failed logons that precede the successful ones, with their accounts and
+    count. Pass: the hops listed in order with the account and logon type at each; the logon type
+    at each hop labelled with its meaning; the sequence marked "lateral movement" or "routine"
+    with a one-sentence reason.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH with the analyst account, open a terminal and note the start time.
+    - hosts: [siem01]
+      action: Open the SIEM on siem01 with the analyst account, filter authentication events for v-ws01 in
+        the assigned window and record each logon event with its type, account and source address.
+    - hosts: [siem01]
+      action: Repeat the filter for v-dc01 and record which accounts authenticated from v-ws01 and with
+        which logon type.
+    - hosts: [siem01]
+      action: Identify the failed logon events that precede the successful ones and record their accounts,
+        count and source address.
+    - hosts: [jump01]
+      action: Sequence the hops in order, name the account used at each hop, and mark the pattern "lateral
+        movement" or "routine" with one sentence of reason.
   refs:
   - nist-sp-800-92
   - mitre-attack
@@ -168,41 +251,47 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'A Windows logon type 3 indicates:'
+    - question: Authentication events for a server show type 10 logons from an administrator's
+        workstation outside business hours. What does logon type 10 indicate?
       options:
-      - A) Interactive console logon
-      - B) Network logon
-      - C) Service logon
-      - D) Batch logon
-      answer: B
-    - question: 'Event ID 4625 records:'
+      - A) A network logon with no interactive session
+      - B) A scheduled service start
+      - C) A remote interactive session such as RDP
+      - D) A batch job submission
+      answer: C
+    - question: An authentication log shows repeated event 4625 entries for one account from a single
+        source address, followed by a success. What does event 4625 record?
       options:
-      - A) Successful logon
-      - B) Failed logon attempt
-      - C) Log cleared
-      - D) Process created
-      answer: B
-    - question: 'Clearing the security event log generates:'
+      - A) A failed logon attempt
+      - B) A successful logon
+      - C) A log clearing action
+      - D) A process creation
+      answer: A
+    - question: After an intrusion, the Security log on a server ends abruptly and a new log begins.
+        Which record should the analyst look for to confirm the log was cleared?
       options:
-      - A) No record
-      - B) Its own event, which is itself an indicator
-      - C) A system crash
-      - D) A registry change only
+      - A) A process creation event naming the administration tool
+      - B) A log clearing event in the Security log itself
+      - C) A registry hive write recorded in the change journal
+      - D) A firewall rule change at the network boundary
       answer: B
-    - question: 'Process creation auditing is valuable because it records:'
+    - question: Command-line auditing is enabled on workstations. What does a process creation event
+        record that makes parent-child analysis possible?
       options:
-      - A) Network flows
-      - B) The command line and parent process of executions
-      - C) File contents
-      - D) Registry values
-      answer: B
-    - question: 'Logon type 10 indicates:'
+      - A) The contents of the files the process touched on disk
+      - B) The network destinations the process used
+      - C) The keystrokes the user entered during the session
+      - D) The command line and the parent process of the execution
+      answer: D
+    - question: Authentication records show an account signing in interactively on a workstation, then
+        over the network to a file server, then remotely to a domain controller. What is the best
+        reading?
       options:
-      - A) Network logon
-      - B) Remote interactive logon such as RDP
-      - C) Service logon
-      - D) Unlock
-      answer: B
+      - A) A service account rotating its own password on schedule
+      - B) Three unrelated users sharing one workstation in turns
+      - C) A likely lateral movement sequence using one account
+      - D) A clock synchronisation error between the three hosts
+      answer: C
 - ordinal: 4
   title: Filesystem and Registry Forensics
   content_type: reading
@@ -210,56 +299,89 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Recover deleted file information from filesystem metadata.
-  - Analyse registry keys for user and system activity.
-  - Interpret timestamps correctly across artefact types.
+  - Recover deleted file information from filesystem metadata on a Windows volume image
+  - Analyse registry keys to establish the user and system activity a host recorded
+  - Interpret MACB timestamps across artefact types and recognise manipulation by correlating sources
   topics:
-  - MFT analysis and file recovery.
-  - USN journal and change tracking.
-  - User activity registry keys.
-  - MACB timestamps and manipulation.
-  lab: 'Lab: Recover evidence of a deleted file from filesystem metadata, correlate with registry evidence
-    of user access, and reconcile the timestamps across both sources.'
+  - MFT records, deletion and the metadata that persists until reuse.
+  - The USN journal as an ordered change log for a volume.
+  - User activity registry keys and the actions they preserve.
+  - MACB timestamp semantics and timezone handling across artefact types.
+  - Timestomping and correlation across independent timestamp sources.
+  lab: >-
+    Lab: On the soc-training range, recover the record of a deleted file from the disk image on
+    dfir-ws01, correlate it with change-log and registry evidence, and judge whether its
+    timestamps are trustworthy. Evidence: the MFT record number, timestamps and allocation status
+    for the assigned filename; the USN journal entries naming that file with their update reasons;
+    any mismatch between the file's MACB timestamps and the other sources. Pass: the MFT record
+    located and its values recorded; each timestamp marked "consistent" or "inconsistent" across
+    sources with a one-sentence reason; a conclusion of "deletion" or "suspected timestomping"
+    stated with the supporting artefacts.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH with the analyst account, open a terminal and note the start time.
+    - hosts: [dfir-ws01]
+      action: Open the disk image assigned for the lab on dfir-ws01 and record its filename, size and
+        acquisition time.
+    - hosts: [dfir-ws01]
+      action: Search the MFT records for the deleted filename assigned for the lab and record its record
+        number, timestamps and allocation status.
+    - hosts: [dfir-ws01]
+      action: Parse the USN journal from the image and record the entries that name the same file, with
+        their update reasons.
+    - hosts: [dfir-ws01]
+      action: Compare the file's MACB timestamps against the USN entries and the registry evidence of user
+        access in the image, and record any mismatch.
+    - hosts: [jump01]
+      action: Mark each timestamp "consistent" or "inconsistent" across sources and state whether the
+        evidence supports deletion or suspected timestomping, with one sentence of reason.
   refs:
   - nist-sp-800-86
   quiz:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Deleting a file on NTFS typically:'
+    - question: An NTFS volume holds a file that was deleted an hour ago. What does deletion typically
+        do to the file's data and metadata?
       options:
-      - A) Overwrites the data immediately
-      - B) Marks the record unallocated while data may persist
-      - C) Clears the MFT entirely
-      - D) Zeroes the volume
+      - A) It overwrites both the record and the data immediately
+      - B) It marks the MFT record unallocated while data may persist
+      - C) It clears the MFT record at the moment of deletion
+      - D) It moves the file's contents into the registry
       answer: B
-    - question: 'The USN journal records:'
+    - question: An analyst needs an ordered record of every change made to files and directories on a
+        volume. Which source holds it?
       options:
-      - A) Network connections
-      - B) Changes made to files and directories on a volume
-      - C) Logon events
-      - D) Registry edits
-      answer: B
-    - question: 'Timestomping refers to:'
+      - A) The Security event log
+      - B) A prefetch file
+      - C) The boot configuration data
+      - D) The USN journal
+      answer: D
+    - question: A report lists a file whose creation timestamp predates the operating system's install
+        date on that volume. Which manipulation does this suggest?
       options:
-      - A) Clock synchronisation
-      - B) Deliberate manipulation of file timestamps to mislead analysis
-      - C) Timezone conversion
-      - D) Log rotation
-      answer: B
-    - question: 'Correlating timestamps across independent artefact sources helps detect:'
+      - A) Timestomping of the file's timestamps
+      - B) A routine clock synchronisation performed by the domain controller
+      - C) Normal log rotation on the host
+      - D) An in-place filesystem upgrade
+      answer: A
+    - question: A file's modified time disagrees between the MFT record and the USN journal, while other
+        files agree across both sources. What is the most defensible reading?
       options:
-      - A) Disk errors
-      - B) Manipulation, since attackers rarely alter every source consistently
-      - C) Clock drift only
-      - D) Bad sectors
-      answer: B
-    - question: 'Recovering a filename after deletion is often possible because:'
+      - A) The disk is failing and silently dropping records
+      - B) The volume was formatted after the file was made
+      - C) This file's timestamps were altered while most were not
+      - D) The two sources read different file system types
+      answer: C
+    - question: An examiner must show which documents a user opened recently and which storage device
+        they attached. Which source preserves this user activity?
       options:
-      - A) Filenames are encrypted
-      - B) Metadata records persist until reused
-      - C) The registry stores them
-      - D) Backups exist
+      - A) The MFT records of the volume alone
+      - B) Registry keys such as the mounted-devices and recent-documents keys
+      - C) The pagefile on the system drive of the host
+      - D) The network's address assignment log from the DHCP server
       answer: B
 - ordinal: 5
   title: Memory Forensics
@@ -268,16 +390,43 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Acquire memory safely from a live system.
-  - Analyse memory for processes, connections and injected code.
-  - Recognise the limits of memory analysis.
+  - Acquire memory from a live Windows host following the order of volatility
+  - Analyse a memory image for processes, network connections and injected code
+  - State what memory analysis establishes and where its limits lie
   topics:
-  - Memory acquisition methods.
-  - Process and handle enumeration.
-  - Code injection detection.
-  - Limits and interpretation caveats.
-  lab: 'Lab: Analyse a memory image to enumerate processes, identify one with injected code, and extract
-    the associated network connections.'
+  - Memory acquisition methods and the order of volatility.
+  - Process and handle enumeration in a memory image.
+  - Network connection artefacts and code injection indicators in memory.
+  - Process hollowing and the comparison of in-memory and on-disk code.
+  - Volatility of memory evidence and interpretation caveats.
+  lab: >-
+    Lab: On the soc-training range, analyse the memory image supplied on dfir-ws01 to enumerate
+    its processes, find which process holds each network connection and judge whether any process
+    shows injected code. Evidence: the image's filename, size and hash; each process with its
+    identifier and parent; the network connections with the process that holds each remote
+    address; any process whose in-memory code differs from its on-disk file. Pass: the process
+    list and connection list recorded as the image shows them; each flagged process marked
+    "injected code suspected" or "unremarkable" with a one-sentence reason; one process named for
+    escalation with its evidence.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH with the analyst account, open a terminal and note the start time.
+    - hosts: [dfir-ws01]
+      action: Open the memory image supplied for the lab on dfir-ws01 and record its filename, size and
+        hash.
+    - hosts: [dfir-ws01]
+      action: Enumerate the processes in the image and record each process name with its identifier and
+        parent.
+    - hosts: [dfir-ws01]
+      action: List the network connections in the image and record which process holds each remote address.
+    - hosts: [dfir-ws01, v-ws01]
+      action: Compare each process's in-memory code against the on-disk copy of its file acquired from
+        v-ws01 and record any discrepancy between them.
+    - hosts: [jump01]
+      action: Mark each flagged process "injected code suspected" or "unremarkable" with one sentence of
+        reason, and name the one process to escalate with its evidence.
   refs:
   - volatility3
   - nist-sp-800-86
@@ -285,41 +434,46 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'Memory should be acquired:'
+    - question: A responder reaches a running workstation that may be compromised and can take one
+        action first. Which choice follows the order of volatility?
       options:
-      - A) After shutdown
-      - B) Before powering off, while the system is running
-      - C) After disk imaging
-      - D) Only if disk analysis fails
+      - A) Shut the system down to preserve the disk
+      - B) Acquire memory while the system is still running
+      - C) Disconnect the machine and wait for instructions
+      - D) Reboot the machine into a safe mode
       answer: B
-    - question: 'Volatility 3 is used to:'
+    - question: A team holds a memory image from a compromised file server. Which task does a memory
+        analysis framework such as Volatility 3 perform on it?
       options:
-      - A) Capture network packets
-      - B) Analyse memory images for forensic artefacts
-      - C) Image disks
-      - D) Parse event logs
-      answer: B
-    - question: 'Process hollowing is detectable in memory by:'
+      - A) Create a new disk image of the server's sectors
+      - B) Capture new network packets from the local segment
+      - C) Enumerate processes and network connections from the image
+      - D) Parse the server's event log files on disk
+      answer: C
+    - question: A process in a memory image carries the name of a legitimate system binary, but its
+        in-memory code differs from the on-disk file. Which technique does this discrepancy indicate?
       options:
-      - A) A missing process name
-      - B) A discrepancy between the on-disk image and the in-memory image
-      - C) High CPU usage
-      - D) An open handle
-      answer: B
-    - question: 'A limitation of memory analysis is that:'
+      - A) Process hollowing
+      - B) A failed software update
+      - C) Disk fragmentation on the volume
+      - D) A page file resize
+      answer: A
+    - question: Twelve hours pass before the team captures memory from a compromised host. Which
+        limitation most affects what the image can show?
       options:
-      - A) It cannot see processes
-      - B) It captures a single point in time and volatile data may already be gone
-      - C) It requires the disk
-      - D) It cannot be automated
-      answer: B
-    - question: 'Acquiring memory with a tool running on the target inevitably:'
+      - A) The image cannot be hashed after it is captured
+      - B) Memory images cannot list the running processes
+      - C) Parsing the image requires the system disk
+      - D) Memory holds one moment, so earlier state is gone
+      answer: D
+    - question: An acquisition tool writes a driver to the host it captures. What must the report state
+        about this?
       options:
-      - A) Corrupts the image
-      - B) Perturbs the system state being captured
-      - C) Requires reboot
-      - D) Fails on modern Windows
-      answer: B
+      - A) The image is corrupt and cannot be used
+      - B) The capture must be repeated after a reboot
+      - C) The acquisition perturbed the system state it captured
+      - D) Memory acquisition is impossible on modern Windows
+      answer: C
   po:
     qsp_code: ALRA
     po_code: PO_004
@@ -330,54 +484,84 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Write a forensic report that separates fact from inference.
-  - Present a defensible timeline.
-  - Communicate confidence and limitations honestly.
+  - Write a forensic report that separates observed fact from analytical inference
+  - Present a defensible timeline with each event tied to its artefact source
+  - State the confidence and limitations of each conclusion for peer review
   topics:
-  - Report structure and audience.
-  - Fact, inference and opinion.
-  - Timeline presentation.
-  - Confidence, limitations and peer review.
-  lab: 'Lab: Write a forensic report for the earlier host investigation, explicitly labelling each statement
-    as observed fact or analytical inference, and state the limitations of your conclusions.'
+  - Report structure, purpose and the audience each section serves.
+  - Fact, inference and opinion in forensic findings.
+  - Timeline presentation with every event tied to its source.
+  - Confidence language and honest limitation statements.
+  - Peer review and reproducible method documentation.
+  lab: >-
+    Lab: On the soc-training range, turn the v-ws01 findings from the earlier modules into a
+    report that separates observed fact from analytical inference and presents a defensible
+    timeline. Evidence: each observed fact with the artefact it came from; each remaining
+    statement labelled fact, inference or opinion with a reason for each inference; the timeline
+    events with their timestamps and sources; a confidence level and a limitation statement for
+    each conclusion. Pass: no statement presented as fact without a named artefact; every
+    inference labelled and reasoned; each conclusion carries a confidence level and a limitation;
+    the timeline events ordered and sourced.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH with the analyst account, open a terminal and note the start time.
+    - hosts: [dfir-ws01]
+      action: Re-open the v-ws01 artefacts collected in the earlier modules on dfir-ws01 and record each
+        observed fact with the artefact it came from.
+    - hosts: [dfir-ws01]
+      action: In the draft report supplied for the lab, label each remaining statement fact, inference or
+        opinion, and record the reason for each inference.
+    - hosts: [siem01]
+      action: From the SIEM on siem01, record the timestamp and source of each event that anchors the
+        timeline.
+    - hosts: [jump01]
+      action: Assign a confidence level and a limitation statement to each conclusion, and mark each
+        conclusion ready or not ready for peer review with a reason.
   refs:
   - nist-sp-800-86
   quiz:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'A forensic report must clearly distinguish:'
+    - question: A draft report states that the attacker exfiltrated payroll data. What change makes the
+        statement defensible?
       options:
-      - A) Tools from techniques
-      - B) What was observed from what is inferred
-      - C) Cost from effort
-      - D) Internal from external
+      - A) Deleting the statement from the final version of the report
+      - B) Splitting it into the observed copy event and an inference
+      - C) Moving the statement unchanged into an appendix of the report
+      - D) Attributing the statement to the most senior analyst on the team
       answer: B
-    - question: 'Stating the limitations of an analysis:'
+    - question: A peer reviewer checks a forensic timeline against the collected evidence. Which entry
+        can the reviewer verify directly?
       options:
-      - A) Weakens the report
-      - B) Strengthens it by bounding the conclusions appropriately
-      - C) Is optional
-      - D) Is only for court
-      answer: B
-    - question: 'Peer review of forensic findings primarily guards against:'
+      - A) The adversary intended to return to the network later that week
+      - B) Data was stolen at some point during the night
+      - C) At 03:12 the Security log records a log clearing event
+      - D) The intrusion began with a phishing message that morning
+      answer: C
+    - question: A colleague follows the report's documented method on the same image and observes the
+        same artefacts. What does this demonstrate about the report?
       options:
-      - A) Tool failure
-      - B) Analytical error and confirmation bias
-      - C) Evidence loss
-      - D) Slow reporting
-      answer: B
-    - question: 'If evidence is inconclusive, the report should:'
+      - A) Its method is reproducible
+      - B) Its conclusions are proven beyond dispute
+      - C) The colleague lacks the independence to review it
+      - D) The evidence was altered after acquisition
+      answer: A
+    - question: The artefacts cannot establish whether a copied file left the network. What should the
+        report do with that question?
       options:
-      - A) Choose the most likely narrative
-      - B) State plainly that the evidence does not support a conclusion
-      - C) Omit the question
-      - D) Recommend more tools
-      answer: B
-    - question: 'Reproducibility in a forensic report means another analyst could:'
+      - A) Choose the most likely narrative and state it
+      - B) Omit the question from the findings entirely
+      - C) Recommend purchasing additional tooling for the analysis
+      - D) State plainly that the evidence supports no conclusion
+      answer: D
+    - question: An analyst believes a scheduled task was persistence, but the artefacts show presence,
+        not authorship. How should the report carry this finding?
       options:
-      - A) Reach any conclusion
-      - B) Follow the documented method and observe the same artefacts
-      - C) Use different evidence
-      - D) Skip verification
-      answer: B
+      - A) As an inference with its confidence stated and its limits named
+      - B) As observed fact, with the task's name attached as proof
+      - C) As an opinion attributed to the incident response team
+      - D) Not at all, because presence artefacts prove nothing on their own
+      answer: A

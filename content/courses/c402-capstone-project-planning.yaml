@@ -10,6 +10,7 @@ duration_hours: 100
 provenance: unsourced
 status: draft
 is_published: false
+readiness: draft
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
 prerequisites:
@@ -33,56 +34,87 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Define a capstone problem that is significant and tractable.
-  - Scope work achievable within the available time.
-  - State success criteria that can be evaluated.
+  - Define a capstone problem that is significant and answerable with evidence a range can produce
+  - Scope a project to work one Student can finish in the weeks available
+  - Write success criteria an assessor can decide yes or no without opinion
   topics:
-  - Problem selection and significance.
-  - Scoping and feasibility.
-  - Success criteria definition.
-  - Stakeholder identification.
-  lab: 'Lab: Write a capstone problem statement with scope boundaries, three success criteria and an explicit
-    statement of what is out of scope and why.'
+  - Problem selection from significance, tractability and the evidence needed.
+  - Scope boundaries and the explicit statement of what is out of scope.
+  - Success criteria that are observable and decidable at marking time.
+  - Stakeholders and the constraints they place on the problem statement.
+  lab: >-
+    Lab: On the medium-enterprise range, build an asset inventory and use it to write a capstone problem
+    statement whose scope matches what a twelve-week project could cover on that range. Evidence: the
+    inventory, with each host, its role and its published service; the fw01 rules that connect the zones;
+    and a problem statement with three success criteria and one out-of-scope item with a reason. Pass: the
+    inventory names every host with a role; each success criterion is decidable yes or no; the out-of-scope
+    item states why it is excluded; the problem statement names only assets the inventory holds.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst user your instructor assigned, open a terminal and note the
+        start time.
+    - hosts: [siem01, fw01]
+      action: From siem01, read the rule set on fw01 and record each rule that allows traffic between zones,
+        with its source and destination.
+    - hosts: [dc01]
+      action: Query dc01 for the services it publishes to the domain and record the domain name and each
+        service.
+    - hosts: [fs01, web01, mail01]
+      action: From siem01, connect to the published service of each server host and record whether fs01,
+        web01 and mail01 answer, and what role each fills.
+    - hosts: [ws01, ws02]
+      action: Record ws01 and ws02 as corporate-network workstations and note which fw01 rules apply to
+        their zone.
+    - hosts: [siem01]
+      action: Mark each inventoried asset in scope or out of scope for a twelve-week capstone with one
+        sentence of reason, then draft the problem statement and its success criteria.
   refs:
   - nist-sp-800-37r2
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'A well-scoped capstone problem is:'
+    - question: "A Student proposes a capstone that would audit every control on a fifty-host network in
+        eight weeks. The clearest planning weakness is:"
       options:
-      - A) As broad as possible
-      - B) Significant enough to matter and narrow enough to complete
-      - C) Purely theoretical
-      - D) Chosen by the supervisor
+      - A) It names no stakeholder and no constraint from any of them
+      - B) The scope is wider than the time allows
+      - C) The network is too small to matter
+      - D) Audits never make good capstones
       answer: B
-    - question: 'Success criteria should be defined:'
+    - question: A Student writes three candidate success criteria for a firewall review. Which one can an
+        assessor decide without opinion?
       options:
-      - A) At submission
-      - B) At planning, so progress can be assessed objectively
-      - C) By the assessor only
-      - D) After results are known
-      answer: B
-    - question: 'Stating what is out of scope is valuable because it:'
+      - A) The report reads well
+      - B) The project improves security awareness
+      - C) The firewall blocks each connection the policy forbids, with test results
+      - D) The work teaches the Student useful habits
+      answer: C
+    - question: "A capstone plan lists password-reset tooling as out of scope but gives no reason. The most
+        likely result at review is:"
       options:
-      - A) Shortens the plan
-      - B) Prevents scope creep and sets assessor expectations
-      - C) Reduces effort
-      - D) Is required formatting
-      answer: B
-    - question: 'A problem statement that cannot be falsified or evaluated is:'
+      - A) Reviewers cannot judge whether the boundary was deliberate
+      - B) The project automatically becomes larger than the weeks allow
+      - C) The success criteria stop applying
+      - D) The stakeholder list becomes invalid
+      answer: A
+    - question: "Before writing a problem statement, a Student asks the IT manager what a finished product
+        must do for the help desk. This mainly settles:"
       options:
-      - A) Ambitious
-      - B) Unsuitable, since success cannot be demonstrated
-      - C) Preferred for research
-      - D) Easier to complete
-      answer: B
-    - question: 'Identifying stakeholders early helps because they:'
+      - A) The project budget
+      - B) The assessment grade for the module the work belongs to
+      - C) The literature gap
+      - D) A stakeholder constraint the problem must respect
+      answer: D
+    - question: Two of the six hosts on a training range are missing from a Student's asset inventory.
+        What follows for the project scope?
       options:
-      - A) Provide funding
-      - B) Define what would make the outcome useful and may constrain the approach
-      - C) Perform the work
-      - D) Assess the project
+      - A) Nothing, because the scope comes from the problem statement alone
+      - B) The scope statement may silently exclude assets the Student never recorded
+      - C) The inventory must list hosts by address, not name
+      - D) The scope must come to cover every host the range contains
       answer: B
 - ordinal: 2
   title: Literature and Prior Work
@@ -91,57 +123,85 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Survey existing work relevant to the problem.
-  - Evaluate source quality and relevance.
-  - Position the project relative to prior work.
+  - Distinguish sources that carry evidence from sources that only repeat a claim
+  - Synthesise findings across sources into a statement of what is known and unknown
+  - Position a capstone against prior work by naming the gap it addresses
   topics:
-  - Source discovery and selection.
-  - Evaluating source credibility.
-  - Synthesis rather than summary.
-  - Positioning and contribution.
-  lab: 'Lab: Produce an annotated review of eight sources relevant to your capstone, evaluating each for
-    credibility and relevance, and state precisely what gap your project addresses.'
+  - Finding sources and judging credibility, evidence and bias.
+  - Synthesis across sources rather than summary of each in turn.
+  - Vendor material as potentially useful but commercially biased.
+  - Positioning a project by the contribution it makes beyond prior work.
+  - Reframing a problem that prior work has already answered.
+  lab: >-
+    Lab: On the medium-enterprise range, record what the range's own evidence already shows about its
+    security posture and name the questions that evidence leaves open, the way a review separates what
+    is known from what is unknown. Evidence: the fw01 zone-to-zone connections already allowed; the
+    domain password policy values from dc01; the log sources the SIEM holds; and three unanswered
+    security questions ranked by importance, each with the new evidence that would answer it. Pass: the
+    recorded values match what the range shows; each question states what is unknown and why it matters;
+    every question is answerable by evidence the range could produce; the ranking gives a reason.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst user your instructor assigned, open a terminal and note the
+        start time.
+    - hosts: [siem01, fw01]
+      action: From siem01, read the rule set on fw01 and record each zone-to-zone connection it already
+        allows.
+    - hosts: [dc01]
+      action: Query dc01 for its published services and the domain password policy, and record each value.
+    - hosts: [siem01]
+      action: From siem01, list the log sources the SIEM holds and record which zones are represented.
+    - hosts: [siem01]
+      action: Write three security questions about the range that the recorded evidence does not answer,
+        rank them and state for each what new evidence would settle it.
   refs:
   - nist-sp-800-150
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Evaluating a source''s credibility involves considering:'
+    - question: A vendor whitepaper claims a product stops a named attack but publishes no test data. How
+        should a Student treat the source?
       options:
-      - A) Length
-      - B) Author expertise, evidence provided, methodology and potential bias
-      - C) Publication date only
-      - D) Search rank
-      answer: B
-    - question: 'A literature review should:'
+      - A) As peer-reviewed evidence, since a vendor published it
+      - B) As unusable under any circumstance
+      - C) As a claim to check against independent evidence
+      - D) As proof the attack no longer works
+      answer: C
+    - question: "Four sources each describe one control, and a Student restates them one after another.
+        What the review still lacks is:"
       options:
-      - A) Summarise each source in turn
-      - B) Synthesise across sources to establish what is known and unknown
-      - C) List titles
-      - D) Cite only recent work
-      answer: B
-    - question: 'Vendor whitepapers should be treated as:'
+      - A) More sources beside the four, drawn from the same period
+      - B) Older sources beside the four
+      - C) A longer summary of each source
+      - D) A synthesis of what the sources jointly establish
+      answer: D
+    - question: "A draft proposal says only that the project will study phishing defences. The element it
+        is missing is:"
       options:
-      - A) Peer-reviewed evidence
-      - B) Potentially useful but subject to commercial bias
-      - C) Unusable
-      - D) Primary sources
-      answer: B
-    - question: 'Positioning your project relative to prior work establishes:'
+      - A) The gap the project addresses beyond prior work
+      - B) A longer reading list covering the same three sources again
+      - C) A change of topic
+      - D) A page of definitions
+      answer: A
+    - question: "A Student finds the exact capstone problem already answered in two independent studies.
+        The soundest response is to:"
       options:
-      - A) Novelty for its own sake
-      - B) What contribution the work makes beyond what already exists
-      - C) Word count
-      - D) Supervisor approval
+      - A) Proceed unchanged and cite the studies
+      - B) Reframe toward the aspect the studies leave open
+      - C) Abandon the capstone and start from a different programme area
+      - D) Leave the studies out of the review
       answer: B
-    - question: 'Finding that the problem is already solved should lead you to:'
+    - question: "A blog post restates a figure from a research report without testing anything itself. The
+        blog is best described as:"
       options:
-      - A) Proceed anyway
-      - B) Refine the problem or shift to an unaddressed aspect
-      - C) Abandon the capstone
-      - D) Ignore the prior work
-      answer: B
+      - A) A stronger source, because it is newer
+      - B) A primary source
+      - C) A source repeating a claim without carrying the evidence
+      - D) A source of equal weight to the report, because it is newer
+      answer: C
 - ordinal: 3
   title: Methodology and Design
   content_type: reading
@@ -149,16 +209,40 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Select a methodology appropriate to the problem.
-  - Design an approach that produces evaluable evidence.
-  - Identify threats to the validity of results.
+  - Select a methodology that produces evidence capable of answering the stated problem
+  - Design an evaluation that compares results against a stated baseline
+  - Identify the threats to validity that could make results mean less than claimed
   topics:
-  - Methodology selection.
-  - Experimental and evaluation design.
-  - Data collection planning.
-  - Validity threats and mitigation.
-  lab: 'Lab: Design your capstone methodology including what evidence you will collect, how you will evaluate
-    it, and the three greatest threats to the validity of your conclusions.'
+  - Choosing a methodology from the evidence the question needs.
+  - Planning data collection before the work starts, not during analysis.
+  - Baselines and comparison points for improvement claims.
+  - What a single demonstration proves and what it does not.
+  - Validity threats and how a design reduces each one.
+  lab: >-
+    Lab: Design, then partly execute, an evaluation that checks whether fw01 enforces its written zone
+    rules, and state what each result would and would not prove. Evidence: the rule list with source,
+    destination and ports; the result of one connection test from siem01 to web01 and one to mail01; and
+    a test matrix with one row per rule, its evidence and one validity threat. Pass: every rule has a
+    test row with a named piece of evidence; each row states one validity threat; the matrix marks which
+    tests the session did not run; each recorded connection states which rule decided it.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst user your instructor assigned, open a terminal and note the
+        start time.
+    - hosts: [siem01, fw01]
+      action: From siem01, list the rules on fw01 and record for each rule its source zone, destination
+        zone and allowed ports.
+    - hosts: [web01, mail01]
+      action: From siem01, connect to web01 on port 443 and to mail01 on port 993 and record whether each
+        connection succeeds.
+    - hosts: [siem01]
+      action: Record which fw01 rule each of the two connections matched, and which zone pair a test from
+        a workstation would exercise instead.
+    - hosts: [siem01]
+      action: Write a test matrix with one row per fw01 rule naming its test, its evidence and one validity
+        threat, and mark which rows the session could not run.
   refs:
   - nist-sp-800-115
   - nist-sp-800-30r1
@@ -166,41 +250,46 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Methodology should be selected based on:'
+    - question: "A capstone must show whether a logging change reduces time to detect. The methodology
+        should be chosen for its ability to:"
       options:
-      - A) Familiarity
-      - B) What kind of evidence would actually answer the question
-      - C) Available tools
-      - D) Supervisor preference
-      answer: B
-    - question: 'A threat to validity is:'
+      - A) Produce evidence that answers that exact question
+      - B) Use the tools the Student knows best
+      - C) Finish in the fewest sessions the term calendar can fit
+      - D) Match the supervisor's past projects
+      answer: A
+    - question: "A Student claims a new rule set is faster than the old one but never recorded the old
+        one's timings. The claim fails for lack of:"
       options:
-      - A) A project risk
-      - B) A reason the results might not mean what you claim they mean
-      - C) A security threat
-      - D) A schedule risk
+      - A) Statistical significance
+      - B) A baseline to compare against
+      - C) A larger network
+      - D) A written proposal with a signature on it
       answer: B
-    - question: 'Planning data collection in advance prevents:'
+    - question: During an evaluation, a control blocks one simulated intrusion attempt and nothing else
+        is tested. What has that single demonstration established?
       options:
-      - A) Extra work
-      - B) Discovering at analysis time that necessary data was never captured
-      - C) Tool failure
-      - D) Scope creep
-      answer: B
-    - question: 'A single successful demonstration establishes:'
+      - A) General effectiveness against the whole threat landscape
+      - B) Statistical significance
+      - C) Nothing at all
+      - D) Feasibility in that case, not general performance
+      answer: D
+    - question: A Student finishes an evaluation and finds the log field that would settle the question
+        was never captured. Which planning step was skipped?
       options:
-      - A) General effectiveness
-      - B) Feasibility in that specific case, not generalisable performance
-      - C) Statistical significance
-      - D) Nothing at all
-      answer: B
-    - question: 'Comparing against a baseline is important because:'
+      - A) The literature review, which would have named the field
+      - B) The risk register
+      - C) Planning the data collection in advance
+      - D) The proposal defence
+      answer: C
+    - question: "Every test in an evaluation runs during one quiet afternoon with no traffic load. This
+        is best treated as:"
       options:
-      - A) It doubles the work
-      - B) Improvement claims are meaningless without a reference point
-      - C) Assessors require it
-      - D) It reduces validity threats
-      answer: B
+      - A) A validity threat the results do not escape
+      - B) A schedule success worth repeating
+      - C) Proof the controls work under load as well as quiet
+      - D) A reason to skip the baseline
+      answer: A
 - ordinal: 4
   title: Risk, Ethics and Approvals
   content_type: reading
@@ -208,16 +297,41 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Identify project risks and mitigations.
-  - Obtain necessary ethical and technical approvals.
-  - Plan for safe conduct of security experimentation.
+  - Identify the risks a range-based capstone creates for the systems it touches
+  - Determine which approvals and authorisations must exist before technical work begins
+  - Write handling constraints that keep capstone experimentation inside the bounds each approval authorises
   topics:
-  - Project risk identification.
-  - Ethical review requirements.
-  - Authorisation for technical work.
-  - Safe experimentation practice.
-  lab: 'Lab: Produce a risk register for your capstone with mitigations, identify every approval required
-    before technical work begins, and document the safety constraints on your experimentation.'
+  - Project risks with likelihood, impact and mitigation.
+  - Authorisation from the system owner before testing.
+  - Stopping affected work when an approval is missing.
+  - Handling real sample material under institutional approval.
+  - Constraints that keep testing inside authorised bounds.
+  lab: >-
+    Lab: Build a risk register for a capstone that tests the medium-enterprise range, covering every
+    activity that touches dc01, fw01 or the SIEM. Evidence: the domain password policy values from dc01;
+    the log sources that would show a Student's own test activity; and a register listing each activity
+    with its risk, likelihood, impact, mitigation and approval state. Pass: every activity that touches
+    a live host has a mitigation naming an observable action; each activity is marked authorised or
+    pending; each pending item names the approval it waits for; the lockout values from dc01 are recorded
+    and a lockout risk is addressed.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst user your instructor assigned, open a terminal and note the
+        start time.
+    - hosts: [dc01]
+      action: Read the domain password policy on dc01 and record the lockout threshold and the lockout
+        duration.
+    - hosts: [siem01, fw01]
+      action: From siem01, list the rules on fw01 and record which zone pairs each rule would let test
+        traffic reach.
+    - hosts: [siem01]
+      action: From siem01, record which log sources the SIEM holds that would show a Student's own test
+        activity.
+    - hosts: [siem01]
+      action: "Write the risk register: for each planned activity record its risk, likelihood, impact and
+        mitigation, mark it authorised or pending, and state the constraint that keeps it in bounds."
   refs:
   - nist-sp-800-30r1
   - nist-sp-800-115
@@ -225,40 +339,45 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Security experimentation involving live systems requires:'
+    - question: A Student plans connectivity tests against a live server owned by another team. What must
+        exist before the first test runs?
       options:
       - A) Supervisor awareness only
-      - B) Explicit documented authorisation from the system owner
-      - C) Nothing if in a lab
-      - D) A risk register only
-      answer: B
-    - question: 'Research involving human participants typically requires:'
+      - B) A faster test machine with more network capacity
+      - C) Documented authorisation from the system owner
+      - D) A finished risk register alone
+      answer: C
+    - question: "A capstone surveys colleagues about their security habits. The approval that must come
+        before any data collection is:"
       options:
-      - A) No approval
-      - B) Ethical review before data collection begins
-      - C) Approval after collection
-      - D) Only consent forms
+      - A) Consent from a software vendor
+      - B) Ethical review approval
+      - C) A firewall rule change approved by the network team
+      - D) A passing grade
       answer: B
-    - question: 'A project risk register should include:'
+    - question: "Halfway through testing, a Student learns a required approval was never obtained. The
+        required action is to:"
       options:
-      - A) Only technical risks
-      - B) Technical, schedule, access and ethical risks with mitigations
-      - C) Security threats only
-      - D) Costs
-      answer: B
-    - question: 'Discovering mid-project that a required approval was not obtained means:'
+      - A) Stop the affected work until the approval is resolved
+      - B) Continue and document the gap afterwards in the register
+      - C) Switch methodology quietly
+      - D) Delete the affected results
+      answer: A
+    - question: A mitigation for a test that could lock domain accounts reads only be careful. Why does
+        this fail as a mitigation?
       options:
-      - A) Continue and seek it later
-      - B) Stop the affected work until the approval is resolved
-      - C) Document and proceed
-      - D) Change the methodology
-      answer: B
-    - question: 'Handling real malware in a capstone requires:'
+      - A) It names no observable action that prevents the harm
+      - B) It is too short to be taken seriously
+      - C) Mitigations belong to the proposal only
+      - D) Only the instructor may write mitigations
+      answer: A
+    - question: A Student's test plan touches only hosts the range was built for the Student to test. Why
+        is a written authorisation still needed?
       options:
-      - A) Antivirus
-      - B) Documented isolation, handling procedures and institutional approval
-      - C) A fast machine
-      - D) Nothing special
+      - A) It is not, because the range is a teaching lab
+      - B) The register must show the bounds were authorised, not assumed
+      - C) Instructors never authorise range work
+      - D) Authorisation replaces the risk register entirely in the final submission
       answer: B
 - ordinal: 5
   title: Planning and Resource Management
@@ -267,56 +386,85 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Produce a realistic project schedule.
-  - Identify dependencies and critical path.
-  - Plan for contingency and reduced scope.
+  - Break a capstone into tasks with estimates that carry contingency for unfamiliar work
+  - Sequence tasks to expose dependencies and the path that sets the minimum duration
+  - Define a reduced outcome that still delivers a complete and evaluable result
   topics:
-  - Work breakdown and estimation.
-  - Dependencies and critical path.
-  - Contingency planning.
-  - Minimum viable outcome.
-  lab: 'Lab: Produce a work breakdown and schedule for your capstone, identify the critical path, and
-    define a reduced-scope outcome you could still deliver if you lost three weeks.'
+  - Work breakdown and estimation for unfamiliar technical work.
+  - Dependencies, the critical path and what delays it.
+  - Contingency and the places estimates are routinely wrong.
+  - The minimum viable outcome defined before delays occur.
+  - Access and approvals as schedule items in their own right.
+  lab: >-
+    Lab: Turn the fw01 verification matrix from the methodology module into a costed schedule with
+    dependencies, a critical path and a reduced-scope fallback. Evidence: one verification task per fw01
+    rule with its host and its estimate; the dependency pairs between tasks; the critical path; and a
+    reduced outcome that remains complete and evaluable. Pass: every rule's verification task has an
+    estimate with contingency; the critical path names the tasks that set the minimum duration; the
+    fallback delivers a complete result rather than a partial one; each dependency names the task that
+    must finish first.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst user your instructor assigned, open a terminal and note the
+        start time.
+    - hosts: [siem01, fw01]
+      action: From siem01, read the rule set on fw01 and record one verification task per rule, with the
+        host each task needs.
+    - hosts: [dc01, siem01]
+      action: Record which planned tasks need dc01 available and which need siem01, so the dependency
+        pairs are visible.
+    - hosts: [siem01]
+      action: Estimate each task in hours, add contingency to the unfamiliar ones and record the totals.
+    - hosts: [siem01]
+      action: Mark the tasks that form the critical path, name the single delay that would push the
+        deadline, and write the reduced outcome the plan falls back to if three weeks are lost.
   refs:
   - nist-sp-800-37r2
   quiz:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'A minimum viable outcome is defined in advance so that:'
+    - question: "A Student defines the smallest complete result the capstone could still deliver in week
+        ten. The definition is made in advance so that:"
       options:
-      - A) Ambition is reduced
-      - B) Delays result in a reduced but complete deliverable rather than nothing
-      - C) Effort is minimised
-      - D) Assessment is easier
-      answer: B
-    - question: 'The critical path is the sequence of tasks that:'
+      - A) Ambition is reduced early and the project stays small
+      - B) The assessor sees less work
+      - C) Estimation becomes unnecessary
+      - D) A delay yields a reduced but complete deliverable
+      answer: D
+    - question: "Two tasks each take a week, and only the second can start when the first finishes. Their
+        combined effect on the schedule is:"
       options:
-      - A) Are hardest
-      - B) Determines the minimum project duration
-      - C) Cost most
-      - D) Are done first
-      answer: B
-    - question: 'Estimation for unfamiliar technical work should include:'
+      - A) They can run in parallel
+      - B) They add no schedule risk to the plan at all
+      - C) They set two weeks of minimum duration
+      - D) They hide a validity threat
+      answer: C
+    - question: "A Student has never configured a firewall and estimates that work at two hours. The
+        soundest adjustment is to:"
       options:
-      - A) Best case only
-      - B) Substantial contingency, as unfamiliar work is routinely underestimated
-      - C) No buffer
-      - D) Fixed durations
-      answer: B
-    - question: 'Discovering a dependency on access you do not have should be handled:'
+      - A) Add substantial contingency, since unfamiliar work runs long
+      - B) Keep two hours and absorb overruns later
+      - C) Remove the task from the plan
+      - D) Ask a stakeholder to decide how long the unfamiliar work should take
+      answer: A
+    - question: A plan assumes access to a server that an approval may never grant. Where does that
+        assumption belong?
       options:
-      - A) At the point of need
-      - B) During planning, as access requests often take longer than the work
-      - C) By changing topic
-      - D) By the supervisor
-      answer: B
-    - question: 'A schedule with no slack is:'
+      - A) In the plan, as a dependency with its own lead time
+      - B) Nowhere, because access is technical detail
+      - C) In the final report only, once the actual outcome is known
+      - D) In the proposal's literature section
+      answer: A
+    - question: "A schedule places every task back to back with no slack before the deadline. Its weakness
+        is that:"
       options:
-      - A) Efficient
-      - B) Fragile, as any single delay propagates to the deadline
-      - C) Preferred
-      - D) Realistic
+      - A) It looks unprofessional to reviewers
+      - B) Any single delay propagates straight to the deadline
+      - C) It overstates the work remaining
+      - D) It prevents parallel tasks from ever starting anywhere in the plan
       answer: B
 - ordinal: 6
   title: Proposal and Review
@@ -325,54 +473,81 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Write a persuasive and precise project proposal.
-  - Present and defend the proposal.
-  - Incorporate review feedback constructively.
+  - Write a proposal that shows the problem is significant, feasible and evaluable
+  - Defend each design decision with its reasoning and the trade-offs considered
+  - Answer review feedback by acting on it or by reasoned reply
   topics:
-  - Proposal structure and content.
-  - Presenting and defending decisions.
-  - Receiving and acting on critique.
-  - Proposal revision.
-  lab: 'Lab: Produce your full capstone proposal, present it for peer review, and produce a revision log
-    showing how each substantive piece of feedback was addressed or why it was not.'
+  - "Proposal structure: problem, prior work, method, risks and schedule."
+  - Defending decisions with reasoning rather than authority.
+  - Treating critique as evidence about the plan, not as verdicts.
+  - The revision log as a record of what changed and why.
+  lab: >-
+    Lab: Assemble the findings recorded across the earlier range sessions into a proposal evidence
+    table, then mark and revise each proposal claim against it. Evidence: the fw01 rule list as
+    re-checked; the evidence table with the session and host each row came from; the mark and reason
+    for each proposal claim; and a revision log entry per unsupported claim. Pass: every proposal
+    claim is marked with a reason; each unsupported claim has a revision entry; the revision log
+    states what changed or why nothing did; no claim cites evidence the table does not hold.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst user your instructor assigned, open a terminal and note the
+        start time.
+    - hosts: [siem01, fw01]
+      action: From siem01, re-check the rule list on fw01 and record whether it still matches the version
+        the earlier modules recorded.
+    - hosts: [siem01]
+      action: Compile the findings from earlier modules into one evidence table, with the session and host
+        each row came from.
+    - hosts: [siem01]
+      action: Mark each proposal claim supported or unsupported by the table, with one sentence of reason.
+    - hosts: [siem01]
+      action: "Write a revision log entry per unsupported claim: the change made, or the reason no change
+        was made."
   refs:
   - nist-sp-800-37r2
   quiz:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'A proposal should convince the reader that the project is:'
+    - question: A reviewer reads a proposal and asks what would count as success. Which trio must the
+        proposal already contain?
       options:
-      - A) Interesting only
-      - B) Significant, feasible and evaluable
-      - C) Novel above all
-      - D) Inexpensive
+      - A) A budget, a timeline and recent references from the field
+      - B) A significant problem, a feasible method and evaluable criteria
+      - C) A gantt chart, a risk register and a log
+      - D) A title, an abstract and appendices
       answer: B
-    - question: 'Defending a design decision means:'
+    - question: "A reviewer questions the choice of methodology and the Student disagrees. The defensible
+        reply is:"
       options:
-      - A) Refusing to change it
-      - B) Explaining the reasoning and trade-offs considered
-      - C) Citing the supervisor
-      - D) Deferring to the reviewer
-      answer: B
-    - question: 'Feedback you disagree with should be:'
+      - A) Change the methodology at once
+      - B) Cite the supervisor's stated preference for that methodology
+      - C) State that the choice is final
+      - D) Explain the reasoning and the trade-offs considered
+      answer: D
+    - question: "A peer review finds three weaknesses; the Student agrees with two and disputes one. A
+        sound handling is to:"
       options:
-      - A) Ignored
-      - B) Considered, and either acted on or explicitly answered with reasoning
-      - C) Accepted always
-      - D) Escalated
-      answer: B
-    - question: 'A revision log is valuable because it:'
+      - A) Fix none, to keep the plan stable and the record clean
+      - B) Fix all three without comment
+      - C) Fix two and answer the third with reasoning
+      - D) Ask a different peer to re-review
+      answer: C
+    - question: A reviewer returns a proposal with handwritten questions in the margin. What does the
+        attached revision log demonstrate to an assessor?
       options:
-      - A) Adds length
-      - B) Demonstrates that review was taken seriously and shows the reasoning
-      - C) Satisfies formatting
-      - D) Replaces the proposal
-      answer: B
-    - question: 'The most common proposal weakness is:'
+      - A) That review was engaged with seriously and traceably
+      - B) That the first plan was already perfect in every respect
+      - C) That the reviewer approved the proposal
+      - D) That the references were checked
+      answer: A
+    - question: "Across a cohort of last year's capstone proposals, the single most frequent failing an
+        assessor reported was:"
       options:
-      - A) Excessive detail
-      - B) Scope that is too broad to complete and evaluate
-      - C) Too many references
-      - D) Poor formatting
+      - A) Too few references for a proposal of this size and ambition
+      - B) A scope too wide to complete and evaluate
+      - C) Too much technical detail
+      - D) Missing appendices
       answer: B

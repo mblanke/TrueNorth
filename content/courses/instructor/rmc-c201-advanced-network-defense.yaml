@@ -1,0 +1,230 @@
+# Instructor pack for RMC C201 - Advanced Network Defense. Staff eyes only.
+# Companion to content/courses/rmc-c201-advanced-network-defense.yaml (unsourced draft, not for
+# CAF learners). Answer letters below are the course's keys; each note says why the keyed option
+# is right and what each distractor tests. Range references are node ids of
+# content/ranges/red-vs-blue/template.yaml.
+course_code: RMC C201
+audience: staff_only
+overview: 'Advanced Network Defense is a staff course of six 60-minute modules run against the
+  red-vs-blue range. Each module keeps the same split: 15 minutes teaching the concepts, 35 minutes
+  on the range collecting the evidence the lab names, and a 10-minute assessment block ending in a
+  five-item quiz passed at 70 percent. Every module teaches three objectives, practises each on the
+  range, and records results exactly as the range shows them. Say ''Student'' throughout and keep
+  every description defensive and observable.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach on enforcement points, 35 on the range mapping rtr01, dc01, jump01 and siem01,
+    10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach on segmentation and isolation, 35 on the range reading rtr01 rules and testing
+    the ws01-to-db01 flow on TCP 5432, 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach on deception and its legal limits, 35 on the range confirming honey01 alerting
+    through siem01 and nids01, 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach on encrypted traffic visibility, 35 on the range comparing the nids01 and endpoint
+    views of a session to web01, 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach on playbook guardrails, 35 on the range drafting containment for ws01, 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach on control validation, 35 on the range testing the rtr01 deny rule and the honey01
+    alert, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: "Q1 A (Placement, M01-O01): Enforcement sits closest to the resource it protects; a branch
+    gateway sees only traffic leaving the branch, not flows inside it. Not B or C: both collapse
+    enforcement onto one choke point. Not D: the payment switch is an asset, not an enforcement
+    point. Q2 C (Staging, M01-O02): Protecting one high-value application first delivers value this
+    quarter without replacing the estate. Not A: waiting defers all value. Not B: a single programme
+    repeats the big-bang risk. Not D: procurement is not sequencing. Q3 C (Legacy dependency,
+    M01-O02): An application that cannot adopt modern authentication needs a documented exception
+    with compensating monitoring. Not A: replacement may be right eventually but is not what the
+    dependency demands now. Not B: exempting the whole estate abandons the policy. Not D: one
+    exception does not end adoption. Q4 B (Operational cost, M01-O03): Distributed enforcement
+    raises a consistency burden that must be managed; the conflicting rule sets are that cost
+    appearing. Not A: the answer is management, not abandonment. Not C: payments must not bypass
+    policy. Not D: the problem is coordination of existing rules, not their number. Q5 A
+    (Sustainability, M01-O03): A design that needs four analysts the organisation cannot hire will
+    degrade; simplify it. Not B: funding may be impossible and does not fix the design. Not C:
+    disabling monitoring removes the capability. Not D: more sources deepen the burden."
+- module: 2
+  notes: "Q1 D (Drift, M02-O03): The outage change is rule drift; only continuous verification
+    catches it. Not A: segmentation did not fail, the change control did. Not B: temporary does not
+    mean permanent. Not C: a flat network is the opposite of the fix. Q2 B (Identity-based,
+    M02-O01): Binding policy to the workload identity lets it move without renumbering. Not A or D:
+    port and VLAN bindings are tied to location. Not C: MAC binding is still location-bound and
+    spoofable. Q3 A (Break-glass, M02-O02): A pre-approved route, opened on request with alerting,
+    keeps the isolation meaningful and the use visible. Not B: a permanent rule removes the
+    isolation for the whole incident. Not C: shared credentials destroy accountability. Not D: an
+    undocumented path cannot be monitored or audited. Q4 C (Supporting paths, M02-O02): The backup
+    path is a supporting path into the isolated zone and must join the isolation design. Not A: user
+    access was already fenced off. Not B: browsing is not the vector described. Not D: visitor
+    wireless is unrelated to the nightly reach. Q5 B (Sustainability, M02-O03): Weekly exception
+    approval shows the policy complexity is not sustainable; reduce it. Not A: the protection claim
+    ignores the operational cost. Not C: removing the process loses the record. Not D: the
+    technology fits; the policy does not."
+- module: 3
+  notes: "Q1 A (Fidelity, M03-O02): A deception asset has no legitimate use, so any touch is worth
+    immediate response. Not B: privilege is not why the alert is trusted. Not C: logging detail is
+    not the source of fidelity. Not D: origin is irrelevant to the fidelity. Q2 C (Placement,
+    M03-O01): Place deception on the path the intruder is already walking - among the real shares
+    being listed. Not A: unreachable deception never engages. Not B: outside the firewall meets
+    external scanning, not lateral movement. Not D: the monitoring VLAN would betray the decoy.
+    Q3 B (Realism, M03-O01): A service with no wear looks staged and is discounted. Not A: test
+    systems routinely hold placeholder records, which is exactly the tell. Not C: connectivity is
+    not the issue. Not D: version exposure is a real weakness but not why this decoy is discounted.
+    Q4 D (Legal boundary, M03-O03): Scanning and deleting on the attacker's systems is action
+    outside authorisation and must be refused. Not A: containment reaches the own estate only.
+    Not B: executive approval cannot create legal authority. Not C: rights do not work that way.
+    Q5 A (Value, M03-O04): Two true alerts and zero false ones is detection at very low false
+    positive cost, the operational value of deception. Not B: deception complements the stack, it
+    does not replace it. Not C: tuning off the stack discards coverage. Not D: quiet is the point,
+    not a defect."
+- module: 4
+  notes: "Q1 B (Interception risk, M04-O02): A re-signing appliance terminates every session and
+    holds decrypted traffic, so it becomes a high-value target. Not A: latency is secondary. Not C:
+    routing is not the risk. Not D: certificates are operational detail, not the core risk. Q2 D
+    (Endpoint compensation, M04-O03): Pinned traffic cannot be read, but endpoint telemetry on the
+    sharing hosts still shows which files moved. Not A: deeper capture of the same ciphertext yields
+    nothing more. Not B: translations show addresses, not files. Not C: retention does not create
+    new visibility. Q3 A (Pinning, M04-O02): A pinned client rejects the re-signed session;
+    interception breaks for that service. Not B: pinning is precisely the failure of silent
+    decryption. Not C: the service does not downgrade. Not D: pinning is application behaviour, not
+    a mobile-only rule. Q4 C (Metadata, M04-O03): Fixed schedule, fixed size, fixed destination is
+    behavioural detection from flow metadata alone. Not A or B: payload and credentials are exactly
+    what encryption hides. Not D: a file listing needs endpoint or payload visibility. Q5 B
+    (Sensitive categories, M04-O01): Patient booking is a sensitive category typically excluded on
+    privacy and legal grounds. Not A: sensitivity, not risk ranking, decides. Not C: scheduling does
+    not cure the privacy problem. Not D: it is technically possible, which is why the exclusion must
+    be deliberate."
+- module: 5
+  notes: "Q1 C (Guardrails, M05-O01): Four hundred machines isolated by one bad signature shows no
+    guardrail limited mass action. Not A: rule breadth matters, but the missing bound is the design
+    flaw. Not B: a dashboard observes, it does not bound. Not D: an audit record is good practice
+    but would not have stopped the action. Q2 A (Candidates, M05-O01): A repetitive, well-understood
+    reset on a known pattern is reversible and low-risk, the soundest first automation. Not B: report
+    approval is a judgement task. Not C: ransom decisions are irreversible and context-heavy. Not D:
+    notification order is a communication judgement. Q3 D (Rollback, M05-O03): The delay came from
+    having no tested rollback for the quarantine. Not A: severity helps triage, not recovery. Not B:
+    a contract does not restore service. Not C: a dashboard shows state, it does not restore it.
+    Q4 B (Noisy detection, M05-O04): Wiring isolation to a false-positive-prone detection amplifies
+    it into disruption when the backup window arrives. Not A: automation does not make exceptions.
+    Not C: detections do not retune themselves. Not D: the jobs do not move; the hosts disappear.
+    Q5 C (Human in the loop, M05-O02): Halting an assembly line is severe business impact, so a
+    person owns the decision. Not A: the trigger firing does not transfer accountability. Not B: the
+    runbook alone does not carry the business context. Not D: owning the address range is not owning
+    the decision."
+- module: 6
+  notes: "Q1 B (Unvalidated, M06-O01): A control never tested is implemented but unvalidated until a
+    test runs. Not A: never failed is not evidence. Not C: untested is not the same as ineffective.
+    Not D: it is plainly applicable. Q2 D (Emulation, M06-O02): Emulation exercises the behaviour
+    the control exists to stop, so it tells leadership whether the control holds. Not A or B: a
+    checklist reads configuration, it does not test behaviour. Not C: cost is not the point. Q3 A
+    (Honest metrics, M06-O03): Reporting only improvements makes the board decide on a false picture
+    of risk. Not B: audits check process, not truthfulness of emphasis. Not C: comfort is not the
+    goal. Not D: next year is not the question. Q4 C (Drift, M06-O04): The widened source range is
+    configuration drift, which degrades controls between tests; verification must repeat. Not A:
+    calendars do not degrade controls. Not B: vendor guidance is incidental. Not D: auditor
+    expectation is not the reason the control changed. Q5 A (Posture reporting, M06-O05): A credible
+    report states what was tested, what held and what remains unknown. Not B: a coverage percentage
+    without test evidence is a claim. Not C: closed alerts measure workload, not effectiveness.
+    Not D: inventory and cost say nothing about control."
+lab_setup:
+- module: 1
+  setup: 'Baseline: red-vs-blue range deployed, all VLANs up, the rtr01 firewall rules applied as
+    shipped, siem01 ingesting. Expected: rtr01 holds the inter-zone rules (red-to-dmz allowed; red
+    to the corporate LAN, the server VLAN and management denied; blue-to-mgmt and mgmt-to-all
+    present); dc01 answers directory queries for the workstation zone; jump01 gates administrative
+    access to the management zone; siem01 shows telemetry from the blue team, monitoring and
+    management zones but little from the red zone. Students record the rule list and the position of
+    each enforcement point.'
+- module: 2
+  setup: 'Baseline: as module 1. Expected: the rtr01 rules into the server VLAN show corporate-to-server
+    limited to ports 1433 and 3306, corporate-to-server-ad limited to the domain ports and
+    dmz-to-server limited; ws01 to db01 on TCP 5432 (the PostgreSQL service db01 runs) matches no
+    allow rule and fails under the default drop, with the timeout or refusal recorded exactly as
+    shown; ws01 to db01 on TCP 3306 succeeds under corporate-to-server, which shows the allow is
+    port-limited rather than absent; db01 remains reachable over the management, backup and
+    monitoring paths; jump01 provides the controlled administrative route. Students propose the
+    break-glass variant through jump01 with its alerting and expiry.'
+- module: 3
+  setup: 'Baseline: as module 1, with honey01 deployed in the corporate LAN under its canary tags.
+    Expected: honey01 presents its decoy services; a contact from jump01 raises a high-fidelity alert
+    in siem01 naming honey01; nids01 sees the same contact on the mirror and records the session.
+    Students record the alert verbatim and assess the realism of the decoy against the services
+    around it.'
+- module: 4
+  setup: 'Baseline: as module 1, with web01 serving and vpn01 reachable. Expected: nids01 records the
+    handshake metadata of the TLS session to web01 (destination, timing, volume) but no payload;
+    siem01 keeps only the flow record fields; a session through vpn01 appears as traffic to the VPN
+    endpoint; the web01 endpoint record shows the request contents the sensor could not see. Students
+    mark each visibility gap and state where interception would and would not be justified.'
+- module: 5
+  setup: 'Baseline: as module 1, with ws01 treated as the compromised host for the exercise. Expected:
+    siem01 holds a workstation alert suitable as a trigger; the containment design cuts ws01 from the
+    corporate LAN; the guardrail limits isolation to one host per approval; each automated step has a
+    rollback and a named authoriser. honey01 serves as the false-positive test case the guardrail
+    must survive.'
+- module: 6
+  setup: 'Baseline: as module 1. Expected: the rtr01 deny rule from the red zone to the corporate LAN
+    blocks the tested flow exactly as claimed; the honey01 contact fires its siem01 alert; blue01 can
+    run the checks with its installed tooling alone; at least one claimed control cannot be tested
+    with the available tooling and is recorded as untested with the reason. Students produce a posture
+    statement naming what was tested, what held and what remains unknown.'
+common_faults:
+- module: 1
+  fault: Students mark rtr01 as a zero trust failure because it sits at the network edge.
+  remedy: Have them list which rules act close to the server VLAN and which act at the edge, then
+    judge each rule separately rather than the box as a whole.
+- module: 1
+  fault: The staged adoption plan begins with the directory or the monitoring stack.
+  remedy: Ask what each stage protects and what it costs to operate; the plan should begin with the
+    highest-value flow that the current rules already constrain.
+- module: 2
+  fault: Students see the corporate-to-server allow on ports 1433 and 3306 and conclude workstations
+    can reach db01 on any port, or they test a port that rule permits.
+  remedy: Walk the rtr01 rule list in order and trace the ws01-to-db01 flow on TCP 5432 through
+    every rule it crosses; no allow rule names that port, so the default drop decides it.
+- module: 2
+  fault: The break-glass path is proposed as a permanent rule left open for the next incident.
+  remedy: Require the request, approval, alerting and expiry of the route to be written down before
+    the design is accepted.
+- module: 3
+  fault: Students place the decoy where it is easiest to deploy rather than where the intruder moves.
+  remedy: 'Re-read the honey01 contact step: the decoy must sit among the services an intruder would
+    enumerate in that zone.'
+- module: 3
+  fault: The legal boundary answer drifts toward hacking back once leadership approval is mentioned.
+  remedy: State plainly that no internal approval authorises action on systems the organisation does
+    not own; keep the module to defensive deception.
+- module: 4
+  fault: Students expect the sensor to show payload because siem01 shows a rich flow record.
+  remedy: Compare the field lists side by side; flow records carry metadata only, so have them point
+    at the field that would have held the content.
+- module: 4
+  fault: Interception is recommended everywhere because more visibility is assumed to be better.
+  remedy: Make them name one application on the range that would break and one traffic category that
+    should be excluded, then scope the recommendation.
+- module: 5
+  fault: The playbook isolates on the alert with no rate limit or approval bound.
+  remedy: Run the honey01 false-positive case through their playbook; any design that isolates more
+    than its trigger supports fails the step.
+- module: 5
+  fault: Rollback is written as restore from the console, with no authoriser named.
+  remedy: Require the rollback to name who authorises returning the host to the network and what must
+    be checked first.
+- module: 6
+  fault: Students report a control as held because its rule exists on rtr01, without running the flow
+    test.
+  remedy: 'Point at the red-op01 flow-test step: existence is not effectiveness; the exact test
+    result is the evidence.'
+- module: 6
+  fault: The posture statement claims full coverage because every control was listed.
+  remedy: Require the untested list with reasons inside the statement; a statement without unknowns
+    is returned for rewrite.

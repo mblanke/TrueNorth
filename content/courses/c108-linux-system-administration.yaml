@@ -6,9 +6,10 @@ course_code: C108
 title: Linux System Administration
 version: '1.0'
 difficulty: beginner
-duration_hours: 100
+duration_hours: 6
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
@@ -33,56 +34,87 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Navigate and manipulate the filesystem confidently from the shell.
-  - Compose commands using pipes, redirection and filters.
-  - Locate files and content efficiently across a system.
+  - Navigate the Linux filesystem hierarchy from the shell and locate configuration, logs and home
+    directories
+  - Compose pipelines with redirection, filters and field-based tools to answer a question about a log
+  - Choose between grep, find, awk and sed for a stated text-processing task and justify the choice
   topics:
-  - Filesystem hierarchy standard.
-  - Redirection, pipes and exit codes.
-  - grep, find, sed and awk.
-  - Text processing for log triage.
-  lab: 'Lab: Write a one-line pipeline that extracts failed authentication attempts from a log, counts
-    them per source address, and prints the top five.'
+  - The filesystem hierarchy, from configuration and variable data to executables and home directories.
+  - Exit codes, redirection of standard output and standard error, and pipes.
+  - grep, find, sed and awk, and the task each one does well.
+  - Building a pipeline that filters, counts and ranks log records.
+  - Text processing as the first step of log triage.
+  lab: >-
+    Lab: On web01 and mail01, build one pipeline that reads the host's authentication records from the
+    journal, keeps only failed sign-in records, counts them per source address and prints the five most
+    frequent. Evidence: the journalctl command that selects the authentication records, the pipeline
+    line itself, the five source addresses and counts it prints on each host, and one difference
+    between the two hosts' results with the stage that explains it. Pass: each host's pipeline runs to
+    completion with exit code 0; the five addresses and counts are recorded exactly as printed on each
+    host; each stage of the pipeline is labelled with the job it does.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [web01]
+      action: Log on to web01 over SSH with the account your instructor assigned and record the
+        journalctl command that selects the host's authentication records.
+    - hosts: [web01]
+      action: Build a pipeline that keeps only the failed sign-in records from the journal output and
+        record the number of lines it keeps.
+    - hosts: [web01]
+      action: Extend the pipeline to count failures per source address, print the five most frequent
+        and record each address with its count.
+    - hosts: [mail01]
+      action: Run the same pipeline against mail01's journal authentication records and record its
+        five most frequent addresses with their counts.
+    - hosts: [web01, mail01]
+      action: Compare the two hosts' recorded results and state one difference between them and which
+        stage of the pipeline produces that difference.
   refs:
   - cis-benchmarks
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'In the filesystem hierarchy, host-specific configuration belongs in:'
+    - question: A new administrator must change a service's host-specific settings and then read that
+        service's log. Which directory holds host-specific configuration files?
       options:
-      - A) /var
+      - A) /var/log
       - B) /etc
-      - C) /usr
+      - C) /usr/bin
       - D) /opt
       answer: B
-    - question: 'A command''s exit code of 0 conventionally means:'
+    - question: A shell command fails partway through a nightly script, but the script's log records
+        only the text the command printed normally. What would have captured the error text as well?
       options:
-      - A) Failure
-      - B) Success
-      - C) Warning
-      - D) Not executed
-      answer: B
-    - question: 'The construct 2>&1 redirects:'
+      - A) Sending the output through a text filter first
+      - B) Running the command again with more privileges
+      - C) Redirecting standard error to the same place as standard output
+      - D) Piping the command's output into a directory listing
+      answer: C
+    - question: An operator must extract the sixth field from every line of a colon-separated file and
+        then count the lines that report a failed sign-in. Which tool is built for field-based extraction?
       options:
-      - A) stdout to stderr
-      - B) stderr to the current destination of stdout
-      - C) stdin to stdout
-      - D) stderr to a file named 1
-      answer: B
-    - question: Which tool is best suited to field-based extraction from structured text?
-      options:
-      - A) ls
-      - B) awk
+      - A) awk
+      - B) find
       - C) chmod
       - D) tar
-      answer: B
-    - question: 'Log files are conventionally stored under:'
+      answer: A
+    - question: A search must list every file under the log directory larger than 10 megabytes and
+        modified in the last day. Which tool walks the tree and selects files by these attributes?
       options:
-      - A) /etc/log
-      - B) /var/log
-      - C) /usr/log
-      - D) /tmp/log
+      - A) grep, which matches text inside one named file
+      - B) awk, which edits the fields of lines it reads
+      - C) sed, which substitutes text in a passing stream
+      - D) find, which selects files by path, size and age
+      answer: D
+    - question: A responder needs the five source addresses with the most failed sign-ins in an
+        authentication log. Which one-line approach produces that ranking directly?
+      options:
+      - A) Open the log in an editor and count the lines by hand
+      - B) A pipeline that filters, extracts the address field, sorts and counts
+      - C) Copy the log to a spreadsheet and inspect each record separately
+      - D) Search the log once and record the first five matching lines
       answer: B
 - ordinal: 2
   title: Package, Service and Process Management
@@ -91,57 +123,87 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Manage software packages and repositories safely.
-  - Control services with the init system.
-  - Diagnose resource consumption by process.
+  - Manage packages and repositories with signature verification and trusted sources
+  - Control a service with a systemd unit, enablement state and the journal
+  - Diagnose a misbehaving process from its signals, parent and resource use
   topics:
-  - Package managers and repository trust.
-  - systemd units, targets and dependencies.
-  - Process inspection and signals.
-  - Resource limits and cgroups.
-  lab: 'Lab: Create a systemd unit for a small service with a restart policy, start and enable it, then
-    simulate a crash and prove the restart behaviour from the journal.'
+  - Package managers, repository trust and signature verification.
+  - systemd units, enablement, targets and how the manager orders startup.
+  - Signals, from graceful termination to the one no process can refuse.
+  - Parent and child processes, orphans and zombies.
+  - Resource accounting that holds a group of processes to its share.
+  lab: >-
+    Lab: On mail01, create a systemd unit for a small service with an automatic restart policy, enable
+    it, stop the service's process and prove from the journal that systemd restarted it without help.
+    Evidence: the unit file's full path and contents, the state of the mail service as first observed,
+    the enablement and active states the manager reports, and the journal lines showing the stop and
+    the automatic restart. Pass: the unit is enabled for the next boot; the journal shows the process
+    stopping and starting again with no manual command; the recorded states agree with what the service
+    manager reports.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [mail01]
+      action: Log on to mail01 over SSH with the account your instructor assigned and record the state
+        the service manager reports for the mail service.
+    - hosts: [mail01]
+      action: Write a unit file for a small service with an automatic restart policy and record the
+        file's full path and contents.
+    - hosts: [mail01]
+      action: Start and enable the unit, then record the enablement state and the active state the
+        service manager reports.
+    - hosts: [mail01]
+      action: Stop the service's process so the restart policy acts, and record the journal lines that
+        show the stop and the automatic restart.
+    - hosts: [mail01]
+      action: Record the unit's state after the restart, then decide whether the unit meets its purpose
+        and name the change it would need to guarantee two copies never run at once.
   refs:
   - cis-benchmarks
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Package signature verification protects against:'
+    - question: A package mirror offers the same version of a tool as the official repository but was
+        updated hours earlier. Which check should decide whether to install from it?
       options:
-      - A) Disk failure
-      - B) Installation of tampered or spoofed packages
-      - C) Dependency conflicts
-      - D) Slow downloads
-      answer: B
-    - question: 'Enabling a systemd unit means it will:'
+      - A) The mirror's page loads faster than the official site
+      - B) The version number matches the official one exactly
+      - C) The mirror's signing key is a trusted repository key
+      - D) The download finishes without any errors
+      answer: C
+    - question: A service must start at every boot but must not run now, because maintenance is under
+        way. Which pair of actions reaches that state?
       options:
-      - A) Start immediately only
-      - B) Start automatically at boot
-      - C) Be removed on reboot
-      - D) Run once then exit
-      answer: B
-    - question: 'SIGKILL differs from SIGTERM because SIGKILL:'
+      - A) Start the unit, then enable it
+      - B) Restart the unit, then enable it
+      - C) Start the unit, then schedule a reboot
+      - D) Enable the unit without starting it
+      answer: D
+    - question: A runaway process holds a file open and ignores a polite termination request. Which
+        signal ends it immediately, and what can the process do about it?
       options:
-      - A) Can be caught and handled
-      - B) Cannot be caught, blocked or ignored
-      - C) Only pauses the process
-      - D) Requires root always
+      - A) SIGTERM, which the process may catch and handle
+      - B) SIGKILL, which the process cannot catch or ignore
+      - C) SIGHUP, which reloads the process configuration
+      - D) SIGINT, which pauses the process until resumed
       answer: B
-    - question: 'cgroups are used primarily to:'
+    - question: A logging program writes its final record and exits, but it still appears in the
+        process table with an empty slot where a state should be. What has not happened yet?
       options:
-      - A) Encrypt processes
-      - B) Limit and account for resource usage by process groups
-      - C) Schedule cron jobs
-      - D) Manage users
-      answer: B
-    - question: 'A zombie process is cleaned up when:'
+      - A) Its parent has not reaped its exit status
+      - B) Its memory pages have not been freed
+      - C) It has not received a termination signal
+      - D) Its unit has not been disabled
+      answer: A
+    - question: Two groups of services share one host, and one group's backup jobs repeatedly consume
+        the memory the other group needs. Which mechanism holds each group to its share?
       options:
-      - A) The system reboots only
-      - B) Its parent reaps the exit status
-      - C) SIGKILL is sent to it
-      - D) Its memory is freed
-      answer: B
+      - A) A cron schedule that staggers the backup jobs
+      - B) A swap file sized for both groups together
+      - C) Resource limits set for each group
+      - D) A larger disk for the log directory
+      answer: C
 - ordinal: 3
   title: Users, Groups and Access Control
   content_type: reading
@@ -149,16 +211,43 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Administer local accounts and group membership.
-  - Configure controlled privilege escalation.
-  - Apply mandatory access control where appropriate.
+  - Administer local accounts and group membership across their full lifecycle
+  - Configure controlled privilege escalation with a least-privilege sudo policy for one command
+  - Distinguish discretionary permission bits, access control lists and mandatory access control labels
   topics:
-  - Account provisioning and lifecycle.
-  - sudo policy design and logging.
-  - File ACLs beyond POSIX bits.
-  - SELinux and AppArmor concepts.
-  lab: 'Lab: Create a service account with no interactive login, grant it one specific sudo command, verify
-    the restriction holds, and confirm the invocation is logged.'
+  - Account records, service accounts and the account lifecycle.
+  - sudo policy, least privilege and the log each permitted command leaves.
+  - Permission bits and access control lists beyond owner, group and other.
+  - Mandatory access control enforced by labels and policy.
+  - Reviewing group membership as roles change.
+  lab: >-
+    Lab: On web01, create a service account that cannot log in interactively, grant it exactly one sudo
+    command, prove that no other command runs under it and confirm the escalation is logged. Evidence:
+    the new account's entry in the account database, the sudo policy line granting the one command, the
+    exact refusal an unpermitted command receives, and the log line recording the permitted command.
+    Pass: the account has no interactive shell; the unpermitted command is refused; the permitted
+    command appears in the log with the account's name.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [web01]
+      action: Log on to web01 over SSH with the administrative account your instructor assigned and
+        record the account database fields of one existing service account.
+    - hosts: [web01]
+      action: Create the new service account without an interactive shell and record its entry in the
+        account database.
+    - hosts: [web01]
+      action: Add a sudo policy that permits the account exactly one command and record the policy line
+        and the file it lives in.
+    - hosts: [web01]
+      action: Run the permitted command as the service account and record the log line that records the
+        escalation.
+    - hosts: [web01]
+      action: Run a second, unpermitted command as the service account and record the exact refusal the
+        policy prints.
+    - hosts: [web01]
+      action: Mark each recorded item as expected or unexpected against least privilege, and name the
+        one right the account must never gain.
   refs:
   - cis-benchmarks
   - nist-sp-800-63-4
@@ -166,40 +255,45 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'A service account should normally be configured with:'
+    - question: A deployment pipeline needs an identity that a build job uses to run one command, and
+        no person should ever sign in as it. Which account design fits?
       options:
-      - A) A shell of /bin/bash and a password
-      - B) No interactive login shell
-      - C) Root group membership
-      - D) A shared password
+      - A) A named user account with a strong password
+      - B) A service account with no interactive shell
+      - C) A second personal account for the administrator on duty
+      - D) The root account with a changed password
       answer: B
-    - question: 'Granting sudo ALL=(ALL) NOPASSWD:ALL to a user effectively gives:'
+    - question: An auditor asks which account ran a privileged command on a host last night, and the
+        log names one account instead of root. Which configuration produces that record?
       options:
-      - A) Read-only access
-      - B) Unrestricted root privilege without reauthentication
-      - C) Access to one command
-      - D) Group-only rights
-      answer: B
-    - question: 'SELinux enforces:'
+      - A) A cron job that copies the audit log nightly
+      - B) A password prompt required before every command
+      - C) A firewall rule that blocks outside connections
+      - D) A sudo policy that logs each permitted command
+      answer: D
+    - question: A shared data directory must give one extra analyst read access without changing the
+        owner group's rights. Which mechanism adds that single grant?
       options:
-      - A) Discretionary access control
-      - B) Mandatory access control via labels and policy
-      - C) Network filtering
-      - D) Disk quotas
-      answer: B
-    - question: 'POSIX ACLs are useful when:'
+      - A) An access control list entry for that analyst
+      - B) Changing the directory's group to the analyst's group
+      - C) Moving the directory to a public path
+      - D) A mandatory access control label
+      answer: A
+    - question: On a host where users share files freely, the operator also requires that no change any
+        user makes can weaken file protections. What adds that requirement?
       options:
-      - A) Only owner and group permissions are needed
-      - B) Per-user permissions beyond owner/group/other are required
-      - C) Files are read-only
-      - D) The filesystem is remote
-      answer: B
-    - question: 'Reviewing group membership regularly matters because:'
+      - A) A longer minimum password length
+      - B) A stricter file creation mask
+      - C) Mandatory access control enforced by labels
+      - D) More frequent group membership reviews
+      answer: C
+    - question: An administrator moves to another team and keeps the database administrators group from
+        the old role. What does this accumulated membership show?
       options:
-      - A) Groups expire
-      - B) Privilege accumulates as people change roles
-      - C) Groups consume disk
-      - D) It speeds authentication
+      - A) A correctly completed account lifecycle
+      - B) Membership never reviewed as roles changed
+      - C) A mandatory access control label left in place
+      - D) A permission bit set too narrowly
       answer: B
 - ordinal: 4
   title: Networking and Remote Access
@@ -208,16 +302,44 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Configure network interfaces and verify connectivity.
-  - Harden remote administrative access.
-  - Diagnose network problems from the host.
+  - Verify a host's interfaces, routes and connectivity from the host itself
+  - Harden the SSH service with key-based authentication and restricted sign-in
+  - Diagnose a failed connection using listening sockets, routes and firewall evidence
   topics:
-  - Interface and route configuration.
-  - SSH configuration and key-based authentication.
-  - Host firewall configuration.
-  - Host-side network diagnostics.
-  lab: 'Lab: Harden an SSH service by disabling password and root login, enforcing key authentication,
-    then verify the configuration and confirm a password attempt is refused.'
+  - Interfaces, addresses and routes as the host reports them.
+  - SSH keys, host keys and the settings that restrict sign-in.
+  - Host firewalls and the policy they enforce at the machine.
+  - Reading listening sockets and the processes that own them.
+  - Distinguishing a service failure from a network failure.
+  lab: >-
+    Lab: On mail01, harden the SSH service so only key authentication works: refuse password and root
+    sign-in, reload the service and prove both restrictions from siem01. Evidence: the SSH
+    configuration lines that set each restriction and the file each lives in, the service's state after
+    the reload, the exact refusal a password attempt receives from siem01, and the first line a
+    key-based
+    sign-in prints. Pass: both restrictive lines are present in the configuration the service loads; the
+    password attempt is refused with the server's own message; a key-based sign-in still reaches a shell.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01, mail01]
+      action: From siem01, log on to mail01 over SSH with the account your instructor assigned and
+        record the current SSH settings for password and root sign-in.
+    - hosts: [mail01]
+      action: Change the SSH configuration to refuse password and root sign-in and record each changed
+        line and the file it lives in.
+    - hosts: [mail01]
+      action: Reload the SSH service, record its active state and record that the listener still answers
+        on its port.
+    - hosts: [siem01, mail01]
+      action: From siem01, attempt a password sign-in to mail01 and record the exact refusal the server
+        returns.
+    - hosts: [siem01, mail01]
+      action: From siem01, sign in to mail01 with the key your instructor issued and record the first
+        line the session prints.
+    - hosts: [mail01]
+      action: State which of the two restrictions the recorded refusal proves, and name the one setting
+        that would still admit the administrator if the key were lost.
   refs:
   - cis-benchmarks
   - nist-sp-800-41r1
@@ -225,41 +347,46 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Disabling PermitRootLogin in SSH primarily:'
+    - question: A rebuild replaced a server's system, and the first sign-in from a workstation now
+        prints a warning about the host's identity. What does that warning most likely reflect?
       options:
-      - A) Prevents all remote access
-      - B) Forces administrators to log in as themselves before escalating
-      - C) Disables key authentication
-      - D) Blocks SFTP
-      answer: B
-    - question: 'SSH key-based authentication is stronger than passwords mainly because:'
+      - A) A password that expired during the rebuild
+      - B) A client configuration copied to the wrong account
+      - C) A listening socket left open after the rebuild
+      - D) The host key changing with the rebuilt system
+      answer: D
+    - question: A private key never leaves the administrator's workstation during a sign-in. Why is
+        this arrangement stronger than a password?
       options:
-      - A) Keys are shorter
-      - B) The private key is never transmitted to the server
-      - C) Keys never expire
-      - D) It requires no configuration
+      - A) The key is shorter than a password to type
+      - B) The secret is never sent to the server
+      - C) The server stores no list of authorised keys
+      - D) The key needs no configuration on the client
       answer: B
-    - question: Which command shows listening sockets and owning processes?
+    - question: A web service on a host answers locally but not from another machine, and its process
+        is running. Which evidence separates a service fault from a network fault?
       options:
-      - A) ping
-      - B) ss -tulpn
-      - C) traceroute
-      - D) dig
-      answer: B
-    - question: 'A host-based firewall complements a network firewall by:'
+      - A) The process identifier of the web service
+      - B) The size of the service's log directory
+      - C) Whether the port is listening and the firewall allows it
+      - D) The number of accounts on the host
+      answer: C
+    - question: An administrator must reach a server only from the management network, although the
+        host accepts connections on any interface. Which control enforces that scope on the host?
       options:
-      - A) Replacing it
-      - B) Enforcing policy even for traffic that never crosses the network boundary
-      - C) Encrypting traffic
-      - D) Providing routing
-      answer: B
-    - question: 'An SSH host key warning on connection may indicate:'
+      - A) A host firewall rule limited to the management source
+      - B) A route that removes the default gateway
+      - C) An SSH setting that lengthens the idle timeout
+      - D) A second address on the same interface
+      answer: A
+    - question: A firewall change is planned, and the operator must show which programs currently hold
+        listening sockets before it is applied. Which command prints that pair?
       options:
-      - A) A password change
-      - B) A machine-in-the-middle attempt or a legitimate host rebuild
-      - C) Disk corruption
-      - D) An expired certificate
-      answer: B
+      - A) A name lookup for the host's address
+      - B) A route table listing the default path
+      - C) A reachability test of the local network
+      - D) A socket listing with owning process names
+      answer: D
 - ordinal: 5
   title: Storage, Backup and Recovery
   content_type: reading
@@ -267,57 +394,86 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Manage partitions, filesystems and logical volumes.
-  - Design a backup scheme that meets stated recovery objectives.
-  - Verify that backups are actually restorable.
+  - Manage partitions, filesystems, logical volumes and the mount options applied to them
+  - Design a backup and retention scheme that meets stated recovery objectives
+  - Prove a backup is restorable by performing and verifying a recovery
   topics:
-  - Partitioning, filesystems and mount options.
-  - Logical volume management.
-  - Backup strategies and retention.
-  - Restore testing and recovery objectives.
-  lab: 'Lab: Create a logical volume, place a filesystem on it with secure mount options, back it up,
-    delete a file, and demonstrate a successful restore.'
+  - Partitions, filesystems and protective mount options.
+  - Logical volumes and resizing across physical devices.
+  - Backup scope, retention and recovery objectives.
+  - Backup copies kept away from the data they protect.
+  - Restore tests as the proof of a backup.
+  lab: >-
+    Lab: On web01, create a logical volume with a filesystem mounted with nodev, back the filesystem
+    up to a second location, delete one file and restore it. Evidence: the volume and filesystem as
+    the mount table reports them, the backup archive's path and size, the checksum of the file before
+    deletion and of the restored file, and the restore command's output. Pass: the mount table shows
+    the filesystem with nodev; the restored file's checksum matches the recorded one; the backup copy
+    sits on a different filesystem from the data.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [web01]
+      action: Log on to web01 over SSH with the account your instructor assigned and record the block
+        devices and the mount table as the host reports them.
+    - hosts: [web01]
+      action: Create a logical volume with a filesystem on it, mount it with nodev and record the
+        mount table line with its options.
+    - hosts: [web01]
+      action: Place a test file on the new filesystem, record its checksum, and copy the filesystem's
+        contents to a backup archive elsewhere on the host.
+    - hosts: [web01]
+      action: Delete the test file, record that it is gone, restore it from the archive and record the
+        restored file's checksum.
+    - hosts: [web01]
+      action: State where the archive lives relative to the data, and what would happen to both copies
+        if the disk under the volume failed.
   refs:
   - cis-benchmarks
   quiz:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'A recovery point objective defines:'
+    - question: A mounted data filesystem must never treat a placed file as a device. Which setting
+        enforces that on the mount?
       options:
-      - A) How long recovery may take
-      - B) The maximum acceptable data loss measured in time
-      - C) The backup medium
-      - D) The retention period
-      answer: B
-    - question: 'An untested backup should be regarded as:'
+      - A) A read-only flag that blocks every write
+      - B) An execution ban on scripts in that tree
+      - C) The nodev option on that filesystem
+      - D) An identifier label set at creation
+      answer: C
+    - question: A design goal says the service may lose at most one hour of records after a failure.
+        Which recovery objective states that bound?
       options:
-      - A) Fully reliable
-      - B) An unverified assumption, not a control
-      - C) Equivalent to a snapshot
-      - D) A compliance artefact only
-      answer: B
-    - question: 'Mounting a data filesystem with nodev prevents:'
+      - A) A recovery point objective
+      - B) A recovery time objective
+      - C) A retention period set by policy
+      - D) A backup window in the schedule
+      answer: A
+    - question: An auditor asks which practice proves a backup can be restored and read. Which answer
+        shows that proof?
       options:
-      - A) File creation
-      - B) Interpretation of device special files on that filesystem
-      - C) Symbolic links
-      - D) Execution of scripts
-      answer: B
-    - question: 'Logical volume management primarily provides:'
+      - A) Counting the archive files each morning
+      - B) Reading the backup job's success log
+      - C) Comparing archive sizes week to week
+      - D) Restoring a sample file and reading it
+      answer: D
+    - question: Ransomware encrypts every directory the backup server can write to, including the
+        archive directory. Which copy placement survives?
       options:
-      - A) Encryption
-      - B) Flexible resizing and abstraction over physical devices
-      - C) Deduplication always
-      - D) RAID parity
+      - A) An archive kept thirty days on the same host as the data
+      - B) A copy on a separate host the server cannot write to
+      - C) A weekly full backup stored in the server's own backup directory
+      - D) A second disk installed in the server for backup copies
       answer: B
-    - question: 'Storing backups only on the same host as the data primarily fails to protect against:'
+    - question: A second disk is installed in a host, and its space must join the existing logical
+        volume. Which action adds it?
       options:
-      - A) Accidental deletion
-      - B) Host loss, ransomware or site failure
-      - C) File corruption
-      - D) Permission errors
-      answer: B
+      - A) Reformatting the filesystem and restoring from tape
+      - B) Adding a symbolic link to the second disk
+      - C) Extending the volume across the new disk
+      - D) Copying the data to a file on the second disk
+      answer: C
 - ordinal: 6
   title: Monitoring, Hardening and Maintenance
   content_type: reading
@@ -325,16 +481,41 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Establish monitoring for availability and security events.
-  - Apply a hardening baseline and manage patching.
-  - Investigate an anomaly using host telemetry.
+  - Set monitoring thresholds that produce deliberate alerts rather than noise
+  - Apply a hardening baseline and manage patches under change control
+  - Investigate a host anomaly by correlating process, user and network evidence
   topics:
-  - Metrics, thresholds and alerting.
-  - Baseline hardening and drift detection.
-  - Patch cadence and change control.
-  - Host-based investigation workflow.
-  lab: 'Lab: Investigate a test host showing unexplained outbound connections; correlate process, user
-    and network evidence, and produce a short finding with a recommended containment action.'
+  - Metrics, thresholds and the alert fatigue a noisy monitor causes.
+  - Applying a hardening baseline and detecting drift against it.
+  - Patch cadence, testing and change control.
+  - Correlating process, account and socket evidence on a host.
+  - Containment steps that preserve the volatile evidence a host still holds.
+  lab: >-
+    Lab: On siem01, investigate connections the baseline does not explain: identify the process and
+    account behind them from host telemetry, judge whether they are
+    authorised and recommend containment. Evidence: the socket lines showing the outbound connections,
+    the process and account each socket belongs to, the unit or job that starts the process, and a
+    one-paragraph finding. Pass: the process and account are named from the host's own telemetry; the
+    finding states authorised or unauthorised with one sentence of reason; the containment
+    recommendation preserves the evidence the host still holds.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 with the analyst account and record the listening sockets and the
+        process that owns each one.
+    - hosts: [siem01]
+      action: List the outbound connections and record each destination together with the process and
+        account that owns it.
+    - hosts: [siem01]
+      action: Trace the process the baseline does not explain to the job or unit that starts it, and
+        record its name and schedule.
+    - hosts: [siem01]
+      action: Record which log the host writes for these connections and copy one line from it with
+        its timestamp.
+    - hosts: [siem01]
+      action: Write the finding, stating authorised or unauthorised with one sentence of reason, and
+        recommend the containment that preserves evidence first.
   refs:
   - cis-benchmarks
   - nist-sp-800-92
@@ -343,38 +524,43 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Alert thresholds set too tightly typically cause:'
+    - question: A threshold for CPU use sits just below the normal daytime level, so every rise raises
+        an alert. Which effect does this threshold produce?
       options:
-      - A) Missed incidents
-      - B) Alert fatigue from excessive false positives
-      - C) Lower CPU usage
-      - D) Better retention
-      answer: B
-    - question: 'Correlating a suspicious connection to a responsible process requires:'
+      - A) Alert fatigue from pages nobody acts on
+      - B) Faster incident response on the next page
+      - C) A dashboard that clears itself overnight
+      - D) Lower load on the monitoring server
+      answer: A
+    - question: A hardening review finds root sign-in allowed again, and no change record explains it.
+        What does the review show?
       options:
-      - A) Only the firewall log
-      - B) Host telemetry linking socket, PID and user
-      - C) The DNS cache alone
-      - D) The MAC address
-      answer: B
-    - question: 'Emergency patching outside change control should still:'
+      - A) A hardware fault on the login service
+      - B) An intended patch applied by the team
+      - C) Configuration drift from an unrecorded change
+      - D) A monitoring rule that fired too early
+      answer: C
+    - question: A critical vulnerability forces a patch outside the change window. What must still
+        happen to that emergency change?
       options:
-      - A) Skip documentation
-      - B) Be recorded and reviewed retrospectively
-      - C) Avoid testing
-      - D) Be applied by anyone
+      - A) It skips the change record entirely
+      - B) It is recorded and reviewed afterwards
+      - C) It is applied without any testing
+      - D) It needs no approval at any point
       answer: B
-    - question: 'Baseline drift detection is valuable because it identifies:'
+    - question: An investigator must name the process behind an odd-hour outbound connection. Which
+        evidence gives that name?
       options:
-      - A) Hardware faults
-      - B) Unauthorised or unintended configuration change
-      - C) Network latency
-      - D) Licence expiry
-      answer: B
-    - question: 'The first containment action for a compromised host is usually to:'
+      - A) The firewall's summary of the day
+      - B) The login history of the account
+      - C) The host's disk usage trend
+      - D) The socket table joined to process and account
+      answer: D
+    - question: A host runs a service nobody deployed, and containment is approved. Which first action
+        preserves the evidence the investigation still needs?
       options:
-      - A) Reinstall immediately
-      - B) Isolate it while preserving volatile evidence
-      - C) Delete suspicious files
-      - D) Reboot it
-      answer: B
+      - A) Isolating the host while keeping memory and processes intact
+      - B) Powering the host off at once so nothing else can happen on it
+      - C) Deleting the service's files so the process cannot start again
+      - D) Restarting the host so the activity clears from its memory
+      answer: A

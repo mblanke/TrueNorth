@@ -181,8 +181,13 @@ def test_the_miscited_publications_are_gone():
 def test_parse_strips_option_letter_prefixes():
     parsed = parse_course_content(_text())
     first = parsed["modules"][0]["questions"][0]
-    assert first["options"] == ["MQTT", "CoAP", "SNMP", "LwM2M"]
-    assert first["correct"] == [2]  # SNMP
+    assert first["options"] == [
+        "Their constrained memory",
+        "Their wired network links",
+        "Their long geographic cable runs",
+        "Their analogue sensor inputs",
+    ]
+    assert first["correct"] == [0]  # constrained memory
 
 
 def test_parse_requires_a_course_code():

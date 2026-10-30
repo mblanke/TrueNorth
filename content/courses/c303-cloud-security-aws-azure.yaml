@@ -6,9 +6,10 @@ course_code: C303
 title: Cloud Security (AWS/Azure)
 version: '1.0'
 difficulty: intermediate
-duration_hours: 100
+duration_hours: 6
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
@@ -34,57 +35,88 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain the essential characteristics and service models of cloud computing.
-  - Apply the shared responsibility model to a given service.
-  - Identify where responsibility boundaries are commonly misunderstood.
+  - Classify each element of a described cloud service as a provider or a customer responsibility
+  - Identify the service model of a described cloud offering as IaaS, PaaS or SaaS and justify the choice
+  - Distinguish the boundary misunderstandings that most often leave cloud data exposed
   topics:
-  - Essential characteristics and deployment models.
-  - IaaS, PaaS and SaaS.
-  - Shared responsibility boundaries.
-  - Common misconceptions and gaps.
-  lab: 'Lab: For three services across IaaS, PaaS and SaaS, produce a responsibility matrix showing which
-    security controls belong to the provider and which to the customer.'
+  - Essential characteristics of cloud computing, from on-demand self-service to measured service.
+  - Service models IaaS, PaaS and SaaS and what each layer hands to the customer.
+  - The shared responsibility model and where the provider's duty ends.
+  - Customer-side duties that no service model transfers, including data and access configuration.
+  - Misreading the boundary as the cloud misconception behind most exposure incidents.
+  lab: >-
+    Lab: On the cloud-security range, build a responsibility matrix for the simulated services on
+    localstack01 and azure-mock01, deciding for each element whether the provider or the customer owns it.
+    Evidence: the names of the object-storage buckets, identity users and functions found on localstack01;
+    the tenant and secrets vault names found on azure-mock01; one matrix line per service naming the
+    provider-side elements and the customer-side elements. Pass: every service found appears in the matrix
+    with both sides of its boundary named; each customer-side element is marked "clearly the customer's"
+    or "commonly misunderstood" with a one-sentence reason; one real incident outcome of misreading the
+    boundary is written out.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab notes.
+    - hosts: [jump01, localstack01]
+      action: From jump01, list the object-storage buckets, identity users and functions configured on localstack01
+        and record every name found.
+    - hosts: [jump01, azure-mock01]
+      action: From jump01, query azure-mock01 for its simulated directory tenant and secrets vaults and record
+        every name found.
+    - hosts: [jump01]
+      action: For each recorded service, write one matrix line naming the elements the provider manages and the
+        elements the customer manages.
+    - hosts: [jump01]
+      action: Mark each customer-side element "clearly the customer's" or "commonly misunderstood" with one
+        sentence of reason, and write out one incident outcome of misreading the boundary.
   refs:
   - nist-sp-800-145
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'NIST SP 800-145 defines cloud computing by:'
+    - question: A team moves its customer database to a managed relational database service and stops applying
+        the engine's security updates. Under the shared responsibility model, applying those updates now
+        falls to whom?
       options:
-      - A) Vendor list
-      - B) Five essential characteristics, three service models and four deployment models
-      - C) Pricing model
-      - D) Security controls
-      answer: B
-    - question: 'Under IaaS, patching the guest operating system is the responsibility of:'
+      - A) Still the customer's duty, because the stored data belongs to the customer
+      - B) Nobody's duty, because a managed service needs no patching
+      - C) The provider's duty, because the engine is part of the managed service
+      - D) Shared, because each side patches the engine on alternating months
+      answer: C
+    - question: Which element of a cloud deployment stays the customer's responsibility in every service model,
+        from IaaS to SaaS?
       options:
-      - A) The provider
-      - B) The customer
-      - C) Shared equally
-      - D) The auditor
-      answer: B
-    - question: 'The most commonly misunderstood aspect of shared responsibility is:'
+      - A) Classifying the data and deciding who may reach it
+      - B) Patching the hypervisor that isolates the workloads
+      - C) Replacing failed disks in the provider's storage fleet
+      - D) Guarding the physical entrance to the data centre
+      answer: A
+    - question: A department's cloud invoice charges only for the storage and compute it actually consumed last
+        month. Which essential characteristic of cloud computing does the invoice demonstrate?
       options:
-      - A) Physical security
-      - B) That data protection and access configuration remain the customer's responsibility
-      - C) Network cabling
-      - D) Hypervisor patching
-      answer: B
-    - question: 'Rapid elasticity as an essential characteristic means resources can be:'
+      - A) On-demand self-service
+      - B) Broad network access
+      - C) Resource pooling
+      - D) Measured service
+      answer: D
+    - question: An application team rents virtual machines, installs its own operating system and hardens it.
+        Which service model describes this arrangement?
       options:
-      - A) Purchased annually
-      - B) Provisioned and released quickly to match demand
-      - C) Shared between tenants
-      - D) Measured precisely
+      - A) SaaS, because the team runs an application on it
+      - B) IaaS, because the provider manages only the hardware and virtualisation
+      - C) PaaS, because the team manages the platform underneath
+      - D) On-premises, because the team hardens the operating system and the hardware itself
       answer: B
-    - question: 'In SaaS, the customer typically retains responsibility for:'
+    - question: A security review finds a SaaS collaboration suite readable by anyone on the internet through a
+        sharing setting one user changed. Which side owns that sharing setting?
       options:
-      - A) Application code
-      - B) Identity, access configuration and their own data
-      - C) Infrastructure patching
-      - D) Physical security
-      answer: B
+      - A) The provider, because it operates the suite
+      - B) The provider, because sharing is a network control
+      - C) The customer, because access configuration and data handling stay with the customer
+      - D) Neither side, because using SaaS transfers every security duty to the provider entirely
+      answer: C
 - ordinal: 2
   title: Cloud Identity and Access Management
   content_type: reading
@@ -92,16 +124,41 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Design least-privilege cloud identity policies.
-  - Explain the risk of over-permissive roles and trust relationships.
-  - Secure credentials and workload identity.
+  - Rewrite an over-permissive cloud identity policy to least privilege and state what the workload still needs
+  - Distinguish workload identity from long-lived static keys and select the safer one for a given service
+  - Classify the findings of a permission audit by risk and name the grant that widens a compromise most
   topics:
-  - Cloud IAM policy structure.
-  - Roles, trust policies and assumption.
-  - Workload identity versus static keys.
-  - Permission analysis and reduction.
-  lab: 'Lab: Audit a set of cloud IAM policies for over-permissive grants and unused permissions, then
-    rewrite the two worst policies to least privilege and prove the workload still functions.'
+  - 'Identity policy structure: principals, actions, resources and conditions.'
+  - Roles, trust policies and who may assume them.
+  - Workload identity and short-lived credentials in place of static keys.
+  - Reading a permission set for grants the workload never uses.
+  - Over-permissive roles as the path from one workload to the whole account.
+  lab: >-
+    Lab: On localstack01, audit the identity users' policies for grants they never use and rewrite the
+    worst policy to least privilege without breaking its deployment task. Evidence: each user with every
+    action its policy allows; for the deployment user, each granted action its task does not need; the
+    rewritten policy text; the result of rerunning the deployment task after the change. Pass: every
+    grant is marked "needed", "unused" or "over-broad"; the one grant that would let an attacker change
+    identities account-wide is named; the rewritten policy keeps every action the deployment task used;
+    the rerun result is recorded as success or failure with its error output.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab notes.
+    - hosts: [jump01, localstack01]
+      action: From jump01, list the identity users and their attached policies on localstack01 and record each
+        user with every action its policy allows.
+    - hosts: [jump01, localstack01]
+      action: For the deployment user on localstack01, compare the actions its policy grants with the actions its
+        deployment task needs and record each granted-but-unneeded action.
+    - hosts: [jump01, localstack01]
+      action: From jump01, replace the worst policy with the least set of actions the deployment task needs, run
+        the task again and record whether it succeeds, with its error output if it fails.
+    - hosts: [jump01]
+      action: Mark each recorded grant "needed", "unused" or "over-broad", name the grant that widens a
+        compromise account-wide, and judge from the rerun result whether the rewrite kept every action the
+        task used.
   refs:
   - nist-sp-800-63-4
   - nist-sp-800-207
@@ -109,41 +166,46 @@ modules:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Long-lived static access keys are risky primarily because they:'
+    - question: A build server holds a long-lived access key in a pipeline variable. What is the main risk of
+        this arrangement?
       options:
-      - A) Expire
-      - B) Can be leaked and reused indefinitely until manually revoked
-      - C) Are slow
-      - D) Cannot be scoped
-      answer: B
-    - question: 'A wildcard permission granting all actions on all resources is:'
+      - A) One reader of the variable can act as that identity until the key is revoked
+      - B) The key expires during long builds and breaks the pipeline
+      - C) The key can sign only read-only requests
+      - D) The provider deletes the key without warning at the next monthly billing review
+      answer: A
+    - question: A role's trust policy names every principal as trusted and sets no condition on assumption.
+        What does this design allow?
       options:
-      - A) A useful default
-      - B) A severe over-permission that should be scoped down
-      - C) Required for automation
-      - D) Read-only
-      answer: B
-    - question: 'Workload identity is preferable to static keys because credentials are:'
+      - A) Only principals inside the same account may assume the role after signing in
+      - B) Nothing; the wildcard makes the policy invalid
+      - C) Assumption only from the corporate network range
+      - D) Any principal anywhere to assume the role and inherit its permissions
+      answer: D
+    - question: A nightly job copies backup files to one object-storage location and does nothing else. Which
+        permission set fits this job best?
       options:
-      - A) Longer
-      - B) Short-lived and issued automatically to the workload
-      - C) Shared
-      - D) Stored in code
+      - A) Full administrator access, so the job never fails
+      - B) Write and list on the single location the job fills
+      - C) Read access to every storage location in the account
+      - D) Permission to create and remove identity users
       answer: B
-    - question: 'An overly permissive role trust policy allows:'
+    - question: A service calls the cloud interface all day. Why does workload identity beat a static key for
+        it?
       options:
-      - A) Faster assumption
-      - B) Unintended principals to assume the role and inherit its permissions
-      - C) Better logging
-      - D) Cheaper operation
-      answer: B
-    - question: 'Reviewing unused permissions is valuable because:'
+      - A) It removes the need for any permission check on the calls that the service makes
+      - B) It makes each call to the cloud interface return noticeably faster
+      - C) It issues short-lived credentials to the workload automatically
+      - D) It keeps the service and everything it does out of the audit logs
+      answer: C
+    - question: A permission audit shows a deployment identity granted fifty actions but observed using four.
+        Why is the difference between the two numbers a finding?
       options:
-      - A) It reduces cost
-      - B) Permissions granted but never used represent unnecessary risk
-      - C) It speeds API calls
-      - D) Policies expire
-      answer: B
+      - A) Unused grants are risk the workload never needs, so its compromise reaches further
+      - B) The audit tool has probably miscounted the actions
+      - C) Unused permissions raise the storage bill
+      - D) The four observed actions are certainly the wrong ones, and the other forty-six are safe
+      answer: A
 - ordinal: 3
   title: Cloud Network and Data Protection
   content_type: reading
@@ -151,16 +213,40 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Design network isolation in a cloud environment.
-  - Protect data at rest and in transit using cloud services.
-  - Prevent inadvertent public exposure of resources.
+  - Design subnet and filter rules that keep a database tier unreachable from the internet in a given layout
+  - Select encryption at rest and key management for a stated data protection need
+  - Detect publicly exposed storage in an account inventory and propose the fix that keeps intended access
   topics:
-  - Virtual networks, subnets and security groups.
-  - Encryption at rest and key management.
-  - Public exposure and misconfiguration.
-  - Private connectivity patterns.
-  lab: 'Lab: Identify every publicly reachable resource in a lab cloud account, determine which are unintended,
-    and remediate them without breaking the intended access paths.'
+  - Virtual networks, subnets and stateful filter groups.
+  - Encryption at rest, in transit and with customer-managed keys.
+  - Key management duties when the customer holds the key.
+  - Public exposure of storage and snapshots as a misconfiguration class.
+  - Private connectivity between the company network and the cloud account.
+  lab: >-
+    Lab: On the cloud-security range, find which object-storage locations on localstack01 are readable
+    by anyone on the internet and close the ones the stated policy forbids without breaking the intended
+    use. Evidence: every bucket name on localstack01 with who can read and write it; each bucket marked
+    "in policy" or "exposed" against a policy that allows only the public website images bucket to be
+    public; the change applied to each exposed bucket and the result of retrying its intended use. Pass:
+    every bucket is listed with its access setting; each is marked "in policy" or "exposed" with a
+    one-sentence reason; the intended use of each changed bucket is retried and the result recorded.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab notes.
+    - hosts: [jump01, localstack01]
+      action: From jump01, list every object-storage bucket on localstack01 with its access settings and record
+        who can read and write each one.
+    - hosts: [jump01, localstack01]
+      action: From jump01, restrict every publicly readable bucket other than the website image bucket so only
+        its intended readers keep access, and record the setting change made.
+    - hosts: [jump01, localstack01]
+      action: From jump01, retry each changed bucket's intended use once and record whether it still works, with
+        the error shown if it does not.
+    - hosts: [jump01]
+      action: Mark each recorded bucket "in policy" or "exposed" as it stood before the change, against the rule
+        that only the website image bucket may be public, with one sentence of reason for each.
   refs:
   - nist-sp-800-207
   - nist-sp-800-57pt1r5
@@ -168,41 +254,46 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'The most common cause of cloud data exposure is:'
+    - question: An auditor finds an object-storage bucket of payroll extracts that anyone on the internet can
+        list. What most likely caused this?
       options:
-      - A) Provider breach
-      - B) Customer misconfiguration such as overly public storage access
-      - C) Weak encryption
-      - D) Network interception
-      answer: B
-    - question: 'Customer-managed encryption keys provide:'
+      - A) The provider's storage service failed
+      - B) An attacker defeated the encryption at rest
+      - C) A customer left the bucket's access policy open to everyone
+      - D) The transport encryption was quietly downgraded during the connection
+      answer: C
+    - question: What does a customer-managed encryption key give the customer that a provider-managed key does
+        not?
       options:
-      - A) Stronger algorithms
-      - B) Control over key lifecycle and the ability to revoke access to data
-      - C) Faster encryption
-      - D) Free storage
-      answer: B
-    - question: 'Security groups in a cloud virtual network act as:'
+      - A) The ability to cut off data access by disabling the key
+      - B) A stronger encryption algorithm than the provider offers
+      - C) A lower price on stored data
+      - D) Freedom from handling any key material
+      answer: A
+    - question: In a cloud virtual network, what does a stateful filter group do to an inbound packet that no
+        rule allows?
       options:
-      - A) Routing tables
-      - B) Stateful filters controlling traffic to and from resources
-      - C) Load balancers
-      - D) Identity policies
-      answer: B
-    - question: 'Private connectivity to a cloud service avoids:'
+      - A) Routes it to the internet gateway
+      - B) Logs it and delivers it anyway
+      - C) Delivers it and flags the packet for later review
+      - D) Drops it, because the group denies by default
+      answer: D
+    - question: A database server must stay reachable from the application tier but never from the internet.
+        Which design achieves this?
       options:
-      - A) All cost
-      - B) Traversing the public internet for that traffic
-      - C) Authentication
-      - D) Encryption requirements
+      - A) A public address on the database protected by a long password
+      - B) The database in a private subnet whose filter group allows only the application tier's traffic
+      - C) The database and the application placed together in one flat public subnet open to the internet
+      - D) Encryption switched on for the database volume
       answer: B
-    - question: 'Encryption at rest protects primarily against:'
+    - question: A company connects its office network to its cloud account over private connectivity. What does
+        this improve?
       options:
-      - A) A compromised application identity
-      - B) Access to the underlying storage media or snapshots
-      - C) Misconfigured permissions
-      - D) Network sniffing
-      answer: B
+      - A) It removes the need for identity checks on that path
+      - B) It replaces the need for encryption in transit
+      - C) It keeps that traffic off the public internet
+      - D) It makes the connection free of charge
+      answer: C
 - ordinal: 4
   title: Container and Serverless Security
   content_type: reading
@@ -210,57 +301,87 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain container isolation and its limitations.
-  - Secure the container image supply chain.
-  - Describe serverless-specific security considerations.
+  - Explain why a container shares the host kernel and what that costs compared with a virtual machine
+  - Trace a container image to its registry and base image and judge whether its provenance can be trusted
+  - Harden a container or serverless runtime by naming the privilege it holds that its function does not need
   topics:
-  - Container isolation and shared kernel risk.
-  - Image provenance, scanning and registries.
-  - Runtime configuration and privilege.
-  - Serverless execution and permissions.
-  lab: 'Lab: Scan a container image for vulnerabilities and misconfigurations, remediate the two highest-severity
-    findings, and rebuild demonstrating a reduced attack surface.'
+  - Namespaces, resource limits and the shared kernel of a container.
+  - Image layers, base images and registry provenance.
+  - Image and dependency scanning before deployment.
+  - 'Runtime privilege: root containers, privileged mode and host mounts.'
+  - Serverless functions and the permission scope of the execution role.
+  lab: >-
+    Lab: On the cloud-security range, inspect the running cluster and its registry for images and runtime
+    settings that hold more privilege or weaker provenance than their function needs, and propose the
+    hardening for each. Evidence: whether registry01 allows anonymous pulls and which images it publishes;
+    each pod in the cluster that runs as root, in privileged mode or with a host mount; for one such pod, a
+    written statement of what a containment failure on it could reach; one hardening change per finding.
+    Pass: the registry's anonymous-pull setting is recorded as open or closed; every pod holding excess
+    privilege is listed with the setting named; each hardening change states what it removes and what
+    legitimate work it might obstruct.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab notes.
+    - hosts: [jump01, registry01]
+      action: From jump01, check registry01 without signing in, and record whether it allows anonymous pulls and
+        which images it publishes.
+    - hosts: [jump01, k3s-master]
+      action: From jump01, list the pods in the cluster through k3s-master and record each pod that runs as root,
+        in privileged mode or with a host mount.
+    - hosts: [jump01]
+      action: For the pod with the widest privilege, write what a containment failure on it could reach that an
+        ordinary container could not.
+    - hosts: [jump01]
+      action: Propose one hardening change for each finding, and record what legitimate work each change might
+        obstruct.
   refs:
   - nist-sp-800-190
   quiz:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Containers provide weaker isolation than virtual machines because they:'
+    - question: A penetration test shows that a flaw in one container reached the node itself, which a flaw in
+        a virtual machine could not. What explains the difference?
       options:
-      - A) Use more memory
-      - B) Share the host kernel
-      - C) Cannot be networked
-      - D) Lack namespaces
-      answer: B
-    - question: 'Running a container as root inside the container is risky because:'
+      - A) Containers run on much slower hardware than the equivalent virtual machines do
+      - B) Virtual machines cannot be connected to a network
+      - C) Containers produce no runtime logs
+      - D) Every container shares the host's kernel, so a kernel escape reaches the host
+      answer: D
+    - question: A team builds every service from an unverified base image pulled by tag from a public registry.
+        What is the supply chain risk of this habit?
       options:
-      - A) It is slower
-      - B) It increases the impact of a container escape
-      - C) It prevents logging
-      - D) It breaks networking
-      answer: B
-    - question: 'Image provenance matters because an unverified base image may:'
+      - A) One poisoned or vulnerable base image is inherited by every service built on it
+      - B) The images fail to start on the team's own cluster hardware in the data centre overnight
+      - C) The public registry charges for each pull
+      - D) The scanner refuses to scan public images
+      answer: A
+    - question: A debug pod is granted privileged mode and the node's process namespace. What does this change
+        about a compromise of that pod?
       options:
-      - A) Be larger
-      - B) Contain backdoors or vulnerable components inherited by every build
-      - C) Build slowly
-      - D) Lack documentation
-      answer: B
-    - question: 'Serverless functions require careful permission scoping because:'
+      - A) Nothing, because pods are isolated from the node by default
+      - B) Only the pod's own files are at risk
+      - C) Code breaking out of the pod can act on the node itself
+      - D) The pod can no longer write its logs
+      answer: C
+    - question: A serverless function's execution role can read every object in the account's storage. Why is
+        this a finding?
       options:
-      - A) They run longer
-      - B) An over-permissioned function is a ready path to broader cloud access
-      - C) They cannot be logged
-      - D) They share memory
+      - A) Functions cannot use execution roles at all
+      - B) A flaw in the function hands an attacker every object, not just the function's data
+      - C) Execution roles slow the function's start time
+      - D) Object storage cannot be encrypted while an execution role holds read access to the bucket
       answer: B
-    - question: 'Scanning images only at build time misses:'
+    - question: An image passed its build-time scan and still runs in the cluster three months later. Why can
+        the running image still carry risk?
       options:
-      - A) Base image size
-      - B) Vulnerabilities disclosed after the image was built but still running
-      - C) Configuration errors
-      - D) Licence issues
-      answer: B
+      - A) Vulnerabilities disclosed since the build were never part of that scan
+      - B) An image silently changes its contents by itself after being deployed to the cluster
+      - C) Clusters rebuild every image each night
+      - D) Scanners cannot read the layers of an image
+      answer: A
 - ordinal: 5
   title: Cloud Logging, Monitoring and Detection
   content_type: reading
@@ -268,16 +389,41 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Enable and protect cloud audit logging.
-  - Detect suspicious control plane activity.
-  - Design monitoring appropriate to cloud-scale change.
+  - Configure control plane audit logging whose storage an account administrator cannot alter or empty
+  - Classify events in a control plane log sample as routine change or suspicious activity with a reason
+  - Select detections that survive cloud-scale change by keying on identity and behaviour, not hostnames
   topics:
-  - Control plane audit logging.
-  - Log protection and tamper resistance.
-  - Cloud detection use cases.
-  - Monitoring dynamic infrastructure.
-  lab: 'Lab: Configure audit logging with tamper protection in a lab account, then generate and detect
-    three suspicious control plane actions.'
+  - Control plane audit logs and what they record about configuration change.
+  - Log storage that resists deletion and modification.
+  - Disabling or pausing logging as an evasion step worth its own alert.
+  - Detection keyed on identity, behaviour and anomaly rather than fixed addresses.
+  - Coverage gaps across regions and services in cloud monitoring.
+  lab: >-
+    Lab: On the cloud-security range, verify that control plane changes on localstack01 reach a log
+    destination an administrator cannot alter, then classify a supplied log sample line by line. Evidence:
+    where localstack01 delivers its audit logs and what each entry records; the audit entry for one
+    harmless change, with its identity, time and action; the destination marked "tamper-resistant" or
+    "alterable by an account administrator" with the reason; each sample line marked "routine" or
+    "suspicious" with a one-sentence reason. Pass: the destination and its fields are recorded exactly;
+    the change appears in the log with its identity; the marking names what an administrator could still
+    do; every sample line carries a classification and a reason.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab notes.
+    - hosts: [jump01, localstack01]
+      action: From jump01, find where localstack01 delivers its control plane audit logs and record the
+        destination and the fields each entry carries.
+    - hosts: [jump01, localstack01]
+      action: From jump01, make one harmless configuration change on localstack01, then find its audit entry and
+        record the identity, time and action it shows.
+    - hosts: [jump01]
+      action: Mark the log destination "tamper-resistant" or "alterable by an account administrator", and record
+        what an administrator could still do to it.
+    - hosts: [jump01, cloud-siem01]
+      action: From jump01, open the supplied log sample in the search interface on cloud-siem01 and mark each
+        line "routine" or "suspicious" with one sentence of reason.
   refs:
   - nist-sp-800-92
   - mitre-attack
@@ -285,40 +431,45 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'Cloud audit logs should be written to storage that is:'
+    - question: An attacker who reaches administrator rights in a cloud account wants the trail gone. Where
+        should audit logs live so this fails?
       options:
-      - A) In the same account with full admin access
-      - B) Protected against deletion and modification, ideally in a separate account
-      - C) Public
-      - D) Local to each resource
+      - A) On the same account's largest disk
+      - B) In a separate write-once location the account's administrators cannot empty
+      - C) Local to each resource that produced them
+      - D) In a public bucket for easy sharing with the whole audit team and reviewers
       answer: B
-    - question: 'Disabling logging in a cloud account is significant because it:'
+    - question: An intruder about to act in a cloud account first switches the audit logging off. What should
+        the monitoring design do about this move?
       options:
-      - A) Saves cost only
-      - B) Is a recognised evasion technique and should itself alert
-      - C) Improves performance
-      - D) Is routine
-      answer: B
-    - question: 'Monitoring dynamic cloud infrastructure requires:'
+      - A) Accept the visibility gap until logging is switched back on again
+      - B) Treat it as routine maintenance noise
+      - C) Alert on the logging change itself, as a recognised evasion step
+      - D) Wait for the next scheduled review to mention it
+      answer: C
+    - question: Workloads in this environment appear and disappear hourly, so alerts pinned to fixed hostnames
+        keep misfiring. What should the detection key on instead?
       options:
-      - A) Static asset lists
-      - B) Detection tied to identity and behaviour rather than fixed hostnames
-      - C) Fewer log sources
-      - D) Manual inventory
-      answer: B
-    - question: 'A sudden creation of resources in an unused region may indicate:'
+      - A) Identities and behaviour, such as which principal acted from where
+      - B) The data centre rack of each workload
+      - C) A weekly manually maintained inventory list of the whole environment
+      - D) The hardware address of each workload
+      answer: A
+    - question: A monitor shows compute instances starting in a region the organisation never uses, minutes
+        after an unusual sign-in. What is the reasonable reading?
       options:
-      - A) Normal scaling
-      - B) Compromise, for example cryptomining or staging
-      - C) A billing error
-      - D) A provider migration
-      answer: B
-    - question: 'Control plane monitoring is essential because it captures:'
+      - A) A provider data centre migration carried out the night before
+      - B) A billing system error
+      - C) Ordinary autoscaling to demand
+      - D) Possible compromise, such as staging or resource abuse
+      answer: D
+    - question: What does control plane audit logging capture that the host logs of individual instances do
+        not?
       options:
-      - A) Application errors
-      - B) Who changed the environment's configuration and identity model
-      - C) Network payloads
-      - D) Container logs
+      - A) Application error messages and their full stack traces from the application code
+      - B) Who changed the account's configuration and identity model anywhere
+      - C) The contents of network packets
+      - D) Container console output from the individual workloads
       answer: B
 - ordinal: 6
   title: Cloud Governance and Posture Management
@@ -327,16 +478,41 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Establish guardrails that prevent insecure configuration.
-  - Assess posture continuously against a baseline.
-  - Balance developer autonomy with control.
+  - Design preventive guardrails that block named insecure configurations and state what each obstructs
+  - Assess a cloud environment's posture against a baseline and rank the drift by risk
+  - Choose where a guardrail belongs in the delivery pipeline and which exception path serves its friction
   topics:
   - Preventive guardrails versus detective controls.
-  - Landing zones and account structure.
-  - Posture management and drift.
-  - Autonomy, friction and adoption.
-  lab: 'Lab: Design a set of five preventive guardrails for a cloud environment, state what each blocks,
-    and identify the legitimate use case each might obstruct and how you would handle it.'
+  - Landing zones, account structure and blast-radius boundaries.
+  - Continuous posture assessment and configuration drift.
+  - Guardrail friction, exceptions and the workarounds that weaken controls.
+  - Policy as code evaluated in the delivery pipeline.
+  lab: >-
+    Lab: On the cloud-security range, run a posture assessment of the simulated AWS and Azure
+    environments, rank what it finds, and draft the guardrail that would have prevented the two worst
+    failures. Evidence: each failing check on localstack01 and on azure-mock01 with its severity; the
+    failures ranked by risk with each marked for a preventive guardrail, a detective control or a manual
+    review; for the two worst, the drafted guardrail rule, what it blocks and the legitimate use it might
+    obstruct. Pass: every failing check is recorded with its severity; the ranking names a response type
+    for each failure; each drafted guardrail names what it blocks and an exception path with a review
+    date.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab notes.
+    - hosts: [jump01, prowler01, localstack01]
+      action: From jump01, run the posture assessment tool on prowler01 against localstack01 and record each
+        failing check with its severity.
+    - hosts: [jump01, prowler01, azure-mock01]
+      action: From jump01, run the same assessment against azure-mock01 and record each failing check with its
+        severity.
+    - hosts: [jump01]
+      action: Rank the recorded failures by risk, and mark each for a preventive guardrail, a detective control
+        or a manual review.
+    - hosts: [jump01]
+      action: For the two worst failures, draft the guardrail rule that blocks the configuration, state what
+        legitimate use it might obstruct, and record the exception path with a review date.
   refs:
   - nist-sp-800-207
   - cis-benchmarks
@@ -345,38 +521,42 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'A preventive guardrail differs from a detective control because it:'
+    - question: A deployment policy rejects any storage bucket that allows public access, at deployment time.
+        What kind of control is this?
       options:
-      - A) Alerts faster
-      - B) Stops the insecure configuration from being created at all
-      - C) Costs less
-      - D) Requires no policy
-      answer: B
-    - question: 'Separating workloads into distinct cloud accounts primarily provides:'
+      - A) Detective, because it watches configuration for violations
+      - B) Corrective, because it repairs settings that already exist
+      - C) Preventive, because the insecure configuration is never created
+      - D) Administrative, because it is only a written rule on paper so far
+      answer: C
+    - question: An organisation splits its workloads into separate cloud accounts. What does this mainly buy
+        the organisation?
       options:
-      - A) Cost savings
-      - B) A strong blast-radius and permission boundary
-      - C) Faster networking
-      - D) Simpler billing only
-      answer: B
-    - question: 'Guardrails that block common legitimate patterns typically result in:'
+      - A) A blast-radius boundary, so one account's compromise stops at its edge
+      - B) A discount on the monthly provider bill for each of the smaller accounts
+      - C) Faster network paths between the workloads
+      - D) An end to the customer's patching duties
+      answer: A
+    - question: A guardrail forbids unencrypted databases, and a team reports that its vendor appliance cannot
+        encrypt. What is the healthy response?
       options:
-      - A) Better security
-      - B) Teams seeking exceptions or workarounds that undermine the control
-      - C) Faster delivery
-      - D) Lower cost
-      answer: B
-    - question: 'Continuous posture assessment is necessary because cloud environments:'
+      - A) Remove the guardrail so every team benefits
+      - B) Decline the request without giving the team any written reason for the decision
+      - C) Move the team off the cloud platform
+      - D) A time-bound exception with a compensating control and a review date
+      answer: D
+    - question: Why is a point-in-time configuration audit not enough assurance for a cloud environment?
       options:
-      - A) Are static
-      - B) Change constantly, so point-in-time assessment goes stale immediately
-      - C) Lack APIs
-      - D) Are provider managed
+      - A) Audit tools cannot read cloud configuration
+      - B) The environment changes continuously, so the audit's picture is stale at once
+      - C) Providers forbid scheduled audits of their platforms by customer teams and staff
+      - D) Audits cover only the physical data centre layer
       answer: B
-    - question: 'The most effective time to prevent a cloud misconfiguration is:'
+    - question: A team's infrastructure definitions are checked as code before every deployment. Why does this
+        beat finding the same error in a monthly audit?
       options:
-      - A) During audit
-      - B) At deployment, through policy-as-code in the pipeline
-      - C) After detection
-      - D) At renewal
-      answer: B
+      - A) The error never reaches the environment, so nothing insecure ever runs
+      - B) Code review removes the need for any permission checks on the deployment
+      - C) Audits cannot detect unencrypted storage
+      - D) Pipelines record more detail than audits do
+      answer: A

@@ -9,6 +9,7 @@ difficulty: intermediate
 duration_hours: 100
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
@@ -33,56 +34,88 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Apply an ethical framework to a cyber operations dilemma.
-  - Identify conflicts between capability, legality and ethics.
-  - Explain professional obligations of a cyber operator.
+  - Distinguish capability, authorisation and ethical permission for each action in a written operations scenario
+  - Apply a duty-of-care test to an operation that reaches people beyond the stated scope
+  - Write an escalation note for a conflict between what a task achieves and what it was authorised to do
   topics:
-  - Ethical frameworks and duty of care.
-  - Capability versus permission.
-  - Professional codes and obligations.
-  - Conflicts of interest and escalation.
-  lab: 'Lab: Analyse three dilemmas in which the technically possible, the legally permitted and the ethically
-    defensible diverge, and justify a course of action for each.'
+  - Capability, permission and authorisation as three separate questions about one action.
+  - Duty of care to third parties affected by operations on shared systems.
+  - Professional codes of conduct and the obligation to escalate concerns.
+  - Conflicts of interest, declaring them and why declaration protects the mission.
+  - Choosing the defensible course when guidance is silent, and recording it.
+  lab: >-
+    Lab: On the medium-enterprise range, find which services the corporate network can actually reach and
+    judge each against the authorisation memo your instructor supplies. Evidence: the memo's authorised
+    scope in your own words; the result of the connection test from ws01 to each of dc01, fs01, web01 and
+    mail01; the fw01 rule that carries each allowed connection. Pass: every tested service listed with its
+    result; each marked inside scope, outside scope or not covered by the memo with a one-sentence reason;
+    an escalation note drafted for the first finding marked outside scope.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [ws01]
+      action: Log on to ws01 with the account your instructor assigned and record the memo's authorised
+        scope in your own words.
+    - hosts: [ws01, dc01]
+      action: From ws01, test whether the directory service on the domain controller dc01 answers, and
+        record the result in your lab notes.
+    - hosts: [ws01, fs01]
+      action: From ws01, test whether the file service on the file server fs01 answers, and record the
+        result.
+    - hosts: [ws01, web01, mail01]
+      action: From ws01, test the web service on web01 and the mail service on mail01, recording which
+        of the two answers.
+    - hosts: [fw01]
+      action: List the rules on fw01 and record the rule that carries traffic from the corporate network
+        to each tested service.
+    - hosts: [ws01]
+      action: Mark each tested service inside scope, outside scope or not covered, with one sentence of
+        reason, and draft the escalation note.
   refs:
   - nist-cswp-29
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'The fact that an action is technically possible means:'
+    - question: A technician finds that a shared management account opens payroll files nobody asked
+        them to review. Reading the files is technically possible. In ethics terms, what is it?
       options:
-      - A) It is permitted
-      - B) Nothing about whether it is lawful or ethical
-      - C) It should be tested
-      - D) It is in scope
+      - A) Authorised, because the account opens the files
+      - B) A capability held without an authorisation to use it
+      - C) Unlawful in every jurisdiction, with no exception anywhere
+      - D) Ethically defensible because the data never leaves the building
       answer: B
-    - question: 'A professional who discovers they lack authorisation mid-task should:'
+    - question: A planned operation on a company network will briefly interrupt a service that customers
+        outside the company also rely on. Whose interests must the duty-of-care test weigh?
       options:
-      - A) Complete the task quickly
-      - B) Stop and escalate before proceeding
-      - C) Document and continue
-      - D) Seek forgiveness afterwards
-      answer: B
-    - question: 'Duty of care in cyber operations extends to:'
+      - A) The company's contractual and commercial interests only
+      - B) The operator's own career and reputation interests
+      - C) The customers and third parties the interruption affects
+      - D) The vendor whose service the operation will interrupt
+      answer: C
+    - question: An operator is asked to assess a network built by their own consulting partner. Which
+        action best handles this conflict of interest?
       options:
-      - A) The employer only
-      - B) Third parties and individuals affected by the operator's actions
-      - C) Colleagues only
-      - D) The vendor
-      answer: B
-    - question: 'Discovering a vulnerability outside authorised scope obliges the professional to:'
+      - A) Declaring the relationship to the decision-maker before accepting the task
+      - B) Declining the task and saying nothing about the reason
+      - C) Accepting quietly, because the assessment criteria are objective
+      - D) Completing the assessment first and disclosing it in the final report
+      answer: A
+    - question: During a task, an operator realises the work has drifted beyond the authorised scope.
+        What does the professional obligation to escalate require here?
       options:
-      - A) Exploit it to prove impact
-      - B) Report it through an appropriate channel without exploiting it
-      - C) Ignore it
-      - D) Publish it
-      answer: B
-    - question: 'A conflict of interest should be:'
+      - A) Continue, because stopping mid-task creates more risk than it removes
+      - B) Finish the current step, then quietly return to scope
+      - C) Record the drift in a personal notebook and move on
+      - D) Stop and escalate to the person who authorised the work
+      answer: D
+    - question: A junior operator argues that a widely known technique must be fine to use in production
+        because everyone has heard of it. Which distinction does this argument miss?
       options:
-      - A) Managed privately
-      - B) Declared to the appropriate authority so it can be managed
-      - C) Ignored if immaterial
-      - D) Resolved by resigning
+      - A) Publicly known techniques are always weaker than private ones
+      - B) Widespread knowledge of a capability says nothing about permission
+      - C) Production systems forbid every published testing technique equally
+      - D) Only vendor staff may deploy publicly disclosed testing techniques
       answer: B
 - ordinal: 2
   title: Legal Frameworks for Computer Misuse
@@ -91,57 +124,88 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Describe the general shape of computer misuse legislation.
-  - Explain why authorisation is the central legal concept.
-  - Identify the legal risk in common technical activities.
+  - Identify the factor that decides whether a described access to a computer system is lawful
+  - Classify common technical activities by legal risk and name the evidence of authorisation each requires
+  - Distinguish what dual-use tooling changes about an offence and what it leaves unchanged
   topics:
-  - Unauthorised access and modification offences.
-  - Authorisation as the pivotal concept.
-  - Tooling and dual-use considerations.
-  - Jurisdiction and cross-border issues.
-  lab: 'Lab: For five technical activities, identify what would make each lawful or unlawful, and state
-    precisely what evidence of authorisation would be required.'
+  - Unauthorised access and modification offences and how statutes define them.
+  - Authorisation as the pivotal concept, covering scope, currency and written evidence.
+  - Scanning, testing and research activities, and where their lawful basis comes from.
+  - Dual-use tooling, and why holding a tool rarely decides an offence.
+  - Jurisdiction and cross-border effects on one operation.
+  lab: >-
+    Lab: On the medium-enterprise range, map each access path the firewall allows between networks and
+    state what authorisation each path needs to be lawful. Evidence: each fw01 rule with its source
+    network, destination network and purpose; the result of the connection test from ws01 to fs01 and from
+    ws01 to web01; for each path, the kind of authorisation record that would make it lawful. Pass: every
+    fw01 rule listed; each path marked lawful on standing authorisation or lawful only with a tasking
+    record; a one-paragraph authorisation statement drafted for the riskiest path.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [fw01]
+      action: List the rules on fw01 in order and record each rule's source network, destination network
+        and stated purpose.
+    - hosts: [ws01, fs01]
+      action: From ws01, try to open the shared file service on fs01 and record whether the connection
+        succeeds or is refused.
+    - hosts: [ws01, web01]
+      action: From ws01, try to reach the web service on web01 and record the same result for comparison.
+    - hosts: [fw01]
+      action: Compare the listed rules with the firewall's implicit default deny and record which traffic
+        fw01 blocks without any rule.
+    - hosts: [ws01]
+      action: For each access path, write whether standing authorisation or a separate tasking record
+        would make it lawful, and who must hold that record.
+    - hosts: [ws01]
+      action: Draft a one-paragraph authorisation statement for the riskiest path, naming the networks,
+        the services and the time window it covers.
   refs:
   - nist-sp-800-115
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'The central concept in most computer misuse legislation is:'
+    - question: A contractor uses valid credentials to open a file share their contract never mentions;
+        the same contract authorises web-server work. What decides whether the file access is lawful?
       options:
-      - A) Damage caused
-      - B) Whether access was authorised
-      - C) Tool sophistication
-      - D) Data value
-      answer: B
-    - question: 'Scanning a third-party system without permission is:'
+      - A) The credentials worked, which proves permission
+      - B) The share being readable from the contractor's workstation
+      - C) The scope of the authorisation the contract grants
+      - D) The value of the files the share holds
+      answer: C
+    - question: A student scans a lab system they are enrolled to use, then repeats the same scan against
+        a company on the internet with no such enrolment. Which statement is correct?
       options:
-      - A) Always lawful
-      - B) Potentially unlawful depending on jurisdiction and intent
-      - C) Always unlawful everywhere
-      - D) A civil matter only
-      answer: B
-    - question: 'Dual-use tooling refers to software that:'
+      - A) The lab scan rests on enrolment; the company scan has none
+      - B) Both scans are lawful, because scanning a network reads no files
+      - C) Both scans are unlawful everywhere, because scanning is always an offence
+      - D) The company scan is lawful, because the result was never published
+      answer: A
+    - question: An investigation finds an offence was committed with an ordinary diagnostic tool that
+        administrators use daily. How does the tool's dual-use nature affect the legal analysis?
       options:
-      - A) Runs on two platforms
-      - B) Has both legitimate and malicious applications
-      - C) Requires two licences
-      - D) Is open source
+      - A) It proves the user held administrator rights on that system
+      - B) It changes nothing; the same access rules decide the offence
+      - C) It transfers liability for the offence to the tool's author
+      - D) It makes the offence impossible for any prosecutor to charge
       answer: B
-    - question: 'Cross-border operations complicate legality because:'
+    - question: An operator in one country prepares tests against a server hosted in another country,
+        where the same conduct is treated differently. Which question must be resolved first?
       options:
-      - A) Latency increases
-      - B) Multiple jurisdictions with differing law may apply
-      - C) Encryption differs
-      - D) Time zones differ
-      answer: B
-    - question: 'Verbal authorisation for offensive testing is inadequate because:'
+      - A) The time zone difference between the operator's office and the server's
+      - B) The encryption strength used on the link between them
+      - C) The operator's own personal view of both countries' laws
+      - D) Which jurisdictions' law reaches the conduct, before any packet is sent
+      answer: D
+    - question: Six months after an engagement, the client disputes that overnight testing was ever
+        permitted. Which practice resolves the dispute?
       options:
-      - A) It is slower
-      - B) It cannot be evidenced if the authorisation is later disputed
-      - C) It is unlawful
-      - D) It lacks detail
-      answer: B
+      - A) The operator's own memory of the kickoff telephone call
+      - B) A support ticket written up only after the client disputed the work
+      - C) A signed authorisation record naming the systems and the time window
+      - D) The final invoice, which lists the systems that were tested
+      answer: C
 - ordinal: 3
   title: Data Protection and Privacy
   content_type: reading
@@ -149,16 +213,43 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain core data protection principles.
-  - Handle personal data lawfully during security work.
-  - Balance security monitoring against privacy expectations.
+  - Classify the fields in a collected log record as personal data or not personal data
+  - Apply data minimisation and purpose limitation to a proposed monitoring capability
+  - Select a proportionate monitoring scope for a stated security need and justify each exclusion
   topics:
-  - Data protection principles.
-  - Lawful basis and purpose limitation.
-  - Monitoring, proportionality and transparency.
-  - Data minimisation in security operations.
-  lab: 'Lab: Design a monitoring capability that meets a stated security need while minimising personal
-    data collection, and document the justification for each data element retained.'
+  - Personal data and the lawful basis for processing security data.
+  - Purpose limitation and why monitoring data may not be reused for performance management.
+  - Data minimisation in security operations, collecting what the stated purpose needs.
+  - Proportionality and transparency in employee monitoring.
+  - Retention limits and the liability that stored personal data carries.
+  lab: >-
+    Lab: On the medium-enterprise range, examine what the logging pipeline actually collects about people
+    and judge each element against data minimisation. Evidence: the list of hosts shipping logs to siem01;
+    three fields copied from one real log record that identify a person; each identified field marked
+    necessary for the stated security purpose or not. Pass: the log sources recorded exactly as siem01
+    shows them; every person-identifying field classified with a one-sentence reason; one minimisation
+    change proposed for each field marked not necessary.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account your instructor assigned and record the list of log
+        sources feeding the platform.
+    - hosts: [siem01]
+      action: Open the most recent record from one workstation source and one server source, recording
+        each record's timestamp and source host.
+    - hosts: [siem01, ws01]
+      action: In one record from ws01, copy three fields that identify a person and note what each field
+        reveals about them.
+    - hosts: [siem01, fw01]
+      action: Read the fw01 rule that ships logs to the management network and record which zones it
+        collects from.
+    - hosts: [siem01]
+      action: Mark each copied field necessary for intrusion detection or not necessary, with one sentence
+        of reason.
+    - hosts: [siem01]
+      action: Propose one minimisation change for every field marked not necessary and state a retention
+        limit for its source.
   refs:
   - nist-sp-800-92
   - nist-cswp-29
@@ -166,40 +257,46 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Data minimisation in security monitoring means collecting:'
+    - question: A monitoring team keeps full keystroke capture for every employee although its stated
+        purpose is detecting malware on servers. Which data protection principle does this violate most
+        directly?
       options:
-      - A) Everything available
-      - B) Only what is necessary for the stated security purpose
-      - C) Only metadata
-      - D) Nothing personal
+      - A) Integrity of the collected records
+      - B) Confidentiality of the malware signature files the team maintains internally
+      - C) Availability of the monitoring console
+      - D) Data minimisation, because the collection exceeds the stated purpose
+      answer: D
+    - question: A helpdesk manager asks the security team for the web proxy logs so they can measure how
+        hard each employee works. Which principle forbids the reuse?
+      options:
+      - A) Data minimisation, because the proxy logs are far too large
+      - B) Purpose limitation, because performance management is not the collection purpose
+      - C) Retention limits, because the logs are older than one year
+      - D) Transparency, because the employees were never told of the request
       answer: B
-    - question: 'Purpose limitation means data collected for security should:'
+    - question: A security need is detecting data theft through shared drives. Which monitoring scope is
+        proportionate to that need?
       options:
-      - A) Be reused freely
-      - B) Not be repurposed for unrelated uses such as performance management
-      - C) Be deleted immediately
-      - D) Be shared broadly
-      answer: B
-    - question: 'Employee monitoring is generally more defensible when it is:'
+      - A) Recording every keystroke on every workstation
+      - B) Recording all staff web browsing on every site without telling anyone
+      - C) Recording file-share access for the staff who handle sensitive data
+      - D) Recording nothing, because monitoring is never defensible
+      answer: C
+    - question: A firewall record holds a source address, a destination address, a port and a timestamp
+        tied to one named workstation. How should the record be classified?
       options:
-      - A) Covert
-      - B) Proportionate, necessary and transparently communicated
-      - C) Comprehensive
-      - D) Continuous
-      answer: B
-    - question: 'Excessive log retention creates risk because:'
+      - A) Personal data, because the address ties activity to one person's machine
+      - B) Personal data only if it also holds a full name
+      - C) Not personal data, because addresses are technical metadata with no person attached
+      - D) Not personal data until a court requests it
+      answer: A
+    - question: A team keeps authentication logs for ten years in case they prove useful, although its
+        investigations close within one year. What is the main problem with this retention?
       options:
-      - A) Storage costs rise only
-      - B) Retained personal data remains a liability and breach exposure
-      - C) Queries slow
-      - D) Compliance improves
-      answer: B
-    - question: 'A lawful basis is required to:'
-      options:
-      - A) Encrypt data
-      - B) Process personal data at all
-      - C) Delete data
-      - D) Anonymise data
+      - A) Old authentication logs cannot be read by the team's modern tools
+      - B) Stored personal data stays a breach liability after its purpose ends
+      - C) Ten years of logs cost more than the new sensors
+      - D) Long retention improves investigations that run beyond one year
       answer: B
 - ordinal: 4
   title: Disclosure and Handling of Vulnerabilities
@@ -208,16 +305,45 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain coordinated vulnerability disclosure.
-  - Balance public interest, vendor process and user risk.
-  - Handle a disclosure professionally.
+  - Sequence the stages of a coordinated vulnerability disclosure from first vendor contact to publication
+  - Write a vulnerability report that lets a vendor reproduce and fix a flaw without exposing its users
+  - Decide the disclosure path when a vendor is unresponsive, weighing user risk against process
   topics:
-  - Coordinated disclosure models.
-  - Disclosure timelines and negotiation.
-  - Researcher and vendor obligations.
-  - Handling an unresponsive vendor.
-  lab: 'Lab: Draft a disclosure plan for a discovered vulnerability including initial contact, timeline,
-    escalation path and the conditions under which you would publish.'
+  - Coordinated vulnerability disclosure and the roles of researcher and vendor.
+  - Disclosure timelines, negotiation and the interests each deadline protects.
+  - Writing a report with reproduction conditions, impact and scope but no exploit detail.
+  - Escalation through a coordinating body when a vendor is unresponsive.
+  - The legal boundary around testing systems the researcher does not own.
+  lab: >-
+    Lab: On the medium-enterprise range, inventory the software the DMZ presents to the corporate network
+    and draft a coordinated vulnerability disclosure for the one finding that matters most to users.
+    Evidence: the service and version banner presented by web01 and by mail01; the fw01 rule and ports
+    carrying each banner service from ws01; the service chosen as the finding, with the reason; the
+    drafted record with contact route, timeline, escalation path and publication conditions. Pass: both
+    banners recorded exactly as presented; the fw01 rule and ports recorded for each service; the drafted
+    record names a vendor contact route, a fix timeline and an escalation path; publication is conditional
+    on the timeline and the risk to users.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [ws01, web01]
+      action: From ws01, request the banner the web service on web01 presents and record the software name
+        and version it states.
+    - hosts: [ws01, mail01]
+      action: From ws01, connect to the mail service on mail01 and record the software name and version
+        its greeting states.
+    - hosts: [ws01, web01, mail01, fw01]
+      action: Using the fw01 rule list, record the rule that carries the corporate network to the DMZ and
+        its ports, and mark whether each banner service answers from ws01 through it.
+    - hosts: [ws01]
+      action: Choose the one of the two services whose public exposure makes a flaw most urgent for users
+        and record the reason.
+    - hosts: [ws01]
+      action: Draft the disclosure record for the chosen service, covering the vendor contact route, the
+        reproduction conditions, the fix timeline, the escalation path and the publication conditions.
+    - hosts: [ws01]
+      action: Mark each section of the drafted record safe to publish now or withheld until a fix ships,
+        with one sentence of reason.
   refs:
   - nist-sp-800-218
   - cwe-top-25
@@ -225,41 +351,44 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Coordinated vulnerability disclosure aims to:'
+    - question: A researcher reports a flaw to a vendor and agrees to wait 90 days before publishing
+        detail. Whose interest does the waiting period primarily protect?
       options:
-      - A) Maximise publicity
-      - B) Allow a fix to reach users before details become public
-      - C) Protect the vendor only
-      - D) Delay disclosure indefinitely
+      - A) The vendor's share price and its public image
+      - B) The users, who need a fix to exist before publication
+      - C) The researcher's right to public credit for the find
+      - D) The vendor's ability to keep the flaw secret without fixing it
       answer: B
-    - question: 'Full immediate public disclosure risks:'
+    - question: A vendor ignores two reports over 90 days and no fix exists. What is the researcher's
+        best next step?
       options:
-      - A) Nothing
-      - B) Users being exposed before any fix is available
-      - C) Vendor embarrassment only
-      - D) Slower patching
-      answer: B
-    - question: 'If a vendor is unresponsive, a researcher should:'
+      - A) Publishing full working details immediately to force a response from the vendor
+      - B) Selling the finding to recover the effort
+      - C) Dropping the finding because the vendor has decided
+      - D) Escalating through a coordinating body before any publication
+      answer: D
+    - question: Publishing working exploit detail before any fix exists primarily creates which risk?
       options:
-      - A) Publish immediately
-      - B) Escalate through a coordinating body before considering publication
-      - C) Sell the finding
-      - D) Abandon it
-      answer: B
-    - question: 'Testing a vulnerability against systems you do not own to confirm impact is:'
+      - A) Attackers reproducing the flaw on unpatched systems within hours
+      - B) The vendor losing its chance to thank the researcher publicly
+      - C) Users learning to patch their systems faster than usual
+      - D) Regulators fining the research group for the publication
+      answer: A
+    - question: To confirm a vulnerability's impact, a researcher tests it against a bank's live website
+        without permission. Which statement is correct?
       options:
-      - A) Necessary diligence
-      - B) Likely unlawful regardless of research intent
-      - C) Standard practice
-      - D) Permitted if reported
-      answer: B
-    - question: 'A disclosure timeline is negotiated to balance:'
+      - A) Lawful, because the test proves the impact the report needs
+      - B) Lawful, because the finding was disclosed responsibly afterwards
+      - C) Unlawful, because research intent is not authorisation
+      - D) Unlawful only if the test changed stored data
+      answer: C
+    - question: Which report line best helps a vendor fix a flaw quickly without arming an attacker?
       options:
-      - A) Cost and effort
-      - B) Time needed for a quality fix against ongoing user exposure
-      - C) Publicity and credit
-      - D) Legal risk only
-      answer: B
+      - A) The version and trigger conditions, with no working exploit
+      - B) A public blog post naming the flaw and the vendor's silence
+      - C) A vague note that the product has security problems
+      - D) A working attack script attached to the ticket for speed
+      answer: A
 - ordinal: 5
   title: Governance, Accountability and Oversight
   content_type: reading
@@ -267,16 +396,44 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain oversight mechanisms for cyber capabilities.
-  - Describe accountability for authorised operations.
-  - Identify the role of independent review.
+  - Map who authorises, who executes and who reviews a sensitive operation in a described oversight structure
+  - Identify the records an authorised operation must leave and what each record proves later
+  - Apply proportionality and necessity tests to a proposed capability and record the outcome
   topics:
-  - Oversight and authorisation structures.
-  - Accountability and record-keeping.
-  - Independent review and audit.
-  - Proportionality and necessity tests.
-  lab: 'Lab: Design an authorisation and oversight process for a sensitive cyber capability, specifying
-    who authorises, who reviews, what is recorded and how proportionality is assessed.'
+  - Authorisation structures deciding who may approve a sensitive capability, and in writing.
+  - Accountability for authorised operations and the limits of the operator's discretion.
+  - Record-keeping and what each record proves about lawful conduct.
+  - Independent review and audit as assurance outside the operating team.
+  - Proportionality and necessity tests applied to an intrusive capability.
+  lab: >-
+    Lab: On the medium-enterprise range, trace one management-network privilege to its authorising rule
+    and its audit record, then judge whether the accountability trail would survive review. Evidence: the
+    fw01 rule that lets the management network reach every other network; the fw01 rule that ships firewall
+    decisions to siem01; one siem01 record showing fw01 decided something, or the note that none exists.
+    Pass: both fw01 rules named with their source and destination; the siem01 record quoted with its
+    timestamp or its absence recorded; the trail judged complete or incomplete with a one-sentence reason
+    naming the missing record.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [fw01]
+      action: List the rules on fw01 and record the rule that lets the management network reach every
+        other network.
+    - hosts: [fw01]
+      action: Record the fw01 rule that ships firewall decisions to the logging platform, with its source,
+        destination and ports.
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account and find one record showing fw01 allowed or denied
+        traffic; quote its timestamp.
+    - hosts: [siem01, fw01]
+      action: Record whether the quoted record shows which rule made the decision, or only the addresses
+        and ports involved.
+    - hosts: [siem01]
+      action: Record whether any collected log source shows who was signed in to fw01 when the decision
+        happened.
+    - hosts: [siem01]
+      action: Judge the accountability trail complete or incomplete, naming the one record that would most
+        strengthen it.
   refs:
   - nist-sp-800-37r2
   - nist-cswp-29
@@ -284,40 +441,45 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'Accountability for an authorised operation rests with:'
+    - question: 'In a described oversight structure, a named decision-maker signs a written order for each
+        sensitive operation and the operator works inside that order. Who is accountable for the operation?'
       options:
-      - A) The operator alone
-      - B) The authorising decision-maker, with the operator accountable for execution within scope
-      - C) The tool vendor
-      - D) The auditor
+      - A) The operator alone, because only the operator acted
+      - B) The reviewers, who saw the signed plan and raised no objection
+      - C) The authorising decision-maker, with the operator accountable for execution
+      - D) The vendor of the tooling the operation used
+      answer: C
+    - question: 'An authorisation structure requires a written record for every approved sensitive operation.
+        What is the record for?'
+      options:
+      - A) It satisfies the storage quota that the audit team set last year
+      - B) It lets independent reviewers later show the operation stayed lawful
+      - C) It documents the operator''s skill for performance appraisal
+      - D) It warns the other teams away from the capability
       answer: B
-    - question: 'Record-keeping for sensitive operations exists primarily to:'
+    - question: 'To investigate one stolen laptop, a team proposes collecting the badge-swipe records of everyone
+        in the building. Judged against the proportionality and necessity tests, the plan fails because:'
       options:
-      - A) Assist attackers
-      - B) Enable oversight, review and demonstration of lawful conduct
-      - C) Satisfy storage policy
-      - D) Support billing
-      answer: B
-    - question: 'A proportionality test asks whether the action is:'
+      - A) Badge-swipe records are never personal data
+      - B) Proportionality forbids collecting any records at all during an investigation
+      - C) The laptop theft was not a reportable offence
+      - D) The collection is far wider than the stated aim requires
+      answer: D
+    - question: 'What does an independent review of an authorised operation add that the operating team''s own
+        assessment of its conduct cannot?'
       options:
-      - A) Technically optimal
-      - B) No more intrusive than necessary to achieve a legitimate aim
-      - C) Cost-effective
-      - D) Popular
-      answer: B
-    - question: 'Independent review is valuable because it:'
+      - A) Assurance that does not depend on the operating team''s own judgement
+      - B) Faster execution and delivery of the next authorised operation on the schedule
+      - C) A second signature that replaces the authorisation structure
+      - D) Confirmation that fewer records need keeping
+      answer: A
+    - question: 'After an authorised operation ends, an independent reviewer must show what the operator
+        actually did. Which record shows that best?'
       options:
-      - A) Slows operations usefully
-      - B) Provides assurance not dependent on the operating team's own judgement
-      - C) Reduces cost
-      - D) Replaces authorisation
-      answer: B
-    - question: 'Operating outside authorised scope, even with good intent, is:'
-      options:
-      - A) Acceptable if successful
-      - B) A serious breach undermining the legitimacy of the whole capability
-      - C) A minor process issue
-      - D) Expected
+      - A) The signed order that stated the scope in advance
+      - B) The firewall decision records from the operation window
+      - C) The note the operator wrote afterwards describing the work
+      - D) The vendor documentation for the tooling the operation used
       answer: B
 - ordinal: 6
   title: Applying Ethics Under Pressure
@@ -326,16 +488,42 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Recognise pressures that erode ethical decision-making.
-  - Apply a decision process under time constraint.
-  - Raise concerns effectively within an organisation.
+  - Recognise the pressures that push decisions past authorised scope during an incident
+  - Apply a structured decision process to a containment choice made under time pressure
+  - Write an escalation that states the concern, the evidence, the risk and the decision requested
   topics:
-  - Pressure, urgency and normalisation of deviance.
-  - Structured ethical decision processes.
-  - Speaking up and escalation routes.
-  - Personal and professional consequences.
-  lab: 'Lab: Work through a time-pressured scenario in which the fastest containment action exceeds your
-    authorisation, decide and justify a course of action, and draft the escalation you would send.'
+  - Urgency, stress and the normalisation of deviance in incident work.
+  - Pre-agreed authority for emergency actions decided before the incident.
+  - A structured decision process for time-pressured containment choices.
+  - Speaking up through escalation routes and what an effective escalation contains.
+  - Personal consequences of declining an unlawful instruction.
+  lab: >-
+    Lab: On the medium-enterprise range, work one suspected compromise of a workstation under a clock, decide
+    the containment inside the authorisation memo's scope and draft the escalation. Evidence: the siem01
+    records copied for the affected host ws01 and their timestamps; the containment chosen and the authority
+    it relies on; the drafted escalation naming concern, evidence, risk and the decision requested. Pass: the
+    records quoted with timestamps; the chosen containment marked inside scope or requiring new authority
+    with a reason; the escalation contains all four elements and asks for one decision.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account, note the instructor-supplied authorisation memo and
+        record the start time in your lab notes.
+    - hosts: [siem01, ws01]
+      action: Find the instructor-injected alert for the workstation ws01 and copy the two strongest records
+        about it, with their timestamps.
+    - hosts: [siem01, ws02]
+      action: Compare the ws01 records with the same period for the workstation ws02 and record what differs.
+    - hosts: [siem01]
+      action: State the fastest containment the records support and, for each part of it, the authority the
+        memo gives or withholds.
+    - hosts: [siem01]
+      action: Decide the containment to recommend, mark it inside the memo or held for new authority, and
+        give a one-sentence reason.
+    - hosts: [siem01]
+      action: Draft the escalation covering the concern, the evidence with timestamps, the risk of waiting and
+        the one decision requested.
   refs:
   - nist-sp-800-61r3
   - nist-cswp-29
@@ -343,38 +531,43 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Normalisation of deviance describes:'
+    - question: 'Over months, a team skips the authorisation check before quick lookups; nothing goes wrong
+        and skipping becomes the normal way of working. This pattern is best described as:'
       options:
-      - A) Improving standards
-      - B) Gradual acceptance of unsafe practice because nothing has gone wrong yet
-      - C) Policy updates
-      - D) Risk acceptance
+      - A) Normalisation of deviance
+      - B) A risk acceptance recorded by the authoriser
+      - C) A structured decision process working as designed
+      - D) Speaking up through the escalation route
+      answer: A
+    - question: 'An incident breaks out at midnight. The authority able to approve the containment the operator
+        believes necessary cannot be reached. Why does pre-agreed authority matter most here?'
+      options:
+      - A) It suspends the need to record the emergency actions taken
+      - B) It lets one operator decide whatever seems best at the time
+      - C) Urgency raises the pull past authorised scope; powers are agreed early
+      - D) It moves accountability from the operator to the incident plan document
+      answer: C
+    - question: 'During a time-pressured incident a Student drafts one line of an escalation. Which line is
+        written in the effective form?'
+      options:
+      - A) We are worried about the workstation; someone should look soon
+      - B) Account svc-backup wrote 4 GB outbound; block that host now
+      - C) Unusual activities were observed network-wide; a comprehensive response is recommended
+      - D) The risk of waiting is high; please advise at your convenience
       answer: B
-    - question: 'Urgency during an incident:'
+    - question: 'A manager directs a Student to read a private mailbox on mail01 that the authorisation memo does
+        not cover. The professional response is to:'
       options:
-      - A) Suspends authorisation requirements
-      - B) Increases the risk of poor decisions and makes pre-agreed authority important
-      - C) Justifies any action
-      - D) Removes accountability
-      answer: B
-    - question: 'An effective escalation states:'
+      - A) Comply with the direction and note the objection afterwards
+      - B) Comply, because the manager holds senior authority over the range
+      - C) Refuse silently and then take no further step
+      - D) Decline, escalate through the speaking-up route and record the reasons
+      answer: D
+    - question: 'Before an incident, a team writes a standing authority listing the containment actions it may
+        take without new approval. What does the standing authority buy?'
       options:
-      - A) The concern only
-      - B) The concern, the evidence, the risk and the decision being requested
-      - C) A recommendation only
-      - D) The consequences of inaction
-      answer: B
-    - question: 'If an instruction appears unlawful, a professional should:'
-      options:
-      - A) Comply and document
-      - B) Decline, escalate and record the reasons
-      - C) Comply under protest
-      - D) Resign immediately
-      answer: B
-    - question: 'Pre-authorised emergency actions are valuable because they:'
-      options:
-      - A) Remove oversight
-      - B) Allow fast, lawful action without improvising authority under pressure
-      - C) Reduce documentation
-      - D) Transfer accountability
+      - A) It removes the need to record the emergency actions taken
+      - B) It allows fast, lawful containment without improvising authority under pressure
+      - C) It moves accountability for containment from the operators to a document
+      - D) It lets the team bypass the independent review requirement
       answer: B

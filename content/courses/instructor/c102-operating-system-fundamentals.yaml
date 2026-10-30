@@ -1,0 +1,186 @@
+# C102 Operating-System Fundamentals - instructor pack (STAFF ONLY).
+# Companion to content/courses/c102-operating-system-fundamentals.yaml. Draft, not validated.
+# Every answer letter below is the course quiz key; the notes say why the keyed option is right
+# and what each distractor tests. Lab setup describes what the instructor does on the
+# small-enterprise range before each lab.
+course_code: C102
+audience: staff_only
+overview: 'Operating-System Fundamentals is a beginner course of six 60-minute modules (6 hours). Each
+  module has the same split: 15 minutes of teaching, 35 minutes of lab on the small-enterprise range,
+  and a 10-minute five-item quiz passed at 70 percent. The labs work mainly on the Ubuntu jump-box,
+  with the Windows domain hosts used where the operating system itself is the lesson: domain account
+  policy, local administrators and sign-in records. Students hand in lab notes carrying the evidence
+  named in each lab brief, marked pass or fail per criterion.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach, 35 lab (process table on jump-box), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach, 35 lab (address randomisation and fault counters on jump-box), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach, 35 lab (permission and borrowed-privilege inventory on jump-box), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach, 35 lab (account and elevation audit across jump-box, dc-01 and ws-01), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach, 35 lab (one sign-in traced through jump-box and ws-01 records), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach, 35 lab (hardening baseline measurement on jump-box), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: Two threads updating one shared counter without synchronisation race; the outcome
+    depends on interleaving. A blames the scheduler, which preserves state correctly; C misreads a
+    logic fault as memory exhaustion; D treats a normal context switch as a failure. Q2 B: Execution
+    paths sharing one address space are threads of one process. A and C both count processes, whose
+    address spaces are separate; D inverts the relationship and gives one thread several stacks.
+    Q3 C: A terminated process whose parent has not collected its exit status is a zombie. A and B
+    are live states the process has already left; D describes swapping, not termination. Q4 C:
+    Fixed-interval resumption is preemptive time slicing. A describes cooperative scheduling, which
+    cannot preempt the export; B would starve the export, not interleave with it; D runs one task to
+    completion with no interleaving at all. Q5 A: The load average counts tasks waiting on slow
+    input, so it rises while the CPUs idle. B is impossible while the chart shows idle CPUs; C
+    invents thermal throttling; D has no overflow condition in the process-table model taught.'
+- module: 2
+  notes: 'Q1 C: A stack at the same address on every restart means no layout randomisation. A
+    guards the return path but moves no addresses; B governs executability, not location; D limits
+    file usage. Q2 B: First access to a page not yet read in from the executable is a major fault.
+    A is the near miss: the same miss served from the page cache is minor; C would need the
+    permission bits to disagree; D is scheduling, not paging. Q3 A: No-execute markings refuse
+    execution from data pages. B randomises addresses but changes nothing about executability; C
+    detects the overwrite after the fact; D governs file access, not memory. Q4 D: Constant paging
+    with idle CPUs is thrashing. A scatters free space without producing paging traffic; B and C
+    are scheduling pathologies, not memory ones. Q5 A: Page tables give each process a private
+    virtual space larger than physical memory. B shares the processor, not the memory abstraction;
+    C maps files into memory; D speeds access but creates no address space.'
+- module: 3
+  notes: 'Q1 A: An entry that stores only a path is a symbolic link. B shares the inode, which the
+    stem gives to the first name; C and D both create new inodes and lose the sharing. Q2 D: Setuid
+    runs the program with the file owner''s privileges. A is how an ordinary program runs; B would
+    be the setgid bit; C names no real execution context. Q3 A: The sticky bit on a shared directory
+    restricts deletion to the file''s owner. B and C affect execution identity, not deletion rights;
+    D stops writing, not deleting, and breaks the shared drop-box. Q4 D: Default file bits start at
+    666 and the umask removes bits, so 027 leaves rw-r-----. A forgets the group mask; B forgets the
+    group and other masks; C adds execute bits the file default never carries. Q5 B: noexec removes
+    execute permission for everything on that mount. A invents a reduced-privilege fallback; C
+    contradicts the refusal; D invents an automatic remount.'
+- module: 4
+  notes: 'Q1 A: Hashes live in the shadow password file, readable only by privileged accounts. B is
+    the account list, which holds no hashes; C holds group membership; D holds kernel messages.
+    Q2 D: A unique salt per account makes identical passwords hash differently. A invents length
+    variation; B would be a storage fault to fix, not a mechanism; C confuses hashing with
+    encryption. Q3 C: One sudo rule for one service command is least privilege. A and B grant far
+    more than the task needs; D adds friction without narrowing what may run. Q4 B: A central policy
+    the owner cannot override is mandatory access control. A is the model the scenario denies; C and
+    D are neighbouring models the distractors test, but neither turns on removing owner discretion.
+    Q5 C: A writable directory early in root''s command search path allows a replaced command to run
+    with root''s privileges. A invents an audit effect; B and D are nuisances, not the privilege
+    risk.'
+- module: 5
+  notes: 'Q1 B: History survives only if records were forwarded off the host before it was wiped.
+    A, C and D change the detail or size of surviving copies but cannot recreate records that
+    existed only locally. Q2 A: Binding records across hosts needs one common time source. B
+    protects the transport; C and D change what is kept and how it is ranked, not whether records
+    can be matched. Q3 D: Integrity protection is the property that shows records were not altered
+    after arrival. A and B adjust volume; C makes tampering harder but proves nothing. Q4 C: Maximum
+    verbosity buries signal under noise and inflates storage cost. A is a separate prerequisite the
+    scenario does not touch; B is real but not what verbosity broke; D is unrelated to volume.
+    Q5 A: The record carries account, process and time, which is what attribution needs. B needs
+    backups, not the audit record; C is a response action the record itself cannot take; D would
+    show authorisation, which is a different record entirely.'
+- module: 6
+  notes: 'Q1 A: Removing unused services is attack-surface reduction. B and C add observation, which
+    changes nothing an adversary can reach; D is good practice but leaves the services running.
+    Q2 A: Unrecorded divergence from an approved baseline is configuration drift. B and C are single
+    faults, not a pattern; D would find weaknesses, not unrecorded change. Q3 D: An exemption needs
+    a documented rationale, a compensating control and an approver. A leaves no record; B duplicates
+    the risk; C is unrelated to the dependency. Q4 B: An internet-exposed weakness is closed fastest
+    by an out-of-cycle patch. A and D stretch the window the question asks to shorten; C patches
+    hosts that are not exposed. Q5 B: Scheduled automated checks re-verify the baseline and catch
+    drift. A samples once; C measures weaknesses, not baseline state; D documents intent, not
+    state.'
+lab_setup:
+- module: 1
+  setup: 'Revert the range to its baseline and confirm jump-box is reachable over SSH. Copy the
+    sample data to jump-box and prepare the multi-threaded workload command (a parallel compression
+    of the sample data works) and give Students the exact command line. Confirm the analyst account
+    can list the full process table and read the load figures.'
+- module: 2
+  setup: 'Revert the range to its baseline and confirm jump-box is reachable over SSH. Confirm the
+    analyst account can read the self-mapping output and the fault counters of its own processes,
+    and rehearse the command that disables address-space layout randomisation; you perform the
+    change in the fourth step, or give the analyst temporary sudo for that one command and revoke it
+    after the lab. Note the stack addresses the baseline shows so you can confirm Students'' records.'
+- module: 3
+  setup: 'Revert the range to its baseline and confirm jump-box is reachable over SSH. Run the
+    setuid and setgid inventory yourself before class and keep the baseline list so you can mark each
+    Student''s "expected" or "not expected" judgements. Confirm the analyst account can create files
+    in its home directory and run the file listing tools unprivileged.'
+- module: 4
+  setup: 'Revert the range to its baseline. Confirm dc-01 and ws-01 are reachable from the Student
+    path and that the domain account policy is the baseline one; record the minimum password length,
+    lockout threshold and lockout duration it holds so you can mark Evidence. Confirm the analyst
+    account can list sudo policy and read the hash store''s permissions, and assign the ws-01 account
+    each Student uses.'
+- module: 5
+  setup: 'Revert the range to its baseline. Confirm jump-box and ws-01 are reachable and that the
+    journal and the Windows event log are running with their default retention. Run one SSH sign-in
+    and one ws-01 logon yourself and note the journal lines and the event identifier the baseline
+    produces, so you can mark Students'' records.'
+- module: 6
+  setup: 'Revert the range to its baseline. Prepare the hardening baseline checklist Students
+    compare against, drawn from the benchmark sections taught, and confirm the analyst account can
+    list enabled services and listening ports. Run the checks yourself and note the enabled services
+    and listening ports the baseline holds so you can mark Evidence.'
+common_faults:
+- module: 1
+  fault: Students read the suspended state as "not running at all" and skip recording it.
+  remedy: Suspend a process at the board first and list the process table together; ask what the
+    scheduler still holds for it.
+- module: 1
+  fault: The workload ends before the second process-table listing, so there is nothing to record.
+  remedy: Have Students start the workload again before listing, or supply a longer-running
+    workload.
+- module: 2
+  fault: Students compare addresses from different fields of the mapping and call the layout
+    randomised or fixed on the wrong evidence.
+  remedy: Point at the stack region's start column specifically and run the mapping command twice
+    at the board.
+- module: 2
+  fault: After the instructor disables randomisation, Students forget to record the addresses before
+    the setting is restored.
+  remedy: Pause the room at the fourth step until every record sheet shows two post-change
+    addresses.
+- module: 3
+  fault: Students list every file on the system instead of setuid and setgid programs, and the
+    inventory drowns.
+  remedy: Walk the find expression once at the board and have each Student state what each flag
+    matches.
+- module: 3
+  fault: The umask arithmetic is applied with the directory base instead of the file base.
+  remedy: 'Redo one example together: file bits start at 666, directory bits at 777.'
+- module: 4
+  fault: Students read the hash store's permissions from memory rather than from the host and record
+    the wrong figure.
+  remedy: Require the exact permission string in the notes and check it against your own record.
+- module: 4
+  fault: The dc-01 policy values are recorded from a local policy view instead of the domain policy.
+  remedy: Demonstrate on dc-01 which view answers the domain, and have Students compare the two.
+- module: 5
+  fault: Students read only the most recent boot in the journal and miss the sign-in record
+    entirely.
+  remedy: Show the time filter first and have each Student match it against the noted start time.
+- module: 5
+  fault: The ws-01 event log is filtered so broadly that hundreds of records hide the sign-in.
+  remedy: Filter by the account and the minute you noted, then narrow by the sign-in class.
+- module: 6
+  fault: Students mark listening ports "remove or disable" without checking which baseline service
+    owns them.
+  remedy: Make the owning service a required column before any judgement is written.
+- module: 6
+  fault: The pass rate is computed from the whole checklist including items that do not apply to
+    this host.
+  remedy: Have Students strike non-applicable items with a reason before dividing.

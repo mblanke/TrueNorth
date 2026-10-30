@@ -6,9 +6,10 @@ course_code: RMC C206
 title: Capstone Planning
 version: '1.0'
 difficulty: intermediate
-duration_hours: 20
+duration_hours: 6
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: TEMP67
 source:
@@ -30,56 +31,89 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Define a capstone problem of professional significance.
-  - Scope advanced technical work realistically.
-  - Align the project with operational need.
+  - Define a capstone problem grounded in a weakness observed on a production range and state its significance
+  - Separate the technical core of an advanced capstone from the supporting work that surrounds it
+  - Assess the feasibility of a proposed scope against the hosts, approvals and time actually available
   topics:
-  - Problem significance at advanced level.
-  - Scoping technically demanding work.
-  - Operational relevance and stakeholder need.
-  - Feasibility assessment.
-  lab: 'Lab: Define an advanced capstone problem with demonstrable operational relevance, state its significance,
-    and assess feasibility against the time and access available.'
+  - Problem selection at advanced level, weighing significance, novelty and operational need.
+  - Separating the technical core of a capstone from its supporting work.
+  - Grounding a problem statement in evidence observed in a real environment.
+  - Feasibility assessment against available hosts, data, approvals and time.
+  - Reframing or narrowing a problem whose access requirements cannot be met.
+  lab: >-
+    Lab: Survey the large-enterprise range from jump01, choose one host or segment whose weakness could
+    anchor a capstone problem, and define that problem with its significance and feasibility. Evidence:
+    the host inventory and network segments recorded during the survey; the name of the chosen host
+    or segment and the observed weakness in it; the problem statement with one sentence of significance;
+    the feasibility verdict listing the hosts, approvals and time the work would need. Pass: the problem
+    statement names a specific host or segment observed on the range; significance and feasibility are
+    each justified with recorded evidence; the feasibility verdict is marked yes or no with a reason.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, confirm reachability into the corporate LAN and the server VLAN, and record
+        the start time in the lab notes.
+    - hosts: [jump01, dc01]
+      action: From jump01, enumerate the hosts on the server VLAN through dc01 and record each host id with
+        the role it appears to serve.
+    - hosts: [dc01, sql01, sql02]
+      action: Query dc01 for the domain roles it holds and record which database services run on sql01 and
+        sql02 and how the two are related.
+    - hosts: [fw01]
+      action: Read the rule set on fw01 and record which source networks may reach the server VLAN and which
+        paths are denied.
+    - hosts: [jump01, dc03]
+      action: From jump01, run a benign connectivity check toward the subsidiary domain controller dc03 and
+        record the result together with the fw01 rule that decides it.
+    - hosts: [jump01]
+      action: Choose one host or segment from the notes, write the capstone problem it anchors, one sentence
+        of significance, and a yes or no feasibility verdict with the access and time the work needs.
   refs:
   - nist-sp-800-37r2
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'An advanced capstone should be distinguished by:'
+    - question: A scoping survey shows dc01 holds every domain operations master role, and a Student proposes a
+        capstone on protecting that single point of failure. What makes this problem advanced?
       options:
-      - A) Greater length
-      - B) Depth of technical contribution and operational relevance
-      - C) More references
-      - D) Broader scope
+      - A) It repeats work practitioners already perform routinely without help
+      - B) It demands an original technical contribution
+      - C) It produces a longer final report than an introductory task
+      - D) It covers more hosts than an introductory task would
       answer: B
-    - question: 'Operational relevance means the work:'
+    - question: A capstone problem statement cites a missing firewall path recorded on fw01 and argues that
+        operators of similar networks face the same gap. Which property does this justification establish?
       options:
-      - A) Uses current tools
-      - B) Addresses a problem a practitioner actually faces
-      - C) Is classified
-      - D) Involves hardware
-      answer: B
-    - question: 'Feasibility assessment must account for:'
+      - A) Novelty, because the gap has not been solved
+      - B) Feasibility, because the evidence was easy to gather
+      - C) Operational relevance, since practitioners face the gap
+      - D) Rigour, because the observation came from a real rule set
+      answer: C
+    - question: A Student wants to evaluate controls across the isolated OT segment, but no path on the range
+        reaches it. What is the most professional scoping response?
       options:
-      - A) Interest level
-      - B) Access to data, systems and approvals as well as technical difficulty
-      - C) Supervisor availability
-      - D) Reference availability
-      answer: B
-    - question: 'A problem requiring access you cannot obtain should be:'
+      - A) Narrow the scope to segments the range reaches
+      - B) Attempt the evaluation anyway and report why it failed
+      - C) Ask for credentials that bypass the segment firewall
+      - D) Abandon the capstone and choose an unrelated topic
+      answer: A
+    - question: Survey notes record that sql02 replicates from sql01 and that both sit on the server VLAN. For a
+        scoping document, what is this observation most valuable as?
       options:
-      - A) Attempted anyway
-      - B) Reframed to work within achievable access
-      - C) Escalated
-      - D) Deferred
-      answer: B
-    - question: 'Significance should be justified by:'
+      - A) Decoration included only to show that the survey was thorough
+      - B) A measurement result to publish in the final report
+      - C) Proof that the range mirrors a production network exactly
+      - D) Evidence for feasibility and risk planning of the proposed work
+      answer: D
+    - question: A reviewer challenges the significance of a proposed capstone and asks why the work matters. The
+        strongest answer the Student can give cites which of the following?
       options:
-      - A) Assertion
-      - B) Evidence that the problem matters and is not already solved
-      - C) Supervisor endorsement
-      - D) Novelty alone
+      - A) The personal interest that drew the Student to the topic
+      - B) Range evidence that the weakness exists unprotected
+      - C) The number of references collected during the survey
+      - D) The supervisor's early approval of the chosen topic
       answer: B
 - ordinal: 2
   title: Research Design
@@ -88,16 +122,41 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Design rigorous evaluation for advanced technical work.
-  - Select appropriate comparison and control.
-  - Plan for reproducibility from the outset.
+  - Design an evaluation for a capstone claim with an explicit baseline, comparison and success measure
+  - Select the data sources and collection points on a live range that answer the evaluation question
+  - Specify the artefacts and records a third party needs to reproduce the evaluation from scratch
   topics:
-  - Evaluation design and rigour.
-  - Baselines, controls and comparison.
-  - Reproducibility planning.
-  - Data management planning.
-  lab: 'Lab: Design your evaluation including baseline comparison, the data you will collect, and the
-    artefacts you will publish to make the work reproducible.'
+  - Evaluation design and rigour for technical security claims.
+  - Baselines, controls and comparison between comparable hosts.
+  - Choosing collection points that measure the claim rather than the tool.
+  - Reproducibility artefacts covering environment, data, procedure and versions.
+  - Data management planning for collection, protection, retention and sharing.
+  lab: >-
+    Lab: Design an evaluation that compares the two database hosts on the server VLAN, choose the metric,
+    baseline and collection point, and state the artefacts another Student would need to reproduce it.
+    Evidence: the service versions and configuration differences recorded on the two hosts; the events
+    the monitoring host already collects from them; the metric and baseline written into the design; the
+    list of reproduction artefacts. Pass: the metric measures the capstone claim rather than the tool; the
+    baseline and comparison host are named with recorded evidence; the reproduction artefact list covers
+    environment, data and procedure.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and record the start time, then confirm reachability to both database hosts on
+        the server VLAN.
+    - hosts: [sql01, sql02]
+      action: Record the service version, patch level and listening configuration of sql01 and sql02, and note
+        every difference between the two.
+    - hosts: [siem01]
+      action: Open the event sources on siem01 and record which event classes it already collects from each
+        database host.
+    - hosts: [jump01]
+      action: Write the evaluation design in the notes, covering the metric, the baseline, the comparison
+        between the two hosts, and the collection point for each measurement.
+    - hosts: [jump01]
+      action: List the artefacts a third party would need to reproduce the evaluation, then judge whether the
+        design would expose the approach failing if it does, and record that judgement.
   refs:
   - nist-sp-800-115
   - nist-sp-800-30r1
@@ -105,41 +164,46 @@ modules:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'A baseline comparison is required because:'
+    - question: A Student designs a capstone evaluation comparing the alert coverage of sql01 against the identical
+        host sql02 as its baseline. Why is the comparison host essential to the claim?
       options:
-      - A) Assessors expect it
-      - B) Improvement claims are meaningless without a reference
-      - C) It doubles the data
-      - D) It simplifies analysis
-      answer: B
-    - question: 'Planning reproducibility from the outset is easier than retrofitting because:'
+      - A) Assessors expect every evaluation in the course to name two hosts
+      - B) It doubles the data collected at no extra cost
+      - C) Without it there is no reference against which improvement is measured
+      - D) It simplifies the analysis by removing one collection point
+      answer: C
+    - question: A Student plans to capture environment, data and procedure notes while the evaluation runs rather
+        than reconstruct them at the end. What does this early planning most directly protect?
       options:
-      - A) Tools require it
-      - B) Capturing environment, data and procedure is difficult to reconstruct later
-      - C) It reduces work
-      - D) Assessors check early
+      - A) The publication venue from later embarrassment
+      - B) Reproducibility, which cannot be reconstructed after the fact
+      - C) The storage budget for the collected evaluation data
+      - D) The analysis methods from late change
       answer: B
-    - question: 'A data management plan should address:'
+    - question: Before collecting evidence on siem01, a Student writes down which events are gathered, how they are
+        stored, who may read them and when deletion happens. Which planning artefact is this?
       options:
-      - A) Storage size only
-      - B) Collection, storage, protection, retention and sharing of data
-      - C) Analysis methods
-      - D) Publication venue
-      answer: B
-    - question: 'Evaluating only on data used to develop the approach produces:'
+      - A) A data management plan
+      - B) A risk register
+      - C) A proposal milestone list
+      - D) An access approval request
+      answer: A
+    - question: A Student tunes a detection approach on the siem01 events and then evaluates it on those same events.
+        What is the defect in that evaluation design?
       options:
-      - A) Valid results
-      - B) Optimistic results that may not generalise
-      - C) Conservative results
-      - D) Reproducible results
+      - A) It uses too few collection points for the claim
+      - B) It produces optimistic results that may not generalise
+      - C) It produces conservative results that understate the approach
+      - D) It lacks a data management plan for the events
       answer: B
-    - question: 'Rigour in evaluation primarily means:'
+    - question: Two capstone designs collect the same volume of evidence from the same range hosts, but one design
+        reveals its own approach failing and the other does not. What distinguishes them?
       options:
-      - A) More data
-      - B) Design that would expose the approach failing if it does
-      - C) Advanced statistics
-      - D) Longer duration
-      answer: B
+      - A) The overall duration of the evaluation
+      - B) The volume of data collected
+      - C) The statistical methods applied afterwards
+      - D) The rigour of the design itself
+      answer: D
 - ordinal: 3
   title: Access, Ethics and Approvals
   content_type: reading
@@ -147,16 +211,41 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Secure the access and approvals required for advanced work.
-  - Handle sensitive data and systems appropriately.
-  - Plan for constraints imposed by classification or sensitivity.
+  - Map every access and approval a capstone needs before the work begins and estimate each lead time
+  - Plan the handling of sensitive range evidence according to its classification and the approvals granted
+  - Design a contingency for the access requirement most likely to be refused or delayed
   topics:
-  - Access negotiation and lead times.
-  - Sensitive data handling.
-  - Ethical and institutional approval.
-  - Working within classification constraints.
-  lab: 'Lab: Identify every approval and access requirement for your capstone, estimate the lead time
-    for each, and produce a contingency plan for the one most likely to be refused or delayed.'
+  - Access negotiation with range owners and realistic lead times.
+  - Account classes, reachability and the principle of minimum access.
+  - Sensitive data handling under classification and sensitivity constraints.
+  - Ethical and institutional approval for work on shared infrastructure.
+  - Contingency planning for refused or delayed access.
+  lab: >-
+    Lab: On the large-enterprise range, map what the assigned account can actually reach, record the
+    firewall paths that grant or deny that reach, and turn the map into an access and approval plan with
+    lead times and one contingency. Evidence: the hosts the assigned account reached and the exact result for each
+    attempt; the fw01 rules that allowed or denied each path; the approval each planned activity needs with
+    its estimated lead time; the contingency for the most fragile approval. Pass: every attempted path is
+    recorded as allowed or denied with the rule that decided it; each planned activity has an owner and a
+    lead time; the contingency names the fallback scope if the approval is refused.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 with the assigned standard account and record the start time and the assigned
+        account class.
+    - hosts: [jump01, dc01, ws01]
+      action: From jump01, test a benign connection to dc01 and to ws01, and record the exact result of each
+        attempt in the notes.
+    - hosts: [jump01, sql01]
+      action: Test a benign connection from jump01 to sql01, record the result, and identify which account
+        class the attempt used.
+    - hosts: [fw01]
+      action: Read the fw01 rules and record, for each attempted path, the rule that allowed or denied it and
+        the source network the rule names.
+    - hosts: [jump01]
+      action: Write the approval each planned activity needs with an estimated lead time, then mark the approval
+        most likely to be refused and write its contingency scope.
   refs:
   - nist-sp-800-37r2
   - nist-cswp-29
@@ -164,41 +253,46 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Access requests should be initiated:'
+    - question: A Student waits until the first week of capstone work to request access to the server VLAN, and the
+        request takes six weeks to approve. What does this delay illustrate?
       options:
-      - A) When the work begins
-      - B) During planning, since lead times often exceed expectations
-      - C) After approval of the proposal
-      - D) By the supervisor
-      answer: B
-    - question: 'Sensitive data used in a capstone must be:'
+      - A) That range owners rarely approve student requests at all
+      - B) That the supervisor, rather than the Student, must submit access requests
+      - C) That approvals always arrive after the proposal is accepted
+      - D) That access requests belong in planning, because lead times are long
+      answer: D
+    - question: A capstone collects authentication logs from siem01 that contain account names for real range
+        personnel. How must the Student handle this evidence?
       options:
-      - A) Anonymised always
-      - B) Handled per its classification with documented protection measures
-      - C) Avoided entirely
-      - D) Stored locally
+      - A) Anonymise it, because logs can never be used as collected
+      - B) Per its classification, with the protection measures documented
+      - C) Avoid it entirely, since personnel data can have no research value
+      - D) Store it locally so that no other party can reach it
       answer: B
-    - question: 'A contingency for refused access should be planned because:'
+    - question: A Student learns late that the approval to publish range screenshots will be refused, having
+        already planned a fallback deliverable on synthetic data. What does the fallback protect?
       options:
-      - A) Refusal is certain
-      - B) Discovering refusal late can invalidate the whole project
-      - C) Approvals are slow
-      - D) Supervisors require it
-      answer: B
-    - question: 'Classification constraints may affect a capstone by:'
+      - A) Nothing, because refusal was never a realistic outcome
+      - B) Only the schedule, since the technical work is unaffected
+      - C) The whole project, which a late refusal would otherwise invalidate
+      - D) The ethics approval, which the refusal would then automatically breach
+      answer: C
+    - question: A capstone on the subsidiary forest may only present findings cleared for release, and two of its
+        five measurements cannot be shown openly. What is the professional planning response?
       options:
-      - A) Improving rigour
-      - B) Limiting what can be published or assessed openly
-      - C) Removing ethics requirements
-      - D) Simplifying scope
-      answer: B
-    - question: 'Work that cannot be assessed due to sensitivity should be:'
+      - A) Improve the rigour of the three measurements that can be shown openly
+      - B) Drop the ethics review, since classified work is exempt
+      - C) Publish everything, since the range is synthetic
+      - D) Restructure the work so an assessable, releasable component exists
+      answer: D
+    - question: A Student is granted a standard account on jump01 rather than an administrative one and must now
+        plan the capstone around unprivileged evidence collection. Which principle does this allocation apply?
       options:
-      - A) Attempted anyway
-      - B) Restructured so an assessable, releasable component exists
-      - C) Classified
-      - D) Abandoned
-      answer: B
+      - A) Minimum access, granting only what the approved work needs
+      - B) Separation of duties, splitting administration from collection
+      - C) Defence in depth, layering accounts across the range
+      - D) Default deny, blocking every path until it is requested
+      answer: A
 - ordinal: 4
   title: Technical Risk Management
   content_type: reading
@@ -206,57 +300,87 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Identify technical risks specific to advanced work.
-  - Plan mitigations and fallback approaches.
-  - Set decision points for changing approach.
+  - Identify the technical risks that threaten a capstone's core assumption and record them in a register
+  - Design a fallback approach for each significant risk that fits the time remaining after failure
+  - Set trigger points that force a decision to change approach before sunk cost takes over
   topics:
-  - Technical risk identification.
-  - Fallback approach design.
-  - Decision points and triggers.
-  - Sunk cost and pivoting.
-  lab: 'Lab: Produce a technical risk register with a fallback approach for each significant risk and
-    a defined trigger point at which you would switch approaches.'
+  - Technical risk identification for work with a core assumption.
+  - Building a risk register with likelihood, impact and owner.
+  - Fallback approaches sized to the time remaining after failure.
+  - Trigger points and decision points for changing approach.
+  - Sunk cost reasoning and disciplined pivoting.
+  lab: >-
+    Lab: Build a technical risk register for a capstone from weaknesses observed on the large-enterprise
+    range, give each risk a fallback approach and a trigger point, and judge which risk is most likely to
+    fire first. Evidence: the observed weaknesses the register entries cite, such as the domain operations
+    master roles held on dc01 and the replication pairing of sql01 with sql02; the fallback approach and
+    trigger point written against each entry; the owner and remaining-time estimate for each fallback.
+    Pass: every entry cites an observed weakness or a stated assumption; each significant risk has a
+    fallback sized to the remaining time; each trigger point is measurable and written before work starts.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, record the start time, and open the draft capstone assumption beside the range
+        notes from earlier modules.
+    - hosts: [dc01]
+      action: Confirm on dc01 which host holds the domain operations master roles and record what the loss of
+        that single host would take with it.
+    - hosts: [sql01, sql02]
+      action: Record the replication relationship between sql01 and sql02 and what happens to each service if
+        one host is lost for a day.
+    - hosts: [fw01]
+      action: Record the fw01 rules that tie the segments together and the ot-isolation rule that denies OT
+        traffic toward the corporate LAN, noting which paths the plan depends on.
+    - hosts: [jump01]
+      action: Write the risk register, giving each entry an observed weakness citation, a fallback sized to the
+        remaining time and a measurable trigger, then judge which risk fires first.
   refs:
   - nist-sp-800-30r1
   quiz:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'A defined trigger point for changing approach prevents:'
+    - question: A capstone's core assumption is that the replication between sql01 and sql02 gives enough redundancy
+        for the planned test. Which register entry treats this assumption most honestly?
       options:
-      - A) Poor planning
-      - B) Sunk cost reasoning keeping you on a failing approach too long
-      - C) Scope creep
-      - D) Supervisor intervention
-      answer: B
-    - question: 'A fallback approach should be:'
+      - A) A risk, because the assumption could simply be wrong
+      - B) A schedule entry, because only time pressure threatens delivery
+      - C) A tooling entry, because version conflicts cause most failures
+      - D) An access entry, because permissions are the usual blocker
+      answer: A
+    - question: A Student plans a fallback in case siem01 coverage proves too thin to measure the claim, with four
+        weeks left when it fires. What makes that fallback credible?
       options:
-      - A) Equally ambitious
-      - B) Achievable with the remaining time if the primary approach fails
-      - C) Undefined until needed
-      - D) The same approach retried
-      answer: B
-    - question: 'The greatest technical risk in advanced projects is usually:'
+      - A) Matching the ambition of the primary approach exactly
+      - B) Being left undefined until the moment it is needed
+      - C) Retrying the primary approach with more patience
+      - D) Delivering a smaller result within the four remaining weeks
+      answer: D
+    - question: A Student spends six weeks on a pipeline that cannot answer the capstone question, although the
+        trigger written at planning said to switch at week two. What does continuing illustrate?
       options:
-      - A) Tool failure
-      - B) The core technical assumption proving invalid
-      - C) Data loss
-      - D) Version conflicts
+      - A) Careful planning that adapted to new evidence
+      - B) Sunk cost keeping a failing approach alive
+      - C) Early pivoting before the evidence was conclusive
+      - D) Scope reduction in response to technical limits
       answer: B
-    - question: 'Sunk cost reasoning in a project manifests as:'
+    - question: A Student rewrites the risk register at the week-four checkpoint because OT segment isolation proved
+        stricter than assumed. When else must it be revisited under this module's approach?
       options:
-      - A) Careful planning
-      - B) Continuing a failing approach because of effort already invested
-      - C) Early pivoting
-      - D) Scope reduction
+      - A) Never again before submission, once it is written
+      - B) Continuously, as understanding develops
+      - C) Only at the final review before submission
+      - D) Only when a risk has already occurred
       answer: B
-    - question: 'Technical risks should be reassessed:'
+    - question: A Student sets the trigger "if the fallback must start, it starts when the measurement window closes
+        with fewer than half the events collected". What property makes this trigger usable?
       options:
-      - A) At the start only
-      - B) Continuously, as understanding of the problem develops
-      - C) At submission
-      - D) When they occur
-      answer: B
+      - A) It names a measurement and a threshold for judging it
+      - B) It gives the supervisor authority to stop the work
+      - C) It prevents the underlying risk from occurring at all
+      - D) It removes the need for any fallback approach at all
+      answer: A
 - ordinal: 5
   title: Proposal Development
   content_type: reading
@@ -264,57 +388,87 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Write a proposal to a professional standard.
-  - Justify methodology to a technical audience.
-  - Present a credible delivery plan.
+  - Write a capstone proposal whose every claim traces to recorded range evidence or a cited source
+  - Justify the chosen methodology to a technical reviewer in terms of the evidence it produces
+  - Present a milestone plan that signals early whether the delivery schedule is realistic
   topics:
-  - Advanced proposal structure.
-  - Methodological justification.
-  - Delivery planning and milestones.
-  - Anticipating reviewer challenge.
-  lab: 'Lab: Produce your full capstone proposal to professional standard, including methodology justification,
-    milestone plan and an explicit statement of what would constitute failure.'
+  - Structure of an advanced capstone proposal.
+  - Tracing claims to evidence from the range or the literature.
+  - Methodological justification for a technical reviewer.
+  - Milestone planning and early warning of schedule slip.
+  - Stating failure criteria and anticipating reviewer challenge.
+  lab: >-
+    Lab: Audit a draft capstone proposal against the range evidence recorded in earlier modules, correct
+    every unsupported claim, and add a milestone plan with an explicit failure statement. Evidence: the
+    claim-by-claim check marking each proposal statement as supported, unsupported or sourced; the corrected
+    wording for each unsupported claim, tied to what the range actually shows; the milestone list with dates
+    and the early signal each milestone gives; the failure statement. Pass: no claim remains marked
+    unsupported; each milestone names the signal that shows the plan slipping; the failure statement says
+    what result would falsify the capstone.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, record the start time, and open the draft proposal beside the range notes from
+        the earlier modules.
+    - hosts: [jump01, dc01]
+      action: Re-verify on dc01 every claim in the proposal that cites domain configuration, and mark each one
+        supported, unsupported or sourced in the claim check.
+    - hosts: [fw01]
+      action: Re-verify on fw01 every claim that cites a network path or rule, and write corrected wording for
+        each claim the range does not support.
+    - hosts: [jump01, siem01]
+      action: Check on siem01 whether the evidence the proposal promises actually exists in the collected events,
+        and record any gap between promise and reality.
+    - hosts: [jump01]
+      action: Write the milestone plan with the early signal each milestone gives, add the failure statement,
+        and judge whether the schedule is realistic from what the range check found.
   refs:
   - nist-sp-800-37r2
   quiz:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'Stating what would constitute failure:'
+    - question: A proposal claims the range's OT segment can be monitored from the security VLAN, but the survey
+        notes record that nothing reaches it. What defect does the claim check expose?
       options:
-      - A) Invites rejection
-      - B) Demonstrates rigour by making the project falsifiable
-      - C) Is unnecessary
-      - D) Reduces ambition
-      answer: B
-    - question: 'Methodology justification should explain:'
+      - A) Weak formatting in the proposal document
+      - B) A thin literature review behind the claim
+      - C) A claim unsupported by the range evidence
+      - D) An insufficient number of references overall
+      answer: C
+    - question: A reviewer asks why the capstone measures detection coverage through siem01 events rather than
+        through host audit logs. A strong methodological justification explains which of the following?
       options:
-      - A) That the method is popular
-      - B) Why this method produces evidence that answers the question
-      - C) The tools used
-      - D) The supervisor's preference
-      answer: B
-    - question: 'Milestones are valuable because they:'
+      - A) That siem01 is the tool most practitioners prefer to use
+      - B) How familiar the Student already is with siem01
+      - C) Which supervisor recommended the siem01 approach
+      - D) Why siem01 events answer the question the audit logs cannot
+      answer: D
+    - question: A milestone plan sets a checkpoint at week four where the first measurements must exist. Beyond
+        tracking progress, what does such a milestone provide?
       options:
-      - A) Fill the schedule
-      - B) Provide early signals of whether the plan is realistic
-      - C) Satisfy assessors
-      - D) Reduce scope
-      answer: B
-    - question: 'A proposal reviewer is primarily assessing:'
+      - A) An early signal of schedule realism
+      - B) Content that fills an otherwise empty schedule
+      - C) Evidence of effort for the assessor's records
+      - D) A way to reduce the scope without renegotiation
+      answer: A
+    - question: A proposal cites forty sources and is formatted correctly, yet describes an evaluation that cannot
+        finish in the available time. What is the reviewer primarily assessing?
       options:
-      - A) Writing quality
-      - B) Whether the plan can plausibly deliver a meaningful, evaluable result
-      - C) Topic novelty
-      - D) Reference count
+      - A) The quality of the writing, which is adequate
+      - B) Whether the plan can deliver a meaningful, evaluable result
+      - C) The novelty of the topic, which is high enough
+      - D) The number of references, which is sufficient
       answer: B
-    - question: 'The most common failure in advanced proposals is:'
+    - question: Across several cohorts the most common cause of failed capstone proposals has been the same. Which
+        proposal defect is it?
       options:
-      - A) Insufficient references
-      - B) Underestimating the effort required for the technical core
-      - C) Poor formatting
-      - D) Weak literature review
-      answer: B
+      - A) Underestimating the effort the technical core demands
+      - B) Missing failure statements and milestones
+      - C) Poor formatting in the methodology section of the proposal
+      - D) Reviewers disagreeing with the chosen topic
+      answer: A
 - ordinal: 6
   title: Review and Refinement
   content_type: reading
@@ -322,54 +476,84 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Incorporate expert review into the plan.
-  - Refine scope based on feedback.
-  - Commit to a plan while retaining adaptability.
+  - Incorporate expert review by answering each substantive point in a documented response
+  - Refine the capstone scope from review feedback and record every change in a change log
+  - Commit to a final plan that keeps defined reassessment points rather than freezing or drifting
   topics:
-  - Expert review process.
-  - Scope refinement.
-  - Balancing commitment and flexibility.
-  - Final plan approval.
-  lab: 'Lab: Submit your proposal for expert review, produce a response addressing each substantive point,
-    and issue a final revised plan with a clear change log.'
+  - Choosing reviewers with the domain expertise to challenge assumptions.
+  - Responding to review points, including those that recommend reduction.
+  - Refining scope and recording decisions in a change log.
+  - Committing to a plan while keeping reassessment points open.
+  - Final plan agreement, approval and the reassessment points that remain open.
+  lab: >-
+    Lab: Re-read the final capstone plan against the range evidence recorded across the course, answer a
+    reviewer's substantive points, and issue the revised plan with a change log and reassessment points.
+    Evidence: the point-by-point response marking each reviewer point accepted, adapted or declined with a
+    reason; the change log entry for every change made; the reassessment points left open in the final plan;
+    the line in the plan that no range evidence supports, if one remains. Pass: every substantive reviewer
+    point has a response with a reason; the change log matches the revised plan line for line; at least two
+    reassessment points survive in the final plan with their triggers.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, record the start time, and open the final plan, the reviewer points and the
+        range notes from every earlier module.
+    - hosts: [jump01, dc01]
+      action: Check each plan statement that cites dc01 against the domain evidence collected in Module 1, and
+        mark every statement that no evidence supports.
+    - hosts: [fw01]
+      action: Check each plan statement that cites a network path against the fw01 rules recorded in Module 3,
+        and mark the statements the rules contradict.
+    - hosts: [jump01]
+      action: Write the response to each reviewer point as accepted, adapted or declined with a reason, and add
+        a change log entry for every change made to the plan.
+    - hosts: [jump01]
+      action: Leave at least two reassessment points with triggers in the final plan, then judge whether the plan
+        is ready to commit and record that judgement.
   refs:
   - nist-sp-800-37r2
   quiz:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Expert review is most valuable when the reviewer:'
+    - question: A Student chooses between a reviewer who works on the range's firewall rules daily and a peer who
+        found the proposal easy to read. Which review is more valuable?
       options:
-      - A) Agrees with the approach
-      - B) Has domain expertise and challenges the assumptions
-      - C) Is the supervisor
-      - D) Is a peer
+      - A) The peer, because agreement confirms the approach is sound
+      - B) The firewall specialist, who challenges assumptions daily
+      - C) The peer, because reviews should test readability above all
+      - D) Neither, because only the supervisor may review a capstone plan
       answer: B
-    - question: 'A change log accompanying a revised plan:'
+    - question: A revised capstone plan moves the measurement window two weeks earlier and narrows it to the
+        server VLAN. What should accompany it so the reviewer can follow the changes?
       options:
-      - A) Adds length
-      - B) Shows what changed and why, making review efficient
-      - C) Is optional
-      - D) Replaces the plan
-      answer: B
-    - question: 'Committing to a plan means:'
+      - A) A change log entry showing what moved and why
+      - B) A replacement of the original plan, which is withdrawn
+      - C) Nothing, because the revised plan speaks for itself
+      - D) An appendix restating every unchanged section in full
+      answer: A
+    - question: After review, a Student commits to the final plan. Under this module's definition, what does the
+        commitment include?
       options:
-      - A) Never changing it
-      - B) Proceeding decisively while retaining defined points for reassessment
-      - C) Ignoring feedback
-      - D) Fixing the scope permanently
-      answer: B
-    - question: 'Feedback recommending a substantial scope reduction should be:'
+      - A) Freedom to change any part of the plan whenever convenient
+      - B) Freezing the scope so that no reassessment ever happens
+      - C) Proceeding decisively while keeping defined reassessment points
+      - D) Ignoring further feedback until the final submission
+      answer: C
+    - question: A reviewer recommends cutting the cloud hybrid segment from the capstone scope, leaving the core
+        question intact. How should the Student treat this point in the response?
       options:
-      - A) Resisted to preserve ambition
-      - B) Taken seriously, as over-scoping is the most common cause of failure
-      - C) Deferred
-      - D) Escalated
+      - A) Decline it, since ambition must be preserved at all costs
+      - B) Take it seriously, as over-scoping dooms most work
+      - C) Defer it unanswered to the final submission
+      - D) Escalate it over the reviewer's head to the supervisor
       answer: B
-    - question: 'The final plan should be:'
+    - question: The reviewer's last point objects that a plan claim about the OT segment has no supporting evidence.
+        Which response demonstrates the refinement this module teaches?
       options:
-      - A) Aspirational
-      - B) Realistic, evaluable and agreed with the supervisor
-      - C) Confidential
-      - D) Flexible in all respects
-      answer: B
+      - A) Restating the unsupported claim more forcefully in the final plan
+      - B) Deleting the OT segment from the range inventory
+      - C) Marking the claim as evidence in the change log
+      - D) Removing the claim from the plan and logging the change
+      answer: D

@@ -1,0 +1,189 @@
+# C206 Incident Response Foundations - instructor pack. STAFF ONLY: this file holds quiz answer
+# keys and lab setup notes. Do not distribute to learners. Keys and expected values below must
+# match content/courses/c206-incident-response-foundations.yaml; run scripts/check_course.py
+# after any change to either file.
+course_code: C206
+audience: staff_only
+overview: 'Incident Response Foundations is a six-module course of 60-minute sessions (360 minutes total).
+  Each module splits as 15 minutes of teaching on the module topics, 35 minutes of hands-on lab on the
+  soc-training range and a 10-minute five-item quiz passed at 70 percent. Modules 3 to 5 use the
+  incident-response-drill scenario; the other modules run on the baseline range with no scenario loaded.
+  Say ''Student'' throughout for the people taking the course, and keep every description defensive and
+  observable.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (event, alert, incident and the lifecycle), 35 lab (SIEM alert classification on
+    siem01 and thehive01), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (readiness, escalation, out-of-band and jump kits), 35 lab (tool access audit from
+    jump01 across siem01, velociraptor01 and thehive01), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (triage, scope, severity and note taking), 35 lab (drill triage on siem01,
+    velociraptor01 and thehive01), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (containment trade-offs, eradication, recovery verification), 35 lab (drill
+    containment and eradication planning on velociraptor01 and thehive01), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (blameless review, systemic cause, owned actions), 35 lab (drill review and timeline
+    assembly on thehive01 and siem01), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (audiences, notification obligations, uncertainty), 35 lab (status updates drafted
+    from the live range), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 C (Confidentiality impact), M01-O01: Changed share permissions after an unrecognised login put
+    payroll data at risk of disclosure. A is wrong because events can involve accounts; B invents an
+    escalation rule that does not decide classification; D confuses multi-team use with impact. Q2 A
+    (Lifecycle loops), M01-O02: Review feeds preparation, so the lifecycle closes only when improvement
+    actions land. B and C stop at intermediate phases; D mistakes the report for the end. Q3 D (Plan
+    grants authority), M01-O03: Only the declaration threshold and role named in the plan carry authority
+    at 2 a.m.; a runbook covers a system, an old email thread proves nothing and a tool page is not an
+    authorisation. Q4 B (Unproven effectiveness), M01-O03: A plan never exercised has unknown behaviour
+    under pressure; documentation is not compliance (A), waiting for an incident is the failure itself
+    (C) and a plan does not replace trained people (D). Q5 C (Post-incident activity), M01-O02: Tuning
+    monitoring after reimage while the report is open is review-phase work; preparation precedes the
+    incident and containment and detection have both already happened.'
+- module: 2
+  notes: 'Q1 D (Channel resilience), M02-O02: Out-of-band exists because primary channels may be unavailable
+    or observed; cheapness, a regulator mandate and queue hygiene are not the reason. Q2 B (Trusted
+    tooling), M02-O03: A jump kit guarantees tool integrity independent of the compromised environment.
+    A, C and D describe user support, documentation and isolation, none of which the kit provides. Q3 A
+    (Pre-authorisation buys speed), M02-O01: Approving the disconnect in advance removes the wait for
+    sign-off; it does not remove accountability (B), replace the plan (C) or reduce logging (D). Q4 C
+    (Asset ownership), M02-O01: The delay came from not knowing who decides for the server; a channel, a
+    bigger kit and a severity matrix do not name the decision-maker. Q5 B (Stale escalation data), M02-O02:
+    Routes to departed responders are the classic out-of-date contact failure; the other options describe
+    tool sprawl, over-training and over-documentation, which are not this failure.'
+- module: 3
+  notes: 'Q1 A (Triage decides incident or not), M03-O01: Triage exists to state whether the combined
+    observations constitute an incident; ownership, cost and signature matches come later. Q2 C (Scope
+    follows evidence), M03-O02: Both machines and the account are shown by evidence, so scope covers them;
+    A and B under-scope and D over-scopes without evidence. Q3 D (Impact over volume), M03-O02: Severity
+    rests on actual and potential organisational impact, which is why a payment system outranks a test lab
+    at equal alert count; volume, tool and time of day are not impact. Q4 D (Too-narrow scope), M03-O02:
+    Stopping at one laptop risks missed compromised systems and incomplete eradication; over-response,
+    logging and reporting timing are different failure modes. Q5 A (Explainability), M03-O03:
+    Contemporaneous notes protect the later explainability of decisions; they do not speed the SIEM (B),
+    keep the investigation secret (C) or affect containment speed alone (D).'
+- module: 4
+  notes: 'Q1 D (Short-term limits damage), M04-O01: Isolating ports buys time while a fuller plan develops;
+    it is not a permanent fix (A), not restoration (B) and not a collection method (C). Q2 A (Rebuild
+    assurance), M04-O03: Known-good media gives higher assurance that persistence is gone; rebuild
+    actually destroys in-place evidence (B) and is not always faster or fewer tickets (C, D). Q3 B
+    (Eradication without closure), M04-O02: Leaving the initial access route open invites reinfection
+    through the same path; closure, severity and recovery speed do not follow. Q4 C (Recovery
+    verification), M04-O03: Return to service requires verified-clean plus heightened monitoring; closing
+    the ticket first, restoring all access and deleting images are the errors the wrong answers encode.
+    Q5 D (Adversary awareness), M04-O01: Containment balances damage limitation against evidence
+    preservation and the risk of alerting the adversary; cost, staffing and deadlines are not part of
+    this stated balance.'
+- module: 5
+  notes: 'Q1 B (Honest disclosure), M05-O01: Blamelessness exists so people say what actually happened;
+    it is not manager protection (A), not speed (C) and not less documentation (D). Q2 A (Systemic
+    explains conditions), M05-O02: A systemic cause explains why the conditions existed; order in time
+    (B), being technical (C) or ease of fixing (D) do not make a cause systemic. Q3 D (Unowned actions
+    stall), M05-O03: Actions without owners remain unfinished; they do not complete faster, merge
+    automatically or need less tracking. Q4 C (Timeline exposes delay), M05-O02: Four days of detection
+    against a one-hour first log entry is exactly the delay a timeline exists to expose; fault, insurers
+    and report replacement are not its purpose. Q5 B (Feedback targets), M05-O03: Lessons learned feed
+    detection, prevention, process and training; a report, a register or a budget alone each captures
+    only one channel.'
+- module: 6
+  notes: 'Q1 C (Executive content), M06-O01: Executives need impact, decisions and confidence; raw logs
+    (A), tool output (B) and malware names (D) are technical detail they cannot act on. Q2 B (Decisions
+    need certainty levels), M06-O02: Separating facts from assumptions lets decision-makers weigh what is
+    confirmed; brevity, legal satisfaction and fewer updates are not the reason. Q3 D (Obligation
+    drivers), M06-O03: Notification obligations are driven by regulation, contract and the nature of the
+    data affected; internal preference, severity alone and media interest do not create obligations. Q4
+    A (Early attribution misdirects), M06-O02: Early attribution is often wrong and redirects response
+    effort; the other options claim attribution is impossible, slow to write or intelligence-gated, none
+    of which is the stated reason. Q5 C (Report audience), M06-O01: The report serves those who must make
+    decisions and improvements; the adversary, the public and vendors are not its readers.'
+lab_setup:
+- module: 1
+  setup: 'Revert the soc-training range to its baseline; no scenario. Confirm the Student accounts reach
+    siem01 and thehive01 (analyst logins) and jump01 (SSH). SIEM should show at least five recent alerts
+    and TheHive at least two open cases. Expected Student values: five alert names with hosts and
+    timestamps from siem01, and the count of open TheHive cases.'
+- module: 2
+  setup: 'Revert the soc-training range to its baseline; no scenario. Give each Student the shared
+    analyst credentials for siem01, velociraptor01 and thehive01 and their own SSH account on jump01.
+    Expected Student values: the SIEM queryable time span, the Velociraptor client count and the
+    TheHive case count. If a tool is deliberately unreachable in your cohort, tell no one and let the
+    audit find it.'
+- module: 3
+  setup: 'Revert the soc-training range, then load the incident-response-drill scenario and confirm its
+    staged alerts appear on siem01 and its endpoint artefacts on velociraptor01. Confirm the SIEM holds
+    the Zeek connection records for the affected host (zeek_conn and zeek_dns) and thehive01 accepts
+    case creation. Expected Student values: the drill alert list with hosts and times, the connection
+    records for the affected host read on siem01 and the case created with the severity the Student
+    justifies.'
+- module: 4
+  setup: 'Keep the incident-response-drill scenario loaded from module 3 (or reload it and have Students
+    reuse their module 3 notes). Confirm velociraptor01 still shows the persistence artefacts and siem01
+    the current alerting. Expected Student values: the persistence artefact list from velociraptor01,
+    per-host containment actions in thehive01 and the current alerting rules recorded from siem01.'
+- module: 5
+  setup: 'Keep the incident-response-drill scenario loaded (or reload and point Students at their module
+    4 case). The case in thehive01 must hold milestones, and siem01 and velociraptor01 must still show
+    the times the timeline needs. Expected Student values: the milestone times from thehive01, timeline
+    entries sourced from siem01 and velociraptor01, and at least two systemic causes with owned actions.'
+- module: 6
+  setup: 'Revert the soc-training range to its baseline; no scenario. The lab needs only observable
+    alerts, so confirm siem01 shows its usual alerts and thehive01 has an open case Students may cite.
+    Expected Student values: affected hosts, alert times and sources from siem01, and the confirmed
+    versus assumed split from thehive01 case status.'
+common_faults:
+- module: 1
+  fault: Students classify any alert with a malware name in it as an incident, regardless of impact.
+  remedy: 'Make them point at the CIA impact in the SIEM detail view before the classification sticks; no
+    impact shown, no incident.'
+- module: 1
+  fault: Students pick a declaration role by seniority instead of reading the plan threshold.
+  remedy: 'Ask which document the authority comes from; if the answer is not the plan, send them back to
+    the plan text.'
+- module: 2
+  fault: Students record a tool as ready because the login page loaded, without noting any value from it.
+  remedy: 'Require the specific displayed value (time span, client count, case count) for each tool before
+    readiness counts.'
+- module: 2
+  fault: The checklist lists technology only and skips people and process.
+  remedy: 'Make them name one people item and one process item from the lab before the gaps are ranked.'
+- module: 3
+  fault: Scope lists only the host that raised the alert, ignoring the account evidence.
+  remedy: 'Walk the account evidence from velociraptor01 back into scope; ask what else that account
+    touched.'
+- module: 3
+  fault: Declaration notes state conclusions with no citation or time.
+  remedy: 'Enforce the fact-or-assumption marking on every line; an uncited fact line must be rewritten or
+    downgraded to assumption.'
+- module: 4
+  fault: Containment is proposed for in-scope hosts without stating what it interrupts.
+  remedy: 'For each action ask what the business loses while it holds; an action with no stated cost is
+    not finished.'
+- module: 4
+  fault: Eradication plans delete the malware and never close the initial access route.
+  remedy: 'Point at the persistence artefacts from velociraptor01 and ask how the intruder returns if the
+    route stays open.'
+- module: 5
+  fault: Timeline entries are recalled from memory instead of cited from the range.
+  remedy: 'Reject any entry without a source and time; send the Student back to thehive01, siem01 or
+    velociraptor01 for the citation.'
+- module: 5
+  fault: Actions are assigned to teams or to nobody, with no verification criterion.
+  remedy: 'Require a named role and a check a second person could run; an action that fails that test goes
+    back on the list.'
+- module: 6
+  fault: The executive update is a trimmed copy of the technical update with the logs removed.
+  remedy: 'Compare the two updates side by side and ask what decision the executive can make from each
+    line; decision-free lines come out.'
+- module: 6
+  fault: Assumptions are written as facts, usually around scope.
+  remedy: 'Have Students mark each line confirmed or assumed; any line they cannot cite from siem01 or
+    thehive01 is an assumption.'

@@ -9,6 +9,7 @@ difficulty: beginner
 duration_hours: 100
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 source:
@@ -30,56 +31,89 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Write correct programs using Python's core types and control structures.
-  - Explain mutability and how it affects assignment and function arguments.
-  - Use functions and scope correctly to structure a program.
+  - Trace the value of each variable through a short program built on Python's core types and control
+    structures
+  - Write a function with a default argument and predict what a mutable default does across repeated
+    calls
+  - Distinguish a reference assignment from a copy when two names point to one list
   topics:
-  - Types, variables and operators.
-  - Conditionals, loops and comprehensions.
-  - Functions, arguments and return values.
-  - Mutability, references and scope.
-  lab: 'Lab: Write a script that parses a log file, counts events by type, and prints a sorted summary;
-    include a function with a default argument and explain why a mutable default is dangerous.'
+  - Core types (number, string, list, tuple, dict, set), variables and operators.
+  - Conditionals, loops and comprehensions, and when each control structure fits.
+  - Functions, arguments, return values, and how Python resolves local and global names.
+  - Mutability and immutability, references, and what assignment copies and does not copy.
+  lab: >-
+    Lab: On the small-enterprise range, write and run a Python script on jump-box that counts the
+    events of each type in the instructor's log file and prints the types in sorted order with their
+    counts. Evidence: the printed summary, the output of one call that passes a list into the function
+    and then changes it, the counts returned by three calls that use the function's mutable default
+    list, and a one-sentence note on what that default does across repeated calls. Pass: the summary
+    lists every event type with a count in sorted order; the changed list is shown after the call; the
+    repeated calls show counts left in the default list and the note states that shared default correctly.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the Python version python3 prints.
+    - hosts: [jump-box]
+      action: Read the log file your instructor supplied and record the first two lines and the event types
+        visible in them.
+    - hosts: [jump-box]
+      action: Write the counting script on jump-box, run it against the log file and record the printed
+        summary.
+    - hosts: [jump-box]
+      action: Pass a short list into the counting function in one call, change that list after the call
+        and record the function's output and the list's new contents.
+    - hosts: [jump-box]
+      action: Give the counting function an optional list parameter whose default is an empty list, call
+        it three times without passing that parameter and record the counts each call returns.
+    - hosts: [jump-box]
+      action: Mark the summary "sorted" or "not sorted", confirm each count against the file, and write
+        the one-sentence note on what the mutable default did across the repeated calls.
   refs:
   - nist-sp-800-218
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: Which Python type is immutable?
+    - question: A script keeps a packing list in a variable, passes it to a function that appends one item,
+        and after the call the original list holds the item too. Why?
       options:
-      - A) list
-      - B) dict
-      - C) tuple
-      - D) set
-      answer: C
-    - question: 'Using a mutable object as a default argument is dangerous because the default is:'
-      options:
-      - A) Copied on every call
-      - B) Evaluated once at function definition and shared across calls
-      - C) Always None
-      - D) Converted to a tuple
+      - A) The function copied the list before appending, leaving the caller's list unchanged
+      - B) Assignment passes a reference, so both names point to the same list
+      - C) Lists grow globally whenever any function in the program appends to them
+      - D) The append was applied to an immutable tuple instead of the list
       answer: B
-    - question: What does a list comprehension return?
+    - question: A developer writes a function whose optional list of filters defaults to an empty list,
+        and each call appends its filename to that default. What happens on the third call?
       options:
-      - A) A generator
-      - B) A new list
-      - C) The original list modified in place
-      - D) A set
-      answer: B
-    - question: 'In Python, assigning one list to another variable results in:'
-      options:
-      - A) A deep copy
-      - B) A shallow copy
-      - C) Both names referring to the same object
-      - D) An error
+      - A) The default list is rebuilt empty before every call, so nothing lingers
+      - B) The function raises an error because the shared default cannot grow
+      - C) The third call sees the two earlier filenames still in the default list
+      - D) Python converts the mutable default into an immutable tuple on the third call
       answer: C
-    - question: 'The scope resolution order in Python is:'
+    - question: A log script must run one block when a count is zero and a different block otherwise, and
+        read every line of the file. Which pair of control structures fits?
       options:
-      - A) Global, Local, Builtin
-      - B) Local, Enclosing, Global, Builtin
-      - C) Builtin, Global, Local
-      - D) Enclosing, Builtin, Local
+      - A) A while loop with a break statement and no condition tested anywhere
+      - B) A single if with no else branch and one pass through the file
+      - C) A comprehension covering the whole file, with the branching left out
+      - D) An if/else branch for the zero case and a loop over the lines
+      answer: D
+    - question: A script must store a pair of coordinates once and never change them while it runs. Which
+        core type fits?
+      options:
+      - A) A tuple, which cannot be changed after creation
+      - B) A list, which supports in-place changes and keeps order
+      - C) A dict, which maps each key to one stored value
+      - D) A set, which keeps unique values and discards duplicates
+      answer: A
+    - question: A script defines one total inside a function and another total with the same name at the
+        top of the file. Which total does a print inside the function see?
+      options:
+      - A) The global total, because global names always win
+      - B) The local total, because a local name shadows the global one
+      - C) Neither, because the name conflict raises an error before the print runs
+      - D) Both, because Python merges the two scopes
       answer: B
 - ordinal: 2
   title: Data Structures and File Handling
@@ -88,57 +122,89 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Select an appropriate data structure for a given access pattern.
-  - Read and write structured data formats safely.
-  - Handle errors and resource cleanup correctly.
+  - Select the list, dict or set that fits a stated lookup or membership need and justify the choice
+  - Read and write JSON and CSV records with the matching standard-library parsers
+  - Handle parse errors and file cleanup with specific exceptions and context managers
   topics:
-  - Lists, dicts, sets and their complexity.
-  - File I/O and context managers.
-  - JSON and CSV parsing.
-  - Exception handling and cleanup.
-  lab: 'Lab: Write a tool that ingests a CSV of host records, validates each row, writes valid rows to
-    JSON and rejected rows to an error file, using context managers throughout.'
+  - Lists, dicts and sets, and the access pattern each serves best.
+  - Average-case lookup and membership cost for dicts and sets versus scanning a list.
+  - The open call, closing files, and why a with statement guarantees cleanup.
+  - 'JSON and CSV: reading records, writing records and malformed rows.'
+  - Exception handling with specific except clauses and cleanup with finally.
+  lab: >-
+    Lab: On the small-enterprise range, build on jump-box a script that reads a CSV of host records your
+    instructor supplies, keeps the rows whose hostname and address fields are both filled in, writes
+    those rows to a JSON file and writes the rejected rows to a separate errors file. Evidence: the row
+    counts for accepted and rejected rows, the first line of each output file, and the exact message and
+    exit status the script produces when the CSV is missing. Pass: every accepted row appears in the
+    JSON file with its fields intact; every rejected row appears in the errors file; the missing-file
+    case prints a clear message and exits with a nonzero status.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the number of lines in the CSV file
+        your instructor supplied.
+    - hosts: [jump-box]
+      action: Read the first three rows of the file and record which of them have an empty hostname or
+        address field.
+    - hosts: [jump-box]
+      action: Write and run the validation script on jump-box and record the accepted and rejected row
+        counts it prints.
+    - hosts: [jump-box]
+      action: Open both output files and record the first line of each to show the records landed
+        correctly.
+    - hosts: [jump-box]
+      action: Rename the CSV file away, run the script again and record the exact message and exit status.
+    - hosts: [jump-box]
+      action: Write one sentence on why a dict fits the hostname-to-address mapping and one on why the file
+        cleanup used with statements.
   refs:
   - nist-sp-800-218
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Average-case lookup in a Python dict is:'
+    - question: A screening script checks thousands of incoming addresses against a blocklist once per
+        request. Which structure keeps that check fastest?
       options:
-      - A) O(n)
-      - B) O(log n)
-      - C) O(1)
-      - D) O(n log n)
+      - A) A list scanned from the start on every request
+      - B) A tuple holding the same entries in order
+      - C) A set built once and tested by membership
+      - D) A dict mapping each address to a count
       answer: C
-    - question: 'The main benefit of a with statement for file handling is that it:'
+    - question: An address book must return the phone number for a given hostname, and lookups happen far
+        more often than updates. Which structure fits best?
       options:
-      - A) Speeds up reads
-      - B) Guarantees the file is closed even if an exception occurs
-      - C) Locks the file
-      - D) Compresses output
-      answer: B
-    - question: 'Catching a bare except is discouraged because it:'
+      - A) A set of the phone numbers alone
+      - B) A list of numbers sorted by hostname
+      - C) A tuple alternating hostnames and numbers
+      - D) A dict keyed by each hostname
+      answer: D
+    - question: A file-reading script stops midway through its work and its open file handle is never
+        released. Which construct guarantees the cleanup?
       options:
-      - A) Is slower
-      - B) Swallows unexpected errors including control-flow exceptions
-      - C) Cannot be nested
-      - D) Requires a finally block
+      - A) A wider except clause around the whole program
+      - B) A with statement around the open call
+      - C) A print statement before every read
+      - D) Reading the whole file into memory first
       answer: B
-    - question: Which structure is best for testing membership of a large collection?
+    - question: A tool must exchange records with a web service whose payloads hold nested named fields.
+        Which format and parser fit?
       options:
-      - A) list
-      - B) set
-      - C) tuple
-      - D) string
-      answer: B
-    - question: 'json.load differs from json.loads in that json.load reads from:'
+      - A) JSON, read with the standard json module
+      - B) CSV, read column by column into flat rows
+      - C) Plain text records split on commas into fields
+      - D) A log format parsed with string slicing into lines
+      answer: A
+    - question: A CSV import fails on one malformed row in the middle of thousands of good rows. Which
+        handling keeps the rest of the import alive?
       options:
-      - A) A string
-      - B) A file-like object
-      - C) A bytes object
-      - D) A dict
-      answer: B
+      - A) Catching every exception at the top of the file and continuing silently
+      - B) Letting the exception end the whole import at the bad row
+      - C) Catching the specific parse error, recording the row and continuing
+      - D) Restarting the import from the beginning after each bad row found
+      answer: C
 - ordinal: 3
   title: Secure Coding Practices
   content_type: reading
@@ -146,16 +212,40 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Identify common vulnerability classes in application code.
-  - Apply input validation and output encoding correctly.
-  - Explain why secrets must not be embedded in source.
+  - Identify the injection risk in a script that builds a command or a query from unvalidated input
+  - Select the validation or parameterised-query fix that removes a stated flaw
+  - Explain why credentials belong outside source code and where they should live instead
   topics:
-  - Injection flaws and parameterised queries.
-  - Input validation and canonicalisation.
-  - Secret management and configuration.
-  - Dependency and supply-chain risk.
-  lab: 'Lab: Take a deliberately vulnerable script containing a command injection and a hardcoded credential,
-    exploit both in a lab VM, then remediate and prove the fix.'
+  - Injection flaws when input reaches a shell command or a database query.
+  - Parameterised queries and why assembling query text by hand defeats them.
+  - Allowlist validation and canonicalisation of user input.
+  - Hardcoded credentials, version history and secret management.
+  - The OWASP Top 10 categories that cover these flaw classes.
+  lab: >-
+    Lab: On the small-enterprise range, review a search script your instructor places on jump-box that
+    reads a value from its arguments, find the injection flaw and the hardcoded credential in it, and fix
+    both without changing what the script outputs for a normal search. Evidence: the line numbers of the
+    flawed construction and of the embedded credential, the replacement lines, and the output of one
+    normal search before and after the fix. Pass: both flaws are identified at the right lines; the fixed
+    script produces the same output for a normal search; no credential remains in the file or in the
+    command that runs it.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and run the supplied search script once with a
+        plain search value; record its output.
+    - hosts: [jump-box]
+      action: Read the script and record the line numbers where input is assembled into the command or
+        query and where a credential is written in the file.
+    - hosts: [jump-box]
+      action: Rewrite the flawed lines with the safe construction the module teaches and move the credential
+        to an environment variable; record the replacement lines.
+    - hosts: [jump-box]
+      action: Run the same plain search again and record whether the output matches the earlier run.
+    - hosts: [jump-box]
+      action: Mark each fix "removes the flaw" or "does not" with one sentence of reason, and record where
+        the credential now lives and who can read it.
   refs:
   - owasp-top-10
   - cwe-top-25
@@ -164,40 +254,44 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'The correct defence against SQL injection is:'
+    - question: A support tool builds a database query by joining a typed name straight into the query
+        text. Which defence removes the flaw at its source?
       options:
-      - A) Escaping quotes manually
-      - B) Parameterised queries with bound variables
-      - C) Blocking the apostrophe character
-      - D) Using a WAF only
+      - A) Escaping the quote characters by hand before joining the input text
+      - B) A parameterised query that keeps the input out of the query text
+      - C) Rejecting any input value that contains a quote character
+      - D) A firewall rule placed in front of the database server
       answer: B
-    - question: 'Passing unsanitised user input to a shell command risks:'
+    - question: A script runs an external program and passes the user's chosen filename to it through a
+        shell. Which change removes the command injection risk?
       options:
-      - A) Cross-site scripting
-      - B) Command injection
-      - C) Buffer overflow
-      - D) Clickjacking
-      answer: B
-    - question: 'Hardcoded credentials in source code are dangerous primarily because they:'
+      - A) Wrapping the filename in extra quotation marks before the shell runs it
+      - B) Logging the filename before every run and keeping the shell call unchanged
+      - C) Truncating the filename to a fixed length before the shell sees it
+      - D) Passing the filename as a separate argument instead of through a shell
+      answer: D
+    - question: Which input validation design still holds when a developer forgets to maintain it?
       options:
-      - A) Slow compilation
-      - B) Persist in version history and are readable by anyone with repository access
-      - C) Break linting
-      - D) Prevent packaging
-      answer: B
-    - question: 'Validating input against an allowlist is preferred over a denylist because:'
+      - A) An allowlist of the values the system accepts
+      - B) A denylist of the characters the system rejects
+      - C) A length check on the raw input alone
+      - D) A log entry written for every value received
+      answer: A
+    - question: A reviewer finds a database password written in a script that was committed two years ago.
+        Why is deleting the line not enough?
       options:
-      - A) It is faster
-      - B) It defines what is acceptable rather than trying to enumerate all bad input
-      - C) It requires no maintenance
-      - D) It supports Unicode better
-      answer: B
-    - question: 'The OWASP Top 10 is best described as:'
+      - A) The password becomes invalid the moment the line is deleted
+      - B) Deleted lines can never be read by anyone again
+      - C) The password remains in the repository's version history
+      - D) The linter reinstates the line on the next run
+      answer: C
+    - question: A team wants a shared, maintained list of the most significant web application flaw
+        categories to shape its code reviews. Which resource fits?
       options:
-      - A) A compliance certification
-      - B) A consensus awareness document of critical web application security risks
-      - C) A scanning tool
-      - D) A secure coding language
+      - A) The latest report from a vulnerability scanner
+      - B) The OWASP Top 10 document
+      - C) One vendor's own secure-coding standard
+      - D) The application's test suite results
       answer: B
 - ordinal: 4
   title: Automation for Security Tasks
@@ -206,57 +300,90 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Automate repetitive analysis tasks with scripts.
-  - Interact with HTTP APIs and parse their responses.
-  - Apply rate limiting and error handling to automated requests.
+  - Write a script that requests records from an HTTP API and parses each response
+  - Handle status codes, retries and rate limits so a failed run resumes safely
+  - Keep an API token out of the code and out of the command that runs it
   topics:
-  - Scripting workflow design.
-  - HTTP requests, status codes and pagination.
-  - Parsing and normalising API responses.
-  - Retries, backoff and rate limits.
-  lab: 'Lab: Write a script that queries a local API for host records, handles pagination and HTTP errors
-    with backoff, and outputs a normalised report.'
+  - HTTP requests, status codes and what each class of code asks the client to do.
+  - 'Pagination: reading multi-page results until the API reports none left.'
+  - Parsing and normalising API responses into one record shape.
+  - Retries with exponential backoff, and honouring a stated rate limit.
+  - TLS certificate verification and storing tokens in the environment.
+  lab: >-
+    Lab: On the small-enterprise range, write and run a script on jump-box that pages through the records
+    of a local API your instructor supplies, retries one failed request with backoff, and writes a
+    normalised one-line summary per record. Evidence: the number of records fetched across all pages, the
+    status code the script prints for each request, the retry behaviour after one forced failure, and
+    the command line showing the token read from the environment rather than written in the file. Pass:
+    every page is fetched and counted; the failure is retried and the run completes; the summary holds
+    one line per record; no token appears in the script file.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the API base address your instructor
+        provides.
+    - hosts: [jump-box]
+      action: Request the first page with a small script and record the status code and the number of
+        records it returns.
+    - hosts: [jump-box]
+      action: Extend the script to follow the page links until none remain and record the total record
+        count.
+    - hosts: [jump-box]
+      action: Point the script at the address your instructor designates as failing, run it and record the
+        retry behaviour the backoff prints.
+    - hosts: [jump-box]
+      action: Read the token from an environment variable instead of the file, run the script and record
+        the command line used.
+    - hosts: [jump-box]
+      action: Write the normalised summary to a file, record its line count, and mark the run "complete"
+        or "incomplete" with one sentence of reason.
   refs:
   - nist-sp-800-218
   quiz:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'An HTTP 429 status code indicates:'
+    - question: An automated job that polls an API every minute starts receiving HTTP 429 responses on
+        every request. What should the client do next?
       options:
-      - A) Not found
-      - B) Too many requests
-      - C) Unauthorised
-      - D) Server error
+      - A) Open a fresh connection for each retry at the same pace
+      - B) Slow the request rate and retry with increasing waits
+      - C) Ignore the response and keep the original polling pace
+      - D) Poll the service by hand until it recovers on its own
       answer: B
-    - question: 'Exponential backoff means retry intervals:'
+    - question: A fetcher stops after the first hundred records although the service reports that it holds
+        thousands. Which behaviour is missing?
       options:
-      - A) Stay constant
-      - B) Increase multiplicatively after each failure
-      - C) Decrease over time
-      - D) Are chosen randomly with no bound
-      answer: B
-    - question: 'Verifying TLS certificates in an automated client is important because disabling it:'
+      - A) Certificate verification performed on the client for every single request
+      - B) A retry with backoff for requests that fail outright
+      - C) Parsing of each response body into the script's record shape
+      - D) Following the pagination links to the last page
+      answer: D
+    - question: A teammate proposes disabling certificate verification inside the office network to save
+        setup time. What is the strongest objection?
       options:
-      - A) Slows the request
-      - B) Removes protection against interception
-      - C) Breaks JSON parsing
-      - D) Prevents redirects
-      answer: B
-    - question: 'An HTTP 401 differs from 403 in that 401 indicates:'
+      - A) A verified connection is what detects an intercepted session
+      - B) Verification slows down only the very first request of the run
+      - C) Verification requires a paid certificate authority for every host
+      - D) Disabling it also breaks the JSON parsing of the response body
+      answer: A
+    - question: A script for the nightly export needs an API token that must not end up in the repository.
+        Where should the script read it from?
       options:
-      - A) The resource does not exist
-      - B) Authentication is required or has failed
-      - C) The method is not allowed
-      - D) The server is overloaded
-      answer: B
-    - question: 'Storing an API token in an environment variable rather than in code primarily:'
+      - A) A constant defined at the top of the file
+      - B) A comment placed above the request
+      - C) An environment variable set outside the code
+      - D) A configuration file committed beside the script
+      answer: C
+    - question: A script logs one request answered with 401 and, seconds later, the same request retried
+        and answered with 403. What does the pair most likely indicate?
       options:
-      - A) Improves performance
-      - B) Keeps the secret out of version control
-      - C) Encrypts the token
-      - D) Rotates the token
-      answer: B
+      - A) The service was offline for the whole minute between the requests
+      - B) The record requested does not exist anywhere on the service
+      - C) The request method used is not allowed anywhere on the service
+      - D) The first lacked authentication and the second lacked permission
+      answer: D
 - ordinal: 5
   title: Testing, Debugging and Code Quality
   content_type: reading
@@ -264,57 +391,84 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Write unit tests that meaningfully exercise behaviour.
-  - Debug a failing program systematically.
-  - Apply static analysis to find defects before runtime.
+  - Write unit tests that cover one behaviour each and fail for a stated, reproducible reason
+  - Read a traceback to name the failing function, the line and the exception type
+  - Run a static analysis tool and triage its findings before changing any code
   topics:
-  - Unit testing and assertions.
-  - Test fixtures and isolation.
-  - Debuggers, tracebacks and logging.
-  - Linting and static analysis.
-  lab: 'Lab: Write unit tests for the log parser from module 1 including an edge case that currently fails,
-    fix the defect, and run a linter to clean the remaining warnings.'
+  - 'Unit tests: one behaviour, repeatable, independent of the network.'
+  - Arrangements, fixtures and isolating a test from its surroundings.
+  - 'Reading a traceback from the bottom up: file, function, line, exception.'
+  - Logging for diagnosis, and regression tests that keep a fixed defect fixed.
+  - 'Linters and static analysis: what they catch and what they cannot.'
+  lab: >-
+    Lab: On the small-enterprise range, add unit tests on jump-box for the log-counting script from
+    module 1, include the empty-file case that currently fails, fix the defect it exposes, and clean the
+    warnings a linter reports. Evidence: the test names and their pass or fail results before and after
+    the fix, the failing traceback's last line, and the linter's warning count before and after. Pass:
+    the empty-file test fails before the fix and passes after it; the earlier tests still pass; both
+    linter counts are recorded and the final count is lower than the first.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and run the module 1 script against an empty log
+        file; record what it prints or raises.
+    - hosts: [jump-box]
+      action: Write a unit test that feeds the counting function an empty file and one normal file; record
+        both test results.
+    - hosts: [jump-box]
+      action: Run the full test suite and record the traceback's last line for the test that fails.
+    - hosts: [jump-box]
+      action: Fix the defect in the script, run the tests again and record the result of every test.
+    - hosts: [jump-box]
+      action: Run the linter, record the warning count, fix what it reports and record the final count with
+        one sentence judging whether the tests now cover the fixed behaviour.
   refs:
   - nist-sp-800-218
   quiz:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'A unit test should ideally:'
+    - question: A unit test for a counting function passes on one machine and fails on another because it
+        reads a shared folder. Which property is missing?
       options:
-      - A) Depend on live network services
-      - B) Test one behaviour in isolation and be repeatable
-      - C) Cover the whole system at once
-      - D) Require manual setup
-      answer: B
-    - question: 'Static analysis differs from testing because it:'
+      - A) Coverage of every line of the function
+      - B) A meaningful assertion in the test
+      - C) Isolation from its surroundings
+      - D) A short runtime on both machines
+      answer: C
+    - question: Static analysis flags a defect before the program ever runs. What can it never confirm on
+        its own?
       options:
-      - A) Executes the program
-      - B) Examines code without executing it
-      - C) Requires production data
-      - D) Measures performance
-      answer: B
-    - question: 'A Python traceback should be read:'
+      - A) That the program's behaviour is correct at runtime
+      - B) That a variable name is misspelled or never used anywhere
+      - C) That an imported module is unused in the file
+      - D) That a function is defined twice in the same file
+      answer: A
+    - question: A developer runs the test suite and one test fails with a traceback. Which line of the
+        traceback names the exception that ended the run?
       options:
-      - A) Top to bottom, the first line is the error
-      - B) Bottom to top, the last line names the exception
-      - C) In random order
-      - D) Only the middle matters
-      answer: B
-    - question: 'Test coverage of 100 percent guarantees:'
+      - A) The first line, which names the test file and the case
+      - B) The line quoting the failing test's own source text
+      - C) The middle line with the largest line number printed
+      - D) The last line, with the exception type and message
+      answer: D
+    - question: A manager reads a 100 percent coverage report and concludes the program has no defects.
+        What is wrong with that reading?
       options:
-      - A) The code is correct
-      - B) Every line executed during tests, not that behaviour is correct
-      - C) No security flaws
-      - D) Optimal performance
+      - A) Coverage cannot reach 100 percent in a dynamically typed language
+      - B) Coverage counts lines executed, not behaviours proved
+      - C) Coverage reports only the tests that failed during the run
+      - D) Coverage measures how fast the test suite runs on the machine
       answer: B
-    - question: 'A regression test is written primarily to:'
+    - question: A defect fixed last month reappears in this month's release and no test noticed. Which
+        practice would most likely have caught it?
       options:
-      - A) Improve speed
-      - B) Ensure a fixed defect does not reappear
-      - C) Replace documentation
-      - D) Measure coverage
-      answer: B
+      - A) A longer design document for the module
+      - B) A stricter linter rule at build time
+      - C) A regression test from the earlier fix
+      - D) A faster machine for the test suite
+      answer: C
 - ordinal: 6
   title: Building a Small Security Tool
   content_type: reading
@@ -322,16 +476,42 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Decompose a requirement into modules with clear responsibilities.
-  - Package and document a tool for use by others.
-  - Evaluate the operational safety of an automated security tool.
+  - Decompose a tool requirement into functions and files with single responsibilities
+  - Design a command-line interface whose destructive actions require an explicit flag
+  - Judge a finished tool's safe defaults, documentation and dependency choices
   topics:
-  - Project structure and dependency management.
-  - Command-line interface design.
-  - Documentation and usage examples.
-  - Safe defaults and destructive-action guards.
-  lab: 'Lab: Build a small CLI tool that scans a directory for files with world-writable permissions and
-    reports findings; include a dry-run default and require an explicit flag before any change is made.'
+  - 'Project layout: separating the entry point, the logic and the output writing.'
+  - Command-line arguments, help text and explicit confirmation for change actions.
+  - 'Safe defaults: dry-run first, minimal scope, least privilege.'
+  - 'Documentation: stating the assumptions and limits of a tool''s results.'
+  - Pinning dependencies so builds stay reproducible.
+  lab: >-
+    Lab: On the small-enterprise range, turn the log-counting script into a small command-line tool on
+    jump-box that reports the world-writable files under one directory your instructor names, prints a
+    report by default and changes nothing without the change flag the design requires. Evidence: the tool's help
+    output, one default run's report and file count, one flagged run and what it states before doing
+    anything, and the dependency list with pinned versions. Pass: the default run reports without
+    modifying anything; the flagged run states exactly what it would do; the help text names both modes;
+    the dependency list is pinned.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the directory your instructor names
+        for the scan and its file count.
+    - hosts: [jump-box]
+      action: Run the tool with its help option and record the names of the two modes it documents.
+    - hosts: [jump-box]
+      action: Run the tool in its default reporting mode and record the number of findings and the first
+        finding's path.
+    - hosts: [jump-box]
+      action: Run the tool with the change flag the design requires and record exactly what it states
+        before doing anything.
+    - hosts: [jump-box]
+      action: Read the tool's dependency list and record whether every entry in it is pinned to a
+        version.
+    - hosts: [jump-box]
+      action: Mark each of the four evidence items "safe default" or "not safe" with one sentence of reason.
   refs:
   - nist-sp-800-218
   - cis-benchmarks
@@ -339,38 +519,43 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'A security tool that can modify a system should default to:'
+    - question: A scanning tool offers to repair every finding it reports when run with no options at all.
+        Which design change makes it safer?
       options:
-      - A) Applying changes immediately
-      - B) A dry-run that reports without changing anything
-      - C) Silent operation
-      - D) Running as root
-      answer: B
-    - question: 'Pinning dependency versions helps primarily by:'
+      - A) Scanning more directories in a single run of the tool than before
+      - B) Printing each finding twice on the screen during every scan run
+      - C) Writing the report into a log file instead of the screen output
+      - D) Reporting by default and requiring a flag before any change
+      answer: D
+    - question: A tool stops working months later because an upstream library changed its interface. Which
+        practice would have prevented that?
       options:
-      - A) Reducing file size
-      - B) Making builds reproducible and limiting unexpected upstream changes
-      - C) Improving runtime speed
-      - D) Removing the need for tests
+      - A) Writing more documentation for the tool and the options it offers
+      - B) Pinning each dependency to a known version
+      - C) Removing the test suite to save time
+      - D) Adding a second entry point to the tool
       answer: B
-    - question: 'A good command-line interface for a security tool should:'
+    - question: Which command-line design for a tool that can change files makes a destructive action
+        hardest to trigger by accident?
       options:
-      - A) Assume defaults silently
-      - B) Make destructive actions explicit and require confirmation
-      - C) Hide errors
-      - D) Always run interactively
-      answer: B
-    - question: 'World-writable files are a concern because any user can:'
+      - A) The action needs an explicit flag and prints what it will do
+      - B) The action runs without asking as soon as the tool starts up
+      - C) The action is bundled into the default mode that every run takes
+      - D) The action accepts any directory that the user names in the arguments
+      answer: A
+    - question: A tool's report is trusted on hosts where its assumptions do not hold, and the results are
+        wrong. Which artefact would have prevented the misuse?
       options:
-      - A) Read them only
-      - B) Modify their contents, enabling tampering
-      - C) Change their owner
-      - D) Encrypt them
-      answer: B
-    - question: 'Documenting a tool''s assumptions matters most because:'
+      - A) A scan loop rewritten to run twice as fast on the hosts
+      - B) An option list extended with alternative spellings of each name
+      - C) Documented assumptions and limits beside the usage examples
+      - D) A progress display recoloured for each phase of the scan
+      answer: C
+    - question: A checker that only reads files is deployed with an account that can delete any file on the
+        host. Which principle does the deployment violate?
       options:
-      - A) It satisfies linting
-      - B) Operators need to know the conditions under which results are valid
-      - C) It shortens the code
-      - D) It replaces testing
-      answer: B
+      - A) Least privilege
+      - B) Defence in depth
+      - C) Separation of duties
+      - D) Secure default deny
+      answer: A

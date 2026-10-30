@@ -1,0 +1,183 @@
+# C207 - Incident Response Foundations - INSTRUCTOR PACK (staff only).
+# Companion to content/courses/c207-incident-response-foundations.yaml. Contains quiz keys,
+# facilitation notes and range preparation. Not for learner distribution.
+course_code: C207
+audience: staff_only
+overview: 'Incident Response Foundations is a course of six 60-minute modules (360 minutes, 6 hours) on the SOC
+  training range. Each module has the same split: 15 minutes teaching the module topics, 35 minutes of lab work
+  on the range in pairs, and a 10-minute assessment block for the five-item quiz passed at 70 percent. The labs
+  follow one incident from end to end: reading a declared case in TheHive, collecting volatile evidence with a
+  defensible custody record, investigating the compromised workstations on the host and in the network, triaging
+  the quarantined sample for indicators, and finally turning the drill''s weaknesses into an exercise design and
+  improvement plan. Students hand in lab notes with the recorded evidence; say ''Student'' throughout and keep
+  every description defensive and observable.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (lifecycle, incident commander authority, RACI), 35 lab (case review in TheHive, 25 in pairs,
+    10 debrief), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (order of volatility, hashing, custody records), 35 lab (collection from v-ws02 and custody
+    entry, 25 in pairs, 10 debrief), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (autostart persistence, artefact sources, timelines), 35 lab (v-ws03 investigation and
+    timeline, 25 in pairs, 10 debrief), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (flow versus capture, beaconing, DNS exfiltration), 35 lab (v-ws04 traffic review, 25 in
+    pairs, 10 debrief), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (safe handling, static triage, indicator durability), 35 lab (sample triage and indicator
+    search, 25 in pairs, 10 debrief), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (exercise types, injects, improvement planning), 35 lab (drill case review and exercise
+    design, 25 in pairs, 10 debrief), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: Containment priorities across teams is a coordination decision the incident commander owns; A is
+    a single-host task an analyst takes alone, C is routine analysis and D is individual work, none of which need
+    the role. Q2 C: Post-incident activity covers reports and lessons learned after eradication; A, B and D all
+    sit earlier in the lifecycle. Q3 A: Consulted means asked for input with no decision authority; B describes
+    accountable, C responsible and D informed. Q4 D: Shutting down a revenue system is a business decision above
+    the incident commander''s authority; A, B and C are all within the response team. Q5 C: Loss of every
+    production server activates business continuity planning; A, B and D are routine maintenance processes, not
+    continuity response.'
+- module: 2
+  notes: 'Q1 A: Process memory is the most volatile source and is lost at power-off; D, B and C are progressively
+    less volatile. Q2 C: Matching hashes prove the image did not change in transit; they say nothing about
+    encryption (A), collector identity (B) or analysis coverage (D). Q3 D: The chain of custody entry is the
+    record of who handled the evidence, when and why; A fired on the alert, B orders events and C rates the
+    incident. Q4 B: Examining the only copy risks altering the original and undermining admissibility; the cost
+    in A and D is real but minor and C does not happen. Q5 A: Volatility order puts live network and process
+    state before the disk image; B, C and D all collect less volatile data first.'
+- module: 3
+  notes: 'Q1 D: A task created by an account that never signs in interactively is a classic persistence
+    mechanism; vendor updates, backups and patches come from service accounts with known schedules. Q2 B:
+    Independent artefact sources must corroborate an event before it is recorded; A takes one source as
+    authoritative, C throws away evidence and D hides the conflict. Q3 C: The earliest confirmed evidence of
+    compromise bounds the investigation window; severity (A), image size (B) and rule counts (D) do not. Q4 A:
+    Fileless code lives only in memory, so a memory capture reveals it; run keys, task folders and browser
+    history are all disk artefacts it never touched. Q5 B: Timeline construction establishes the sequence and
+    relationship of actions; it does not save storage (A), attribute the attacker (C) or replace imaging (D).'
+- module: 4
+  notes: 'Q1 C: Regular contact to one external domain at a fixed interval, including off hours, is beaconing;
+    backups run in windows (A), browsing is variable (B) and print queues are internal (D). Q2 A: Long
+    high-volume subdomains to one domain indicate DNS tunnelling for exfiltration; a mail relay (B), caching (C)
+    and a firewall rule (D) do not produce that pattern. Q3 B: Interval and destination reputation are metadata
+    that survive encryption; the negotiated algorithm (A) is not observable, and C and D do not distinguish
+    traffic. Q4 D: Only host telemetry ties a socket to a running process; flow records (B), rule history (A)
+    and registration details (C) never reach the process. Q5 A: Flow records give a long lookback of who
+    connected where without payloads; they cannot replay bytes (B), decrypt (C) or name accounts (D).'
+- module: 5
+  notes: 'Q1 B: Analysis belongs in an isolated environment with no production connectivity; the user''s
+    workstation (A), the responder''s laptop (C) and the production monitoring platform (D) all risk execution
+    or contamination. Q2 D: When the hash is unique to one build, behavioural indicators such as destinations
+    and registry changes are what find the other systems; file size, name and header timestamp (A, B, C) change
+    with a rebuild. Q3 A: Hash fragility means one changed byte produces a completely different hash; length
+    (B), platform storage (C) and over-matching (D) are not the reason. Q4 C: A pattern rule describing the
+    family''s text and structure finds every build carrying them; exact-hash search (A) and size comparison (B)
+    miss rebuilds and D waits on others. Q5 B: A command-and-control destination survives a rebuild because the
+    behaviour stays; the exact hash (A), compilation timestamp (C) and delivery file name (D) all change.'
+- module: 6
+  notes: 'Q1 C: A tabletop exercises decisions and coordination without touching live systems; a functional
+    exercise on production (A) is the risk the manager excluded, and a red team engagement (B) or scan (D) tests
+    something else. Q2 B: An inject forces decisions with information nobody prepared for, which is where gaps
+    show; closing early (A), scoring peers (C) and confirming policy (D) are not the inject''s purpose. Q3 D:
+    Gaps recorded nowhere means the exercise was too easy to expose weaknesses; a mature capability (A) would
+    still surface something, and B and C misread the outcome. Q4 A: An improvement plan with named owners and
+    completion tests is what converts observations into change; a recording (B), attendance (C) and a longer
+    document (D) do not. Q5 C: Re-running the exercise against the same gaps is the retest that confirms fixes;
+    filing the report (A) and assuming completion (B) verify nothing, and more injects (D) tests quantity, not
+    the fixes.'
+lab_setup:
+- module: 1
+  setup: 'Revert the soc-training range to its baseline snapshot. Confirm jump01 and thehive01 are reachable and
+    the incident-response-drill case is loaded in TheHive with its template tasks. Expected values: one declared
+    case with severity and task list visible; at least one task per lifecycle phase so Students can assign all
+    six.'
+- module: 2
+  setup: 'Revert the soc-training range to its baseline snapshot. Confirm jump01, velociraptor01, v-ws02 and
+    dfir-ws01 are reachable and the Velociraptor server on velociraptor01 has the compromised workstation
+    enrolled. Pre-load the memory, process and network artefacts on v-ws02. Expected values: at least three
+    artefacts offered for v-ws02; identical hash values before and after the move to dfir-ws01.'
+- module: 3
+  setup: 'Revert the soc-training range to its baseline snapshot. Confirm jump01, velociraptor01, v-ws03 and
+    dfir-ws01 are reachable and the timeline tools on dfir-ws01 open. Pre-load the v-ws03 artefacts: one
+    scheduled task and one run key from an unexpected account, with filesystem, registry and memory sources that
+    agree on the earliest event. Expected values: two unexpected autostart entries; the three sources showing
+    the same earliest compromise time within one minute.'
+- module: 4
+  setup: 'Revert the soc-training range to its baseline snapshot. Confirm jump01, seconion01, pcap01 and v-ws04
+    are reachable and the monitoring console on seconion01 opens from jump01. Pre-load the v-ws04 traffic: one
+    beaconing destination at a fixed interval, one DNS-tunnelling destination with long subdomains, and one
+    benign destination, with matching session captures on pcap01. Expected values: three external destinations;
+    the beacon interval constant to within a few seconds; tunnel query volume above the benign baseline; the
+    benign session payload readable and the other two not.'
+- module: 5
+  setup: 'Revert the soc-training range to its baseline snapshot. Confirm jump01, dfir-ws01, velociraptor01 and
+    misp01 are reachable and the sample directory exists on dfir-ws01 with the rule set provided. Pre-load the
+    quarantined sample and two matching files on other victim workstations. Expected values: one hash and file
+    type for the sample; exactly three files matching the rule set across the range; two victim workstations
+    holding a match.'
+- module: 6
+  setup: 'Revert the soc-training range to its baseline snapshot. Confirm jump01 and thehive01 are reachable and
+    the completed drill case is closed in TheHive with its full timeline. Expected values: the timeline showing
+    at least two delayed or unauthorised decisions; enough closed tasks for Students to write one inject per
+    response phase.'
+common_faults:
+- module: 1
+  fault: Students assign case tasks to lifecycle phases by tool name (everything in TheHive becomes detection
+    and analysis) instead of by the goal of the task.
+  remedy: In the debrief, ask for each task 'what was this task trying to achieve at that moment?' and keep the
+    six phase names on the board while they re-assign.
+- module: 1
+  fault: Students mark every escalation as needing authority above the incident commander, or none.
+  remedy: Have them read the plan's authority statement aloud and test one decision each way against it before
+    marking the second one.
+- module: 2
+  fault: Students hash the evidence only after the move, or record one hash and call it verified.
+  remedy: Point at the lab brief's pass item 'both hashes recorded and matching' and have them annotate which
+    hash was taken at which location.
+- module: 2
+  fault: Students collect the disk image first because it is the biggest artefact, treating size as priority.
+  remedy: 'Ask ''what disappears when the power is cut?'' and rebuild the volatility ranking on the board before
+    they record their order.'
+- module: 3
+  fault: Students take the filesystem timestamps as the truth and record the memory disagreement as an error.
+  remedy: Have them corroborate the same event in all three sources on dfir-ws01 and state which sources agree
+    before naming an earliest time.
+- module: 3
+  fault: Students name the persistence mechanism without giving the artefact that proves it.
+  remedy: Require the pass-item form 'mechanism, artefact, one-sentence reason' on the board; return notes that
+    give only the name.
+- module: 4
+  fault: Students read flow and connection records as if they carried payload content and mark encrypted
+    sessions readable.
+  remedy: Send them back to the pcap01 session to check readability directly, then ask what metadata the
+    connection record still showed.
+- module: 4
+  fault: Students mark every external destination as exfiltration on volume alone, without the DNS pattern.
+  remedy: Have them record the interval and the subdomain length for each destination first; the verdict comes
+    only after both are on the page.
+- module: 5
+  fault: Students run or open the sample on dfir-ws01 to 'see what it does' during static triage.
+  remedy: 'Stop them and restate the pass item: hash and file type only, no execution; dynamic behaviour belongs
+    to an isolated sandbox later.'
+- module: 5
+  fault: Students search the exact hash across the range, find nothing on the other workstations and conclude
+    the incident is contained.
+  remedy: Show the two pre-loaded matching files and ask which indicator the rebuild would still carry; then
+    have them run the rule set and the behavioural search.
+- module: 6
+  fault: Students write injects as instructions ('do a tabletop on ransomware') instead of new information
+    participants receive mid-exercise.
+  remedy: Read one good inject aloud ('the backup repository is now encrypted') and have them rewrite theirs in
+    the same form before the phase mapping.
+- module: 6
+  fault: Students list weaknesses in the improvement plan without an owner or a measurable completion test.
+  remedy: Reject any plan entry that could not be marked done by someone else; the test must be observable, not
+    'improve the process'.

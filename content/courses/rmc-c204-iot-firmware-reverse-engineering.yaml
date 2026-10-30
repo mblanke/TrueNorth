@@ -9,6 +9,7 @@ difficulty: intermediate
 duration_hours: 100
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALRA
 source:
@@ -30,16 +31,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Obtain firmware through multiple acquisition routes.
-  - Select an acquisition method appropriate to the device.
-  - Handle hardware safely during extraction.
+  - Compare the vendor update, debug interface and flash chip reading routes for obtaining firmware from a device
+  - Select an acquisition route that fits a stated device, risk of damage and evidence need
+  - Judge whether an acquired firmware image is trustworthy by checking vendor hashes or signatures where offered
   topics:
-  - Vendor update acquisition.
-  - Flash chip reading and desoldering.
-  - Debug interface extraction.
-  - Safety and device preservation.
-  lab: 'Lab: Acquire firmware from a device by two independent routes, compare the images, and document
-    any differences between the vendor update and the on-device image.'
+  - 'Where firmware lives on an embedded device: flash memory, bootloader and update partitions.'
+  - Acquiring a vendor update image through official channels and what it may not contain.
+  - 'Debug interface extraction: identifying a UART pinout and reaching a bootloader or shell.'
+  - Flash chip reading and desoldering, and when a device may be sacrificed.
+  - Verifying an acquired image against vendor hashes or signatures before any analysis.
+  lab: >-
+    Lab: On the large-enterprise range, compare the vendor update image and the recovered on-device image the
+    instructor staged on the Linux analysis host ansible01, and decide how much each can be trusted.
+    Evidence: the size and hash of each image as the host reports them, whether the two images differ, and any
+    vendor-published hash available to check them against. Pass: both hashes recorded exactly as the host shows
+    them;
+    a difference verdict for the pair with a one-sentence reason; each image marked trusted, untrusted or
+    unverified with a one-sentence reason.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and open an SSH session to the analysis host ansible01.
+    - hosts: [ansible01]
+      action: List the two staged firmware image files in the lab directory on ansible01 and record the size and
+        hash of each.
+    - hosts: [ansible01]
+      action: Compare the vendor update image with the on-device image and record whether their hashes differ.
+    - hosts: [ansible01]
+      action: Check the vendor's published hash for the update image, where one is supplied, and record whether it
+        matches.
+    - hosts: [ansible01]
+      action: Mark each image trusted, untrusted or unverified with a one-sentence reason, and write one sentence
+        on what a mismatch between the two images would suggest.
   refs:
   - binwalk
   - nist-sp-800-193
@@ -47,40 +71,50 @@ modules:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'Comparing a vendor update image with the on-device image can reveal:'
+    - question: >-
+        A security team must obtain the firmware from a router that still receives signed vendor updates.
+        Which acquisition route should they try first?
       options:
-      - A) Nothing useful
-      - B) Device-specific data, configuration or modifications not present in the update
-      - C) Only version differences
-      - D) Encryption keys always
+      - A) Read the flash chip directly, because on-device code is the newest build
+      - B) Download the vendor update, because it is non-destructive and vendor supplied
+      - C) Use the debug port, because it shows the running system directly
+      - D) Desolder the flash chip, because hardware evidence is always the strongest evidence
       answer: B
-    - question: 'Reading a flash chip directly is preferred when:'
+    - question: >-
+        An analyst needs the exact image running on a donated smart camera, including any local configuration.
+        Why is a vendor update download not enough?
       options:
-      - A) Updates are available
-      - B) The vendor image is unavailable or the on-device state matters
-      - C) The device is new
-      - D) Debug ports are open
-      answer: B
-    - question: 'Extracting firmware via a debug interface such as UART typically requires:'
+      - A) Vendor update downloads are always encrypted and unreadable
+      - B) Vendor update downloads need written permission from the vendor before any use
+      - C) The camera cannot be powered on in the lab
+      - D) The update image may lack device-specific data and local modifications
+      answer: D
+    - question: >-
+        In a teaching lab, desoldering a flash chip destroys the board it sits on. When is that acquisition
+        route justified?
       options:
-      - A) Desoldering
-      - B) Identifying the pinout and an accessible bootloader or shell
-      - C) Vendor cooperation
-      - D) Network access
-      answer: B
-    - question: 'Destructive extraction should be considered only when:'
+      - A) When no non-destructive route remains and the device can be sacrificed
+      - B) Whenever the flash chip is the largest component on the board
+      - C) When the analyst is short of lab time
+      - D) Never, because a teaching lab device must stay intact and fully working
+      answer: A
+    - question: >-
+        A UART header on a device main board gives the analyst which kind of access, provided a bootloader or
+        shell answers on it?
       options:
-      - A) It is faster
-      - B) Non-destructive routes are exhausted and the device can be sacrificed
-      - C) The device is cheap
-      - D) Always
-      answer: B
-    - question: 'Firmware acquired from an untrusted source should be:'
+      - A) Direct removal of the flash memory chip
+      - B) A vendor-signed update image for the device
+      - C) An interactive console for bootloader commands or a system shell
+      - D) The wireless pairing credentials of the device
+      answer: C
+    - question: >-
+        Two files both claim to be the same router firmware. Which check most supports trusting them before
+        analysis begins?
       options:
-      - A) Trusted if it works
-      - B) Verified against vendor hashes or signatures where possible
-      - C) Used directly
-      - D) Discarded
+      - A) The two files carry the same file name
+      - B) Their hashes match a hash the vendor published
+      - C) Both files open without an error message
+      - D) The files came from a popular hobbyist forum
       answer: B
 - ordinal: 2
   title: Firmware Unpacking and Filesystem Analysis
@@ -89,16 +123,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Identify firmware image structure.
-  - Extract embedded filesystems and components.
-  - Analyse the extracted filesystem systematically.
+  - Identify the structure of a firmware image and the filesystems or payloads it contains
+  - Extract an embedded filesystem from a firmware image and inventory its contents
+  - Distinguish encryption or compression from readable content using entropy analysis of an image
   topics:
-  - Image structure and headers.
-  - Filesystem identification and extraction.
-  - Entropy analysis and encryption detection.
-  - Systematic filesystem review.
-  lab: 'Lab: Unpack a firmware image, extract its filesystem, and produce an inventory of binaries, configuration
-    files, credentials and cryptographic material found.'
+  - Image headers and section tables, and how unpacking tools recognise embedded content.
+  - Compressed read-only filesystems such as squashfs and how they are extracted.
+  - 'Entropy analysis: what uniform high entropy across a whole image suggests.'
+  - 'A review order for an extracted filesystem: binaries, configuration, credentials and keys.'
+  - Why a hardcoded credential or embedded private key affects every device of a model.
+  lab: >-
+    Lab: On the large-enterprise range, unpack the on-device firmware image staged on the analysis host
+    ansible01, extract its filesystem and inventory what the extraction holds. Evidence: the list of sections
+    the signature scan reports with their offsets, the filesystem type of the main content, and every binary,
+    configuration file, credential and key found in the extracted tree. Pass: each section listed with its
+    offset as the scan reports it; the filesystem extracted under the lab directory; each credential or key
+    found marked shared across the model or device-specific with a one-sentence reason.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and open an SSH session to the analysis host ansible01.
+    - hosts: [ansible01]
+      action: Run a signature scan against the staged on-device image and record each section it reports with its
+        offset.
+    - hosts: [ansible01]
+      action: Record the filesystem type the scan reports for the main content section and extract it under the
+        lab directory.
+    - hosts: [ansible01]
+      action: Walk the extracted filesystem in a fixed order and record each binary, configuration file,
+        credential and key file found.
+    - hosts: [ansible01]
+      action: Mark each credential or key found as shared across the model or device-specific, with a one-sentence
+        reason for each mark.
   refs:
   - binwalk
   - nist-sp-800-193
@@ -106,41 +163,50 @@ modules:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'High uniform entropy across an entire firmware image suggests:'
+    - question: >-
+        A signature scan reports uniform high entropy across a whole firmware image and recognises no sections.
+        What does this most likely indicate?
       options:
-      - A) Plain filesystem
-      - B) Encryption or whole-image compression
-      - C) Corruption
-      - D) Padding
-      answer: B
-    - question: 'Binwalk is primarily used to:'
+      - A) The image holds a plain readable filesystem
+      - B) The image is mostly empty padding between real sections
+      - C) The image is encrypted or compressed as a whole
+      - D) The scan tool needs a signature update
+      answer: C
+    - question: >-
+        An extracted smart-plug filesystem ships the same root password in every published image of the model.
+        Why does this matter to every customer of that model?
       options:
-      - A) Emulate firmware
-      - B) Identify and extract embedded files and filesystems within an image
-      - C) Patch binaries
-      - D) Read flash chips
-      answer: B
-    - question: 'Hardcoded credentials found in a firmware filesystem are significant because they:'
+      - A) One extracted password works on every device of the model
+      - B) The password expires with the device certificate
+      - C) Each device rewrites the password at first boot
+      - D) The password is only valid on the lab network
+      answer: A
+    - question: >-
+        An analyst reviews several findings in an extracted filesystem. Which finding most changes how an
+        enterprise remediates every deployment of the device model?
       options:
-      - A) Are usually rotated
-      - B) Typically apply to every device of that model and cannot be changed by users
-      - C) Are encrypted
-      - D) Are device specific
-      answer: B
-    - question: 'A squashfs image inside firmware is:'
+      - A) A verbose startup log in a system directory
+      - B) A default wallpaper image in the web interface
+      - C) A locale translation file for an unused language
+      - D) An embedded private key shared by every device
+      answer: D
+    - question: >-
+        An unpacking tool reports a squashfs section inside a router image. What does that section contain?
       options:
-      - A) An encryption container
-      - B) A compressed read-only filesystem commonly used in embedded devices
-      - C) A bootloader
-      - D) A kernel image
+      - A) The device encrypted secrets held at rest in flash storage
+      - B) A compressed read-only root filesystem for the device
+      - C) The bootloader signing key for the image
+      - D) The kernel debug symbols for the build
       answer: B
-    - question: 'Private keys embedded in firmware are a serious finding because they:'
+    - question: >-
+        An analyst finds a plaintext service account password in a configuration file. Which follow-up check
+        best distinguishes a model-wide default from a device-specific setting?
       options:
-      - A) Expire quickly
-      - B) Are shared across all devices and can be extracted by anyone
-      - C) Are per device
-      - D) Cannot be used remotely
-      answer: B
+      - A) Rename the configuration file and reboot the device
+      - B) Delete the account and watch for startup errors
+      - C) Compare the same file across images for other devices of the model
+      - D) Compress the filesystem again and rescan the image
+      answer: C
 - ordinal: 3
   title: Embedded Binary Analysis
   content_type: reading
@@ -148,16 +214,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Analyse binaries for non-x86 architectures.
-  - Identify vulnerabilities in embedded code.
-  - Trace input handling through embedded binaries.
+  - Determine the target architecture and endianness of an embedded binary from tool output
+  - Trace a network input through an embedded binary to the memory operation that consumes it
+  - Assess whether a traced input path has adequate bounds checking and exploit mitigations
   topics:
-  - ARM and MIPS architecture basics.
-  - Cross-architecture analysis tooling.
-  - Memory safety in embedded C.
-  - Input handling and attack surface tracing.
-  lab: 'Lab: Analyse an embedded binary handling network input, trace the input path to a memory operation,
-    and assess whether the bounds checking is adequate.'
+  - ARM and MIPS instruction set basics an analyst recognises in disassembly.
+  - 'Cross-architecture tooling: file identification, disassembly and decompilation for non-x86 binaries.'
+  - Memory safety defects in embedded C and the mitigations builds often lack.
+  - Tracing attacker-controlled input from a network read to a copy or format operation.
+  - 'Judging bounds checking: buffer sizes, length parameters and unchecked copies.'
+  lab: >-
+    Lab: On the large-enterprise range, analyse the embedded web service binary staged on the analysis host
+    ansible01 and judge the path from its network input to memory. Evidence: the binary architecture and
+    endianness as the tooling reports them, the functions it calls for input and for memory copying, each step
+    of the input path, and the exploit mitigations present in the build. Pass: architecture and endianness
+    recorded; the input path traced from the network read to the copy with any length check marked; bounds
+    checking judged adequate or inadequate with a one-sentence reason.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and open an SSH session to the analysis host ansible01.
+    - hosts: [ansible01]
+      action: Identify the architecture and endianness of the staged service binary with the file tooling and
+        record both values.
+    - hosts: [ansible01]
+      action: Disassemble the network input handler and record the functions it calls for reading input and for
+        copying memory.
+    - hosts: [ansible01]
+      action: Trace the input path from the network read to the memory copy and record each step, marking any
+        length check on the way.
+    - hosts: [ansible01]
+      action: Mark the bounds checking adequate or inadequate with a one-sentence reason, and record which common
+        mitigations the build lacks.
   refs:
   - cwe-top-25
   - nist-sp-800-218
@@ -165,41 +254,52 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: Embedded devices commonly use which architectures?
+    - question: >-
+        A disassembler shows load-store patterns and branch forms the analyst does not recognise from desktop
+        processors, and the file tooling reports a system-on-chip build. Which architecture family is most
+        likely?
       options:
-      - A) x86 only
-      - B) ARM and MIPS among others
-      - C) SPARC only
-      - D) RISC-V exclusively
+      - A) Desktop x86 processors in a legacy build
+      - B) ARM or MIPS cores common in embedded devices
+      - C) Mainframe instruction sets from a hosted port
+      - D) Graphics processor shaders misidentified as code
       answer: B
-    - question: 'Memory safety issues are prevalent in embedded firmware because it is often:'
+    - question: >-
+        An embedded vendor ships one firmware build and rarely updates devices in the field. Why do memory
+        safety defects in its C code remain exploitable for years?
       options:
-      - A) Written in memory-safe languages
-      - B) Written in C with limited mitigations and rarely updated
-      - C) Formally verified
-      - D) Interpreted
-      answer: B
-    - question: 'Tracing input to a memory operation is important because it establishes:'
+      - A) The devices store old attack tools for reuse
+      - B) C code cannot be reviewed for memory defects
+      - C) Fielded devices rarely receive rebuilt binaries with fixes
+      - D) Memory defects only matter on large server systems
+      answer: C
+    - question: >-
+        An analyst finds a fixed-size stack buffer filled directly from a request field with no length check.
+        What is the correct first judgement?
       options:
-      - A) Code quality
-      - B) Whether attacker-controlled data reaches an unsafe operation
-      - C) Performance
-      - D) Architecture
-      answer: B
-    - question: 'Embedded binaries frequently lack mitigations such as:'
+      - A) The input path reaches an unsafe copy and is a likely overflow
+      - B) The buffer is safe because its size is small
+      - C) The judgement must wait for a working exploit
+      - D) Stack buffers cannot be reached from the network
+      answer: A
+    - question: >-
+        An embedded binary was built without stack canaries or address space randomisation. What does the
+        analyst record about the build?
       options:
-      - A) Compilation
-      - B) ASLR, stack canaries and non-executable memory
-      - C) Symbols
-      - D) Networking
-      answer: B
-    - question: 'A fixed-size buffer filled from network input without length validation is:'
+      - A) It cannot run on real device hardware
+      - B) It was written entirely in assembly language
+      - C) It resists memory errors by design
+      - D) It lacks the common exploit mitigations
+      answer: D
+    - question: >-
+        Why does an analyst trace an input from the network handler to the function that copies it into a
+        buffer?
       options:
-      - A) Efficient
-      - B) A likely buffer overflow vulnerability
-      - C) Standard practice
-      - D) Safe if small
-      answer: B
+      - A) To measure the response time of the service
+      - B) To recover the vendor original source code
+      - C) To establish whether attacker-controlled data reaches the unsafe operation
+      - D) To confirm the processor architecture of the device
+      answer: C
 - ordinal: 4
   title: Emulation and Dynamic Analysis
   content_type: reading
@@ -207,16 +307,42 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Emulate firmware to enable dynamic analysis.
-  - Overcome hardware dependencies in emulation.
-  - Fuzz embedded services safely.
+  - Choose between full-system and partial emulation for a stated analysis goal on an image
+  - Run an emulated firmware service after stubbing the hardware dependencies it expects
+  - Fuzz an emulated network service and triage each crash for reproducibility and root cause
   topics:
-  - Full and partial emulation approaches.
-  - Hardware dependency stubbing.
-  - Debugging emulated firmware.
-  - Fuzzing embedded network services.
-  lab: 'Lab: Emulate a firmware image sufficiently to run its web service, attach a debugger, and fuzz
-    one input handler recording any crashes with reproducing input.'
+  - Full-system emulation of a device image and partial emulation of one service.
+  - 'Hardware dependencies an emulator must stub: peripherals, storage and kernel interfaces.'
+  - Attaching a debugger to an emulated process and controlling its execution.
+  - Fuzzing the network input handlers of an emulated service.
+  - 'Triaging crashes: reproducibility, root cause and the next analysis step.'
+  lab: >-
+    Lab: On the large-enterprise range, emulate the staged device image on the analysis host ansible01 far
+    enough to run its web service, then exercise one input handler under a debugger and a fuzzer. Evidence:
+    the hardware errors the emulator reports and what was stubbed, the address and port the emulated service
+    listens on, the breakpoint hit in the input handler, and each crash with its input. Pass: the service
+    answers inside the emulator; the debugger stops at the input handler; each recorded crash re-run and
+    marked reproducible or not with a proposed next triage step.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and open an SSH session to the analysis host ansible01.
+    - hosts: [ansible01]
+      action: Start the staged emulation profile for the device image and record any hardware error it reports
+        and what was stubbed for it.
+    - hosts: [ansible01]
+      action: Once the web service answers inside the emulator, record the address and port it listens on as the
+        console shows.
+    - hosts: [ansible01]
+      action: Attach the debugger to the emulated service process, set a breakpoint at the input handler and
+        record that execution stops there.
+    - hosts: [ansible01]
+      action: Run the staged fuzzing harness against the input handler and record each crash together with the
+        input that caused it.
+    - hosts: [ansible01]
+      action: Re-run each recorded crash input, mark it reproducible or not, and propose the next triage step
+        for each.
   refs:
   - nist-sp-800-115
   - cwe-top-25
@@ -224,41 +350,50 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Firmware emulation frequently fails because the image expects:'
+    - question: >-
+        Full-system emulation of a router image stops at boot because the image polls a board-level chip the
+        emulator does not model. What is the standard next step?
       options:
-      - A) More memory
-      - B) Specific hardware peripherals that the emulator does not provide
-      - C) Network access
-      - D) A newer kernel
-      answer: B
-    - question: 'Partial emulation is useful when:'
+      - A) Abandon emulation and rebuild the physical device
+      - B) Reduce the emulated memory until boot succeeds
+      - C) Stub the missing peripheral so the boot continues
+      - D) Switch to a newer release of the emulator
+      answer: C
+    - question: >-
+        An analyst needs to examine one vulnerable binary from an image, not the whole running system. Which
+        approach fits this goal best?
       options:
-      - A) The whole system emulates cleanly
-      - B) Only a specific service or binary needs to be executed
-      - C) Hardware is available
-      - D) Source code exists
-      answer: B
-    - question: 'Fuzzing an embedded service is valuable because it:'
+      - A) Partial emulation of that binary alone
+      - B) Full-system emulation of the whole image
+      - C) Reading the flash chip on real hardware
+      - D) Waiting for the vendor to publish source
+      answer: A
+    - question: >-
+        A fuzzer reports thirty crashes in an emulated service within minutes. What does the analyst do before
+        reporting anything to the vendor?
       options:
-      - A) Proves correctness
-      - B) Efficiently finds input handling defects that manual review may miss
-      - C) Replaces static analysis
-      - D) Confirms architecture
-      answer: B
-    - question: 'A crash found by fuzzing should be:'
+      - A) Publish the crash inputs for open peer review
+      - B) Assume all thirty crashes share one root cause
+      - C) Patch the binary so the crashes stop
+      - D) Re-run each crash and triage reproducibility and cause
+      answer: D
+    - question: >-
+        Compared with running the device on real hardware, an emulated device gives the analyst:
       options:
-      - A) Reported immediately as a vulnerability
-      - B) Triaged to determine whether it is exploitable and reproducible
-      - C) Ignored if rare
-      - D) Patched directly
+      - A) Perfect hardware fidelity with no preparation
+      - B) More control and instrumentation at some fidelity cost
+      - C) Faster network throughput for the service
+      - D) No need for debugger or fuzzer tooling
       answer: B
-    - question: 'Running firmware on real hardware rather than emulation offers:'
+    - question: >-
+        During fuzzing, the emulated web service writes past a request buffer and stops responding. What has
+        the fuzzer most likely found?
       options:
-      - A) Easier debugging
-      - B) Higher fidelity but less instrumentation and control
-      - C) Faster iteration
-      - D) Better tooling
-      answer: B
+      - A) An input handling defect worth root-cause analysis
+      - B) A configuration error in the emulator setup
+      - C) A defect in the fuzzing harness itself
+      - D) A memory shortage on the host machine
+      answer: A
 - ordinal: 5
   title: Update Mechanisms and Secure Boot
   content_type: reading
@@ -266,16 +401,42 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Analyse a device's update mechanism for weaknesses.
-  - Assess secure boot implementation.
-  - Identify rollback and downgrade exposure.
+  - Trace a device update path from transport through verification to installation and name its weaknesses
+  - Judge whether signature verification and the boot chain protect a device against modified images
+  - Determine whether an update design prevents rollback to an older signed version
   topics:
-  - Update transport and verification.
-  - Signature verification implementation.
-  - Secure boot chain analysis.
-  - Rollback protection.
-  lab: 'Lab: Analyse a device''s update mechanism end to end, determine whether updates are authenticated
-    and rollback-protected, and demonstrate any weakness found in the lab.'
+  - 'Update transport: where images come from and how the device fetches them.'
+  - 'Verification timing: checking an image before it is trusted, written or booted.'
+  - Secure boot chains, roots of trust and the weakest verification link.
+  - Rollback protection, version counters and downgrade resistance.
+  - Devices that cannot be updated and the exposure that leaves behind.
+  lab: >-
+    Lab: On the large-enterprise range, examine the update handling in the filesystem extracted in the earlier
+    module and judge whether the device authenticates and version-checks its updates. Evidence: the address
+    and protocol updates are fetched from, where in the flow signature verification happens, whether older
+    signed versions are refused, and which boot stages verify the next. Pass: each of the four findings
+    recorded as the files show them; the design marked authenticated or unauthenticated and rollback-protected
+    or not with a one-sentence reason for each mark; one change proposed for each weakness found.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and open an SSH session to the analysis host ansible01.
+    - hosts: [ansible01]
+      action: Locate the update handling script and configuration in the extracted filesystem and record the
+        address and protocol updates are fetched from.
+    - hosts: [ansible01]
+      action: Record where in the update flow signature verification happens, whether before writing, after
+        writing or not at all.
+    - hosts: [ansible01]
+      action: Search the update script for version comparison logic and record whether it refuses an older
+        signed version.
+    - hosts: [ansible01]
+      action: Read the boot configuration in the image and record which boot stages the configuration shows
+        being verified.
+    - hosts: [ansible01]
+      action: Mark the design authenticated or unauthenticated and rollback-protected or not, each with a
+        one-sentence reason, and propose one change for each weakness.
   refs:
   - nist-sp-800-193
   - nist-ir-8259
@@ -283,40 +444,49 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'An update mechanism that fetches firmware over unauthenticated HTTP allows:'
+    - question: >-
+        A home gateway downloads firmware over a connection that authenticates neither the server nor the
+        image. What does this allow an attacker positioned on the network path to do?
       options:
-      - A) Faster updates
-      - B) An attacker positioned on the network to supply malicious firmware
-      - C) Better compatibility
-      - D) Rollback
+      - A) Slow the update download without changing it
+      - B) Substitute modified firmware that the device accepts
+      - C) Read the user traffic but leave updates intact
+      - D) Nothing, because the device checks updates after install
       answer: B
-    - question: 'Signature verification performed after the image is written to flash is:'
+    - question: >-
+        A device verifies an update signature only after the image has been written to flash and booted. What
+        risk does this timing create?
       options:
-      - A) Equivalent to verifying before
-      - B) Dangerous, since a failed device may already be compromised or bricked
-      - C) Standard practice
-      - D) More efficient
-      answer: B
-    - question: 'Rollback protection prevents an attacker from:'
+      - A) Verification completes faster for large images
+      - B) The signature becomes stronger with each boot
+      - C) Updates consume noticeably more storage space on the flash chip
+      - D) A rejected image may already have replaced the running system
+      answer: D
+    - question: >-
+        An attacker obtains a legitimately signed firmware image of an older version with a known flaw. Which
+        control stops the device from accepting it?
       options:
-      - A) Installing newer firmware
-      - B) Downgrading to an older signed version with known vulnerabilities
-      - C) Reading firmware
-      - D) Modifying configuration
-      answer: B
-    - question: 'A secure boot chain is only as strong as:'
+      - A) Signature verification of every image
+      - B) Encrypted transport for update downloads
+      - C) Rollback protection backed by a version counter
+      - D) A longer maintenance window for updates
+      answer: C
+    - question: >-
+        In a secure boot chain, what decides the overall strength of the chain against modified images?
       options:
-      - A) Its longest link
-      - B) Its root of trust and the weakest verification step in the chain
-      - C) The kernel
-      - D) The bootloader alone
-      answer: B
-    - question: 'Devices that cannot be updated at all represent:'
+      - A) The root of trust and the weakest verification step
+      - B) The size of the final application image
+      - C) The processor speed of the device
+      - D) The number of firmware updates the vendor publishes each year
+      answer: A
+    - question: >-
+        A hospital operates infusion devices the vendor will never update again. Which statement best
+        describes their security position?
       options:
-      - A) Lower risk
-      - B) Permanent exposure to any vulnerability discovered in their lifetime
-      - C) Simpler management
-      - D) Better security
+      - A) They are safe because age isolates them from attack
+      - B) Every flaw found in them stays exploitable for their service life
+      - C) Their risk ends when the support contract ends
+      - D) Their risk equals that of any fully patched device
       answer: B
 - ordinal: 6
   title: Coordinated Disclosure for Embedded Devices
@@ -325,16 +495,40 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Assess the real-world impact of an embedded vulnerability.
-  - Conduct disclosure with embedded device vendors.
-  - Account for the long tail of unpatched devices.
+  - Assess the real-world impact of an embedded vulnerability using deployment scale and exposure
+  - Prepare a disclosure package that identifies affected models and states mitigation advice
+  - Sequence the steps of coordinated disclosure when a vendor is unresponsive
   topics:
-  - Impact assessment for embedded flaws.
-  - Vendor engagement challenges.
-  - Supply chain and white-label devices.
-  - Long-tail exposure and mitigation advice.
-  lab: 'Lab: Prepare a disclosure package for a vulnerability found in the lab device, including impact
-    assessment, affected model identification and mitigation advice for users who cannot patch.'
+  - 'Impact assessment for embedded flaws: deployment scale, exposure and consequence of compromise.'
+  - 'White-label devices: one flawed firmware shipped under many brands and vendors.'
+  - Vendor engagement windows, embargoes and escalation through a coordinating body.
+  - Mitigation advice for devices that will never receive a fix.
+  - End-of-life devices and the long-tail exposure of deployed fleets.
+  lab: >-
+    Lab: On the large-enterprise range, prepare the disclosure package for the flaw analysed in the earlier
+    modules and judge how widely it exposes the enterprise network. Evidence: the affected model, firmware
+    version and flaw summary; the count of network hosts the latest scan on the vulnerability scanner vuln01
+    reports running the affected service; the mitigation advice for operators who cannot patch; and the
+    disclosure stage the package is ready for. Pass: the advisory names the model and version; the exposure
+    count is recorded from the scan results; each mitigation matches a recorded exposure; the next disclosure
+    stage is chosen with a one-sentence reason.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and open an SSH session to the analysis host ansible01.
+    - hosts: [ansible01]
+      action: Review the lab findings from the earlier modules and record the affected model, firmware version
+        and a one-sentence flaw summary for the advisory.
+    - hosts: [vuln01]
+      action: Review the latest scan results on the vulnerability scanner vuln01 and record how many network
+        hosts report the affected service.
+    - hosts: [ansible01]
+      action: Draft the mitigation advice for operators who cannot apply a fix and record one compensating
+        measure per recorded exposure.
+    - hosts: [ansible01]
+      action: Assemble the draft advisory, the affected model list and the mitigation advice, and mark the
+        disclosure stage it is ready for with a one-sentence reason.
   refs:
   - nist-ir-8259
   - nist-sp-800-218
@@ -343,38 +537,47 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Embedded vulnerability disclosure is complicated by white-label devices because:'
+    - question: >-
+        One flawed firmware build ships inside devices sold under six different consumer brands. Why does this
+        complicate coordinated disclosure?
       options:
-      - A) They are rare
-      - B) The same flawed firmware ships under many brands with different vendors
-      - C) They lack firmware
-      - D) They are unsupported
-      answer: B
-    - question: 'Mitigation advice for embedded devices is important because:'
+      - A) The flaw is harder to reproduce per brand
+      - B) Each brand uses a different processor family for its device line
+      - C) One firmware fix must be coordinated across several vendors
+      - D) Customers can patch the devices without help
+      answer: C
+    - question: >-
+        A vendor contact stops answering partway through the agreed disclosure window. What is the researcher
+        best next step?
       options:
-      - A) Patches are always available
-      - B) Many devices will never receive a fix and users need compensating measures
-      - C) Users can rewrite firmware
-      - D) Vendors handle it
-      answer: B
-    - question: 'Impact assessment for an embedded flaw should consider:'
+      - A) Escalate to a coordinating body and prepare mitigation advice
+      - B) Publish the full technical details immediately, without any notice
+      - C) Contact the vendor customers directly instead
+      - D) Withdraw the finding and stop the disclosure
+      answer: A
+    - question: >-
+        An advisory concerns a flaw in a device most operators never expose beyond their own internal network.
+        Which factor most lowers its real-world impact?
       options:
-      - A) The device cost
-      - B) Deployment scale, network exposure and the consequence of compromise
-      - C) Firmware size
-      - D) Architecture
+      - A) The purchase price of the device
+      - B) The limited network exposure of the typical deployment
+      - C) The size of the firmware image
+      - D) The processor architecture of the device
       answer: B
-    - question: 'An unresponsive embedded vendor should lead the researcher to:'
+    - question: >-
+        Why does mitigation advice belong in an advisory for an embedded device flaw?
       options:
-      - A) Publish immediately
-      - B) Escalate through a coordinating body and consider user-protective mitigation advice
-      - C) Contact customers directly
-      - D) Abandon disclosure
-      answer: B
-    - question: 'End-of-life embedded devices present risk because:'
+      - A) Vendors always publish patches on the same day
+      - B) Users can rebuild and sign the firmware themselves
+      - C) Vendors prefer advisories that arrive without fixes
+      - D) Many deployed devices will never receive any patch
+      answer: D
+    - question: >-
+        A building controller reaches end of security support while it still operates a facility. What best
+        describes the risk it carries?
       options:
-      - A) They fail often
-      - B) They remain deployed and networked long after security support ends
-      - C) They are undocumented
-      - D) They lack updates only
-      answer: B
+      - A) It remains deployed and reachable long after fixes stop
+      - B) It stops working when support formally ends
+      - C) Its risk transfers entirely to the facility manager
+      - D) Its firmware becomes open source after support
+      answer: A

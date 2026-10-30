@@ -1,0 +1,184 @@
+# RMC C203 - Cloud Security - Advanced - INSTRUCTOR PACK (staff only).
+# Answer keys, expected range values and lab setup live here, never in the course file
+# Students read. Range hosts are node ids of content/ranges/cloud-security/template.yaml.
+
+course_code: RMC C203
+audience: staff_only
+overview: 'Cloud Security - Advanced is a six-module course for Students who already administer or defend
+  one cloud environment and now work at estate scale. Modules 1 to 3 build the estate view (account
+  boundaries, identity and escalation, provisioning pipelines), modules 4 to 6 apply it to workloads,
+  incident response and assurance. Every module runs its lab on the cloud-security range: a simulated AWS
+  estate on localstack01, a simulated Azure estate on azure-mock01, a provisioning server on terraform01,
+  a k3s cluster with registry01, a CI/CD segment, and a monitoring segment with cloud-siem01, falco01 and
+  prowler01, all reached from jump01. Students hand in lab notes with the recorded evidence and the marked
+  judgements, then sit the five-item quiz for each module.'
+timings:
+- {module: 1, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+- {module: 2, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+- {module: 3, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+- {module: 4, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+- {module: 5, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+- {module: 6, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: with every environment inside one boundary, the stolen credential reaches all of them, so
+    structure alone decides blast radius. A treats rotation as a fix for reach; C confuses contract law with
+    architecture; D confuses recovery time with exposure. Q2 C: an organisation-level guardrail is enforced
+    above the account, so an account administrator cannot change it. A and B assume the guardrail lives at
+    account level; D invents a change process that does not apply. Q3 A: differing identity, logging and
+    policy models make consistent detection and response the hard part. B, C and D are real but secondary
+    costs the module does not teach. Q4 D: an inventory of dependencies plus a tested exit position is the
+    managed posture. A and C are paper assurances; B is duplication, which is one tactic but not the answer
+    the module teaches. Q5 B: a landing zone hands the team a pre-configured foundation with guardrails
+    inherited from day one. A recreates the shared-account problem; C and D are components, not the
+    foundation.'
+- module: 2
+  notes: 'Q1 D: an identity that can attach permissions to itself is one step from administration, which is
+    the escalation path definition. A and C are unrelated properties; B is an inconvenience, not a security
+    path. Q2 B: rights granted for a task and never removed is the sprawl pattern. A is a different fault;
+    C contradicts the scenario, since the rights are standing; D is a different account type. Q3 A:
+    federation moves lifecycle, authentication strength and deprovisioning to one place. B and D are not
+    security outcomes; C is what federation removes. Q4 B: a low-privilege caller passing a high-privilege
+    role to a service it reaches is the role-passing risk. A, C and D describe side effects that do not
+    raise privilege. Q5 A: just-in-time elevation with approval and expiry removes the standing privilege.
+    B leaves the standing rights; C concentrates risk; D reviews the risk annually without reducing it.'
+- module: 3
+  notes: 'Q1 B: policy as code pays when it blocks the misconfiguration before deployment, so the resource
+    never exists. A and C accept the exposure and report it later; D is unrelated. Q2 D: a state file maps
+    the environment and often carries sensitive values, so broad readability leaks both. A, B and C describe
+    file properties that do not create the risk. Q3 A: version control keeps history, so the deleted line
+    still holds the secret for anyone who can read the repository. B, C and D describe tooling effects, not
+    the exposure. Q4 B: one reviewable, repeatable definition is what removes the two-hands divergence.
+    A and D are cost and chaos claims; C is the opposite of the fix. Q5 C: applied change the code does not
+    show is drift, and the response is detect and reconcile. A misuses the term; B destroys the record;
+    D documents instead of resolving.'
+- module: 4
+  notes: 'Q1 C: admission control decides at scheduling, so a non-compliant workload never starts. A and B
+    are other stages that cannot prevent scheduling; D narrows the check to one system. Q2 B: only runtime
+    detection sees behaviour during execution, which build-time scanning cannot. A repeats the failed check;
+    C and D are unrelated systems. Q3 D: whoever controls the control plane schedules arbitrary workloads
+    cluster-wide, so it outranks any single workload. A, B and C undersell its reach. Q4 A: the function
+    code, its dependencies and the permissions of its execution role remain the customer''s risk. B and D
+    are platform-managed; C is not a workload risk. Q5 C: a signature verified before execution proves
+    origin and integrity. A and B change storage, not trust; D finds weaknesses but proves nothing about
+    origin.'
+- module: 5
+  notes: 'Q1 A: cloud sessions and tokens stay valid after a password change, so revoking them is the
+    essential, commonly missed step. B and C are host actions that do not evict the identity; D waits out
+    the attacker. Q2 D: provider snapshots taken through the service interface are the cloud acquisition
+    method. A and B assume physical access the model does not offer; C preserves nothing. Q3 B: an
+    ephemeral resource can disappear before collection, which is the risk. A, C and D assert limits
+    snapshots and naming do not have. Q4 C: provider engagement is for evidence or capability inside the
+    provider''s responsibility boundary. A over-engages; B engages too late; D is the general rule the
+    boundary qualifies. Q5 D: the window review must cover every identity, policy and resource the attacker
+    could have created or changed. A, B and C each close one door and leave the rest.'
+- module: 6
+  notes: 'Q1 D: continuous compliance exists because the estate changes faster than a periodic assessment
+    can track. A, B and C are friction or cost claims, not the reason. Q2 A: platform-generated evidence is
+    current and consistent because it is produced as configuration changes. B and D are not advantages;
+    C favours the first team. Q3 C: in a shared responsibility audit the customer evidences the controls
+    inside its own boundary. A and B belong to the provider; D abdicates the boundary. Q4 B: control so
+    central that delivery waits drives teams around governance into shadow deployments. A, C and D
+    misread the outcome. Q5 A: a provider certification attests the provider''s controls, saying nothing
+    about how the customer configured its own buckets. B, C and D attack the certification on grounds the
+    argument never needed.'
+lab_setup:
+- module: 1
+  setup: 'Revert the range to baseline. Confirm jump01 reaches localstack01 and azure-mock01. Baseline
+    values the Student should find: on localstack01 the buckets company-backups, public-assets and
+    secret-configs, with public-assets world-readable, and the IAM users admin, dev-deploy and lambda-exec;
+    on azure-mock01 the vaults prod-secrets and dev-secrets, with dev-secrets governed by an overly broad
+    access policy. Do not announce the misconfigurations; the lab finds them.'
+- module: 2
+  setup: 'Revert the range to baseline. Confirm jump01 reaches localstack01 and azure-mock01. Baseline
+    values: the localstack01 IAM user dev-deploy holds broad permission-management rights, which is the
+    shortest escalation route; the azure-mock01 directory allows guest user enumeration, so listing
+    directory objects without signing in returns results. The standard user your instructor assigned
+    applies on jump01.'
+- module: 3
+  setup: 'Revert the range to baseline. Confirm jump01 reaches terraform01 and gitlab01. Baseline values:
+    the state file on terraform01 is readable without authentication and lists resource addresses; the
+    variable files beside the configuration carry cloud credentials; the project on gitlab01 is public and
+    its pipeline configuration references CI variables that hold secrets. Have the policy-gate vocabulary
+    from the teach block on the board.'
+- module: 4
+  setup: 'Revert the range to baseline. Confirm jump01 reaches k3s-master, registry01 and falco01, and that
+    kubectl works from jump01 and through k3s-master for the policy step. Baseline values: the cluster
+    schedules the pods web-app and privileged-debug on k3s-worker01 and crypto-miner-sim and exposed-dashboard
+    on k3s-worker02, with privileged-debug running privileged with the host process namespace; registry01
+    answers unauthenticated catalogue requests; falco01 holds runtime events including unexpected outbound
+    traffic. For the rejection step, confirm the cluster accepts the admission policy and returns a visible
+    denial citing the signed-image or privileged-container rule when a non-compliant pod is scheduled, not a
+    running pod. Expected marking: all four pods rejected under the stated policy; the exception process
+    names an approver, the checks that stand in for the missing signature and an expiry, not a blanket
+    "no exceptions".'
+- module: 5
+  setup: 'Revert the range to baseline. Confirm jump01 reaches cloud-siem01 and localstack01. Baseline
+    values: the feeds cloudtrail_ingest and k8s_audit_ingest populate cloud-siem01; the localstack01
+    management event logs record identity actions on resources and permissions. Agree the last known-good
+    checkpoint timestamp with the class before the search step, and keep it on the board.'
+- module: 6
+  setup: 'Revert the range to baseline. Confirm jump01 reaches prowler01 and cloud-siem01. Run the posture
+    assessment once yourself and record the severity counts at baseline so you can mark the Student counts;
+    on this range the findings concentrate on the public storage bucket, the broad access policy and the
+    anonymous registry access. Confirm the change events for the three chosen findings are searchable in
+    cloud-siem01. Marking the design: a passing capability names a scheduled assessment with prowler01 as
+    the recurring input, a reassessment trigger tied to the change events cloud-siem01 records, and a
+    destination for each evidence type; a design that runs once and stops fails the pass item.'
+common_faults:
+- module: 1
+  fault: Students list the bucket names but never test anonymous access, so the exposure finding is missed.
+  remedy: Have them read one bucket's access as an unauthenticated client during the lab; the range answers
+    in one step, and the pass item fails without it.
+- module: 1
+  fault: The proposed split separates environments but leaves administration shared across the boundary.
+  remedy: Ask what the stolen administrator credential could reach after their split; if the answer is
+    everything, the split moved names, not boundaries.
+- module: 2
+  fault: Students call every identity with write access an escalation path, drowning the real route.
+  remedy: Require the route to be written as a chain from the low-privilege identity to administration; a
+    permission that only edits data is not a step in a chain.
+- module: 2
+  fault: The azure-mock01 directory check is skipped because Students assume sign-in is required.
+  remedy: Tell them the lab asks what an anonymous client sees, and that recording the error or the result
+    is the evidence either way.
+- module: 3
+  fault: Students read the state file but treat the variable files as code and skip them.
+  remedy: Point at the Evidence line that names the configuration files; the credentials sit beside the
+    configuration, not inside the state file.
+- module: 3
+  fault: The proposed pre-deployment check only detects the problem after deployment.
+  remedy: Make them state when the check runs in the pipeline; if the resource already exists when it
+    fires, it is a scanner, not a gate.
+- module: 4
+  fault: Pod listings stop at names and images, so the privileged container is never examined.
+  remedy: Have them read the security settings for each pod in turn; the privileged one is found there, and
+    the marking step needs it.
+- module: 4
+  fault: Students mark the pods correctly but name no enforcing control.
+  remedy: Ask for the control that would have stopped the workload at scheduling; a scan report is not an
+    enforcement point.
+- module: 4
+  fault: The exception process reads "there are no exceptions", which documents nothing.
+  remedy: Give a concrete case, an image that cannot be signed yet, and ask who approves it, which check
+    stands in for the signature and when the approval lapses.
+- module: 5
+  fault: The containment order starts with the disruptive action and preserves no evidence first.
+  remedy: Walk the order once asking at each step what is destroyed; snapshots and log exports come before
+    the identity is torn down.
+- module: 5
+  fault: Students record the newest timestamp but not the feed it came from, so the evidence cannot be
+    marked.
+  remedy: Require feed name and timestamp as one line; an unattributed timestamp fails the pass item.
+- module: 6
+  fault: Students split findings by severity instead of by how evidence would be produced.
+  remedy: Re-read the assignment labels aloud; the split is automatic generation against manual
+    attestation, and severity is a separate column.
+- module: 6
+  fault: The provider certification is treated as covering everything above the hypervisor.
+  remedy: Put the two responsibility columns on the board and place one finding in each; the bucket
+    configuration is the customer's side of the line.
+- module: 6
+  fault: The capability design is the one-off assessment written up in prose, with no trigger or destination.
+  remedy: Ask when their capability next reassesses without a person deciding to run it; if the answer is
+    never, it is the point-in-time assessment again.

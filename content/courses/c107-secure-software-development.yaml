@@ -6,9 +6,10 @@ course_code: C107
 title: Secure Software Development
 version: '1.0'
 difficulty: beginner
-duration_hours: 100
+duration_hours: 6
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
@@ -33,57 +34,86 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Describe the phases of a secure software development framework.
-  - Explain why security defects are cheaper to fix earlier in the lifecycle.
-  - Define security requirements alongside functional requirements.
+  - Describe the four practice groups of a secure software development framework and their order
+  - Explain why a security defect costs less to fix in design than in production
+  - Write five security requirements for a feature specification, each testable as a pass or fail
   topics:
-  - SSDF practice groups and outcomes.
-  - Security requirements engineering.
-  - Shift-left and cost-of-defect curves.
-  - Roles and responsibilities across the lifecycle.
-  lab: 'Lab: Take a short feature specification and write five security requirements for it, each stated
-    as a testable acceptance criterion.'
+  - The four practice groups of the SSDF and what each covers.
+  - Security requirements engineering and testable acceptance criteria.
+  - Shift-left and the rising cost of fixing a defect across the lifecycle.
+  - Roles and responsibilities from architect to maintainer across the lifecycle.
+  lab: >-
+    Lab: On the cloud-security range, read the instructor-seeded feature specification in the
+    repository on gitlab01 and
+    write five security requirements for it, each stated as an acceptance criterion a test can pass
+    or fail. Evidence: the name of the repository and the specification file read; what personal or
+    production data the feature handles, as the specification states it; the five requirements, each
+    with the SSDF practice group it supports. Pass: each requirement is testable, so a reviewer can
+    say yes or no to it from behaviour alone; each requirement names the practice group it supports;
+    no requirement restates an existing functional requirement in softer words.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab record.
+    - hosts: [jump01, gitlab01]
+      action: From jump01, open the instructor-seeded feature repository on gitlab01 and record the
+        repository name and the path of the feature specification file.
+    - hosts: [jump01, gitlab01]
+      action: Read the specification and record what user data the feature collects and where the
+        specification says that data is stored.
+    - hosts: [jump01]
+      action: Write five security requirements for the feature, each as an acceptance criterion a
+        test can pass or fail, and record all five.
+    - hosts: [jump01]
+      action: Mark each requirement with the SSDF practice group it supports and record one sentence
+        saying why that group fits.
   refs:
   - nist-sp-800-218
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: NIST SP 800-218 defines which framework?
+    - question: A team discovers in production that an upload feature accepts any file type. In which
+        phase could this defect have been fixed most cheaply?
       options:
-      - A) Risk Management Framework
-      - B) Secure Software Development Framework
-      - C) Cybersecurity Framework
-      - D) Zero Trust Architecture
-      answer: B
-    - question: 'Security defects are cheaper to remediate early because:'
+      - A) After the first penetration test
+      - B) During the production hotfix window
+      - C) During requirements and design
+      - D) During user acceptance testing
+      answer: C
+    - question: A programme adopts a secure development framework. Which SSDF practice group covers
+        preparing the organisation to build secure software?
       options:
-      - A) Developers work faster early
-      - B) Later fixes require rework across design, code, tests and deployed systems
-      - C) Early defects are less severe
-      - D) Testing is skipped early
-      answer: B
-    - question: 'A good security requirement is:'
+      - A) Prepare the Organization
+      - B) Protect the Software
+      - C) Produce Well-Secured Software
+      - D) Respond to Vulnerabilities
+      answer: A
+    - question: A security requirement reads "the upload service shall be secure". Why is this
+        requirement defective?
       options:
-      - A) The system shall be secure
-      - B) Stated so that it can be objectively verified
-      - C) Written after release
-      - D) Owned by the security team alone
-      answer: B
-    - question: 'Shift-left in application security means:'
+      - A) Security requirements belong in a separate document from functional ones
+      - B) A requirement must always name the tool that enforces it
+      - C) The word secure may never appear in a written requirement
+      - D) No test can pass or fail it, so verification is impossible
+      answer: D
+    - question: A defect that a design review would have caught is instead fixed after deployment.
+        What makes the late fix more expensive?
       options:
-      - A) Deferring testing to production
-      - B) Moving security activities earlier into design and development
-      - C) Reducing test coverage
-      - D) Outsourcing security
+      - A) Penetration testers charge more per hour than architects
+      - B) The fix must rework design, code, tests and deployment
+      - C) Defects found in production are always more severe
+      - D) Hotfixes must pass a longer code review
       answer: B
-    - question: Which SSDF practice group covers preparing the organisation?
+    - question: A product owner writes detailed functional requirements and treats security as an
+        optional extra. What does the secure development lifecycle ask for instead?
       options:
-      - A) Produce Well-Secured Software
-      - B) Prepare the Organization
-      - C) Respond to Vulnerabilities
-      - D) Protect the Software
-      answer: B
+      - A) Security requirements verified alongside functional ones
+      - B) Security added by one review shortly before release
+      - C) Security left to the penetration tester's judgement
+      - D) Security requirements written only for internet-facing features
+      answer: A
 - ordinal: 2
   title: Threat Modelling for Applications
   content_type: reading
@@ -91,16 +121,44 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Produce a data flow diagram with trust boundaries.
-  - Apply STRIDE to identify threats per element.
-  - Prioritise threats and select proportionate mitigations.
+  - Draw a data flow diagram for a web application and mark every trust boundary
+  - Apply STRIDE to three elements of a data flow diagram and record one threat each
+  - Rank the identified threats by likelihood and impact and select a proportionate mitigation for each
   topics:
-  - Data flow diagrams and trust boundaries.
-  - STRIDE threat categories.
-  - Abuse cases and attacker goals.
-  - Risk ranking and mitigation selection.
-  lab: 'Lab: Draw a data flow diagram for a small web application, mark every trust boundary, apply STRIDE
-    to three elements, and produce a ranked mitigation table.'
+  - Data flow diagrams, elements and trust boundaries.
+  - Spoofing, tampering, repudiation, information disclosure, denial of service and elevation of privilege.
+  - Threat modelling during design, revisited as the design changes.
+  - Risk ranking by likelihood and impact, and choosing proportionate mitigations.
+  lab: >-
+    Lab: On the cloud-security range, describe the cluster-hosted web application as a data flow
+    diagram, mark every trust boundary, apply STRIDE to three elements and rank the three
+    threats by likelihood and impact.
+    Evidence: each component and data flow observed from the cluster on k3s-master; every trust
+    boundary between them; one threat for each of three chosen elements, each labelled with its
+    STRIDE category; a ranking of the three threats by likelihood and impact with one
+    proportionate mitigation for each. Pass: the diagram shows every component and flow the cluster
+    actually holds; each threat is labelled with the correct STRIDE category and one sentence of
+    reason; each mitigation matches the size of the threat it addresses.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab record.
+    - hosts: [jump01, k3s-master]
+      action: From jump01, list the pods and services on k3s-master and record each component and how
+        requests reach it.
+    - hosts: [jump01, k3s-worker01]
+      action: Record the web-app pod on k3s-worker01, the requests it accepts and the components or
+        data stores that sit behind it.
+    - hosts: [jump01]
+      action: Draw the data flow diagram for the application and record each trust boundary the flows
+        cross, in order.
+    - hosts: [jump01]
+      action: Apply STRIDE to three elements of the diagram and record one threat per element, each
+        labelled with its category.
+    - hosts: [jump01]
+      action: Rank the three threats by likelihood and impact and record one proportionate mitigation
+        for each, with a one-sentence reason.
   refs:
   - nist-sp-800-218
   - owasp-top-10
@@ -108,41 +166,46 @@ modules:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'In STRIDE, the S stands for:'
+    - question: On a data flow diagram, an internet browser submits orders to a web application that
+        writes to an internal database. Which line is a trust boundary?
       options:
-      - A) Scanning
-      - B) Spoofing
-      - C) Sanitisation
-      - D) Segmentation
-      answer: B
-    - question: 'A trust boundary on a data flow diagram marks where:'
+      - A) The wire between the database and its backup
+      - B) The link between two servers inside one cluster
+      - C) The connection from the browser to the web application
+      - D) The path between the application and its log store
+      answer: C
+    - question: A reviewer finds that a user can act as another account by replaying that account's
+        session token. Which STRIDE category is this?
       options:
-      - A) The network ends
-      - B) Data crosses between components of differing trust levels
-      - C) Encryption begins
-      - D) Logging starts
-      answer: B
-    - question: 'STRIDE''s Repudiation category is countered principally by:'
+      - A) Spoofing
+      - B) Tampering
+      - C) Repudiation
+      - D) Elevation of privilege
+      answer: A
+    - question: A designer adds a tamper-evident, time-stamped audit log so users cannot deny their
+        actions. Which STRIDE category does this counter?
       options:
-      - A) Encryption
-      - B) Logging and non-repudiation controls
-      - C) Rate limiting
-      - D) Input validation
-      answer: B
-    - question: 'Threat modelling is most valuable when performed:'
+      - A) Denial of service
+      - B) Information disclosure
+      - C) Spoofing
+      - D) Repudiation
+      answer: D
+    - question: A team completes threat modelling once at project start and never returns to it. When
+        is threat modelling most valuable?
       options:
-      - A) After deployment
-      - B) During design, and revisited as the design changes
-      - C) Only after an incident
-      - D) Once at project inception only
+      - A) After the first release reaches production
+      - B) During design and whenever the design changes
+      - C) Only after a reported incident
+      - D) Once the penetration test is scheduled
       answer: B
-    - question: 'Elevation of Privilege threats are best mitigated by:'
+    - question: One threat is cheap to exploit through an internet-facing endpoint; another has high
+        impact but needs internal access. Which threat ranks first?
       options:
-      - A) Compression
-      - B) Authorisation checks and least privilege
-      - C) Caching
-      - D) Load balancing
-      answer: B
+      - A) The internal threat, because impact alone decides the ranking order
+      - B) Neither first; ranking weighs only the cost of the mitigation
+      - C) Both equal, because likelihood never changes how threats rank
+      - D) The internet-facing threat, because likelihood and impact both favour it
+      answer: D
 - ordinal: 3
   title: Common Vulnerability Classes
   content_type: reading
@@ -150,16 +213,42 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Recognise the most impactful software weakness classes.
-  - Explain the root cause of injection and broken access control.
-  - Trace a weakness from CWE to a concrete code pattern.
+  - Classify flaws in a supplied application by weakness class using its observed behaviour
+  - Explain the root cause of injection and broken access control
+  - Map each weakness class to its entry in the CWE Top 25 and justify the mapping
   topics:
-  - Injection, XSS and deserialisation.
-  - Broken access control and IDOR.
-  - Memory safety and integer errors.
-  - CWE taxonomy and the Top 25.
-  lab: 'Lab: Given a vulnerable application, find one injection flaw and one broken access control flaw,
-    map each to its CWE identifier, and write a proof of concept for each.'
+  - Injection, cross-site scripting and unsafe deserialisation.
+  - Broken access control and insecure direct object references.
+  - Memory safety and integer handling errors.
+  - The CWE taxonomy and the Top 25 list.
+  lab: >-
+    Lab: On the cloud-security range, exercise the deliberately flawed web application and the
+    unauthenticated dashboard, classify each observed flaw by weakness class and map both to the
+    CWE Top 25. Evidence: the pod name and image behind each flaw; what each flaw let a request
+    reach, described as behaviour; the weakness class chosen for each with the matching CWE Top 25
+    entry; one proposed control per flaw. Pass: each flaw is classified with the weakness class its
+    behaviour matches and one sentence of reason; each class is mapped to the correct CWE Top 25
+    entry; each proposed control addresses the root cause, not the symptom.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab record.
+    - hosts: [jump01, k3s-master]
+      action: From jump01, list the pods running across the cluster from k3s-master and record each
+        pod name and image.
+    - hosts: [jump01, k3s-worker01]
+      action: Send the web-app pod on k3s-worker01 a normal request that reaches beyond the parameter
+        it was meant for and record what the response lets the request reach.
+    - hosts: [jump01, k3s-worker02]
+      action: Open the dashboard on k3s-worker02 without signing in and record whether it renders and
+        what role it reports for the session.
+    - hosts: [jump01]
+      action: Classify each observed flaw by weakness class, record the matching CWE Top 25 entry for
+        each and write one sentence of reason per classification.
+    - hosts: [jump01]
+      action: Propose one control for each flaw that addresses the root cause and record it beside
+        the classification.
   refs:
   - cwe-top-25
   - owasp-top-10
@@ -167,41 +256,46 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Insecure Direct Object Reference is a form of:'
+    - question: A booking site lets any signed-in user open an invoice address for another tenant and
+        read that invoice. Which weakness class is this?
       options:
       - A) Injection
       - B) Broken access control
       - C) Cryptographic failure
-      - D) Misconfiguration
+      - D) Security misconfiguration
       answer: B
-    - question: 'Cross-site scripting is fundamentally a failure of:'
+    - question: A comment field renders markup that other visitors' browsers execute. Which missing
+        control makes this XSS possible?
       options:
-      - A) Authentication
-      - B) Output encoding in the correct context
-      - C) Key management
-      - D) Session timeout
-      answer: B
-    - question: 'Insecure deserialisation is dangerous because it may allow:'
+      - A) Rate limiting on the comment form
+      - B) A session timeout on the site
+      - C) Verbose error output beside the comment
+      - D) Output encoding for the rendering context
+      answer: D
+    - question: An application deserialises data a client controls. Why is unsafe deserialisation
+        dangerous?
       options:
-      - A) Slow parsing
-      - B) Attacker-controlled object construction leading to code execution
-      - C) Log truncation
-      - D) Certificate errors
-      answer: B
-    - question: 'The CWE Top 25 is derived from analysis of:'
+      - A) It may construct objects that run attacker-chosen code
+      - B) It parses large documents slowly
+      - C) It truncates the application logs
+      - D) It raises certificate chain warnings
+      answer: A
+    - question: A code review finds a search field's text joined straight into the database query
+        string. Which CWE Top 25 entry does this observed behaviour map to?
       options:
-      - A) Vendor advisories only
-      - B) Real CVE records and their weakness mappings
-      - C) Penetration test reports
-      - D) Compliance audits
+      - A) Cross-site scripting, because the text reaches another user's browser
+      - B) SQL injection, because the text becomes part of the query the server runs
+      - C) Out-of-bounds write, because the text overruns a memory buffer
+      - D) Path traversal, because the text names a file on the server
       answer: B
-    - question: 'An integer overflow becomes a security issue most often when the result is used as:'
+    - question: An integer overflow changes a computed value. In which use does the wrong value most
+        often become a security defect?
       options:
-      - A) A log message
-      - B) A buffer size or bounds check
-      - C) A timestamp
-      - D) A colour value
-      answer: B
+      - A) A value printed in a log message
+      - B) A displayed colour value
+      - C) A printed timestamp
+      - D) A buffer size or bounds check
+      answer: D
 - ordinal: 4
   title: Defensive Coding Techniques
   content_type: reading
@@ -209,16 +303,45 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Apply input validation, output encoding and parameterisation correctly.
-  - Implement authorisation checks that cannot be bypassed.
-  - Handle errors without leaking sensitive information.
+  - Apply allowlist input validation and context-aware output encoding to a stated case
+  - Enforce server-side authorisation checks on every request to a protected resource
+  - Handle errors so that messages shown to users reveal no internal detail
   topics:
-  - Allowlist validation and canonicalisation.
-  - Context-aware output encoding.
-  - Server-side authorisation enforcement.
-  - Safe error handling and logging hygiene.
-  lab: 'Lab: Remediate three flaws in a supplied application - an injection, a missing authorisation check
-    and a verbose error handler - and demonstrate each fix with a failing-then-passing test.'
+  - Allowlist validation and canonicalisation before checking input.
+  - Context-aware output encoding for each rendering surface.
+  - Parameterised queries that separate code from data.
+  - Server-side authorisation enforced on every request.
+  - Safe error handling and logging without sensitive detail.
+  lab: >-
+    Lab: On the cloud-security range, read the instructor-supplied static analysis report for the
+    team's project, inspect each flagged location in the source and propose the defensive coding fix
+    for each finding.
+    Evidence: the three highest-severity findings from the report on sonarqube01, each with its rule,
+    severity and file location; the code pattern at each flagged location in the repository
+    on gitlab01; the class of each finding from injection, missing authorisation check and
+    verbose error handling; one fix per finding with the pass or fail criterion a test would use.
+    Pass: each finding is traced from the report to the right source location; each fix addresses the
+    finding's class, not its symptom; each criterion is something a test can pass or fail.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab record.
+    - hosts: [jump01, sonarqube01]
+      action: From jump01, open the instructor-supplied project report on sonarqube01 and record the
+        three highest-severity findings with their rule, severity and file location.
+    - hosts: [jump01, gitlab01]
+      action: Open each flagged file in the repository on gitlab01 and record the code pattern around
+        each finding.
+    - hosts: [jump01]
+      action: Classify each finding as injection, missing authorisation check or verbose error
+        handling, and record the class beside the finding.
+    - hosts: [jump01]
+      action: Record one fix for each finding and the pass or fail criterion a test would use to prove
+        the fix works.
+    - hosts: [jump01]
+      action: Judge each fix against the module's defensive coding rules and mark it sufficient or
+        insufficient with a one-sentence reason.
   refs:
   - owasp-top-10
   - nist-sp-800-218
@@ -227,41 +350,45 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Authorisation checks must be enforced:'
+    - question: A client-side check hides admin pages from the menu, but the pages still load when the
+        address is typed directly. What is missing?
       options:
-      - A) In the client for responsiveness
-      - B) On the server, for every request
-      - C) Only at login
-      - D) At the load balancer only
-      answer: B
-    - question: 'Canonicalisation before validation matters because:'
+      - A) Client-side validation of every form field
+      - B) A shorter session timeout on the menu
+      - C) Server-side authorisation enforced on every request
+      - D) Encryption of the page address in transit
+      answer: C
+    - question: A validator rejects input containing a markup character, yet a request submits the
+        same character in an alternate encoding and passes. Which practice was skipped?
       options:
-      - A) It speeds parsing
-      - B) Alternate encodings can otherwise bypass the validator
-      - C) It shortens input
-      - D) It enables caching
-      answer: B
-    - question: 'A verbose stack trace returned to a user can leak:'
+      - A) Canonicalisation before validation
+      - B) Output encoding applied after the page renders
+      - C) Length limiting on the field
+      - D) Logging of rejected requests
+      answer: A
+    - question: A team debates defences against injection. Which is the strongest general defence?
       options:
-      - A) Nothing of value
-      - B) File paths, library versions and internal structure
-      - C) The user's password
-      - D) The TLS key
-      answer: B
-    - question: 'Output encoding must be chosen based on:'
+      - A) A blocklist of dangerous characters
+      - B) A strict length limit per field
+      - C) Stripping comments from all input
+      - D) Parameterised queries that separate code from data
+      answer: D
+    - question: An unhandled error returns a full stack trace to the browser. What does the message
+        leak?
       options:
-      - A) The input source
-      - B) The context where the data is rendered
-      - C) The database engine
-      - D) The user's locale
+      - A) The user's saved password
+      - B) File paths, framework versions and internal structure
+      - C) The TLS session key
+      - D) Only the request identifier of the failed call
       answer: B
-    - question: Which is the strongest mitigation against injection generally?
+    - question: The same user-supplied value renders into an HTML body and into a JavaScript string.
+        How must output encoding be applied?
       options:
-      - A) Blocklisting dangerous characters
-      - B) Separating code from data via parameterisation
-      - C) Length limits
-      - D) Obfuscation
-      answer: B
+      - A) Once for both places, with the encoding chosen for the input source
+      - B) Once, with the strongest encoding available
+      - C) Identically in both places for consistency
+      - D) Separately in each place, with the encoding each context requires
+      answer: D
 - ordinal: 5
   title: Security Testing and Verification
   content_type: reading
@@ -269,16 +396,44 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Compare static, dynamic and interactive testing approaches.
-  - Integrate automated security testing into a pipeline.
-  - Interpret findings and triage false positives.
+  - Compare static, dynamic and composition analysis by what each can and cannot find
+  - Run automated security testing in a pipeline and decide which findings gate a release
+  - Triage scanner findings into true and false positives with recorded reasons
   topics:
-  - SAST, DAST and software composition analysis.
-  - Fuzzing fundamentals.
-  - Pipeline integration and gating.
-  - Triage, severity and remediation tracking.
-  lab: 'Lab: Run a static analyser and a dependency scanner against a project, triage the output into
-    true and false positives with reasons, and propose which findings should block a release.'
+  - Static analysis, dynamic testing and software composition analysis compared.
+  - Fuzzing malformed input to find crashes and memory-safety defects.
+  - Pipeline integration and choosing which findings gate a release.
+  - Triage, severity, false positives and remediation tracking.
+  lab: >-
+    Lab: On the cloud-security range, read the instructor-supplied static analysis report on
+    sonarqube01 and run the dependency scan against the instructor-published project image, verify
+    the findings in the source and triage them. Evidence: each open
+    finding from the report on sonarqube01, with its rule, severity and file location; each
+    dependency finding from the scanner on registry01, with its package and severity; a true positive
+    or false positive mark on every finding with a one-sentence reason; the findings that should gate
+    a release. Pass: every finding is marked true or false positive with a reason that cites the code
+    or the dependency record; each gating decision names the severity that justified it; no finding
+    is left unmarked.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab record.
+    - hosts: [jump01, sonarqube01]
+      action: From jump01, open the project report on sonarqube01 and record each open finding with
+        its rule, severity and file location.
+    - hosts: [jump01, registry01]
+      action: Run the dependency scan on registry01 against the instructor-published project image and
+        record each finding with its package and severity.
+    - hosts: [jump01, gitlab01]
+      action: Open three flagged locations in the repository on gitlab01 and record whether each
+        finding holds in the surrounding code.
+    - hosts: [jump01]
+      action: Mark every finding true positive or false positive and record a one-sentence reason that
+        cites the code or the dependency record.
+    - hosts: [jump01]
+      action: Record which findings should gate a release, with the severity that justifies each
+        decision.
   refs:
   - nist-sp-800-218
   - nist-sp-800-115
@@ -286,41 +441,46 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'Static application security testing analyses:'
+    - question: A tool reviews a repository's source without ever running the application. Which
+        testing approach is this?
       options:
-      - A) The running application
-      - B) Source or binary code without executing it
-      - C) Network traffic
-      - D) User behaviour
+      - A) Dynamic testing of the deployed service
+      - B) Static analysis of source or binary code
+      - C) Software composition analysis of dependencies
+      - D) Fuzzing of running endpoints
       answer: B
-    - question: 'Software composition analysis primarily identifies:'
+    - question: A lead asks what software composition analysis contributes to the pipeline. Which
+        weakness class does it primarily surface?
       options:
-      - A) Custom code defects
-      - B) Known vulnerabilities in third-party dependencies
-      - C) Misconfigured firewalls
-      - D) Weak passwords
-      answer: B
-    - question: 'Fuzzing is most effective at finding:'
+      - A) Business logic flaws in custom code
+      - B) Misconfigured cloud permissions
+      - C) Known vulnerabilities in third-party dependencies
+      - D) Weak password storage
+      answer: C
+    - question: A fuzzer sends thousands of malformed inputs to a file parser. Which defects does
+        fuzzing surface best?
       options:
-      - A) Business logic flaws
-      - B) Crashes and memory-safety defects from malformed input
-      - C) Missing documentation
-      - D) Licensing issues
-      answer: B
-    - question: 'Gating a pipeline on every static analysis finding usually results in:'
+      - A) Crashes and memory-safety defects
+      - B) Missing user documentation
+      - C) Business logic and workflow rule errors
+      - D) Licensing violations
+      answer: A
+    - question: A pipeline fails on every static finding, including hundreds of style-level warnings.
+        What is the likely result?
       options:
-      - A) Better security immediately
-      - B) Developer bypass and erosion of trust due to false positives
-      - C) Faster builds
-      - D) Fewer dependencies
-      answer: B
-    - question: 'Dynamic testing complements static testing because it:'
+      - A) Security improves noticeably within the first sprint
+      - B) Builds finish visibly faster than before
+      - C) Dependencies shrink automatically after each build
+      - D) Developers bypass the gate and trust erodes
+      answer: D
+    - question: A service with clean static results still leaks its configuration when deployed with
+        default settings. Which approach would have caught this, and why?
       options:
-      - A) Reads more code
-      - B) Exercises the running system including configuration and environment
-      - C) Is always faster
-      - D) Needs no test data
-      answer: B
+      - A) Static testing again, because it reads the code more carefully
+      - B) Composition analysis, because it lists the settings
+      - C) Dynamic testing, because it exercises the running system
+      - D) Fuzzing, because it needs no test data
+      answer: C
 - ordinal: 6
   title: Supply Chain and Release Security
   content_type: reading
@@ -328,16 +488,49 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain software supply chain risk and its control points.
-  - Describe artefact signing and provenance.
-  - Manage vulnerability disclosure and patching responsibilities.
+  - Explain how dependency risk enters software through direct and transitive packages
+  - Describe how signing and provenance let a consumer verify a build artefact
+  - Plan the disclosure and patching duties a maintainer owes after a reported flaw
   topics:
-  - Dependency risk and transitive packages.
-  - Build integrity, signing and SBOM.
-  - Reproducible builds and provenance.
-  - Vulnerability disclosure and response.
-  lab: 'Lab: Generate a software bill of materials for a project, identify its transitive dependencies
-    with known vulnerabilities, and produce a prioritised upgrade plan.'
+  - Direct and transitive dependency risk in package ecosystems.
+  - Build integrity, artefact signing and the software bill of materials.
+  - Reproducible builds and verifiable provenance for published artefacts.
+  - Coordinated vulnerability disclosure and patching responsibilities.
+  lab: >-
+    Lab: On the cloud-security range, produce the software bill of materials for the
+    instructor-published project image, list its vulnerable transitive dependencies, judge whether
+    the build verifies from source to artefact
+    and draft a coordinated disclosure response to a reported flaw. Evidence: the bill's component
+    count and direct dependencies; each flagged transitive dependency with its package,
+    vulnerability and severity; the pipeline variables and credentials on gitlab01; one ordered
+    upgrade or pinning change per flagged dependency; the signing or provenance the build lacks;
+    the agreed fix date, patch and publication steps. Pass: every flagged dependency has an
+    ordered upgrade or pinning change; the verdict names the missing control; the disclosure
+    response agrees a fix date with the reporter before patching and publishing.
+  lab_range:
+    template: cloud-security
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH, open a terminal and note the start time in the lab record.
+    - hosts: [jump01, registry01]
+      action: From jump01, generate the software bill of materials for the instructor-published
+        project image in registry01 and record the component count and the direct dependencies.
+    - hosts: [jump01, registry01]
+      action: List the transitive dependencies the scan flags with known vulnerabilities and record
+        the package, vulnerability and severity of each.
+    - hosts: [jump01, gitlab01]
+      action: Open the pipeline configuration on gitlab01 and record where build variables and
+        credentials are declared.
+    - hosts: [jump01]
+      action: Record one upgrade or pinning change for each flagged dependency, ordered by severity.
+    - hosts: [jump01]
+      action: Judge whether the build can be verified from source to artefact today and record which
+        signing or provenance control is missing.
+    - hosts: [jump01]
+      action: >-
+        A researcher reports a flaw in one flagged dependency. Draft the maintainer's coordinated
+        disclosure response: record the fix date agreed with the reporter and the patch and
+        publication steps that follow, in order.
   refs:
   - nist-sp-800-218
   - cwe-top-25
@@ -345,38 +538,42 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'A software bill of materials records:'
+    - question: A scanner flags a flaw in a package the team never imported directly. Why does the
+        team still carry the risk?
       options:
-      - A) Build duration
-      - B) The components and dependencies contained in a software artefact
-      - C) Developer names
-      - D) Test coverage
-      answer: B
-    - question: 'Signing build artefacts primarily provides:'
+      - A) The package ships inside every operating system
+      - B) Package registries forbid removing indirect packages
+      - C) It is a transitive dependency of a direct library
+      - D) The lockfile signs each package automatically
+      answer: C
+    - question: A release engineer is asked what a software bill of materials contains. Which answer
+        is right?
       options:
-      - A) Confidentiality
-      - B) Integrity and origin assurance for consumers
-      - C) Compression
-      - D) Faster deployment
-      answer: B
-    - question: 'Transitive dependencies are a particular risk because they are:'
+      - A) The components and dependencies inside a software artefact
+      - B) The build duration and the cost of every runner hour consumed
+      - C) The names of every contributing developer
+      - D) The test coverage of the release
+      answer: A
+    - question: A consumer downloads a signed build artefact. What does the signature give the
+        consumer?
       options:
-      - A) Always malicious
-      - B) Pulled in indirectly and often not reviewed by the consuming team
-      - C) Never updated
-      - D) Excluded from builds
-      answer: B
-    - question: 'A reproducible build allows a third party to:'
+      - A) Confidentiality of the artefact contents
+      - B) Faster download through mirrors
+      - C) Automatic updates of every dependency
+      - D) Assurance of integrity and origin
+      answer: D
+    - question: What does a reproducible build let an independent third party do?
       options:
-      - A) Read the source faster
-      - B) Independently verify the binary corresponds to the stated source
-      - C) Skip signing
-      - D) Avoid dependency pinning
+      - A) Skip verifying the dependency lockfile before installing
+      - B) Rebuild the artefact and compare it with the release
+      - C) Deploy the release without a registry
+      - D) Update packages without review or approval
       answer: B
-    - question: 'The SSDF practice group covering vulnerability handling after release is:'
+    - question: A researcher reports a flaw in a released version. What does coordinated disclosure
+        ask the maintainer to do?
       options:
-      - A) Prepare the Organization
-      - B) Respond to Vulnerabilities
-      - C) Protect the Software
-      - D) Produce Well-Secured Software
-      answer: B
+      - A) Publish the researcher's report unchanged and immediately, without a fix
+      - B) Deny the flaw until regulators intervene
+      - C) Agree on a fix date with the reporter, then patch and publish
+      - D) Wait for users to discover it independently
+      answer: C

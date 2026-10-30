@@ -1,0 +1,180 @@
+# Instructor pack for C208 Windows Forensics. Staff only: answer keys, expected range values
+# and lab setup live here, never in the course file the Student reads.
+course_code: C208
+audience: staff_only
+overview: 'Windows Forensics is an intermediate course of six 60-minute modules for Students who have
+  taken C102 and C206. Each module teaches three objectives in about 15 minutes, runs a 35-minute lab
+  on the soc-training range, and ends with a 10-minute five-item quiz passed at 70 percent. The labs
+  build one investigation of the workstation v-ws01: module 1 inventories its artefact sources, module
+  2 finds persistence among its autostarts, module 3 reconstructs lateral movement against v-dc01 from
+  the SIEM, modules 4 and 5 work the disk image and memory image on dfir-ws01, and module 6 turns the
+  accumulated findings into a report. Students hand in their lab notes each module and a short
+  forensic report in module 6.'
+timings:
+- {module: 1, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+- {module: 2, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+- {module: 3, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+- {module: 4, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+- {module: 5, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+- {module: 6, minutes: 60, plan: "15 teach, 35 lab, 10 quiz"}
+answer_key_notes:
+- module: 1
+  notes: 'Q1 C (a registry hive): hives hold the system and per-user configuration state the examiner
+    needs; A is wrong because the MFT holds file metadata, not contents or configuration; B overstates
+    the Security log, which holds events, not settings, and does not record every registry edit; D
+    mislabels the change journal, which tracks file changes, not logons or settings. Q2 A (the MFT file record): metadata persists until the record is reused;
+    B and C invent sources that do not archive names; D invents a boot-data index. Q3 D (confirm
+    execution from an execution artefact): presence is weaker than execution, and prefetch is the
+    execution artefact the course teaches; A and B confuse imaging actions with evidence, C is an
+    unrelated artefact. Q4 B (Security log, then hives, then MFT): logon evidence lives in the
+    Security log first; A is the right artefact family for the wrong question, C is unrelated,
+    D mistakes volatility for relevance. Q5 C (the value existed at acquisition): a Run key entry
+    alone proves state, not execution (A), removal (B) or network use (D).'
+- module: 2
+  notes: 'Q1 B (execution at least once): prefetch is execution evidence; A confuses presence with
+    installation, C imports intent the artefact cannot show, D imports other hosts. Q2 A (WMI event
+    subscription): the scenario is persistence with no new file in the usual folders, which is what
+    subscription storage in the repository gives; B, C and D are all file- or profile-based
+    mechanisms the search would have caught. Q3 D (the system saw the file): ShimCache shows
+    presence, weaker than execution; A overstates it as proof of run and completion, B and C invent
+    provenance and intent. Q4 C (modified, warrants investigation): a baseline match everywhere
+    except the program path is the signature of tampering; A ignores the baseline mismatch, B is a
+    plausible-sounding excuse with no evidence, D is false as a matter of how tasks work. Q5 A
+    (refer as suspicious autostart): a service path in a user-writable directory justifies referral
+    and nothing more; B jumps to breach confirmation, C mistakes the abnormal for default, D destroys
+    evidence before it is recorded.'
+- module: 3
+  notes: 'Q1 C (remote interactive, such as RDP): type 10 is the remote interactive logon; A is type
+    3, B is a service logon, D is a batch logon. Q2 A (failed logon attempt): 4625 is the failure
+    record, which is why the repeated entries followed by a success matter; B is 4624, C is log
+    clearing, D is process creation. Q3 B (a log clearing event in the Security log itself): the act
+    of clearing writes its own record; A assumes the tool was recorded, C and D are real artefacts
+    but do not evidence clearing. Q4 D (command line and parent): those two fields are what
+    parent-child analysis needs; A, B and C are contents or traffic the record does not carry. Q5 C
+    (likely lateral movement, one account): interactive, then network, then remote logons with one
+    account in quick succession is the pattern the module teaches; A invents a rotation behaviour, B
+    ignores the single account, D misreads a consistent sequence as clock error.'
+- module: 4
+  notes: 'Q1 B (record unallocated, data may persist): deletion frees the record and leaves contents
+    in place until reuse; A overstates the overwrite, C and D invent wholesale clearing. Q2 D (the
+    USN journal): it is the ordered change log for a volume; A records security events, B records
+    executions, C holds boot configuration. Q3 A (timestomping): a creation time earlier than the
+    operating system install is a classic manipulated timestamp; B, C and D are benign explanations
+    that do not produce this mismatch. Q4 C (this file''s timestamps were altered): one file
+    disagreeing across sources while the rest agree points at manipulation of that file; A and B are
+    volume-level events that would affect everything, D is false because both sources are on the same
+    volume. Q5 B (mounted-devices and recent-documents registry keys): those keys preserve device and
+    document activity; A holds no user activity, C and D are the wrong sources for this question.'
+- module: 5
+  notes: 'Q1 B (acquire memory while running): volatile data is collected first, before shutdown; A
+    and D destroy or defer it, C waits without collecting. Q2 C (enumerate processes and connections
+    from the image): that is the framework''s role; A and B are collection jobs, not analysis of an
+    existing image, D is log analysis. Q3 A (process hollowing): a legitimate name over different
+    in-memory code is the discrepancy hollowing leaves; B, C and D are benign explanations that do
+    not change code in memory. Q4 D (one point in time, earlier state gone): memory captures a
+    moment, so a delayed capture loses what came before; A is false, B and C are false capability
+    claims. Q5 C (the acquisition perturbed the state): any tool on the target changes it, and the
+    report must say so; A overstates corruption, B invents a reboot requirement, D is false.'
+- module: 6
+  notes: 'Q1 B (split into the observed copy event and the inference): the fix is separating what the
+    artefacts record from what the analyst concludes; A hides the finding, C and D change placement
+    or authority, not defensibility. Q2 C (the 03:12 log clearing event): it is the only entry with a
+    timestamp and a named source another analyst can open; A and D are interpretations, B is vague.
+    Q3 A (the method is reproducible): same method, same image, same artefacts is exactly
+    reproducibility; B overstates what reproduction proves, C and D are wrong about review and
+    evidence. Q4 D (state plainly the evidence does not support a conclusion): inconclusive evidence
+    is reported as inconclusive; A manufactures a narrative, B hides the question, C confuses
+    tooling with analysis. Q5 A (an inference with confidence and limits): presence without
+    authorship supports an inference and must carry its confidence and limits; B states it as fact,
+    C mislabels analysis as opinion, D throws away a defensible finding.'
+lab_setup:
+- module: 1
+  setup: 'Revert the range to its baseline. From the Guacamole console on jump01, confirm with the
+    analyst account that the v-ws01 and dfir-ws01 consoles open. On the baseline, record the registry hive paths, the Security log
+    path, the enabled event log channels and each channel''s newest record timestamp, and the
+    analysis tools on dfir-ws01 (Volatility 3, Plaso, Autopsy, YARA), so the Student''s recorded
+    values can be marked. State the investigative question on the board: which programs ran on
+    v-ws01 last week.'
+- module: 2
+  setup: 'Revert the range to its baseline. Confirm v-ws01 is reachable from jump01.
+    Prepare the known-good autostart baseline for v-ws01 (Run key entries, services, scheduled tasks)
+    and confirm which entries the baseline adds or changes, so the one suspicious entry and its
+    program path are known before class. Hand the baseline to Students only during the lab.'
+- module: 3
+  setup: 'Revert the range to its baseline. Confirm the SIEM on siem01 holds authentication events
+    for v-ws01 and v-dc01 and that the analyst login works. Choose and publish the assigned window,
+    and record the expected hops: the logon types, accounts, source addresses and the count of failed
+    events before the success, so Students'' sequences can be marked.'
+- module: 4
+  setup: 'Revert the range to its baseline. Place the assigned disk image on dfir-ws01 and record its
+    filename, size and acquisition time. Confirm the image holds the deleted file to be recovered,
+    and record its MFT record number, timestamps, allocation status and the USN entries that name it,
+    so each Student''s recorded values can be marked.'
+- module: 5
+  setup: 'Revert the range to its baseline. Place the assigned memory image on dfir-ws01 and record
+    its filename, size and hash. Confirm Volatility 3 opens it, and record the expected process list
+    with identifiers and parents, the network connections with their owning processes, and which
+    process differs between memory and disk; stage on dfir-ws01 the on-disk copies of the relevant
+    files acquired from v-ws01, so the escalation choice can be marked.'
+- module: 6
+  setup: 'Revert the range to its baseline. Confirm the dfir-ws01 artefacts from the earlier modules
+    are still in place, or re-stage them if the range was rebuilt. Prepare the draft report Students
+    will label: statements that are fact, inference and opinion, and the conclusions needing
+    confidence and limitation statements. Confirm the SIEM holds the anchoring events and record
+    their timestamps and sources for marking.'
+common_faults:
+- module: 1
+  fault: Students record what a hive or the MFT does in general terms instead of the on-disk paths
+    and values the range shows.
+  remedy: Have them read the values off the host and write them down verbatim before any
+    interpretation; interpretation comes only in the last step.
+- module: 1
+  fault: Students rank memory first for the execution question because it is volatile, not because
+    it answers the question.
+  remedy: 'Ask of each source: what would this artefact show about the question? Volatility sets
+    order within the sources that qualify, not eligibility.'
+- module: 2
+  fault: Students mark every entry absent from the baseline as an attack.
+  remedy: 'Make them give a one-sentence reason per entry against the trigger, path and account
+    checks before the label; entries whose path is a Windows directory with a plausible trigger stay
+    "expected change".'
+- module: 2
+  fault: The lab stalls on where the autostart locations are on the host.
+  remedy: Show one location on the board at the start of the lab (a Run key and the task list), then
+    let the Students work the rest.
+- module: 3
+  fault: Students read the logon type field as the account''s role, or treat every 4625 as a brute
+    force without the count and source.
+  remedy: Have them recite what type 3 and type 10 mean in their own words, then require count and
+    source address for any failure claim.
+- module: 3
+  fault: The SIEM filter returns nothing because the assigned window is mistyped.
+  remedy: Confirm the window on the board before the lab and have Students state the filter they
+    applied in their notes, so an empty result can be diagnosed.
+- module: 4
+  fault: Students report the file's presented timestamp without checking allocation status or the
+    USN entries.
+  remedy: 'Require the record number and allocation status in the notes before any timestamp
+    discussion; the mismatch only means something next to the change log.'
+- module: 4
+  fault: 'Timezone handling: the file''s times are read as local when the image records UTC, and the
+    correlation looks consistent when it is not.'
+  remedy: Have Students record the timezone of each source next to its values, then compare one
+    event across sources by absolute time.
+- module: 5
+  fault: Students name a process for escalation because its name looks odd, not because of a
+    recorded discrepancy.
+  remedy: 'The pass criterion is a discrepancy or its absence; ask for the in-memory and on-disk
+    values that justify the label before accepting an escalation.'
+- module: 5
+  fault: The memory image will not open because the wrong profile or image was assigned.
+  remedy: Confirm each Student has the assigned image and its hash matches before the lab starts;
+    a hash mismatch means a re-issue, not a debugging session.
+- module: 6
+  fault: Students label every statement fact, or hedge inferences until they say nothing.
+  remedy: 'Drill the three-way label on the draft''s first page together: a fact names its artefact,
+    an inference states its reason, an opinion is flagged for removal.'
+- module: 6
+  fault: Timeline entries carry no source, so no event can be verified by a second analyst.
+  remedy: Have Students add the timestamp and source to each event in the SIEM step before writing
+    the narrative; unsourced events are returned.

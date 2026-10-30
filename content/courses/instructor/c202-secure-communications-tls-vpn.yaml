@@ -1,0 +1,208 @@
+# Instructor pack for C202 Secure Communications (TLS/VPN). Staff only: the quiz keys and lab
+# setup notes below are not shown to students. Every answer letter matches the course file's
+# keyed option; each note says why the keyed option is right and what each distractor tests.
+# lab_setup names the large-enterprise range nodes the instructor must confirm before the lab
+# opens, with the values a student should find there.
+course_code: C202
+audience: staff_only
+overview: 'Secure Communications (TLS/VPN) is a six-module course with one 60-minute lab per module on the
+  large-enterprise range. Each module follows the same split: teach the concepts, run the lab on the range,
+  then take the five-item quiz passed at 70 percent. The modules move from the TLS handshake itself through
+  certificates, VPNs, secure messaging, cryptographic failures, and finally the design decisions that tie
+  the pieces together. Say ''Student'' throughout; the labs are observation and judgement work, not exploit
+  work.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (TLS 1.3 handshake, cipher suites, legacy options), 35 lab (TLS survey of web01 from
+    jump01 and web02), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach (issuance, chains, expiry, validation), 35 lab (certificate inventory on ca01 and web01
+    with a validation check from web02), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach (IKE, ESP and AH; tunnel and transport modes; topologies), 35 lab (VPN service survey on
+    vpn01 with the client session on jump01), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach (transport vs end-to-end protection, key verification, metadata), 35 lab (field inventory
+    across mail-relay01, exch01 and siem01), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach (design vs configuration flaws, downgrade and oracles, reading scanner output), 35 lab
+    (findings triage on vuln01 against web02), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach (protection in transit per flow, TLS termination, decision records), 35 lab (flow and
+    encryption survey over fw01, exch01, web01 and ca01), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (Key exchange messages are combined into fewer round trips), M01-O01: TLS 1.3 folds the key
+    exchange into one round trip, so protected data can flow immediately; A inverts the order, because the
+    certificate is verified before any application data flows, C invents a hidden cipher list, and D
+    describes resumption, which is optional rather than the design change that cut the round trip. Q2 D
+    (An attacker replays the early data), M01-O01: 0-RTT early data is sent before the fresh handshake keys,
+    so the server cannot bind it to one handshake and cannot detect a copy; A and B test certificate and key
+    failures that do not follow from resumption, and C inverts the premise, because the session did resume.
+    Q3 A (AES-GCM encrypts and authenticates, and SHA-256 derives keys), M01-O02: AES-GCM is an
+    authenticated-encryption cipher for the records and SHA-256 is the hash behind key derivation; B
+    confuses signing with record protection, C gives AES-GCM a negotiation role that belongs to the
+    handshake, and D names compression, which TLS 1.3 removed. Q4 C (Legacy options the guidance removes,
+    dropped by TLS 1.3), M01-O03: Static RSA key exchange and CBC suites are exactly the options current
+    guidance removes and TLS 1.3 dropped; A judges the settings by key length alone, B mislabels a
+    configuration choice as a protocol design flaw, and D inverts compatibility, because modern clients
+    support TLS 1.3. Q5 B (Downgrade protection built into the handshake), M01-O01: The handshake lets the
+    server detect that the offered version was altered and abort the connection; A and D are transport
+    properties with no say in negotiation, and C is resumption, which cannot veto a version the client
+    offered.'
+- module: 2
+  notes: 'Q1 C (Automated renewal paired with expiry monitoring), M02-O01: Renewal is the lifecycle stage
+    that closes the loop the module opens at issuance, and pairing it with expiry monitoring is what
+    prevents the classic outage; A only delays the date, B publishes certificates but renews nothing, and
+    D pinning would make the outage harder to fix, not prevent it. Q2 A (Pinning trades operational resilience for strict control),
+    M02-O02: A pin to one leaf overrides normal validation, so a routine CA rotation breaks every client;
+    B blames the CA for doing its scheduled job, C misreads a client-side pin as a trust store problem, and
+    D reverses the lesson, because disabling rotation would freeze the same brittleness in place. Q3 D (The
+    root in each client trust store and a protected root private key), M02-O02: Relying clients verify
+    against the root anchored in their trust store, and the chain is only as trustworthy as the protected
+    root key; A and C name public-CA properties, and B confuses key length and cipher choice with trust.
+    Q4 B (Certificate transparency logs), M02-O03: Transparency logs are the public, domain-visible record
+    of certificates a CA issued, which is how an unrequested certificate surfaces; A and D are CA-side
+    reports the domain owners never see, and C holds only sessions the clients themselves made. Q5 C
+    (Clients must actually perform revocation checking), M02-O03: A revocation list protects nobody until
+    clients check it, which is why acceptance continued for days; A and B describe properties that do not
+    distribute revocation status, and D confuses key handling after signing with status checking.'
+- module: 3
+  notes: 'Q1 B (Tunnel mode with ESP), M03-O02: Tunnel mode with ESP encrypts the original packet and wraps
+    it in a new outer header, which is exactly the capture described; A and C fail because transport mode
+    leaves the original IP header in place, and D fails because AH authenticates but does not encrypt.
+    Q2 D (Paired security associations and shared keys), M03-O01: IKE negotiation produces the paired
+    security associations and the shared keys both sites use before any data packet flows; A and C are
+    network settings IKE does not distribute, and B is what ESP later does with the keys IKE agreed.
+    Q3 A (Integrity verification, because the addresses are part of what AH protects), M03-O01: AH covers
+    the immutable IP header fields, so a device that rewrites addresses breaks the integrity check every
+    recipient performs; B is wrong because AH never encrypts, C gives AH a key exchange role that belongs
+    to IKE, and D names a service IPsec does not provide. Q4 C (Split tunnelling), M03-O03: Only the
+    internal range crosses the VPN while public websites go out directly, which is the definition of split
+    tunnelling; A contradicts the observation, and B and D name IPsec modes, which the routing policy does
+    not decide. Q5 B (The client links a trusted and an untrusted network at once), M03-O03: A client that
+    reaches an internal share and the public internet through one device joins two networks of different
+    trust, so a compromise on the untrusted side can ride the session inward; A is an address pool limit
+    with no security weight, C assumes the cryptography changes with the policy, and D invents a name
+    resolution effect.'
+- module: 4
+  notes: 'Q1 D (The operator of the relay), M04-O01: The relay terminates each client connection and holds
+    the session keys, so its operator reads every message in plaintext; A and C name the endpoints, who in
+    this design hold keys only for their own hop, and B inverts the design, because the relay is the
+    decryption point. Q2 B (Substitution of keys by a machine in the middle), M04-O02: Comparing
+    fingerprints over another channel pins each side to the key the other intended, so a machine in the
+    middle cannot substitute its own key undetected; A names replay, which the fingerprint step does not
+    address, C is metadata exposure, and D is device loss. Q3 A (Metadata, although the content stays
+    hidden), M04-O03: Connection times and message sizes are data about the message, and they stay
+    observable even when content is encrypted end to end; B claims content leaks, which sizes and times do
+    not carry, and C and D overstate what operational logs expose. Q4 C (Forward secrecy in the session
+    keys), M04-O01: Each session''s keys are ephemeral, so a stolen long-term key unlocks identity but not
+    earlier captured messages; A and B are server-side controls that do not reach past session keys, and D
+    is a transparency mechanism for certificates. Q5 B (Patterns in timing, volume and endpoints), M04-O03:
+    Those patterns are enough to infer working relationships without opening a message; A, C and D name
+    implementation properties that produce no behavioural pattern.'
+- module: 5
+  notes: 'Q1 C (It gives an attacker a path to force the weakest version), M05-O01: Keeping TLS 1.0 beside
+    TLS 1.3 leaves a weakest version clients can be negotiated down to, which is the failure mode of a
+    deprecated version left in service; A and B name certificate failures the version choice does not
+    cause, and D invents a silent key lengthening. Q2 B (In the configuration, not in the primitives),
+    M05-O01: Strong algorithms behind a rule set that permits their weakest combinations is a deployment
+    fault, because the design is sound and the settings are not; A mislabels it as a primitive flaw, and C
+    and D name parties that did not make the rule set. Q3 D (Protection against interception of the link),
+    M05-O02: Certificate validation is what stops a false certificate, so a user who can dismiss every
+    warning removes that protection; A, B and C name mechanisms the warning override does not touch.
+    Q4 A (A padding oracle against the decryption), M05-O01: Answering differently on invalid padding leaks
+    whether decryption succeeded, which is the oracle an adversary measures; B names downgrade, which needs
+    negotiation differences, C is a certificate state failure, and D is a key generation weakness. Q5 C
+    (Plan removal on a date and migrate those partners), M05-O03: Guidance is to schedule removal and
+    migrate the legacy partners, not to keep a deprecated suite indefinitely or reorder it; A waits for a
+    published attack, B raises the suite''s priority without removing it, and D documents the risk away.'
+- module: 6
+  notes: 'Q1 B (Zero trust, which treats the internal network as untrusted), M06-O01: A private address
+    space is not a trust argument; A, C and D name unrelated controls. Q2 D (Mutual TLS between the two
+    services), M06-O01: Certificates on both sides authenticate both endpoints; A and B test weaker
+    identification, C tests network segmentation. Q3 A (Re-encryption from the balancer to the backend),
+    M06-O02: Termination ends protection at the balancer, so the next hop must be protected again; B and D
+    test balancer details, C tests compression. Q4 B (The requirement, the options considered and the
+    rationale), M06-O03: A decision record carries the need, the alternatives and the reason; A, C and D
+    record trivia instead of the decision. Q5 A (The protection requirement for the data and its threat
+    model), M06-O01: Selection starts from the data''s needs, not from speed or defaults; B, C and D start
+    from product or performance properties.'
+lab_setup:
+- module: 1
+  setup: 'Confirm web01 serves on HTTPS from jump01 and web02, that its enabled protocol and cipher list is
+    reachable from jump01, and that web01 still answers on the legacy protocols the lab expects students to
+    find. Record the negotiated version, cipher suite and certificate dates yourself first.'
+- module: 2
+  setup: 'Confirm ca01 shows issued certificates with subject and expiry, web01 presents a CA-issued
+    certificate with its chain, and web02 reaches web01 over HTTPS. Note any certificate close to expiry;
+    that is the "at risk of an expiry outage" case in the pass items.'
+- module: 3
+  setup: 'Confirm vpn01 shows its VPN services and modes (OpenVPN and IPsec), that jump01 can bring up a
+    session, and that the session addresses and routes are visible to the student. Know in advance which
+    destinations the tunnel carries so you can mark full versus split tunnel.'
+- module: 4
+  setup: 'Confirm mail-relay01 keeps connection logs, exch01 keeps message logs, and siem01 shows both on
+    its dashboards. Check each log field the lab asks students to classify as content or metadata, and
+    confirm siem01 renders the comparison without extra permissions.'
+- module: 5
+  setup: 'Confirm vuln01 has a current scan of web02, and that web02 still answers on the legacy options
+    the findings name. Run the scan yourself the morning of the lab so findings match what students see,
+    and have the relevant guidance to hand for the judgement step.'
+- module: 6
+  setup: 'Confirm fw01 shows its rule list with allowed service flows, exch01 and web01 negotiate TLS on
+    their service ports, ca01 shows which services hold CA-issued certificates, and jump01 reaches all
+    four. Note which flows are plaintext so the final judgement step can be marked quickly.'
+common_faults:
+- module: 1
+  fault: Students read the certificate dates as the negotiated protocol version, or copy the browser
+    padlock text instead of the handshake result.
+  remedy: Have them record the version, cipher suite and certificate as three separate lines in the lab
+    notes, and ask which line came from the handshake.
+- module: 1
+  fault: Legacy options are marked "meets guidance" because the service still works.
+  remedy: 'Point back to the module objective: the judgement is against recognised guidance, not against
+    whether the connection succeeded.'
+- module: 2
+  fault: Students record only the leaf certificate and treat the chain as trusted without reading it.
+  remedy: Ask for the issuer of every certificate in the chain they recorded, then link that to the
+    validation objective.
+- module: 2
+  fault: Expiry dates are recorded without an owner or renewal date, so the inventory cannot drive action.
+  remedy: Require the three fields the lab names (subject, expiry, and the judged status) and ask who
+    renews each one.
+- module: 3
+  fault: Students call any VPN session "tunnel mode" because the product is called a VPN.
+  remedy: Make them point at the record that shows what the tunnel carries (addresses and routes) before
+    naming the mode.
+- module: 3
+  fault: Split tunnel is judged unsafe from habit rather than from which destinations the tunnel leaves out.
+  remedy: Ask them to list the destinations that bypass the tunnel and judge each one against the lab brief.
+- module: 4
+  fault: Message subjects and body text are labelled metadata because they appear in a log viewer.
+  remedy: 'Re-run the definition: metadata is the data about the message, content is what a recipient reads.
+    Classify two fields of each kind together.'
+- module: 4
+  fault: Students claim end-to-end encryption also hides who communicated with whom.
+  remedy: Point at the siem01 dashboard fields that survive end-to-end protection and ask which of those
+    fields a traffic analyst would want.
+- module: 5
+  fault: Scanner severity is copied straight into the remediation plan without reading the finding.
+  remedy: Have students quote the finding text next to the guidance line they judged it against.
+- module: 5
+  fault: TLS 1.0 removal is proposed for the same day, breaking the legacy partner the finding describes.
+  remedy: 'Walk the remediation-order objective: verify, plan a date, migrate, then remove.'
+- module: 6
+  fault: Every flow is marked "encrypted" because TLS terminates somewhere in the path.
+  remedy: Ask where TLS terminates for each flow and what runs beyond that point, per the lab brief's three
+    marks.
+- module: 6
+  fault: Decision records state only the chosen algorithm with no requirement or alternatives.
+  remedy: Show the three-part record from the module (requirement, options, rationale) and have them fill
+    the missing parts for one flow on the board.

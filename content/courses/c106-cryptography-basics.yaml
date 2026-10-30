@@ -6,9 +6,10 @@ course_code: C106
 title: Cryptography Basics
 version: '1.0'
 difficulty: beginner
-duration_hours: 60
+duration_hours: 6
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 source:
@@ -30,57 +31,87 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain substitution and transposition ciphers and their weaknesses.
-  - Perform frequency analysis against a monoalphabetic cipher.
-  - Articulate Kerckhoffs's principle and its modern significance.
+  - Classify a written cipher example as substitution or transposition and name the weakness each class shares
+  - Recover the plaintext of a short monoalphabetic ciphertext using letter-frequency evidence and record each mapping decision
+  - Apply Kerckhoffs's principle to decide whether a described design stays secure once its mechanism becomes public
   topics:
-  - Caesar, Vigenere and substitution ciphers.
-  - Transposition and permutation.
-  - Frequency analysis and known-plaintext attacks.
-  - Kerckhoffs's principle.
-  lab: 'Lab: Break a supplied monoalphabetic substitution ciphertext using frequency analysis and document
-    the reasoning that recovered each letter mapping.'
+  - Substitution ciphers such as Caesar, Vigenere and the mixed alphabet.
+  - Transposition ciphers, which move letter positions without changing the letters.
+  - Frequency analysis and known-plaintext attacks against classical ciphers.
+  - Kerckhoffs's principle and security that does not depend on a secret design.
+  - Why replacing the key, not hiding the design, restores a broken cipher.
+  lab: >-
+    Lab: On web01, break a supplied monoalphabetic substitution ciphertext with frequency analysis and record
+    the reasoning that recovered each letter mapping. Evidence: the letter counts of the ciphertext; each
+    mapping decided, with its supporting evidence; the recovered plaintext in full. Pass: counts are recorded
+    for at least the six most frequent ciphertext letters; every mapping carries one sentence of evidence from
+    frequency, a pattern word or a common-word fit; the recovered plaintext reads as English and is recorded
+    in full.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [web01]
+      action: Log on to web01 as the account the instructor assigned, open a terminal and note the start time.
+    - hosts: [web01]
+      action: Display the supplied ciphertext file on web01 and record the six most frequent letters with their counts.
+    - hosts: [web01]
+      action: Compare the ciphertext letter counts with the known frequency of English letters and record the first
+        three mappings to try.
+    - hosts: [web01]
+      action: Test candidate mappings against common short words in the ciphertext and record each letter confirmed
+        and the word that confirmed it.
+    - hosts: [web01]
+      action: Record the full recovered plaintext and mark each remaining unknown letter with the evidence that
+        decides it.
+    - hosts: [web01]
+      action: Record one sentence on why the same frequency attack fails against a cipher that changes its
+        substitution with each letter.
   refs:
   - nist-sp-800-57pt1r5
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'Kerckhoffs''s principle states that a cryptosystem should be secure even if:'
+    - question: A museum restores a 19th-century message encrypted with a cipher that always replaces each
+        letter by another letter. Which weakness makes this ciphertext breakable without the key?
       options:
-      - A) The key is known
-      - B) Everything except the key is public knowledge
-      - C) The plaintext is known
-      - D) The algorithm is secret
+      - A) The replacement alphabet was written down and has since faded
+      - B) Plaintext letter frequencies survive unchanged into the ciphertext
+      - C) The message is too old to be read in any other way
+      - D) The cipher changes the mapping for every letter of the message
       answer: B
-    - question: 'Frequency analysis is effective against a monoalphabetic substitution cipher because:'
+    - question: An analyst obtains one encrypted message together with its original text and uses the pair to
+        work out the cipher's letter mapping. Which attack class does this describe?
       options:
-      - A) The key is short
-      - B) Plaintext letter frequencies are preserved in the ciphertext
-      - C) The cipher is additive
-      - D) The alphabet is reversed
-      answer: B
-    - question: 'A transposition cipher works by:'
+      - A) A brute-force search over every possible key
+      - B) A collision search against the message digest
+      - C) A known-plaintext attack on the cipher
+      - D) A transposition applied without any substitution
+      answer: C
+    - question: A locked dispatch box keeps its contents safe even though the manufacturer's drawings for the
+        lock are published. Which principle does the box's design demonstrate?
       options:
-      - A) Replacing letters with others
-      - B) Rearranging the order of the plaintext characters
-      - C) Adding a keystream
-      - D) Compressing the text
-      answer: B
-    - question: 'Security through obscurity is discouraged because it:'
+      - A) Kerckhoffs's principle, because only the key stays secret
+      - B) Security through obscurity, since the drawings still exist
+      - C) Perfect forward secrecy between the two dispatch riders
+      - D) Defence in depth around the whole dispatch route
+      answer: A
+    - question: A vendor hides the design of a new encryption product and calls the design itself the secret.
+        When the design leaks, what restores the product's protection?
       options:
-      - A) Is slow
-      - B) Fails once the design becomes known and cannot be re-secured by key change
-      - C) Uses too much memory
-      - D) Requires certificates
-      answer: B
-    - question: 'The Vigenere cipher improves on Caesar by using:'
+      - A) Hiding the leaked design more deeply than before
+      - B) Renaming the product and reissuing it
+      - C) Publishing a longer plaintext example
+      - D) Replacing every secret key and nothing else
+      answer: D
+    - question: Two substitution ciphers encrypt the same English message. One shifts every letter by three
+        places; the other maps each letter by a mixed alphabet. What does frequency analysis show?
       options:
-      - A) A longer alphabet
-      - B) Multiple shift values driven by a keyword
-      - C) Transposition
-      - D) Public keys
-      answer: B
+      - A) Both ciphers resist frequency analysis to the same degree
+      - B) The mixed alphabet preserves the frequency pattern more plainly
+      - C) The uniform shift keeps the frequency pattern plainly readable
+      - D) Neither cipher leaves any letter pattern available to analyse
+      answer: C
 - ordinal: 2
   title: Symmetric Encryption
   content_type: reading
@@ -88,57 +119,86 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Describe block and stream cipher operation.
-  - Select an appropriate mode of operation and explain why ECB is unsuitable.
-  - Explain the role of initialisation vectors and nonces.
+  - Distinguish block and stream cipher operation in a described encryption service
+  - Select a block cipher mode for a stated protection need and identify why electronic codebook mode leaks structure
+  - Predict the effect of initialisation vector and nonce reuse on ciphertexts produced under one key
   topics:
-  - Block ciphers, AES and key sizes.
-  - 'Modes: ECB, CBC, CTR, GCM.'
-  - Initialisation vectors, nonces and reuse hazards.
-  - Padding and padding oracles.
-  lab: 'Lab: Encrypt an image file in ECB and in CBC mode, view both outputs, and explain from the visible
-    result why ECB leaks structure.'
+  - Block ciphers, the AES standard and key sizes of 128, 192 and 256 bits.
+  - Modes of operation from electronic codebook to counter and Galois counter mode.
+  - Initialisation vectors, nonces and the reuse hazard under one key.
+  - Padding schemes and the padding oracle failure.
+  - Stream ciphers and keystream generation per bit or byte.
+  lab: >-
+    Lab: On web01, encrypt one file with AES in electronic codebook mode and in cipher block chaining mode,
+    compare the two outputs and judge which mode leaks the file's structure. Evidence: whether the repeated
+    pattern is visible in each ciphertext output; one sentence naming the leaking mode with its reason; the
+    mode selected to protect the file and the reason. Pass: both ciphertext outputs are recorded as observed;
+    the comparison names the leaking mode in one sentence; the selected mode and reason agree with that
+    comparison.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [web01]
+      action: Log on to web01 as the account the instructor assigned, open a terminal and note the start time.
+    - hosts: [web01]
+      action: Create the sample file the instructor specifies, containing a repeated pattern, and record its size.
+    - hosts: [web01]
+      action: Encrypt the sample with AES in electronic codebook mode under the key the instructor supplies and
+        record the output file name.
+    - hosts: [web01]
+      action: Repeat the encryption in cipher block chaining mode with a fresh initialisation vector and record
+        the output file name.
+    - hosts: [web01]
+      action: View both ciphertext outputs as bytes and record whether the repeated pattern is visible in each.
+    - hosts: [web01]
+      action: Name the mode that leaks structure in one sentence, select the mode that should protect the file
+        and record the reason.
   refs:
   - nist-sp-800-57pt1r5
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'ECB mode is unsuitable for most data because identical plaintext blocks:'
+    - question: A dashboard image encrypted with AES in electronic codebook mode still shows the logo's outline
+        in its ciphertext. What does that visible outline demonstrate?
       options:
-      - A) Cause padding errors
-      - B) Produce identical ciphertext blocks, revealing structure
-      - C) Cannot be decrypted
-      - D) Require a nonce
-      answer: B
-    - question: 'Reusing a nonce with the same key in CTR mode:'
+      - A) The AES key in use was far too short
+      - B) The image file was corrupted by the encryption
+      - C) Identical plaintext blocks produced identical ciphertext blocks
+      - D) The mode of operation added an authentication tag
+      answer: C
+    - question: A payment terminal with a small processor encrypts a steady stream of card reads one byte at a
+        time and cannot buffer whole blocks. Which cipher design fits this service?
       options:
-      - A) Is required for correctness
-      - B) Allows an attacker to recover plaintext relationships
-      - C) Improves performance
-      - D) Has no effect
-      answer: B
-    - question: 'AES-GCM provides both confidentiality and:'
+      - A) A stream cipher generating keystream per byte
+      - B) Electronic codebook mode with block padding
+      - C) Cipher block chaining with a fixed initialisation vector
+      - D) A digest computed over each byte read
+      answer: A
+    - question: A developer reuses the same initialisation vector with the same counter-mode key for a second
+        message. What does the reuse make possible?
       options:
-      - A) Key exchange
-      - B) Authenticity of the ciphertext
-      - C) Compression
-      - D) Non-repudiation
-      answer: B
-    - question: 'A stream cipher differs from a block cipher because it:'
+      - A) A longer ciphertext output that is harder to store
+      - B) Slower encryption and decryption work on the receiving system
+      - C) Nothing changes, because the key still differs between messages
+      - D) Recovery of plaintext relationships by comparing the two ciphertexts
+      answer: D
+    - question: A file server must encrypt backups and detect any tampering with them in a single pass. Which
+        mode of operation fits this need?
       options:
-      - A) Requires padding
-      - B) Encrypts data as a keystream combined per bit or byte
-      - C) Uses only public keys
-      - D) Cannot use an IV
+      - A) Electronic codebook, for its simple handling of patterns
+      - B) Galois counter mode, because its tag detects tampering
+      - C) Cipher block chaining with a reused initialisation vector
+      - D) Counter mode with the nonce fixed at zero
       answer: B
-    - question: 'The purpose of an initialisation vector is to:'
+    - question: Two identical messages are encrypted under one key in cipher block chaining mode, the first
+        with a random initialisation vector, the second reusing it. What appears in the second ciphertext?
       options:
-      - A) Authenticate the sender
-      - B) Ensure identical plaintexts encrypt differently under the same key
-      - C) Extend the key length
-      - D) Pad the final block
-      answer: B
+      - A) Nothing unusual appears, because the chaining step hides the reused vector entirely
+      - B) A padding error reported on the final ciphertext block of the message
+      - C) Identical first blocks, because the shared vector encrypts the shared prefix alike
+      - D) A second ciphertext that is noticeably longer than the first message
+      answer: C
 - ordinal: 3
   title: Hash Functions and Message Authentication
   content_type: reading
@@ -146,16 +206,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Describe the required properties of a cryptographic hash function.
-  - Distinguish a hash from a MAC and from a digital signature.
-  - Select appropriate algorithms for password storage.
+  - Identify which hash property each stated attack exercises, from preimage, second preimage and collision resistance
+  - Distinguish a hash, a MAC and a digital signature by the protection each provides in a message case
+  - Select a password storage scheme for a described system and justify it against fast offline guessing
   topics:
-  - Preimage, second preimage and collision resistance.
-  - SHA-2 and SHA-3 families.
-  - HMAC and message authentication.
-  - Password hashing and key derivation.
-  lab: 'Lab: Compute SHA-256 digests for a file before and after a one-byte change, then generate an HMAC
-    over the same file and demonstrate that an attacker without the key cannot forge it.'
+  - Preimage, second preimage and collision resistance in hash functions.
+  - The SHA-2 and SHA-3 families and their digest sizes.
+  - HMAC and keyed message authentication between two key holders.
+  - Slow, salted, memory-hard password hashing and key derivation functions.
+  - Digital signatures and the non-repudiation a shared-key MAC cannot give.
+  lab: >-
+    Lab: On web01, compute a SHA-256 digest for a file, change one byte, recompute it, then produce an HMAC
+    over the same file and test that a change is detected. Evidence: the digest before the change and after
+    it, marked same or different; the HMAC tags computed with the instructor-supplied key over the original
+    and over the altered file, with the verification result of each; one sentence naming the protection the
+    secret key adds over a plain digest. Pass: both digests are recorded in full and marked; the original
+    verifies and the altered file fails verification; the sentence names detection of unauthorised change as
+    what the key adds.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [web01]
+      action: Log on to web01 as the account the instructor assigned, open a terminal and note the start time.
+    - hosts: [web01]
+      action: Compute the SHA-256 digest of the supplied file on web01 and record the digest value in full.
+    - hosts: [web01]
+      action: Change one byte of the file as the instructor directs and recompute the digest, recording the new
+        value and whether it changed.
+    - hosts: [web01]
+      action: Produce an HMAC of the original file with the key the instructor supplies and record the tag.
+    - hosts: [web01]
+      action: Verify the HMAC over the altered file with the same key and record whether verification fails.
+    - hosts: [web01]
+      action: Record one sentence naming the protection the secret key adds that the plain digest does not provide.
   refs:
   - nist-sp-800-57pt1r5
   - nist-sp-800-63-4
@@ -163,41 +246,45 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Collision resistance means it is infeasible to find:'
+    - question: An attacker steals a password database and checks each stored value against a table of hashes
+        of common passwords. Which property of the stored values defeats this table?
       options:
-      - A) The input for a given output
-      - B) Two distinct inputs with the same hash output
-      - C) The key from the hash
-      - D) A shorter input
+      - A) Collision resistance, which the table cannot reach
+      - B) A unique per-user salt, which makes the table useless
+      - C) A digest shortened to save storage space on the database server
+      - D) Reversible encoding kept for account recovery
       answer: B
-    - question: 'A MAC differs from a plain hash because a MAC:'
+    - question: A signing service must let anyone verify that an approval note came from one specific manager
+        and let a neutral party settle disputes about it. Which mechanism meets this need?
       options:
-      - A) Is shorter
-      - B) Incorporates a secret key so it cannot be forged without it
-      - C) Is reversible
-      - D) Uses public key cryptography
-      answer: B
-    - question: 'A general-purpose fast hash such as SHA-256 is unsuitable for password storage because
-        it:'
+      - A) A MAC key shared with every verifier of the note
+      - B) An unsalted fast hash of the approval note
+      - C) Encryption of the note under the manager's public key
+      - D) A digital signature made with the manager's private key
+      answer: D
+    - question: A worm rewrites a log file, and the monitoring system still holds the log's earlier digest.
+        Detecting the rewrite relies chiefly on which property?
       options:
-      - A) Produces collisions
-      - B) Is fast, enabling large-scale offline guessing
-      - C) Cannot be salted
-      - D) Has no fixed output
-      answer: B
-    - question: 'A key derivation function for passwords is designed to be deliberately:'
+      - A) Second preimage resistance, since a same-digest file cannot practically be made
+      - B) Collision resistance between two files that the worm itself picks freely
+      - C) The secrecy of the stored digest, since nobody should read it
+      - D) The digest's output length alone, treated as a full strength measure
+      answer: A
+    - question: A payroll system stores password hashes computed by one fast general-purpose digest. An auditor
+        recommends a deliberately slow, memory-hard derivation instead. What does the change buy?
       options:
-      - A) Fast and parallelisable
-      - B) Slow and memory-hard
-      - C) Reversible
-      - D) Keyless
-      answer: B
-    - question: A digital signature provides what a MAC does not?
+      - A) Stronger confidentiality for the payroll records themselves and for their backups
+      - B) Password digests that can never be compared against each other at all
+      - C) A far higher work cost per guess, which shrinks offline guessing
+      - D) Removal of any further need to salt the stored password digests
+      answer: C
+    - question: An integration sends status messages between two servers that share one secret, and each
+        message carries a MAC. Which assurance does the MAC give the servers?
       options:
-      - A) Integrity
-      - B) Non-repudiation, since only the private key holder could produce it
-      - C) Confidentiality
-      - D) Speed
+      - A) Confidentiality of each message's contents
+      - B) Detection of any message change made without the shared secret
+      - C) Proof to a third party which server sent the message
+      - D) Non-repudiation binding the sender to the message
       answer: B
 - ordinal: 4
   title: Public Key Cryptography and Key Exchange
@@ -206,16 +293,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain the mathematical basis of RSA and elliptic curve cryptography at a conceptual level.
-  - Describe Diffie-Hellman key exchange and forward secrecy.
-  - Compare key sizes across algorithm families for equivalent strength.
+  - Trace the steps of Diffie-Hellman key exchange and identify what an eavesdropper observes on the channel
+  - Compare RSA and elliptic curve key sizes of equivalent strength and select the fitting choice for a stated device
+  - Decide from a session record whether forward secrecy protects past sessions when a long-term private key is compromised
   topics:
-  - RSA, ECC and comparative key sizes.
-  - Diffie-Hellman and ephemeral variants.
-  - Forward secrecy.
-  - Hybrid encryption in practice.
-  lab: 'Lab: Establish a TLS session in a lab, identify the negotiated key exchange and cipher suite from
-    the handshake, and state whether the session provides forward secrecy.'
+  - RSA and elliptic curve cryptography compared at a conceptual level, with key sizes.
+  - Diffie-Hellman key exchange and its ephemeral variants.
+  - Forward secrecy and what a compromised long-term key exposes.
+  - The machine-in-the-middle risk of unauthenticated key exchange.
+  - Hybrid encryption, where public key arithmetic transports a symmetric session key.
+  lab: >-
+    Lab: From siem01, open a TLS session to web01, read the negotiated handshake parameters and decide whether
+    the session provides forward secrecy. Evidence: the certificate chain web01 presents; the negotiated TLS
+    version and cipher suite exactly as the handshake reports them; the key exchange mechanism named in the
+    suite and whether it is ephemeral; the one-sentence judgement on forward secrecy. Pass: the version and
+    cipher suite are recorded as observed; the judgement states whether past recorded sessions stay
+    confidential if web01's long-term private key is later compromised, with a one-sentence reason.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the account the instructor assigned, open a terminal and note the start time.
+    - hosts: [siem01, web01]
+      action: From siem01, open a TLS client session to web01 on its HTTPS service and record the certificate
+        chain the server presents.
+    - hosts: [siem01]
+      action: Record the full negotiated TLS version and cipher suite exactly as the session reports
+        them.
+    - hosts: [siem01]
+      action: Identify the key exchange component of the negotiated suite and record whether it is an ephemeral
+        exchange.
+    - hosts: [siem01]
+      action: Judge whether the session provides forward secrecy and record one sentence on what an attacker
+        holding web01's long-term private key could and could not decrypt.
   refs:
   - rfc-8446
   - nist-sp-800-57pt1r5
@@ -223,41 +333,46 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Forward secrecy ensures that compromise of a long-term private key does not:'
+    - question: Two offices with no secret in common must agree on an encryption key while an eavesdropper
+        watches the line between them. Which mechanism fits this need?
       options:
-      - A) Affect future sessions
-      - B) Allow decryption of previously recorded sessions
-      - C) Reveal the certificate
-      - D) Break the signature
-      answer: B
-    - question: 'Elliptic curve cryptography offers equivalent security to RSA with:'
+      - A) A digest of both offices' names
+      - B) A value posted on a shared bulletin board
+      - C) A default password shipped with the equipment
+      - D) Diffie-Hellman key exchange over the watched line
+      answer: D
+    - question: A smartcard can hold only a small key and must reach the protection level of a 2048-bit RSA
+        key. What does elliptic curve cryptography offer this device?
       options:
-      - A) Larger keys
-      - B) Substantially smaller keys
-      - C) No keys
-      - D) Identical key sizes
-      answer: B
-    - question: 'In hybrid encryption, public key cryptography is typically used to:'
+      - A) The same level with a substantially smaller key
+      - B) The same level only with a larger key
+      - C) The same level with no key material at all
+      - D) A level of protection RSA cannot reach at any size
+      answer: A
+    - question: A server's long-term private key is stolen a year after a batch of TLS sessions ended, and
+        those sessions used ephemeral key exchange. What can the thief decrypt from them?
       options:
-      - A) Encrypt the entire message
-      - B) Establish or transport a symmetric session key
-      - C) Hash the message
-      - D) Compress the payload
-      answer: B
-    - question: 'Diffie-Hellman allows two parties to:'
+      - A) Nothing from the recorded sessions, because each ephemeral session key is gone
+      - B) Every session in the recorded batch, decrypted and readable in full detail
+      - C) Only the sessions recorded in the same week as the key theft
+      - D) The certificate chain of each session but not its encrypted contents
+      answer: A
+    - question: A client connects to a server and completes an unauthenticated key exchange, accepting whatever
+        key the other end offers. Which attack does this open?
       options:
-      - A) Authenticate each other
-      - B) Derive a shared secret over an untrusted channel
-      - C) Sign a document
-      - D) Exchange certificates
-      answer: B
-    - question: 'Unauthenticated Diffie-Hellman is vulnerable to:'
+      - A) A birthday attack against the exchange values
+      - B) A padding oracle against the handshake records
+      - C) A machine-in-the-middle attack that relays both sides
+      - D) Replay of one older session, and nothing more
+      answer: C
+    - question: A messaging system encrypts each large attachment with a fresh symmetric session key and
+        protects that key with the recipient's public key. Which term names this design?
       options:
-      - A) Replay only
-      - B) Machine-in-the-middle attack
-      - C) Padding oracle
-      - D) Birthday attack
-      answer: B
+      - A) Electronic codebook mode
+      - B) A transposition cipher
+      - C) An unsalted digest chain
+      - D) Hybrid encryption
+      answer: D
 - ordinal: 5
   title: Public Key Infrastructure and TLS
   content_type: reading
@@ -265,16 +380,42 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Describe the structure of an X.509 certificate and its chain of trust.
-  - Explain certificate validation including revocation checking.
-  - Configure TLS according to recognised guidance.
+  - Map each certificate in a served chain to its issuer and name the trust anchor a client ends at
+  - Evaluate a server certificate against hostname, validity and revocation checks and name the check that fails
+  - Select a TLS version and cipher suite configuration that removes legacy algorithms and follows recognised guidance
   topics:
-  - X.509 fields, extensions and SANs.
-  - Chain building and trust anchors.
-  - Revocation via CRL and OCSP.
-  - TLS version and cipher suite selection.
-  lab: 'Lab: Inspect a server certificate chain, verify each signature link to the root, identify the
-    SAN entries, and check the revocation status of the leaf certificate.'
+  - X.509 certificate fields, extensions and subject alternative names.
+  - Chain building from the leaf certificate to a trusted root.
+  - Revocation checking with certificate revocation lists and OCSP.
+  - Hostname verification against the subject alternative name extension.
+  - TLS 1.3 design choices, legacy removal and mandatory forward secrecy.
+  lab: >-
+    Lab: On web01, inspect the certificate the web service presents, walk its chain to the trust anchor and
+    evaluate the leaf against hostname, validity and revocation checks. Evidence: each certificate in the
+    chain with its subject and issuer, in order; the subject alternative name entries of the leaf; the
+    validity dates of every certificate in the chain; the revocation result for the leaf. Pass: the chain is
+    recorded leaf to root with every issuer named; the leaf is marked valid or failing for hostname, for dates
+    and for revocation, each against the observed value; one change is proposed for any check that fails.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [web01]
+      action: Log on to web01 as the account the instructor assigned, open a terminal and note the start time.
+    - hosts: [web01]
+      action: Read the certificate chain the web service on web01 presents and record each certificate's subject
+        and issuer in order.
+    - hosts: [web01]
+      action: Record the subject alternative name entries of the leaf certificate and the name used to reach the
+        service.
+    - hosts: [web01]
+      action: Record the validity dates of every certificate in the chain and mark any certificate that has
+        expired.
+    - hosts: [web01]
+      action: Check the revocation status of the leaf certificate by the method the instructor supplies and
+        record the result.
+    - hosts: [web01]
+      action: Mark the leaf valid or failing for hostname, validity dates and revocation, each against the
+        observed value, and propose a change for any failure.
   refs:
   - rfc-8446
   - nist-sp-800-52r2
@@ -282,41 +423,46 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: TLS 1.3 is specified in which RFC?
+    - question: A browser reaches a server by a name and must decide whether that name belongs to the
+        certificate presented. Against which certificate content is the name matched?
       options:
-      - A) RFC 5246
-      - B) RFC 8446
-      - C) RFC 2246
-      - D) RFC 6101
-      answer: B
-    - question: 'Hostname verification in TLS should be performed against the certificate''s:'
+      - A) The certificate's serial number and issue date
+      - B) The issuer's organisation field
+      - C) The subject alternative name extension
+      - D) The negotiated signature algorithm
+      answer: C
+    - question: A served chain reads leaf, intermediate, root. The leaf and the root are inside their validity
+        dates, but the intermediate expired last week. What does a validating client conclude?
       options:
-      - A) Common Name only
-      - B) Subject Alternative Name extension
-      - C) Serial number
-      - D) Issuer field
-      answer: B
-    - question: 'OCSP provides:'
+      - A) Validation succeeds, because only the leaf certificate's own validity dates ever matter
+      - B) Validation succeeds, because the root still vouches for everything below it anyway
+      - C) Validation fails, and the leaf certificate alone must be reissued at once
+      - D) Validation fails, because every chain certificate must be inside its own dates
+      answer: D
+    - question: A site's certificate was revoked this morning, and a client needs the freshest possible answer
+        about that one certificate. Which mechanism provides it?
       options:
-      - A) Certificate issuance
-      - B) Real-time certificate revocation status
-      - C) Key generation
-      - D) Cipher negotiation
-      answer: B
-    - question: 'A self-signed certificate fails validation in a default client because:'
+      - A) An OCSP responder queried for that certificate
+      - B) The certificate's own validity dates
+      - C) A certificate revocation list downloaded weekly
+      - D) The cipher suite negotiated for the session
+      answer: A
+    - question: A client is offered a certificate whose issuer matches its own subject and which no recognised
+        authority stands behind. Why does default validation fail?
       options:
-      - A) It uses weak crypto
-      - B) Its issuer is not a trusted anchor in the client's store
-      - C) It has no SAN
-      - D) It is expired
+      - A) The signature algorithm is too modern for the client to parse
+      - B) The issuer is not a trust anchor in the client's store
+      - C) The certificate carries no private key of its own
+      - D) The subject name is too short to match
       answer: B
-    - question: 'TLS 1.3 improved security partly by:'
+    - question: An administrator upgrades an ageing TLS deployment to TLS 1.3. Which design change does the
+        protocol bring compared with earlier versions?
       options:
-      - A) Adding more cipher suites
-      - B) Removing legacy algorithms and mandating forward secrecy for its key exchange
-      - C) Disabling certificates
-      - D) Reverting to RSA key transport
-      answer: B
+      - A) A longer list of cipher suites, the legacy ones still included
+      - B) Renewed protocol support for RSA transport of the session's shared secrets
+      - C) Removal of legacy algorithms and forward secrecy in every key exchange
+      - D) Replacement of certificates by a simpler name check on the connection
+      answer: C
 - ordinal: 6
   title: Key Management and Cryptographic Failure Modes
   content_type: reading
@@ -324,16 +470,43 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Describe the cryptographic key lifecycle.
-  - Identify common implementation failures that defeat strong algorithms.
-  - Explain crypto-agility and why algorithms must be replaceable.
+  - Sequence the stages of the key lifecycle from generation to destruction and name the control each stage needs
+  - Identify the implementation failure that defeats a strong algorithm in a described code sample or configuration
+  - Propose a crypto-agility change that lets a described system replace an algorithm without a redesign
   topics:
-  - Key generation, storage, rotation and destruction.
-  - Entropy and random number generation.
-  - Common implementation pitfalls.
-  - Crypto-agility and algorithm migration.
-  lab: 'Lab: Review a supplied code sample that uses a predictable seed and a hardcoded key, document
-    each failure against key-management guidance, and rewrite it correctly.'
+  - The key lifecycle from generation through storage, rotation and destruction.
+  - Entropy sources and cryptographically secure random number generation.
+  - Common implementation pitfalls that defeat strong algorithms.
+  - Crypto-agility and algorithm migration without a system redesign.
+  - Compromise bounds, and what scheduled key rotation limits.
+  lab: >-
+    Lab: On web01, review the supplied program that encrypts a file, find every key-management and randomness
+    failure in it and propose the change each failure needs. Evidence: each failure located and quoted by its
+    line; each failure named against the key-management guidance in the module's reference and the lifecycle
+    stage it breaks; a ranking of critical or important with one sentence on the top failure; one proposed
+    change per failure. Pass: the predictable seed and the hardcoded key are both found and named with their
+    lines; every failure carries a change a maintainer could apply; the ranking states why the top failure
+    defeats the encryption entirely.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [web01]
+      action: Log on to web01 as the account the instructor assigned, open a terminal and note the start time.
+    - hosts: [web01]
+      action: Open the supplied program on web01, read it end to end and note how it generates its key and where
+        the key lives.
+    - hosts: [web01]
+      action: Record every place the program uses a predictable or fixed value where key material is required,
+        quoting each line.
+    - hosts: [web01]
+      action: Name each failure against the key-management guidance in the module's reference and record which
+        stage of the key lifecycle it breaks.
+    - hosts: [web01]
+      action: Rank the failures critical or important and record one sentence on why the top failure defeats the
+        encryption entirely.
+    - hosts: [web01]
+      action: Propose one change per failure that a maintainer could apply, and record how crypto-agility would
+        let the algorithm be replaced later.
   refs:
   - nist-sp-800-57pt1r5
   - cwe-top-25
@@ -341,38 +514,42 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Using a predictable seed for a random number generator results in:'
+    - question: A device seeds its random generator with the boot timestamp and generates its encryption key at
+        every boot. What does the predictable seed make possible?
       options:
-      - A) Slower encryption
-      - B) Predictable keys that an attacker can reproduce
-      - C) Longer ciphertext
-      - D) Padding errors
+      - A) Faster generation of the device's encryption key at each boot cycle
+      - B) Reproduction of the key by anyone who can guess the seed
+      - C) A longer encryption key than the algorithm would otherwise allow
+      - D) Automatic rotation of the encryption key between reboots of the device
       answer: B
-    - question: 'Key rotation limits the impact of compromise by:'
+    - question: An auditor asks why a service rotates its encryption key on a schedule even though the key has
+        not leaked. What does scheduled rotation limit?
       options:
-      - A) Making keys longer
-      - B) Bounding the amount of data exposed under any single key
-      - C) Preventing key theft
-      - D) Removing the need for storage
-      answer: B
-    - question: 'Crypto-agility means a system can:'
+      - A) The maximum key length that the chosen algorithm is able to support
+      - B) The storage cost of holding the key material over its whole lifetime
+      - C) The amount of data exposed if any single key is later compromised
+      - D) The continuing need for physical protection measures around the key store itself
+      answer: C
+    - question: A product's encryption is fixed in the design, so a published weakness in the algorithm cannot
+        be removed without rebuilding the whole appliance. Which property is missing?
       options:
-      - A) Encrypt faster
-      - B) Replace algorithms and key sizes without redesign
-      - C) Operate without keys
-      - D) Skip certificate validation
-      answer: B
-    - question: 'The most common cause of real-world cryptographic failure is:'
+      - A) Forward secrecy between appliance and client
+      - B) A longer key chosen for the fixed algorithm
+      - C) A second cipher bundled alongside the first
+      - D) Crypto-agility in the appliance's design
+      answer: D
+    - question: Reviewers find a strong algorithm implemented with a constant key compiled into the binary.
+        In practice, what most often breaks real-world cryptographic systems of this kind?
       options:
-      - A) Broken primitives such as AES
-      - B) Implementation and key-management mistakes
-      - C) Insufficient key length in AES
-      - D) Hash collisions in SHA-256
-      answer: B
-    - question: 'Cryptographic keys should be generated using:'
+      - A) Implementation and key-management mistakes, not the algorithm itself
+      - B) Collisions demonstrated in the oldest widely deployed hash function families
+      - C) Insufficient key length in standard ciphers
+      - D) Public disclosure of the algorithm's design
+      answer: A
+    - question: A team must generate key material for a new internal service. Which source fits this need?
       options:
-      - A) A standard language random function
+      - A) The service's current time in milliseconds
       - B) A cryptographically secure random number generator
-      - C) A timestamp
-      - D) A user-supplied passphrase directly
+      - C) A counter incremented from the previous key
+      - D) A word list chosen by the administrator
       answer: B

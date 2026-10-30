@@ -1,0 +1,176 @@
+# C402 - Capstone Project Planning - instructor pack (staff only).
+# Companion to content/courses/c402-capstone-project-planning.yaml: timings, answer key notes,
+# lab setup and common faults for the six modules. Every lab runs on the medium-enterprise range
+# (content/ranges/medium-enterprise) from the siem01 analyst account, so setup is range preparation
+# rather than printing.
+course_code: C402
+audience: staff_only
+overview: 'Capstone Project Planning is a course for intermediate Students preparing a twelve-week capstone
+  proposal, delivered as six 60-minute modules. Every module teaches three objectives through one range
+  lab on the medium-enterprise template: Students sign in to the SIEM host siem01 with the analyst account
+  and work from there, because the management zone can reach every other host. Each module ends with a
+  five-item quiz passed at 70 percent. The labs build one continuous product across the course: an asset
+  inventory, then an evidence review, then a test matrix, then a risk register, then a costed schedule,
+  and finally a proposal evidence table with a revision log. Keep every description defensive and
+  observable, and record range values as the range shows them rather than from memory.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach, 35 lab (range walk-through and asset inventory, problem statement and success criteria),
+    10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach, 35 lab (record what the range evidence already shows, three ranked unanswered questions),
+    10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach, 35 lab (fw01 rule list, two connection tests, test matrix with validity threats),
+    10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach, 35 lab (dc01 lockout values, SIEM log sources, risk register with approval states),
+    10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach, 35 lab (verification tasks per fw01 rule, dependency pairs, critical path, reduced
+    outcome), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach, 35 lab (evidence table from earlier sessions, claim marks, revision log), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (scope wider than the time allows): a fifty-host audit in eight weeks fails the weeks-available
+    test, not any single quality of the topic. Distractor D tests the misconception that topic kind, not
+    scope, decides feasibility. Q2 C (decidable firewall criterion): it names an observable result with test
+    results, so an assessor can answer yes or no. Distractor B tests vague benefit words that cannot be
+    marked. Q3 A (reviewers cannot judge a silent boundary): an out-of-scope item without a reason reads as
+    an omission rather than a decision. Q4 D (a stakeholder constraint): the IT manager states what the
+    product must do for the help desk, which bounds the problem. Q5 B (silent exclusion): an incomplete
+    inventory means the scope statement may quietly exclude hosts the Student never recorded.'
+- module: 2
+  notes: 'Q1 C (a claim to check against independent evidence): a vendor whitepaper without test data is not
+    unusable, it is unproven; distractor B overcorrects. Q2 D (synthesis): restating four controls one after
+    another is summary; the review still lacks what the sources jointly establish. Q3 A (the gap): studying
+    phishing defences names a topic, not the contribution beyond prior work. Q4 B (reframe): when two
+    independent studies answer the problem, the contribution moves to the aspect they leave open; abandoning
+    the capstone is not required. Q5 C (a source repeating a claim): the blog carried no test, so it does not
+    carry the evidence however new it is.'
+- module: 3
+  notes: 'Q1 A (evidence that answers the question): the methodology is chosen from the evidence the question
+    needs, not from tools or schedules. Q2 B (a baseline): a speed claim without the old timings has nothing
+    to compare against; statistical significance is not the missing piece. Q3 D (feasibility in that case):
+    one blocked intrusion shows the control can work once, not that it performs generally; distractor C
+    overstates, since the demonstration is not worthless. Q4 C (planning the data collection in advance):
+    the field was never captured because collection was left until analysis. Q5 A (a validity threat): a
+    single quiet afternoon is an untested condition the results do not escape, not a schedule success.'
+- module: 4
+  notes: 'Q1 C (documented authorisation from the system owner): supervisor awareness is not ownership, and a
+    risk register alone permits nothing. Q2 B (ethical review approval): surveys of colleagues are human
+    subject data collection, which ethical review gates. Q3 A (stop the affected work): the affected activity
+    halts until the approval is resolved; documenting afterwards or deleting results are the two failure
+    modes. Q4 A (it names no observable action): a mitigation must state an action someone can observe or
+    check; distractor D tests the misconception that authorship, not content, decides whether a mitigation
+    works, and B and C test form and placement, which are not the failure. Q5 B (the register must show the
+    bounds were authorised, not assumed): even on hosts built to be tested, the written authorisation is the
+    evidence that the bounds were granted; distractor A tests the belief that a teaching lab needs no
+    authorisation, C the belief that it is never granted, and D that authorisation replaces the register
+    rather than being recorded by it.'
+- module: 5
+  notes: 'Q1 D (a delay yields a reduced but complete deliverable): the minimum viable outcome is defined
+    before delays so that a late project still ships something evaluable; distractor A tests reduced ambition
+    as motive, which is not the point. Q2 C (two weeks of minimum duration): sequential dependent tasks sum
+    on the critical path; distractor A tests parallelism, which dependency forbids. Q3 A (substantial
+    contingency): unfamiliar work is routinely underestimated, so the estimate grows; keeping it and absorbing
+    overruns hides the risk. Q4 A (a dependency with its own lead time): access that an approval may never
+    grant is a schedule item with lead time, not a detail for the report. Q5 B (any single delay propagates):
+    with no slack, the first delay lands on the deadline itself.'
+- module: 6
+  notes: 'Q1 B (significant problem, feasible method, evaluable criteria): these are the three claims every
+    reviewer tests; the other options list documents, not claims. Q2 D (reasoning and trade-offs): a defence
+    explains why the choice was made; citing the supervisor or declaring it final are authority, not reasoning.
+    Q3 C (fix two and answer the third with reasoning): review feedback is answered by action or by reasoned
+    reply, never by silent acceptance or silent refusal. Q4 A (review engaged with traceably): the revision
+    log shows what changed and why, which is its whole value to an assessor. Q5 B (scope too wide to complete
+    and evaluate): the most frequent proposal failing is scope, not references or formatting.'
+lab_setup:
+- module: 1
+  setup: Revert the medium-enterprise range to its baseline template state before the session. Confirm the
+    analyst account can sign in to siem01 and reach fw01, dc01, fs01, web01, mail01, ws01 and ws02. Read the
+    fw01 rule set yourself and record the zone-to-zone rules as the range shows them, so you can check the
+    inventory against the live state during the lab.
+- module: 2
+  setup: Same baseline range. Confirm siem01 holds log sources for each zone the template deploys and note
+    which zones are represented. Read the dc01 domain password policy yourself and record the values as
+    shown. Have the references list for the course visible if Students ask where published evidence starts.
+- module: 3
+  setup: Same baseline range. Confirm siem01 can reach web01 on port 443 and mail01 on port 993 and record
+    both results yourself first. Confirm the fw01 rule list is unchanged from baseline, because the test
+    matrix Students build has one row per rule.
+- module: 4
+  setup: Same baseline range. Confirm the dc01 domain password policy lockout threshold and lockout duration
+    are readable and record them as shown. Confirm the SIEM holds log sources that would show a Student's own
+    test activity, so the register exercise has a real answer. No traffic is generated against hosts beyond
+    reads, so no approvals are needed for the lab itself.
+- module: 5
+  setup: 'Same baseline range. Confirm the fw01 rule list still matches baseline, since Students turn each
+    rule into a costed verification task. Prepare no schedule material: the point is that the dependency
+    pairs and critical path come out of what the range actually requires.'
+- module: 6
+  setup: Same baseline range. Confirm Students have their earlier session records available (inventory,
+    rule lists, test matrix, risk register, schedule). Re-check the fw01 rule list against baseline yourself
+    so you can confirm whether it drifted; if it drifted, say so before the evidence-table step, not after.
+common_faults:
+- module: 1
+  fault: The inventory lists hosts by address or platform but assigns no role, so the scope statement cannot
+    say what each asset is for.
+  remedy: Point at the lab pass item that the inventory names every host with a role; have Students fill the
+    role column from the services they recorded before drafting the problem statement.
+- module: 1
+  fault: Success criteria are written as benefits (improves security, raises awareness) rather than decidable
+    observations.
+  remedy: Ask of each criterion, what would an assessor look at to answer yes or no; rewrite until the answer
+    names an artefact or a test result.
+- module: 2
+  fault: The three unanswered questions are restatements of what the range already answered, because the
+    recorded values were skimmed.
+  remedy: Check each question against the recorded fw01 rules, dc01 policy values and SIEM sources; a
+    question the recorded evidence settles is not unanswered and must be replaced.
+- module: 2
+  fault: Questions are unanswerable in principle on this range, so no evidence could ever settle them.
+  remedy: Require the phrase what new evidence would settle it to name evidence the range could produce;
+    anything else is out of scope for the capstone.
+- module: 3
+  fault: The test matrix rows record the two connection tests as proving the whole rule set, overstating what
+    the session established.
+  remedy: Have Students mark which rows the session could not run, then ask what the two completed rows
+    prove; the answer is about those rules only.
+- module: 3
+  fault: Validity threats are written as generic worries (human error, time) instead of threats tied to the
+    design row.
+  remedy: Ask of each row, what would make this result mean less than claimed; the threat must name the
+    condition the test ran under or lacked.
+- module: 4
+  fault: Mitigations read as intentions (be careful, pay attention) rather than observable actions.
+  remedy: The lab pass item requires a mitigation naming an observable action; rewrite each one until it
+    states what is done, not how the Student feels.
+- module: 4
+  fault: Register items that touch live hosts are all marked authorised without naming who authorised them.
+  remedy: Require each pending item to name the approval it waits for and each authorised item the
+    authorisation it holds; the register is evidence, not assumption.
+- module: 5
+  fault: Estimates carry no contingency on unfamiliar work, so the schedule shows the best case as the plan.
+  remedy: Have Students mark which tasks they have never done before and check that those estimates carry
+    the largest contingency; the totals should move visibly.
+- module: 5
+  fault: The reduced fallback cuts scope by dropping evaluation, delivering a partial result instead of a
+    smaller complete one.
+  remedy: Point at the pass item that the fallback remains complete and evaluable; a fallback that cannot be
+    marked is not a fallback.
+- module: 6
+  fault: The evidence table cites findings from memory instead of the session and host each row came from.
+  remedy: The pass item requires the session and host per row; rows without provenance are removed and
+    re-collected from the recorded session notes.
+- module: 6
+  fault: Unsupported claims are quietly deleted rather than given a revision log entry.
+  remedy: The revision log states what changed or why nothing did; deleting a claim without recording it
+    fails the log, and the log entry is where the reasoning lives.

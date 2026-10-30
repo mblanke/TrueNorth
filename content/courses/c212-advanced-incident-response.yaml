@@ -10,6 +10,7 @@ duration_hours: 20
 provenance: unsourced
 status: draft
 is_published: false
+readiness: draft
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
 prerequisites:
@@ -34,56 +35,89 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Manage an incident spanning many systems and teams.
-  - Structure a response organisation at scale.
-  - Maintain situational awareness across parallel workstreams.
+  - Structure a response organisation into workstreams with named leads for a multi-site incident
+  - Write a shift handover that carries each workstream's state, evidence and next actions
+  - Triage a parallel alert queue and route each alert to the workstream that owns it
   topics:
-  - Incident command at scale.
-  - Workstream structure and handover.
-  - Situational awareness and common operating picture.
-  - Shift handover discipline.
-  lab: 'Lab: Design a response organisation for an incident affecting 500 hosts across three sites, defining
-    workstreams, leads and the handover process between shifts.'
+  - Incident command at scale, with one commander, many workstreams and clear decision authority.
+  - The common operating picture as the single record of what is known and what is not.
+  - Building a shift handover from state, evidence, next actions and open decisions.
+  - Reading a parallel alert queue and routing alerts to the workstream that owns each.
+  - Responder rotation and why documentation, not memory, carries an incident between shifts.
+  lab: >-
+    Lab: On the large-enterprise range, structure the response to a multi-zone incident, route the open
+    alerts to workstreams and prepare the handover the incoming shift will need. Evidence: the number of
+    open alerts in each network zone; each workstream with its named lead and current state; the timestamp,
+    zone and summary of the two oldest alerts with a workstream assigned to each; one handover note per
+    workstream. Pass: every zone with open alerts is recorded with a count; each of the two alerts is
+    assigned to a named workstream with a one-sentence reason; each handover note states state, evidence
+    and next action; the first decision for the incoming lead is named.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open the case record your instructor assigned and note the start time.
+    - hosts: [siem01]
+      action: On siem01, open the dashboard for the incident window and record how many alerts are open in
+        each network zone.
+    - hosts: [soar01]
+      action: On soar01, open the active case and record each workstream with its named lead and its current
+        state.
+    - hosts: [siem01]
+      action: Pick the two oldest open alerts, record the timestamp, zone and summary of each, and name the
+        workstream each belongs to.
+    - hosts: [jump01]
+      action: Write one handover note per workstream that states its state, its evidence so far and its next
+        action, and record each note.
+    - hosts: [jump01]
+      action: Mark each handover note complete or incomplete with a one-sentence reason, and name the one
+        decision the incoming lead must make first.
   refs:
   - nist-sp-800-61r3
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'A common operating picture exists to ensure:'
+    - question: A bank is responding to an intrusion touching four network zones at once, and response is
+        split into three workstreams. What does the shared case record that every workstream updates
+        chiefly provide?
       options:
-      - A) Faster tooling
-      - B) All workstreams share the same current understanding
-      - C) Fewer meetings
-      - D) Lower cost
+      - A) A substitute for a response plan
+      - B) One current understanding of the incident across all workstreams
+      - C) A record kept to prove to the regulator that response costs were controlled
+      - D) A searchable store of every log entry
       answer: B
-    - question: 'Shift handover during a prolonged incident should be:'
+    - question: Twelve hours into a major incident the night shift arrives. Which practice best protects the
+        investigation across the change?
       options:
-      - A) Informal
-      - B) Structured and documented to prevent loss of context
-      - C) Skipped if busy
-      - D) Verbal only
-      answer: B
-    - question: 'Splitting response into workstreams primarily addresses:'
+      - A) A spoken summary at the door, so the written record stays short
+      - B) Each analyst mailing raw notes before leaving, with no summary
+      - C) A written handover per workstream stating state, evidence and next actions
+      - D) Waiting until the morning meeting to pass the findings on
+      answer: C
+    - question: During a long incident two workstreams each change settings on fw01 without telling the
+        other, and one containment step is undone. Which practice would most likely have prevented this?
       options:
-      - A) Cost control
-      - B) Parallelism while maintaining coordination
-      - C) Evidence handling
-      - D) Reporting
-      answer: B
-    - question: 'Incident command should be separated from hands-on analysis because:'
+      - A) Longer shifts, so each analyst sees their own changes through
+      - B) Fewer workstreams, even where response slows
+      - C) A chat channel used only for major announcements
+      - D) A common operating picture every workstream updates before acting
+      answer: D
+    - question: An analyst has been on shift fourteen hours and begins closing alerts without reading them.
+        What is the best response?
       options:
-      - A) Analysts are junior
-      - B) Coordination degrades when the commander is absorbed in technical work
-      - C) It reduces headcount
-      - D) Policy requires it
-      answer: B
-    - question: 'Responder fatigue in a prolonged incident is best managed by:'
+      - A) Rotate the analyst out and hand the queue to a rested responder with a written summary
+      - B) Extend the shift, because the analyst knows the case best
+      - C) Disable the alerting until the analyst has recovered
+      - D) Have the analyst document less to save time
+      answer: A
+    - question: A queue holds sixty open alerts across three zones and one shift remains. What should the
+        on-shift lead do first?
       options:
-      - A) Longer shifts
-      - B) Planned rotation with structured handover
-      - C) More tooling
-      - D) Reduced documentation
+      - A) Close the oldest alerts to keep the queue short
+      - B) Route each alert to the workstream that owns it
+      - C) Escalate every alert to the incident lead
+      - D) Wait for a quieter window before triaging
       answer: B
 - ordinal: 2
   title: Advanced Adversary Techniques
@@ -92,16 +126,46 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Recognise sophisticated persistence and evasion.
-  - Investigate credential theft and lateral movement at depth.
-  - Identify anti-forensic activity.
+  - Trace an intrusion across workstations and servers using process lineage and authentication logs
+  - Distinguish legitimate use of built-in administrative tools from adversary use by context
+  - Identify where the adversary altered or removed evidence and state what is missing
   topics:
-  - Living-off-the-land techniques.
-  - Credential theft and pass-the-hash.
-  - Advanced persistence mechanisms.
-  - Anti-forensics and log manipulation.
-  lab: 'Lab: Investigate a scenario involving living-off-the-land lateral movement, identify the credential
-    theft technique used, and determine what anti-forensic steps the attacker took.'
+  - Living-off-the-land techniques and why built-in tools must be judged by context.
+  - Process lineage, parent-child anomalies and command-line review.
+  - Pass-the-hash and ticket reuse, and why a valid-looking sign-in can be the adversary.
+  - Anti-forensic traces, including log clearing and altered timestamps.
+  - Scoping an intrusion across zones before containment changes what is visible.
+  lab: >-
+    Lab: On the large-enterprise range with the apt-nation-state scenario, trace the intrusion from the
+    first alert, judge how built-in tools were used and find where evidence is missing. Evidence: the
+    source and destination host of each remote-administration and scheduled-task event in the scenario
+    window; the parent process and command line of each suspicious process on ws06; each account that
+    authenticated to dc01 from an unusual host; every hour where authentication or audit
+    logging from ws06 or fs01 is missing, marked unexplained or explained. Pass: each event carries source
+    and destination; each process carries its parent and command line; each gap is marked unexplained or
+    explained with a reason; the scope list names every host with the evidence behind it.
+  lab_range:
+    template: large-enterprise
+    scenario: apt-nation-state
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open the case record for the scenario and note the incident start time from
+        the first alert.
+    - hosts: [siem01]
+      action: On siem01, search the scenario window for remote-administration and scheduled-task events and
+        record the source and destination host of each.
+    - hosts: [edr01, ws06]
+      action: On edr01, open the process tree for ws06 and record the parent process and command line of
+        each process that stands out from the baseline.
+    - hosts: [siem01, dc01]
+      action: On siem01, filter authentication events for dc01 to the same window and record each account
+        that signed in from a host it does not normally use.
+    - hosts: [siem01]
+      action: Record every hour in the window where authentication or audit logging from ws06 or fs01 is
+        missing, and mark each gap unexplained or explained.
+    - hosts: [jump01]
+      action: Mark each finding as built-in tool used legitimately or adversary use with a one-sentence
+        reason, and list the systems that belong in scope with the evidence for each.
   refs:
   - mitre-attack
   - nist-sp-800-86
@@ -109,41 +173,48 @@ modules:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Living-off-the-land techniques are difficult to detect because they:'
+    - question: A server shows a legitimate administration tool launching a script at an unusual hour, and
+        the file hashes match the signed system binary. What does this show about detecting
+        living-off-the-land techniques?
       options:
-      - A) Are encrypted
-      - B) Use legitimate built-in tools that also have benign uses
-      - C) Run in memory only
-      - D) Require no credentials
-      answer: B
-    - question: 'Pass-the-hash succeeds because some authentication protocols accept:'
+      - A) The signed hash proves the activity is benign
+      - B) Signing makes such tools impossible to misuse
+      - C) Judgement needs context such as parent process, time and target, not the hash alone
+      - D) The tool must be removed from every system
+      answer: C
+    - question: Sign-ins with one valid domain account appear from two workstations within seconds of each
+        other, one of which the account never uses. Which activity best explains the pair?
       options:
-      - A) The plaintext password only
-      - B) The hash itself as proof of knowledge
-      - C) Any credential
-      - D) Kerberos tickets only
-      answer: B
-    - question: 'Evidence that logs were cleared should be treated as:'
+      - A) Replay of stolen credential material from a second host
+      - B) Normal roaming profile synchronisation
+      - C) A scheduled maintenance task run twice
+      - D) Network address translation on the internet gateway of the site
+      answer: A
+    - question: The audit log on a compromised file server ends three hours before the incident was
+        detected, and no change record covers the gap. How should the gap be treated?
       options:
-      - A) An operational error
-      - B) A strong indicator of deliberate anti-forensic activity
-      - C) Normal maintenance
-      - D) Inconclusive
-      answer: B
-    - question: 'Detecting living-off-the-land activity relies chiefly on:'
+      - A) As routine log rotation
+      - B) As a storage fault to raise with the platform team
+      - C) As proof that data left the environment
+      - D) As likely anti-forensic activity that narrows the investigation window
+      answer: D
+    - question: Which observation gives the strongest early sign that credentials were stolen rather than
+        used by their owner?
       options:
-      - A) File hashes
-      - B) Context - parent process, command line and behavioural anomaly
-      - C) Signatures
-      - D) Port numbers
+      - A) The account signed in during normal business hours from its usual workstation, as it does most
+          days
+      - B) Authentication from a host the account has never used, soon after failed sign-ins elsewhere
+      - C) The account holds a standard role with no elevated rights
+      - D) The account's password is close to its scheduled expiry date
       answer: B
-    - question: 'An attacker using valid credentials is difficult to detect because activity:'
+    - question: Before containing a workstation, the team lists every other host that authenticated with
+        the same account and every share that workstation touched. What is this step for?
       options:
-      - A) Is encrypted
-      - B) Appears authorised and blends with legitimate use
-      - C) Occurs off-hours only
-      - D) Bypasses logging
-      answer: B
+      - A) Estimating the cost of downtime for the affected service
+      - B) Satisfying the evidence retention policy for the case
+      - C) Scoping the intrusion before containment changes what is visible
+      - D) Choosing which logging format the team will adopt
+      answer: C
 - ordinal: 3
   title: Threat Intelligence Integration
   content_type: reading
@@ -151,16 +222,46 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Apply intelligence to guide an active response.
-  - Pivot on indicators to expand scope accurately.
-  - Avoid intelligence-driven confirmation bias.
+  - Pivot from one indicator to the related systems, accounts and infrastructure it connects to
+  - Rate a threat intelligence source by reliability, timeliness and relevance before acting on it
+  - Separate what environment evidence shows from what an intelligence report assumes
   topics:
-  - Intelligence-led scoping.
-  - Indicator pivoting technique.
-  - Confidence and source evaluation.
-  - Bias risks in active response.
-  lab: 'Lab: Given a set of indicators and an active incident, pivot to identify additional affected systems,
-    and document which conclusions are evidence-based and which are intelligence-assumed.'
+  - What an indicator is, and the confidence attached to each one.
+  - Pivoting from one indicator to related hosts, accounts and infrastructure.
+  - Rating a feed by source reliability, timeliness and relevance to this environment.
+  - Confirmation bias in intelligence-led response, and how it narrows scope.
+  - Acting on indicators without blocking legitimate shared infrastructure.
+  lab: >-
+    Lab: On the large-enterprise range, pivot through the indicators in the threat intelligence platform
+    to expand an active investigation's scope, then divide the conclusions into what the range shows
+    and what the report assumes. Evidence: each indicator from the event with its confidence rating; every
+    host and account that touched the highest-confidence indicator; one pivoted indicator the feed does
+    not hold, with the feed's source reliability and timeliness; the findings split into
+    evidence-based and intelligence-assumed with a one-sentence basis each. Pass: every indicator carries
+    its confidence rating; the pivot yields one new indicator with its hosts and accounts; each
+    finding is labelled evidence-based or intelligence-assumed with a reason; one query that would confirm
+    the largest assumption is named.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open the investigation record your instructor assigned and note the start
+        time.
+    - hosts: [tip01]
+      action: On tip01, open the event your instructor assigned and record each indicator with its stated
+        confidence rating.
+    - hosts: [siem01]
+      action: On siem01, search every zone for the highest-confidence indicator and record each host and
+        account that touched it.
+    - hosts: [siem01]
+      action: For each matched host, search its recent connections and record one new indicator that the
+        original event does not hold, with the hosts and accounts behind it.
+    - hosts: [tip01]
+      action: Check the new indicator against the feed and record whether the feed holds it, together with
+        the feed's stated source reliability and timeliness.
+    - hosts: [jump01]
+      action: Split the findings into evidence-based and intelligence-assumed with a one-sentence basis for
+        each, and name the one query that would confirm the largest assumption.
   refs:
   - nist-sp-800-150
   - mitre-attack
@@ -168,40 +269,44 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Pivoting on an indicator means:'
+    - question: An analyst holds one address from a phishing report and next searches the domain it resolved
+        to and the files it delivered. What is this technique called?
       options:
-      - A) Discarding it
-      - B) Using it to find related infrastructure, files or activity
-      - C) Publishing it
-      - D) Blocking it
+      - A) Attribution
+      - B) Indicator pivoting
+      - C) Log normalisation
+      - D) Threat modelling
       answer: B
-    - question: 'Assuming an incident matches a known actor''s playbook risks:'
+    - question: A new feed is reliable and current, but describes infrastructure of an industry the
+        organisation does not use. What should the analyst weigh most before acting?
       options:
-      - A) Faster response
-      - B) Missing activity that does not fit the assumed pattern
-      - C) Better scoping
-      - D) Improved attribution
-      answer: B
-    - question: 'Intelligence should be evaluated for:'
+      - A) The size of the feed
+      - B) The price of the subscription
+      - C) The format the feed publishes in and how hard it is to parse
+      - D) The relevance of the indicators to this environment
+      answer: D
+    - question: Early in an incident an intelligence report matches the observed activity, so the team
+        assumes the rest of the report applies and stops looking elsewhere. What has the team risked?
       options:
-      - A) Volume
-      - B) Source reliability, timeliness and relevance to your environment
-      - C) Cost
-      - D) Format
-      answer: B
-    - question: 'Blocking every indicator from a feed without review can:'
+      - A) Confirmation bias that hides activity which does not fit the pattern
+      - B) Losing the evidence needed for legal review
+      - C) Blocking legitimate business traffic
+      - D) Understating the cost of the incident
+      answer: A
+    - question: A feed lists an address that also hosts a payment processor many customers rely on. What is
+        the soundest action?
       options:
-      - A) Improve security cheaply
-      - B) Cause outages if the feed contains shared or legitimate infrastructure
-      - C) Reduce noise
-      - D) Aid attribution
-      answer: B
-    - question: 'The correct treatment of an intelligence-derived hypothesis is to:'
+      - A) Block the address at the firewall and review next quarter
+      - B) Ignore the feed entirely to avoid mistakes
+      - C) Alert on traffic to the address and review each hit before blocking anything
+      - D) Publish the address to customers as malicious
+      answer: C
+    - question: Which conclusion from an investigation is evidence-based rather than intelligence-assumed?
       options:
-      - A) Accept it as fact
-      - B) Test it against evidence in your own environment
-      - C) Ignore it
-      - D) Report it as a finding
+      - A) The report says this actor always stages tools on a file server
+      - B) The logs show a file share receiving an archive tonight
+      - C) The feed rates the campaign high confidence
+      - D) A peer organisation saw the same actor last month
       answer: B
 - ordinal: 4
   title: Recovery at Scale and Business Continuity
@@ -210,56 +315,87 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Plan recovery for a large-scale compromise.
-  - Decide between rebuild and remediation.
-  - Sequence recovery to avoid reinfection.
+  - Sequence the recovery of compromised systems so that restored hosts are not reinfected
+  - Decide for each system between rebuild and in-place remediation and justify the choice
+  - Inventory the credentials and trusts that must be reset after a domain-wide compromise
   topics:
-  - Recovery sequencing and dependencies.
-  - Rebuild versus remediate decisions.
-  - Trust re-establishment and credential reset.
-  - Continuity activation.
-  lab: 'Lab: Produce a recovery plan for a domain-wide compromise, sequencing credential reset, rebuild
-    and service restoration so that recovered systems are not reinfected.'
+  - Recovery sequencing, service dependencies and the order of restoration.
+  - Clean rebuild versus in-place remediation, and the confidence each needs.
+  - Restore points, and why a backup must predate the compromise.
+  - Credential and trust reset after a domain-wide compromise.
+  - Continuity measures that hold the business while recovery proceeds.
+  lab: >-
+    Lab: On the large-enterprise range, sequence the credential reset, rebuild and restoration of a
+    domain-wide compromise your instructor timestamps so nothing recovered is reached again. Evidence:
+    each fs01 shadow copy with its creation time, marked before or after the compromise time; the domain
+    trusts on dc01 with their direction; the replication partners sql01 and sql02 name and whether sql01
+    holds a local backup; an ordered recovery list for fs01, sql01 and a clean workstation image, each
+    with a rebuild or remediate choice. Pass: every shadow copy is marked before or after the compromise
+    time; each trust recorded with its direction; each recovery-list entry carries a choice with a
+    one-sentence reason; the credential resets that must precede any restore are listed.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open the incident record and note the compromise time your instructor
+        provides.
+    - hosts: [fs01]
+      action: On fs01, list the available shadow copies and record each with its creation time.
+    - hosts: [jump01]
+      action: Mark each shadow copy as taken before or after the compromise time, and note which copies are
+        safe to restore from.
+    - hosts: [dc01]
+      action: On dc01, list the domain trusts and record each trust with its direction.
+    - hosts: [sql01, sql02]
+      action: On sql01 and sql02, record the replication partner each names, and on sql01 record whether a
+        local backup or restore point exists and what restoring the pair out of order would risk.
+    - hosts: [jump01]
+      action: Produce an ordered recovery list that gives a rebuild or remediate choice with a one-sentence
+        reason for fs01, sql01 and a clean workstation image, and list the credential resets that must
+        complete before any system is restored.
   refs:
   - nist-sp-800-61r3
   quiz:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Restoring systems before eradicating attacker access typically results in:'
+    - question: A domain-wide compromise is being recovered, and servers are restored from backup before
+        the credential reset completes. What is the most likely result?
       options:
-      - A) Faster recovery
-      - B) Reinfection of the restored systems
-      - C) Better evidence
-      - D) Lower cost
+      - A) The backups fail their integrity checks
+      - B) Users lose recently created data
+      - C) Recovery finishes sooner than planned
+      - D) The restored systems are reached again with credentials the attacker still holds
+      answer: D
+    - question: A database server can be rebuilt in four hours or remediated in nine, and the team cannot
+        show every persistence mechanism on it was found. Which choice is sounder?
+      options:
+      - A) Remediate, because it keeps the data in place
+      - B) Rebuild from a clean image, because it removes persistence the team has not found
+      - C) Remediate, because rebuild would lose the replication partner
+      - D) Pause recovery until the attacker is identified
       answer: B
-    - question: 'After a domain-wide compromise, credential reset must include:'
+    - question: A file server was compromised late on Tuesday. Three restore points exist, from Friday,
+        Monday night and Wednesday. Which is the soundest choice?
       options:
-      - A) User passwords only
-      - B) Service accounts, trusts and key material as well as user credentials
-      - C) Administrator accounts only
-      - D) Nothing if malware is removed
-      answer: B
-    - question: 'Recovery sequencing must account for:'
+      - A) The Monday-night copy, taken before the compromise
+      - B) The Wednesday copy, because it is the newest
+      - C) The Friday copy, because it is tested weekly
+      - D) No copy, because recovery must wait for a fresh backup
+      answer: A
+    - question: After a full domain compromise, which set must the credential reset include?
       options:
-      - A) Alphabetical order
-      - B) Service dependencies and the trust relationships between systems
-      - C) Hostname length
-      - D) Backup age only
-      answer: B
-    - question: 'Restoring from a backup taken after the initial compromise risks:'
+      - A) Standard user passwords only
+      - B) Administrator accounts only
+      - C) User, service and trust credentials together with key material
+      - D) Only the accounts the logs mention, since the rest are assumed safe
+      answer: C
+    - question: During recovery, which measure keeps the business running while systems are rebuilt?
       options:
-      - A) Data loss
-      - B) Restoring the attacker's persistence along with the data
-      - C) Slower recovery
-      - D) Licence issues
-      answer: B
-    - question: 'Deciding to rebuild rather than remediate is driven mainly by:'
-      options:
-      - A) Cost
-      - B) Confidence that all attacker access and persistence can be removed
-      - C) Time available
-      - D) Vendor advice
+      - A) Restoring every system at once so the outage ends as soon as possible
+      - B) A manual process or a clean standalone system for the critical service
+      - C) Reducing logging to free capacity for the rebuild
+      - D) Delaying notification until recovery has ended
       answer: B
 - ordinal: 5
   title: Legal, Regulatory and Third-Party Dimensions
@@ -268,16 +404,41 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Identify legal and regulatory obligations during an incident.
-  - Coordinate with external parties appropriately.
-  - Preserve evidence to a legally defensible standard.
+  - Decide when an incident crosses the threshold that starts notification obligations
+  - Preserve logs and volatile evidence so their chain of custody survives legal review
+  - Record the facts of a supplier breach without speculating about liability
   topics:
-  - Notification obligations and timelines.
-  - Law enforcement and regulator engagement.
-  - Legal privilege considerations.
-  - Third-party and supplier incidents.
-  lab: 'Lab: For a described breach involving personal data and a third-party supplier, identify the notification
-    obligations, the parties to engage and the evidence preservation requirements.'
+  - Notification obligations, what starts the clock and who owns the decision.
+  - Law enforcement and regulator engagement during a live response.
+  - Privilege, disclosure and what responders write down.
+  - Evidence handling with acquisition records, hashes and chain of custody.
+  - Supplier and third-party breaches, and accountability that stays with the organisation.
+  lab: >-
+    Lab: On the large-enterprise range, work a supplier breach that your instructor summarises, and preserve
+    the log evidence of it to a standard that would survive legal review. Evidence: the timestamp, zone and
+    exact query of the first event showing the breach; an exported log segment with its export time, range
+    and source collector; the file name, size and checksum of the export; the parties to notify or engage
+    and what starts each clock. Pass: the first event carries its timestamp, zone and exact query; the
+    export record carries time, range, source and checksum; each party listed has the trigger that starts
+    its clock; one speculative note line is rewritten as a factual line with both versions recorded.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 and open the breach summary your instructor has issued for this session.
+    - hosts: [siem01]
+      action: On siem01, search for the first event showing the breach and record its timestamp, zone and the
+        exact query you used.
+    - hosts: [siem01, syslog01]
+      action: Export the log segment around that event from siem01, noting which collector on syslog01 supplied
+        it, and record the export time and time range.
+    - hosts: [jump01]
+      action: Record the file name, size and checksum of the export, and name who holds it from this moment.
+    - hosts: [jump01]
+      action: List the parties to notify or engage, and for each write what starts its clock.
+    - hosts: [jump01]
+      action: Take one speculative line from the incident notes, rewrite it as a factual line, and record both
+        versions with your judgement of which would survive legal review.
   refs:
   - nist-sp-800-61r3
   - nist-sp-800-86
@@ -285,41 +446,45 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'Notification timelines are typically triggered by:'
+    - question: A breach of personal data is discovered on a Sunday and confirmed on the Tuesday. When do
+        notification timelines typically start?
       options:
-      - A) Incident closure
-      - B) Awareness of a qualifying breach, not its resolution
-      - C) Media reporting
-      - D) Executive approval
-      answer: B
-    - question: 'Evidence intended for legal proceedings must be:'
+      - A) When the incident is closed
+      - B) When the media first reports it
+      - C) When the organisation becomes aware of the qualifying breach
+      - D) When executive approval to notify is given and legal has signed off
+      answer: C
+    - question: A log segment may become evidence in court. Which handling keeps it defensible?
       options:
-      - A) Summarised only
-      - B) Collected and handled with documented integrity and chain of custody
-      - C) Encrypted only
-      - D) Shared publicly
-      answer: B
-    - question: 'When a supplier suffers a breach affecting your data, you generally:'
+      - A) Its acquisition time, source and checksum are recorded, and every handler is noted
+      - B) It is summarised into a short report and the original deleted
+      - C) It is encrypted and stored without further records
+      - D) It is copied to personal media for safekeeping
+      answer: A
+    - question: A responder writes in a shared channel that the supplier is clearly liable for the breach.
+        Why is that unwise?
       options:
-      - A) Have no obligations
-      - B) Retain accountability to your own regulators and customers
-      - C) Transfer all liability
-      - D) Must wait for their report
+      - A) It wastes response time that recovery needs
+      - B) Written speculation may be disclosable and the conclusion may be wrong
+      - C) It confuses the log collectors
+      - D) Liability can only be decided after closure, so the note is void
       answer: B
-    - question: 'Engaging law enforcement may affect response because it can:'
+    - question: Mid-recovery, law enforcement asks the team to hold a server untouched as evidence. What is
+        the soundest response?
       options:
-      - A) Remove your obligations
-      - B) Introduce evidence preservation requirements and timing considerations
-      - C) Guarantee recovery
-      - D) Replace your investigation
-      answer: B
-    - question: 'Speculating in writing about liability during an incident is unwise because:'
+      - A) Refuse, because recovery outranks every other request
+      - B) Comply, and resume recovery only once the case is fully closed and archived
+      - C) Hand the server over and abandon any recovery of it
+      - D) Record the request, agree a preservation window and plan recovery around it
+      answer: D
+    - question: A supplier that processes customer records for the organisation is breached. Who remains
+        accountable to customers and regulators?
       options:
-      - A) It wastes time
-      - B) Such records may be disclosable and premature conclusions are often wrong
-      - C) It confuses responders
-      - D) It is prohibited
-      answer: B
+      - A) The organisation remains accountable to its own customers and regulators
+      - B) The supplier alone, as the party that was breached
+      - C) Nobody, until the supplier publishes its report
+      - D) The regulator, which takes over the notification duty
+      answer: A
 - ordinal: 6
   title: Building Response Capability
   content_type: reading
@@ -327,16 +492,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Assess incident response maturity objectively.
-  - Plan capability development against identified gaps.
-  - Justify investment in response capability.
+  - Assess the detection and response capability of a live network against a stated baseline
+  - Rank capability gaps by the risk they leave and name the control that closes each
+  - Justify each item of a twelve-month response improvement plan with an observable measure
   topics:
-  - Maturity assessment approaches.
-  - Capability roadmap development.
-  - Build versus buy for response services.
-  - Demonstrating value.
-  lab: 'Lab: Assess a described organisation''s response capability across people, process, technology
-    and information, and produce a costed twelve-month improvement roadmap.'
+  - Assessing capability across people, process, technology and information.
+  - Measuring response by detection and containment times and what an exercise proves.
+  - Build versus buy for response services, including retainers and hybrid models.
+  - Roadmaps, cost and the measure that proves each improvement earned its place.
+  - The gap that matters most, where process is untested and decision authority is unclear.
+  lab: >-
+    Lab: On the large-enterprise range, assess the detection and response capability of the live network
+    against the assessment brief your instructor issues. Evidence: the number of detection rules enabled on
+    ids01 and the date of its rule set; the endpoints checked in on edr01 and the zones with no endpoint
+    reporting; the log sources present on siem01 and the zones missing from them; whether a case workflow
+    exists on soar01 and its steps. Pass: each of the four capability areas is recorded exactly as the range
+    shows it; three gaps are ranked by the risk each leaves; each gap has one named control that closes it;
+    each control has a measure that shows it working within twelve months.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open the assessment brief and note the baseline it states for this session.
+    - hosts: [ids01]
+      action: On ids01, record how many detection rules are enabled and the date of the rule set.
+    - hosts: [edr01]
+      action: On edr01, record how many endpoints are checked in and list the zones with no endpoint reporting.
+    - hosts: [siem01]
+      action: On siem01, list the log sources present and name the zones missing from coverage.
+    - hosts: [soar01]
+      action: On soar01, record whether a case workflow exists and, if it does, write out its steps.
+    - hosts: [jump01]
+      action: Rank the three gaps that leave the most risk, name one control that closes each, and give the
+        measure that shows each control working within twelve months.
   refs:
   - nist-sp-800-61r3
   - nist-cswp-29
@@ -345,38 +533,42 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Response capability maturity should be assessed across:'
+    - question: An organisation buys a new detection platform and expects its response capability to improve.
+        What does capability still depend on that tooling cannot supply?
       options:
-      - A) Tooling alone
-      - B) People, process, technology and information together
-      - C) Headcount
-      - D) Budget
-      answer: B
-    - question: 'Retaining an external incident response provider is most valuable when:'
+      - A) Process and decision authority, which tooling cannot supply
+      - B) Licence tier, which decides which alerts appear
+      - C) The number of dashboards the platform offers
+      - D) The vendor's own incident statistics for other customers that year
+      answer: A
+    - question: A team wants to show that this year's response investment was worth it. Which evidence
+        carries the most weight?
       options:
-      - A) Internal capability is strong
-      - B) Surge capacity or specialist skills are needed rapidly
-      - C) Costs must be reduced
-      - D) Compliance requires it
-      answer: B
-    - question: 'A retainer arranged after an incident begins is problematic because:'
+      - A) The total number of incidents handled rose
+      - B) The team was praised in an executive summary
+      - C) The tool inventory grew by four products
+      - D) Median time from detection to containment fell and an exercise proved the new playbook
+      answer: D
+    - question: An incident starts on Monday and the organisation begins looking for a response provider
+        that day. What does this show about its capability?
       options:
-      - A) It costs more only
-      - B) Contracting delays response when time matters most
-      - C) Providers refuse
-      - D) It is not permitted
+      - A) The organisation is following best practice for surge support
+      - B) No retainer exists, so contracting starts only when the incident already has
+      - C) The internal team is strong and needs only extra hands
+      - D) The provider will absorb the organisation's notification duties
       answer: B
-    - question: 'Demonstrating the value of response capability is best done through:'
+    - question: An organisation must choose between growing its internal team and holding a provider
+        retainer. Which factor should drive the choice?
       options:
-      - A) Incident counts
-      - B) Measured reduction in detection and containment times and exercise outcomes
-      - C) Tool inventory
-      - D) Team size
-      answer: B
-    - question: 'The most common capability gap in practice is:'
+      - A) Whichever option costs less in the first year
+      - B) The prestige of a named internal team
+      - C) The skills the organisation can keep in-house against the speed a provider can supply
+      - D) The size of the provider's logo on the proposal
+      answer: C
+    - question: Across many assessments, which gap keeps appearing as the one that matters most?
       options:
-      - A) Insufficient tooling
-      - B) Untested process and unclear decision authority
-      - C) Too few analysts
-      - D) Poor threat intelligence
-      answer: B
+      - A) Too few dashboards on the wall
+      - B) Threat intelligence feeds that update too slowly
+      - C) Endpoint agents that miss a few workstations
+      - D) Untested process and unclear decision authority
+      answer: D

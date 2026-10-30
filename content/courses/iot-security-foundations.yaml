@@ -6,9 +6,10 @@ course_code: C304
 title: IoT Security Foundations
 version: '1.0'
 difficulty: intermediate
-duration_hours: 10
+duration_hours: 6
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
@@ -35,59 +36,85 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Identify the core components of an IoT ecosystem (device, gateway, cloud platform, management console).
-  - Explain unique attack surfaces introduced by constrained devices and heterogeneous communications.
-  - Describe major IoT-related standards (IEEE 802.15.4, MQTT, CoAP, LwM2M) and their security extensions.
+  - Map the components of an IoT deployment, from constrained device to gateway, platform and console
+  - Classify the constraints of a device and the security impact each constraint produces
+  - Identify the protocols an IoT deployment speaks and the authentication each protocol applies
   topics:
-  - IoT ecosystem diagram & data flow.
-  - Constraints (CPU, memory, power) → security impact.
-  - Common communication protocols and authentication mechanisms.
-  - Real-world incidents (Mirai, Reaper, VPNFilter, BrickerBot).
-  lab: '*Lab 1 - Build a tiny IoT sensor simulation* (Docker image `iot-sandbox:sensor`). Connect it to
-    an MQTT broker, capture traffic with Wireshark, and locate clear-text credentials. Outcome: a short
-    report describing the discovered weaknesses.'
+  - Components of an IoT deployment, the data path and the direction each flow takes.
+  - Constrained devices, their limits in memory and power, and the security impact of each limit.
+  - Gateways as protocol translators and the enforcement point where device traffic leaves the device network.
+  - Common IoT protocols such as MQTT, CoAP, LwM2M and Modbus, and the authentication each applies.
+  - Botnets built on default credentials, and why device fleets scale a single weakness.
+  lab: >-
+    Lab: Map the IoT-style device segment of the enterprise range: which device hosts it holds, which
+    protocols they speak and how their traffic is confined.
+    Evidence: the device hosts and protocols the IDS sensor names for the mirrored device segment traffic;
+    each zone fw01 holds an interface on, and whether the device segment is among them; every fw01 rule
+    naming the device segment, or a record that none does; the host the range gives the segment as gateway.
+    Pass: every mirrored device host recorded with a protocol it speaks; each recorded protocol marked
+    "plain" or "authenticated" with the protocol family it came from; the device segment confinement
+    recorded with the interface, rule and gateway evidence that shows it.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, the management jump host, open a terminal and record the start time.
+    - hosts: [jump01, ids01]
+      action: On ids01, the IDS sensor, open the protocol view of the mirrored device segment traffic and
+        record every device host and protocol it names for that segment.
+    - hosts: [jump01, fw01]
+      action: On fw01, the core firewall, list the rules in order and record each zone it holds an
+        interface on, whether the device segment is among them, and any rule naming the device segment.
+    - hosts: [jump01]
+      action: Mark each recorded protocol "plain" or "authenticated" with its protocol family, and record
+        the interface, rule and gateway host that confine the device segment.
+  refs:
+  - nist-sp-800-183
+  - owasp-iot
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: Which of the following is not a typical IoT protocol?
+    - question: A campus irrigation system runs small controllers with no room for an agent and no update
+        mechanism. Which property of these devices most limits the defences they can carry?
       options:
-      - A) MQTT
-      - B) CoAP
-      - C) SNMP
-      - D) LwM2M
-      answer: C
-    - question: The Mirai botnet primarily exploited which weakness?
-      options:
-      - A) Zero-day firmware bug
-      - B) Default credentials
-      - C) Weak encryption
-      - D) Physical tampering
-      answer: B
-    - question: IEEE 802.15.4 is the foundation for which wireless technology?
-      options:
-      - A) Wi-Fi
-      - B) Bluetooth Low Energy
-      - C) Zigbee
-      - D) LTE-M
-      answer: C
-    - question: Which layer of the IoT stack is most vulnerable to side-channel attacks?
-      options:
-      - A) Physical/Device
-      - B) Network
-      - C) Cloud
-      - D) Application
+      - A) Their constrained memory
+      - B) Their wired network links
+      - C) Their long geographic cable runs
+      - D) Their analogue sensor inputs
       answer: A
-    - question: In an IoT deployment, a gateway typically provides which function?
+    - question: A warehouse sensor fleet cannot speak the cloud platform protocol, so a gateway sits between
+        them. Which two roles does that gateway fill?
       options:
-      - A) End-user UI only
-      - B) Protocol translation & security enforcement
-      - C) Firmware compilation
-      - D) Power management
+      - A) Sensor and database
+      - B) Protocol translation and enforcement
+      - C) Backup and archiving
+      - D) Firmware store and code signer
       answer: B
-  refs:
-  - nist-sp-800-183
-  - owasp-iot
+    - question: A home camera accepts sign-in with the printed default password, and 60 000 identical cameras
+        join a botnet. Which single weakness did the attacker harvest at fleet scale?
+      options:
+      - A) An unpatched kernel flaw in one camera
+      - B) A shared default credential
+      - C) A weak radio encryption algorithm
+      - D) An open maintenance serial port
+      answer: B
+    - question: A building controller sends its readings with a protocol that has no authentication at all,
+        and anyone on the segment can inject values. Which protocol family does this describe?
+      options:
+      - A) A directory protocol such as LDAP
+      - B) A mail transport protocol such as SMTP
+      - C) A telemetry protocol such as MQTT
+      - D) A name resolution protocol such as DNS
+      answer: C
+    - question: An analyst lists a light controller, the gateway that relays it, the cloud dashboard and the
+        phone application that shows the state. In IoT anatomy, what has the analyst drawn?
+      options:
+      - A) A device-to-console data path
+      - B) A threat model matrix
+      - C) A patch management cycle
+      - D) An incident response playbook
+      answer: A
 - ordinal: 2
   title: Threat Modeling for IoT
   content_type: reading
@@ -95,59 +122,88 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Apply STRIDE (or PASTA) to an IoT use-case and produce a structured threat model.
-  - Identify privilege-escalation paths unique to constrained devices.
-  - Prioritize mitigations based on attack-surface analysis.
+  - Apply the STRIDE categories to each element of a drawn IoT deployment and record one threat per element
+  - Enumerate the attack surface of a device segment and rank its entry points by exposure
+  - Select a mitigation for each ranked entry point and state which STRIDE category it answers
   topics:
-  - STRIDE mapping for devices, gateways, cloud services.
-  - Data-in-transit, data-at-rest, data-in-use threats.
-  - Supply-chain risks (bootloader, default credentials, OTA update).
-  - Risk-scoring with CVSS for IoT-specific vectors.
-  lab: '*Lab 2 - Threat-model an off-the-shelf smart-plug.* Use the free `threatspec` CLI to create a
-    STRIDE chart, then produce a mitigation matrix (document).'
+  - Threat models as drawings plus questions, and STRIDE as the six question categories.
+  - Mapping STRIDE categories to devices, gateways, platforms and consoles.
+  - Attack surfaces of a device segment, and ranking entry points by reachability and authentication.
+  - Escalation paths that start on one device and reach the network through a flat segment.
+  - Choosing mitigations that answer the category a threat belongs to.
+  lab: >-
+    Lab: Enumerate the attack surface of the range's device segment and model it with STRIDE, using the
+    paths the range actually shows. Evidence: every fw01 rule whose source or destination names the device
+    segment, recorded in order, or a record that none does; the zones fw01 holds an interface on; the device
+    hosts and services the ids01 mirror shows for that segment; one ranked list of the entry points those
+    records support. Pass: each rule recorded exactly as fw01 shows it; each entry point ranked with a
+    one-sentence exposure reason; one STRIDE category assigned to every ranked entry point; one mitigation
+    proposed per entry point.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01 over SSH or RDP, open a terminal and note the segment to model.
+    - hosts: [jump01, fw01]
+      action: On fw01, the core firewall, list the rules in order and record every rule whose source or
+        destination names the device segment, or record that none does.
+    - hosts: [jump01, ids01]
+      action: On ids01, the IDS sensor, record the device segment hosts and the services their mirrored
+        traffic exposes inside that segment.
+    - hosts: [jump01]
+      action: Rank the recorded entry points by exposure with a one-sentence reason each, using the
+        reachability and authentication the records show.
+    - hosts: [jump01]
+      action: Assign one STRIDE category to every ranked entry point and propose one mitigation per entry
+        point.
+  refs:
+  - owasp-iot
+  - nist-ir-8259
+  - nist-sp-800-207
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: In STRIDE, T stands for?
+    - question: A threat model of a meter-reading deployment treats the gateway as one box with six questions
+        written beside it. Which naming does the box's question list follow?
       options:
-      - A) Tampering
-      - B) Timing
-      - C) Trust
-      - D) Transfer
-      answer: A
-    - question: Which IoT-specific attack surface is best addressed by mutual TLS?
-      options:
-      - A) Physical tampering
-      - B) Credential exposure in firmware
-      - C) Man-in-the-middle on device-to-cloud traffic
-      - D) Supply-chain backdoors
-      answer: C
-    - question: 'The highest CVSS "Environmental" score for a device with no authentication on its management
-        interface is:'
-      options:
-      - A) 4.0
-      - B) 6.5
-      - C) 8.8
-      - D) 10.0
-      answer: D
-    - question: A trusted boot sequence primarily prevents which threat?
-      options:
-      - A) Eavesdropping
-      - B) Firmware rollback
-      - C) Unauthorized code execution at power-on
-      - D) DDoS attacks
-      answer: C
-    - question: Which of the following is a privilege-escalation path in many IoT devices?
-      options:
-      - A) Using HTTP GET for telemetry
-      - B) Exploiting hard-coded admin credentials
-      - C) Enabling IPv6 autoconfiguration
-      - D) Default NTP server
+      - A) The CVSS metric groups
+      - B) The STRIDE categories
+      - C) The OWASP testing fields
+      - D) The risk formula terms
       answer: B
-  refs:
-  - owasp-iot
-  - nist-ir-8259
+    - question: A sensor network is flat, and an attacker who reaches one sensor can write values to every
+        other sensor on it. Which threat model element did the drawing expose?
+      options:
+      - A) A flat-segment escalation path
+      - B) A supply chain dependency
+      - C) A data-at-rest exposure
+      - D) A physical tamper gap
+      answer: A
+    - question: A modelled device accepts unauthenticated writes to its control registers, and no rule limits
+        which hosts may connect. Which entry point ranks highest?
+      options:
+      - A) The device update feed
+      - B) The unauthenticated control service
+      - C) The serial console pin header
+      - D) The engineer laptop's browser cache
+      answer: B
+    - question: An analyst adds TLS to a device's telemetry link after modelling a spoofing threat on it.
+        Which STRIDE category does that mitigation answer?
+      options:
+      - A) Elevation of privilege
+      - B) Information disclosure
+      - C) Repudiation
+      - D) Spoofing
+      answer: D
+    - question: A drawing shows no entry point for the maintenance laptop because the team assumed it never
+        connects. What modelling error is this?
+      options:
+      - A) A mitigation applied to the wrong category
+      - B) A risk scored twice
+      - C) An omitted entry point
+      - D) A threat copied from another deployment
+      answer: C
 - ordinal: 3
   title: Secure Device Lifecycle Management
   content_type: reading
@@ -155,61 +211,90 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Define each phase of the IoT device lifecycle (design, provisioning, operation, de-commission).
-  - Implement secure boot and hardware-root-of-trust concepts.
-  - Configure mutual authentication (TLS-PSK, DTLS) for device-to-cloud communication.
+  - Sequence the phases of a device lifecycle from manufacture through provisioning, operation and retirement
+  - Explain how signed firmware and a hardware root of trust let a device verify what it boots and installs
+  - Select a provisioning design that gives each device an identity without embedding a shared secret
   topics:
-  - Trusted Platform Module (TPM) basics & attestation.
-  - Secure provisioning (certificate enrollment, LwM2M bootstrap).
-  - OTA update signing (Ed25519, RSA-PSS) and rollback protection.
-  - Key-rotation policies and secure storage on constrained devices.
-  lab: '*Lab 3 - Implement a Signed OTA Update.* Use the `iot-sandbox:gateway` image, generate an RSA-2048
-    key pair, sign a dummy firmware blob, and verify on the simulated device. Document the verification
-    steps.'
+  - Lifecycle phases, and the reason a credential issued at provisioning outlives one installed by hand.
+  - Identity provisioning with enrolment against a certificate authority instead of a shared secret.
+  - Signed updates, version checks and rollback protection against an old but valid signature.
+  - Hardware roots of trust, secure boot chains and attestation.
+  - Key storage and rotation on devices too small to re-key often.
+  lab: >-
+    Lab: Trace how the range gives devices identities and updates, and judge each control against the
+    lifecycle phases. Evidence: the certificate roles the certificate authority shows; the update approval
+    state the patch server shows and the device segment systems that appear in it; the endpoint management
+    view of which systems report their state, set against the device segment hosts the IDS mirror shows.
+    Pass: each lifecycle control recorded as the range shows it; each control marked "covers its phase" or
+    "gap" with a one-sentence reason; the phase with the weakest coverage named.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open a terminal and record which lifecycle services the range template declares.
+    - hosts: [jump01, ca01]
+      action: From jump01, open the ca01 certificate authority management view over the management path and
+        record the certificate roles it issues and the enrolment path each role uses.
+    - hosts: [jump01, wsus01]
+      action: From jump01, open the wsus01 patch management view over the management path and record which
+        update groups exist and which approvals each group holds.
+    - hosts: [jump01, sccm01]
+      action: From jump01, open the sccm01 endpoint management view over the management path and record which
+        systems report their compliance state and which do not.
+    - hosts: [jump01, ids01]
+      action: From jump01, compare the device segment hosts the ids01 mirror shows against the systems sccm01
+        reports as managed and record the difference in coverage.
+    - hosts: [jump01]
+      action: Mark each recorded control "covers its phase" or "gap" with one sentence of reason, and name the
+        lifecycle phase with the weakest coverage.
+  refs:
+  - nist-ir-8259
+  - nist-sp-800-213
+  - nist-sp-800-57pt1r5
   quiz:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: Which cryptographic algorithm is recommended for small-footprint signature verification
-        on micro-controllers?
+    - question: A vendor ships 20 000 lamps that all share one firmware password burned in at the factory.
+        Which provisioning failure does this represent?
       options:
-      - A) RSA-4096
-      - B) Ed25519
-      - C) DSA-1024
-      - D) SHA-1
-      answer: B
-    - question: Secure boot relies on which of the following?
-      options:
-      - A) BIOS password
-      - B) Code signing & hash verification
-      - C) Encrypted file system
-      - D) VLAN isolation
-      answer: B
-    - question: 'During OTA updates, rollback protection is achieved by:'
-      options:
-      - A) Keeping two firmware partitions and only booting the newest signed one
-      - B) Disabling network interfaces during update
-      - C) Using a static IP address
-      - D) Rebooting the device three times
+      - A) An embedded shared secret
+      - B) A missing physical tamper switch
+      - C) An update server with no TLS certificate
+      - D) A debug header left exposed on the board
       answer: A
-    - question: 'The LwM2M bootstrap server role is to:'
+    - question: A device verifies each update against the vendor's signing key before installing it. Which
+        lifecycle control is this?
       options:
-      - A) Store sensor data
-      - B) Provide initial security credentials and configuration
-      - C) Perform firmware de-compression
-      - D) Host a web UI
+      - A) Attestation of the running state
+      - B) Signed firmware verification
+      - C) Certificate revocation checking
+      - D) Encrypted flash storage
       answer: B
-    - question: Which of the following key-management practices is least suitable for resource-constrained
-        devices?
+    - question: An attacker re-installs an old, correctly signed firmware image with a known flaw. Which
+        control stops this?
       options:
-      - A) Storing keys in a TPM
-      - B) Deriving session keys from a pre-shared secret
-      - C) Hard-coding keys in firmware
-      - D) Using hardware-based secure element
+      - A) A longer signing key
+      - B) Rollback protection at boot
+      - C) Encrypting the update channel
+      - D) A faster update schedule
+      answer: B
+    - question: 'During provisioning, a device enrols against a certificate authority and receives its own
+        identity. What does this design avoid that a pre-shared key does not?'
+      options:
+      - A) The need for any network authentication
+      - B) The cost of a hardware root of trust
+      - C) A single leaked credential
+      - D) The requirement to sign firmware
       answer: C
-  refs:
-  - nist-ir-8259
-  - nist-sp-800-213
+    - question: A decommissioned device keeps its enrolled identity and still authenticates to the platform.
+        Which lifecycle phase was missed?
+      options:
+      - A) Signed update delivery
+      - B) Secure boot measurement
+      - C) Key rotation scheduling
+      - D) Retirement with revocation
+      answer: D
 - ordinal: 4
   title: Network Security for IoT Deployments
   content_type: reading
@@ -217,60 +302,93 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Design network segmentation for IoT (VLANs, SD-N, micro-segmentation).
-  - Configure firewall rules that enforce least-privilege for device traffic.
-  - Apply IDS/IPS signatures specific to IoT protocols (MQTT, CoAP).
+  - Design a segmented network that confines a device fleet to the paths its traffic needs
+  - Read firewall rules for device traffic and identify the allows that exceed least privilege
+  - Select the monitoring that detects abuse on protocols a device segment actually speaks
   topics:
-  - Edge-gateway as a security gateway (transparent vs. NAT).
-  - Zero-Trust networking for device-to-cloud (mutual TLS).
-  - Protocol-aware IDS (Zeek-IoT scripts, Suricata MQTT rules).
-  - Network hardening - disable unused ports, use IPv6 link-local addresses.
-  lab: '*Lab 4 - Deploy a segmented Docker-Compose network.* Create three Docker networks (iot-devices,
-    iot-gateway, iot-cloud). Enforce firewall rules with `iptables` on the gateway container; then attempt
-    a simulated lateral-movement attack and verify it is blocked.'
+  - Segmentation with VLANs and firewall zones, and the deny rule that gives a segment meaning.
+  - Least privilege for device traffic, one service at a time instead of a whole-segment allow.
+  - The device segment firewall as the enforcement point between operations and enterprise networks.
+  - Protocol-aware monitoring of device protocols, and what encryption hides from a sensor.
+  - Zero trust between device and platform, with mutual authentication on each path.
+  lab: >-
+    Lab: Test how the range confines its device segment: which paths join it to the corporate network
+    and which rule or boundary decides each. Evidence: every fw01 rule naming the device segment; the
+    ws01 test to a server-zone host with the fw01 rule that decided it; the ws01 test to a device
+    segment host and whether isolation or a rule decided it; the protocols and ports the IDS reports
+    for the segment; one proposed rule per path still missing. Pass: each recorded rule noted with
+    source, destination and action; each result attributed to its rule or boundary; each path marked
+    "confined" or "over-broad" with a reason; a rule proposed for every path marked over-broad or
+    missing.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open a terminal and record the device segment boundary under test.
+    - hosts: [jump01, fw01]
+      action: On fw01, list the rules in order, record each rule whose source or destination names the device
+        segment with its ports and action, and record which zones fw01 holds an interface on.
+    - hosts: [ws01, sql01]
+      action: From ws01, a corporate workstation, attempt one connection to sql01 in the server zone on a
+        port the rule list allows and record the result with the fw01 rule that decided it.
+    - hosts: [ws01, plc01]
+      action: From ws01, attempt one connection to plc01 in the device segment and record the result, the
+        zone pair the path would cross, and which firewall if any decides it.
+    - hosts: [jump01, ids01]
+      action: On ids01, open the protocol view of the mirrored device segment traffic and record which
+        protocols and ports the sensor reports.
+    - hosts: [jump01]
+      action: Mark each recorded path "confined" or "over-broad" with a one-sentence reason, and propose one
+        rule for every path marked over-broad or missing.
+  refs:
+  - nist-sp-800-213
+  - nist-sp-800-207
+  - nist-sp-800-41r1
+  - nist-sp-800-94
   quiz:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: Which network architecture best enforces least-privilege for IoT devices?
+    - question: A device segment and the office network share one switch with no boundary between them. Which
+        design change first makes least privilege for device traffic possible?
       options:
-      - A) Flat LAN
-      - B) Single VLAN
-      - C) Segmented VLANs with ACLs
-      - D) Public Wi-Fi
+      - A) Upgrading the switch firmware
+      - B) A dedicated device zone
+      - C) Encrypting every device session
+      - D) Rotating the device passwords
+      answer: B
+    - question: A firewall rule allows every port from the office network to the device segment so nobody has
+        to update it later. Which principle does this rule abandon?
+      options:
+      - A) Defence in depth
+      - B) Least privilege
+      - C) Network address translation
+      - D) Certificate pinning
+      answer: B
+    - question: A sensor's monitoring feed is encrypted end to end, so a network sensor cannot read the
+        payload. What can the sensor still detect?
+      options:
+      - A) The credential inside the session
+      - B) The plaintext values written to the device
+      - C) The endpoints, timing and volume
+      - D) The firmware version on the device
       answer: C
-    - question: 'A common MQTT-specific IDS rule looks for:'
+    - question: An organisation allows each device to reach only its own platform endpoint, and the endpoint
+        must verify the device before accepting data. Which model does this follow?
       options:
-      - A) Unencrypted credentials in the CONNECT packet
-      - B) Large HTTP payloads
-      - C) DNS tunneling
-      - D) SMB traffic
+      - A) A flat network with a shared secret
+      - B) Perimeter trust with an open device zone
+      - C) Network address translation only
+      - D) Zero trust with mutual authentication
+      answer: D
+    - question: A compromised sensor starts scanning neighbouring control devices on its own segment. Which
+        design property let the scan reach them?
+      options:
+      - A) A flat shared zone
+      - B) The sensor used encrypted telemetry
+      - C) The platform signed the sensor's firmware
+      - D) The sensor had a hardware root of trust
       answer: A
-    - question: 'Zero-Trust for IoT primarily means:'
-      options:
-      - A) No passwords ever
-      - B) Every device authenticates and is authorized for each request
-      - C) Disabling all inbound traffic
-      - D) Using NAT
-      answer: B
-    - question: Which protocol cannot be easily inspected by traditional DPI because it is encrypted by
-        design?
-      options:
-      - A) HTTP
-      - B) CoAP
-      - C) DTLS
-      - D) MQTT (plain)
-      answer: C
-    - question: 'An effective way to prevent lateral movement from a compromised sensor is to:'
-      options:
-      - A) Disable DHCP on the device
-      - B) Place the sensor in an isolated VLAN with a firewall that only allows traffic to the gateway
-      - C) Use the same password on every device
-      - D) Open all outbound ports
-      answer: B
-  refs:
-  - nist-sp-800-213
-  - nist-sp-800-207
 - ordinal: 5
   title: Firmware Analysis & Secure Updates
   content_type: reading
@@ -278,59 +396,91 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Extract and reverse-engineer firmware images (binwalk, firmware-mod kit).
-  - Identify hard-coded secrets, libraries with known CVEs, and insecure bootloaders.
-  - Apply a signed-firmware verification workflow in CI/CD pipelines.
+  - Describe what a firmware image analysis reveals about credentials, components and boot behaviour
+  - Identify the weaknesses in deployed device firmware from version and configuration evidence
+  - Select the update controls that keep a device fleet on supported, signed firmware
   topics:
-  - Binary extraction tools (binwalk, Firmware Mod Kit, Ghidra).
-  - Common firmware vulnerabilities (hard-coded credentials, outdated OpenSSL, default root passwords).
-  - Signing and verification (PKCS#7, signtool, GitHub-Actions workflow).
-  - Supply-chain hardening - reproducible builds, SBOM generation.
-  lab: '*Lab 5 - Conduct a firmware static analysis.* Download a public IoT firmware (e.g., a TP-Link
-    smart-plug), run `binwalk` to extract the filesystem, locate a hard-coded credential, and produce
-    a short remediation report.'
+  - What a firmware image contains, and what extraction tools such as binwalk reveal in it.
+  - Weaknesses found in device firmware, from hard-coded credentials to abandoned components.
+  - Version and configuration evidence a defender can gather without opening a device.
+  - Signed updates, and why a fleet on unsupported firmware is a supply chain exposure.
+  - Software bills of materials and reproducible builds as supply chain evidence.
+  lab: >-
+    Lab: Assess the firmware exposure of the range's device segment hosts with the defender tooling the
+    range offers, then rank them for update priority. Evidence: which device segment hosts the vulnerability
+    scanner's scan reports on and which it cannot reach; the agent coverage the EDR server shows for that
+    segment; the device segment systems that appear in the patch server's update groups; the device hosts and
+    services the IDS mirror shows; a ranked list of the assessed hosts by update priority. Pass: each tool's
+    device segment coverage recorded exactly as the tool shows it; each recorded weakness marked "version
+    evidence" or "configuration evidence"; the ranking ordered with a one-sentence reason for the top host.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open a terminal and record which device segment hosts to assess.
+    - hosts: [jump01, vuln01]
+      action: From jump01, open the vulnerability scanner vuln01, target the device segment hosts and record
+        which of them the scan reports on and which it cannot reach.
+    - hosts: [jump01, edr01]
+      action: From jump01, open the EDR server edr01 and record which device segment hosts report an agent and
+        which have none.
+    - hosts: [jump01, wsus01]
+      action: From jump01, check wsus01 and record whether any device segment system appears in its update
+        groups at all.
+    - hosts: [jump01, ids01]
+      action: On ids01, record the device segment hosts and services the mirrored device segment traffic shows,
+        as the exposure evidence the scan could not gather.
+    - hosts: [jump01]
+      action: Rank the assessed hosts by update priority with one sentence for the top host, marking each
+        recorded weakness as version evidence or configuration evidence.
+  refs:
+  - binwalk
+  - nist-sp-800-193
+  - nist-sp-800-218
   quiz:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: Which tool is *specifically* designed to extract filesystems from firmware images?
+    - question: An analyst extracts a device image with binwalk and finds an administrative credential inside
+        the filesystem. Why is that finding serious even if the device is internal?
       options:
-      - A) Ghidra
-      - B) binwalk
-      - C) nmap
-      - D) Wireshark
+      - A) The image can no longer be signed by the vendor
+      - B) The credential is identical on every device
+      - C) The device must then run an older firmware version
+      - D) The extraction erases the device's configuration
       answer: B
-    - question: 'A hard-coded credential discovered in firmware should be remedied by:'
+    - question: A vendor publishes each release with a signature its devices verify before installing. Which
+        firmware analysis finding does this control directly reduce?
       options:
-      - A) Changing the password at runtime
-      - B) Removing it from the source and regenerating the firmware image
-      - C) Adding a comment in the code
-      - D) Encrypting the whole firmware with AES
-      answer: B
-    - question: Which CVE-like vulnerability is most common in IoT firmware?
-      options:
-      - A) SQL injection
-      - B) Buffer overflow in network stack
-      - C) Cross-site scripting
-      - D) LDAP injection
-      answer: B
-    - question: 'To ensure reproducible builds of firmware, you should:'
-      options:
-      - A) Use a fixed compiler version and deterministic build flags
-      - B) Randomize the build timestamp
-      - C) Compile on any host machine
-      - D) Ship pre-compiled binaries only
+      - A) A modified image installed on a device
+      - B) A credential left in a source file
+      - C) An outdated component listed in the inventory
+      - D) A missing serial console cover
       answer: A
-    - question: 'An SBOM (Software Bill of Materials) for firmware primarily lists:'
+    - question: A hospital's imaging devices run firmware a vendor stopped supporting two years ago. Which
+        term best describes the fleet's condition?
       options:
-      - A) Device serial numbers
-      - B) All third-party libraries and their versions
-      - C) Wi-Fi SSIDs
-      - D) Usernames/passwords
+      - A) Unsigned telemetry on the device link
+      - B) Unattested memory
+      - C) Unsupported firmware
+      - D) Unsegmented storage
+      answer: C
+    - question: Which artefact lets a buyer check which open-source components and versions a firmware
+        release contains?
+      options:
+      - A) A reproducible build log
+      - B) A software bill of materials
+      - C) A network packet capture of the release download
+      - D) A vulnerability scan report
       answer: B
-  refs:
-  - binwalk
-  - nist-sp-800-193
+    - question: A device boots code it verifies against a key burned into its own chip before anything else
+        runs. Which concept is the burned-in key serving as?
+      options:
+      - A) A revocation list
+      - B) A network attestation service
+      - C) A software bill of materials
+      - D) A hardware root of trust
+      answer: D
 - ordinal: 6
   title: Incident Response & Forensics for IoT
   content_type: reading
@@ -338,58 +488,89 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Design an IoT-specific incident-response playbook (detect → contain → eradicate → recover).
-  - Collect volatile and non-volatile evidence from constrained devices (memory dump, flash image).
-  - Correlate device logs with cloud telemetry to reconstruct attack timelines.
+  - Sequence the containment steps for a suspected compromised device on a segmented network
+  - Identify the evidence sources available for a device segment and the ones missing
+  - Reconstruct an incident timeline by correlating device and platform log timestamps
   topics:
-  - IoT-specific detection (abnormal beaconing, MQTT topic anomalies).
-  - Evidence acquisition methods (JTAG, SWD, firmware snapshot).
-  - Root-cause analysis using timeline reconstruction (ELK stack, Splunk).
-  - Legal considerations - chain-of-custody for embedded devices.
-  lab: '*Lab 6 - Simulated breach & forensic capture.* Use the `iot-sandbox:camera` container, trigger
-    a malicious MQTT command to compromise it, then perform a forensic capture (dump the container''s
-    filesystem + runtime logs). Build a timeline and answer a short "what-happened" worksheet.'
+  - Containment of a suspected device, from network isolation to preservation of running state.
+  - Detection signals on device segments, such as periodic beaconing to one external address.
+  - Evidence sources for device incidents, from platform logs to device-side records.
+  - Time synchronisation, and why correlated timestamps make a reconstructed timeline hold together.
+  - Chain of custody records for evidence a court or auditor may request.
+  lab: >-
+    Lab: Investigate a suspected compromise of plc01 in the device segment: what evidence the range
+    holds, how time is synchronised and what the first containment step would be. Evidence: the log
+    sources the SIEM collects for the device segment; the hosts the log forwarder receives from; the
+    time source and the hosts that sync against it; the record the IDS holds of the device segment's
+    traffic; one named evidence gap and one containment step. Pass: every log source recorded with the
+    host it covers; the forwarding and time records recorded exactly as shown; the missing evidence
+    source named; the first containment step written with a one-sentence reason.
+  lab_range:
+    template: large-enterprise
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open a terminal and record the suspected device segment host under
+        investigation.
+    - hosts: [jump01, siem01]
+      action: From jump01, open the SIEM siem01 and record every log source it collects that touches the
+        device segment.
+    - hosts: [jump01, syslog01]
+      action: From jump01, open the log forwarder syslog01 and record which hosts send it logs and which
+        device segment hosts are absent.
+    - hosts: [jump01, ntp01]
+      action: From jump01, check the time server ntp01 and record the time source it serves and which
+        device segment hosts synchronise against it.
+    - hosts: [jump01, ids01]
+      action: On ids01, record what the sensor's mirror view shows of plc01's device segment traffic and
+        how far back its records reach.
+    - hosts: [jump01]
+      action: Name the one evidence source the range lacks for plc01 and write the first containment step
+        with a one-sentence reason.
+  refs:
+  - nist-sp-800-86
+  - nist-sp-800-61r3
+  - nist-sp-800-92
   quiz:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'The first step in an IoT-specific IR playbook after detection is:'
+    - question: A historian host in the device segment shows configuration writes nobody scheduled, and the
+        team suspects a compromise. Which action comes first?
       options:
-      - A) Pull the device's power cord
-      - B) Isolate the device from the network (contain)
-      - C) Flash a new firmware immediately
-      - D) Delete all logs
-      answer: B
-    - question: Which of the following is not a recommended source of volatile evidence on a constrained
-        device?
-      options:
-      - A) RAM dump via JTAG
-      - B) Flash image via SWD
-      - C) Cloud API logs
-      - D) Power-on reset logs stored in volatile RAM
-      answer: C
-    - question: 'Correlating MQTT traffic with cloud logs helps to:'
-      options:
-      - A) Identify the device's MAC address
-      - B) Reconstruct the exact command sequence used by the attacker
-      - C) Upgrade the device's firmware automatically
-      - D) Disable TLS
-      answer: B
-    - question: 'In a forensic timeline, the "kill-chain" phase *"Command & Control"* is most likely observed
-        as:'
-      options:
-      - A) Device reboot
-      - B) Periodic beacon to a C2 server over MQTT
-      - C) Firmware checksum verification
-      - D) Firmware signing check
-      answer: B
-    - question: Which legal concept ensures that an IoT forensic image is admissible in court?
-      options:
-      - A) Chain-of-custody documentation
-      - B) Public-key encryption
-      - C) Firmware signing
-      - D) Device warranty
+      - A) Isolating the host from the network
+      - B) Powering the host off at once so the attacker loses access
+      - C) Re-imaging the host from a known good image
+      - D) Deleting the unscheduled writes from the historian
       answer: A
-  refs:
-  - nist-sp-800-86
-  - nist-sp-800-61r3
+    - question: An investigation must show, months later, who handled a copied device image at each step.
+        Which record provides that?
+      options:
+      - A) The image's hash value recorded at acquisition
+      - B) The scanner report that first flagged the device
+      - C) A chain of custody log with each transfer signed
+      - D) The device's original purchase and warranty paperwork
+      answer: C
+    - question: A plant's device logs and its platform logs disagree by four minutes, so incident events
+        cannot be ordered. Which control fixes this?
+      options:
+      - A) Longer log retention on the platform
+      - B) Time synchronisation to one source
+      - C) Encrypting the device log transport
+      - D) Duplicating device logs to a second site
+      answer: B
+    - question: A device segment host crashed mid-incident and keeps no memory capture, so the state in
+        memory at the crash is gone. Which term describes what was lost?
+      options:
+      - A) The chain of custody
+      - B) The log retention window the platform applies
+      - C) The timeline correlation
+      - D) The most volatile evidence
+      answer: D
+    - question: A monitoring platform shows one device making the same outbound connection to one external
+        address every sixty seconds. Which behaviour should the analyst record?
+      options:
+      - A) A firmware rollback
+      - B) Periodic beaconing from the device
+      - C) A certificate expiry
+      - D) A routine update channel check by the platform
+      answer: B

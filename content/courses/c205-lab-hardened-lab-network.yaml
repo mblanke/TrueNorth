@@ -10,6 +10,7 @@ duration_hours: 100
 provenance: unsourced
 status: draft
 is_published: false
+readiness: draft
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
 prerequisites:
@@ -34,16 +35,40 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Translate a security requirement into a network design.
-  - Document design decisions with justification.
-  - Define success criteria that can be objectively verified.
+  - Translate a written security requirement into a zone design that names the networks and the flows between them
+  - Document each design decision with the requirement or risk it answers and the alternatives considered
+  - Write acceptance criteria for a segmentation design that a test can decide without judgement
   topics:
-  - Requirement elicitation and constraints.
-  - Design documentation standards.
-  - Trust zones and data flows.
-  - Verifiable acceptance criteria.
-  lab: 'Lab: Produce a design document for a hardened lab network including a zone diagram, an allowed-flow
-    matrix and ten testable acceptance criteria.'
+  - Security requirements, constraints and the difference between them.
+  - Trust zones, network boundaries and the data flows a design must name.
+  - 'Design documentation: decisions, rejected options and the reasons for the choice.'
+  - Acceptance criteria a test can decide, and criteria it cannot.
+  - Reading a deployed range as evidence for a zone and flow design.
+  lab: >-
+    Lab: On the medium-enterprise range, produce the zone and flow design the deployed network
+    implements. Evidence: the name and address block of every zone; the source and destination
+    network of each fw01 rule that allows traffic between zones; a zone diagram and an allowed-flow
+    matrix drawn from those records; ten acceptance criteria for the design. Pass: every zone and
+    every inter-zone rule appears in the matrix; each criterion states a result a test can observe;
+    each criterion is marked "testable" or "not testable" with a one-sentence reason.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account the instructor assigned, open a terminal and
+        note the start time.
+    - hosts: [siem01, fw01]
+      action: From siem01, open the interface list on fw01 and record the name and address block of
+        every zone the firewall routes.
+    - hosts: [fw01]
+      action: List the rules on fw01 in order and record the source and destination network of every
+        rule that allows traffic between two zones.
+    - hosts: [siem01]
+      action: Draw the zone diagram and the allowed-flow matrix from the recorded zones and rules,
+        and mark every cell the matrix leaves empty as denied.
+    - hosts: [siem01]
+      action: Write ten acceptance criteria for the design, each stating an observable result, and
+        mark each criterion testable or not testable with a one-sentence reason.
   refs:
   - nist-sp-800-41r1
   - nist-sp-800-207
@@ -51,41 +76,50 @@ modules:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'An acceptance criterion is useful only if it is:'
+    - question: >-
+        A sponsor wants a fixed laboratory that supports thirty workstations, but the budget caps
+        the network at four switches. In design vocabulary, the switch limit is best described as:
       options:
-      - A) Ambitious
-      - B) Objectively verifiable
-      - C) Approved by the vendor
-      - D) Written last
-      answer: B
-    - question: 'An allowed-flow matrix should be produced:'
+      - A) A requirement the design must satisfy
+      - B) An acceptance criterion for the build
+      - C) A constraint that limits the solution space
+      - D) A risk to record in the risk register at handover
+      answer: C
+    - question: Before a single rule is written, the design team lists every flow the hardened network
+        will permit, zone by zone. What does this allowed-flow matrix most directly drive?
       options:
-      - A) After implementation
-      - B) During design, to drive the ruleset
-      - C) Only for audits
-      - D) By the firewall vendor
-      answer: B
-    - question: 'Documenting a rejected design option is valuable because it:'
+      - A) The firewall ruleset the build will implement
+      - B) The monitoring sensors the build will deploy
+      - C) The acceptance tests the sponsor will sign
+      - D) The runbook the operations team inherits at handover
+      answer: A
+    - question: >-
+        A designer rejects a flat network because it cannot contain a compromised workstation,
+        and records the rejected option in the design document. Recording rejected options mainly
+        serves to:
       options:
-      - A) Adds length
-      - B) Records why the chosen approach was preferred, aiding future review
-      - C) Satisfies compliance
-      - D) Delays the project
-      answer: B
-    - question: 'A constraint differs from a requirement because a constraint:'
+      - A) Fill the document to a required page count
+      - B) Shift responsibility for the choice to the reviewer
+      - C) Prove the designer considered every product on the market
+      - D) Explain to future reviewers why the chosen approach was preferred
+      answer: D
+    - question: A design's acceptance criteria are reviewed before the build starts. Which criterion
+        can a tester decide without judgement?
       options:
-      - A) Is optional
-      - B) Limits the solution space rather than stating a needed capability
-      - C) Is set by security
-      - D) Applies only to cost
+      - A) The network feels fast enough for daily use by every class
+      - B) A denied connection from the workstation zone to the server zone fails
+      - C) The design is elegant and easy to explain to auditors and sponsors
+      - D) Staff agree the network looks secure and ready for use
       answer: B
-    - question: 'Design decisions should be traceable to:'
+    - question: >-
+        A lab network places the internet-facing web server alone in its own zone, separated
+        from the workstation and server zones. The main security purpose of the separate zone is to:
       options:
-      - A) Vendor documentation
-      - B) A stated requirement or risk
-      - C) Team preference
-      - D) Industry trend
-      answer: B
+      - A) Limit what a compromise of the web server can reach
+      - B) Reduce the cost of licensing the web server
+      - C) Make the web server faster for external visitors
+      - D) Remove the need to log the web server's activity
+      answer: A
 - ordinal: 2
   title: Build and Baseline
   content_type: reading
@@ -93,57 +127,91 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Deploy infrastructure to a documented baseline.
-  - Apply hardening consistently and repeatably.
-  - Record the as-built state for later comparison.
+  - Record the as-built state of every deployed host, including its operating system, address and running services
+  - Apply a hardening baseline consistently across in-scope hosts and document every exception with its reason
+  - Capture host and firewall configurations so later drift from the intended state can be detected
   topics:
-  - Infrastructure build process.
-  - Baseline application and automation.
-  - Configuration capture and version control.
-  - Build documentation.
-  lab: 'Lab: Build the designed network in a virtual lab, apply a hardening baseline to every host, and
-    capture the as-built configuration into version control.'
+  - Baselines, golden configurations and applying them consistently.
+  - Configuration capture, version control and comparing as-built state to design.
+  - Automated hardening at build time versus manual change on individual hosts.
+  - Drift between the recorded baseline and the running system.
+  - Build documentation and the evidence a reviewer needs.
+  lab: >-
+    Lab: On the medium-enterprise range, record the as-built state of every host and judge each
+    recorded item against the hardening baseline the instructor supplies. Evidence: the operating
+    system and running services of every host; the rule list on fw01 as it runs; each baseline item
+    marked "applied", "not applied" or "exception" with its observed value. Pass: every host is
+    recorded exactly as the range shows it; every baseline item carries its value from the range;
+    each exception states the reason it was accepted or is marked unresolved.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account the instructor assigned, open a terminal and
+        note the start time.
+    - hosts: [siem01, dc01, fs01, web01, mail01, ws01, ws02]
+      action: From siem01, connect to dc01, fs01, web01, mail01, ws01 and ws02 in turn and record
+        each host's operating system and running services.
+    - hosts: [fw01]
+      action: Open the running configuration on fw01 and record every rule it enforces, in order,
+        together with the interface address of each zone.
+    - hosts: [siem01]
+      action: Compare each recorded item with the hardening baseline document and mark it applied,
+        not applied or exception, writing the observed value beside it.
+    - hosts: [siem01]
+      action: For every item marked exception, write the reason it was accepted and who recorded the
+        acceptance, or mark it unresolved.
   refs:
   - cis-benchmarks
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Capturing as-built configuration enables:'
+    - question: >-
+        Two administrators harden matching file servers on consecutive days, each following
+        the written baseline from memory. The risk this practice most directly creates is:
       options:
-      - A) Faster builds
-      - B) Detection of later drift from the intended state
-      - C) Reduced cost
-      - D) Better performance
+      - A) A licence breach on one of the servers
+      - B) Inconsistent settings between hosts and omissions nobody can detect later
+      - C) Slower sign-in times for the domain's users
+      - D) A firewall rule set that fails to load
       answer: B
-    - question: 'Applying hardening manually to each host risks:'
+    - question: A server is rebuilt from the golden image six months after the baseline was captured,
+        and one setting changes silently. What makes the change detectable?
       options:
-      - A) Nothing if documented
-      - B) Inconsistency between hosts and undetected omissions
-      - C) Slower boot
-      - D) Licence breach
-      answer: B
-    - question: 'Version controlling infrastructure configuration provides:'
+      - A) The administrator remembering the earlier value
+      - B) The rebuild ticket filed by the service desk
+      - C) The vendor's release notes for the image
+      - D) A captured configuration that records the state at baseline time
+      answer: D
+    - question: >-
+        Hardening is applied by script to every workstation at build time, rather than by
+        hand one host at a time. The main benefit of applying hardening this way is:
       options:
-      - A) Encryption
-      - B) History, review and the ability to reproduce a known state
-      - C) Monitoring
-      - D) Backup
-      answer: B
-    - question: 'A baseline should be applied:'
+      - A) Every host receives the same settings, and the build can be repeated
+      - B) The script removes the need to document the baseline
+      - C) Each workstation can be tuned to its user's preference
+      - D) The workstations no longer require operating system updates
+      answer: A
+    - question: >-
+        A reviewer asks for evidence that the firewall rule set matches the approved baseline.
+        The strongest evidence to provide is:
       options:
-      - A) Only to servers
-      - B) Consistently to all in-scope systems, with documented exceptions
-      - C) After go-live
-      - D) Only to internet-facing hosts
-      answer: B
-    - question: 'The most reliable way to prove a baseline was applied is:'
+      - A) The engineer's signed statement that the rules were applied
+      - B) The approval ticket for the change
+      - C) The running rule list compared with the baseline record
+      - D) The vendor manual for the firewall
+      answer: C
+    - question: >-
+        The operations team finds a workstation whose local firewall settings no longer match
+        the recorded baseline. The difference between the recorded state and the running system is
+        called:
       options:
-      - A) A build checklist signature
-      - B) An automated verification scan of the running system
-      - C) The engineer's confirmation
-      - D) The change ticket
-      answer: B
+      - A) An exception
+      - B) A deviation request
+      - C) Drift
+      - D) A rebuild
+      answer: C
 - ordinal: 3
   title: Segmentation Implementation
   content_type: reading
@@ -151,56 +219,93 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Implement the designed segmentation.
-  - Configure enforcement points to the flow matrix.
-  - Verify that unintended paths are blocked.
+  - Implement the segmentation design as firewall rules that name the source and destination of every allowed flow
+  - Test each cell of the allowed-flow matrix with a positive and a negative connection test
+  - Reconcile a difference between the flow matrix and observed network behaviour and correct the record or the rule
   topics:
-  - VLAN and subnet implementation.
-  - Firewall and ACL enforcement.
-  - Default-deny verification.
-  - Management plane separation.
-  lab: 'Lab: Implement the segmentation design, then verify every cell of the allowed-flow matrix with
-    a positive and negative test, recording any discrepancy.'
+  - VLANs, subnets and the zone boundary each one creates.
+  - Firewall rule order, stateful replies and the implicit default deny.
+  - Positive and negative tests for every cell of the flow matrix.
+  - Management plane separation and who may reach administrative interfaces.
+  - Broad exceptions added for troubleshooting that weaken segmentation.
+  lab: >-
+    Lab: On the medium-enterprise range, verify that fw01 enforces exactly the flows the
+    allowed-flow matrix permits. Evidence: the fw01 rules that carry traffic between the corporate,
+    servers, dmz and management zones, in order; the result of one allowed connection from ws01 to
+    fs01; the result of one denied connection from ws01 to web01 on a port the matrix does not
+    permit; the result of one denied connection from web01 to fs01; each discrepancy marked as a
+    rule, matrix or test error. Pass: every inter-zone rule is listed in order; each tested flow
+    records success or failure as observed; every discrepancy is marked and corrected at its source.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account the instructor assigned, open a terminal and
+        note the start time.
+    - hosts: [fw01]
+      action: List the rules on fw01 in order and record each rule that carries traffic between two
+        zones, with its source and destination network.
+    - hosts: [ws01, fs01]
+      action: From ws01, connect to the file share on fs01 and record whether the connection
+        succeeds.
+    - hosts: [ws01, web01]
+      action: From ws01, connect to web01 on a port the flow matrix does not allow from the
+        corporate zone and record whether the connection succeeds.
+    - hosts: [web01, fs01]
+      action: From web01, connect to the file share on fs01 and record whether the connection
+        succeeds.
+    - hosts: [siem01]
+      action: Mark each tested flow as matching the matrix or as a discrepancy, and for each
+        discrepancy decide whether the rule, the matrix or the test is wrong.
   refs:
   - nist-sp-800-41r1
   quiz:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Separating the management plane from the data plane limits:'
+    - question: A troubleshooting session adds a rule that allows every port between two zones, and
+        the rule is never removed. Which effect most weakens the intended segmentation?
       options:
-      - A) Bandwidth
-      - B) An attacker's ability to reach management interfaces from a compromised workload
-      - C) Latency
-      - D) Logging
+      - A) The rule increases traffic between the zones during work hours
+      - B) The broad allow defeats the default deny for every service
+      - C) The rule hides log entries from the monitoring sensors
+      - D) The zones can no longer resolve internal names
       answer: B
-    - question: 'Verifying segmentation requires testing:'
+    - question: >-
+        A switch access control list permits only the addresses a segment needs and is
+        applied close to the sending workstations. Enforcement at this position mainly limits:
       options:
-      - A) Only permitted flows
-      - B) Both permitted flows succeed and denied flows fail
-      - C) Only denied flows
-      - D) Neither, if the config is correct
-      answer: B
-    - question: 'A discrepancy between the flow matrix and observed behaviour indicates:'
+      - A) The number of routes the core switch must hold in total
+      - B) The broadcast traffic the workstations generate
+      - C) The places a compromised workstation can reach with denied traffic
+      - D) The speed of the workstation's approved connections
+      answer: C
+    - question: >-
+        The flow matrix records a flow as denied, but a connection test on the range
+        succeeds. The discrepancy shows that:
       options:
-      - A) The test is wrong
-      - B) Either the implementation or the design record is inaccurate and must be reconciled
-      - C) Acceptable variance
-      - D) A hardware fault
-      answer: B
-    - question: 'Access control lists on a switch enforce policy at:'
+      - A) The test tool produced a false result on the range
+      - B) The matrix should be redrawn to match the network as observed
+      - C) Segmentation cannot be verified on a live range like this
+      - D) Either the rules or the matrix is wrong and needs reconciling
+      answer: D
+    - question: >-
+        A reviewer asks how one cell of the flow matrix is proved. The pair of tests that
+        decides the cell is:
       options:
-      - A) The application layer
-      - B) The network or link layer, close to the source
-      - C) The perimeter only
-      - D) The endpoint
-      answer: B
-    - question: 'Segmentation is undermined most commonly by:'
+      - A) An allowed flow succeeds and a denied flow fails
+      - B) Two allowed flows succeed from different zones
+      - C) The rule list is read aloud and matches the matrix
+      - D) A denied flow fails twice in the same hour
+      answer: A
+    - question: >-
+        The management zone reaches every other zone, and no other zone can open a session
+        to the management zone. Separating the management plane this way mainly limits:
       options:
-      - A) Slow links
-      - B) Broad any-any exceptions added for troubleshooting and never removed
-      - C) VLAN limits
-      - D) Routing protocols
+      - A) The bandwidth the servers can consume
+      - B) An attacker who controls a workstation reaching administrative interfaces
+      - C) The number of accounts the domain must hold
+      - D) The logs the SIEM can collect from the servers
       answer: B
 - ordinal: 4
   title: Monitoring Integration
@@ -209,16 +314,47 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Instrument the lab network for security visibility.
-  - Validate that telemetry reaches the collector.
-  - Confirm detections fire for representative activity.
+  - Instrument every zone so that host and network events reach the collector on siem01
+  - Verify that telemetry from each zone arrives, is parsed and is searchable for a stated time window
+  - Confirm a detection fires for a representative behaviour and record the evidence it produced
   topics:
-  - Sensor and agent deployment.
-  - Telemetry validation.
-  - Detection verification.
-  - Coverage assessment against the design.
-  lab: 'Lab: Deploy logging and network monitoring across the lab, generate three representative attack
-    behaviours, and confirm each produces the expected telemetry and alert.'
+  - Sensors and agents, and what each zone must ship to the collector.
+  - 'Telemetry validation: arrival, parsing and search.'
+  - Detection rules and the representative activity that proves one fires.
+  - 'Coverage of the design: which techniques the deployed detections address.'
+  - Log sources that stop forwarding and the false assurance they create.
+  lab: >-
+    Lab: On the medium-enterprise range, prove that every zone's telemetry reaches the collector on
+    siem01 and that a detection fires for representative activity. Evidence: the log sources the
+    collector shows for the corporate, servers, dmz and management zones; a search result for an
+    event generated on ws01 within the test window; the alert or event the detection produced for
+    the blocked connection attempt. Pass: every zone appears as a shipping source in the collector;
+    the generated event is found by search with its timestamp; the detection's firing is recorded
+    with the field values that prove it matched.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account the instructor assigned and open the log
+        collector's source list.
+    - hosts: [siem01]
+      action: Record every log source the collector shows for each zone, and mark any zone with no
+        source in the last hour as missing.
+    - hosts: [ws01]
+      action: From ws01, make the one sign-in failure the instructor designates and record the time
+        the attempt was made.
+    - hosts: [siem01]
+      action: Search the collector on siem01 within the test window for the sign-in failure event
+        from ws01 and record its timestamp.
+    - hosts: [ws01, web01]
+      action: From ws01, attempt the connection to web01 that fw01 denies and record whether the
+        connection succeeds.
+    - hosts: [siem01]
+      action: Search the collector on siem01 for the deny event from that denied attempt and record
+        the fields it carries.
+    - hosts: [siem01]
+      action: Record whether the detection for denied connections fired, and mark each zone's
+        telemetry arrived, parsed or missing with the evidence for the mark.
   refs:
   - nist-sp-800-92
   - nist-sp-800-94
@@ -227,41 +363,49 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Confirming that telemetry reaches the collector is necessary because:'
+    - question: >-
+        A sensor is installed in the server zone but its forwarding was never configured, and
+        the team reports the zone as monitored. The report creates false assurance because:
       options:
-      - A) Agents are unreliable by design
-      - B) A deployed sensor that is not forwarding provides false assurance
-      - C) It improves performance
-      - D) Collectors require it
-      answer: B
-    - question: 'Generating representative attack behaviour to test detection is called:'
+      - A) The sensor consumes resources and licence seats without producing value
+      - B) Monitoring always requires an agent on every host
+      - C) The collector discards events older than a day
+      - D) A sensor that ships nothing leaves the zone invisible to the analyst
+      answer: D
+    - question: >-
+        Before tuning any detection, the analyst must know that events arrive in a searchable
+        form. The check that proves this for one log source is:
       options:
-      - A) Penetration testing
-      - B) Detection validation or adversary emulation
-      - C) Fuzzing
-      - D) Auditing
-      answer: B
-    - question: 'A sensor deployed with no visibility of east-west traffic will miss:'
+      - A) Search the collector for a recent event and read its parsed fields
+      - B) Confirm the sensor host is powered on and reachable over the network
+      - C) Compare the number of alerts to the number of incidents
+      - D) Count the hosts in the zone and match them to the licence
+      answer: A
+    - question: A monitoring design places its only sensor outside the network path between two
+        workstation zones. Which activity will the deployment miss?
       options:
-      - A) Internet downloads
-      - B) Lateral movement between internal hosts
-      - C) DNS queries
-      - D) Authentication events
+      - A) A workstation's queries to its configured DNS resolver
+      - B) Lateral movement between hosts inside the zones
+      - C) A laptop's sign-in recorded in the domain log
+      - D) The nightly backup's scheduled file transfers
       answer: B
-    - question: 'If expected telemetry does not appear, the first check should be:'
+    - question: A team finishes a monitoring design and must show which attacks its detections
+        address. Coverage assessment for the design answers which question?
       options:
-      - A) Rewrite the detection
-      - B) Verify collection and parsing before questioning the rule
-      - C) Reinstall the SIEM
-      - D) Increase retention
-      answer: B
-    - question: 'Coverage assessment compares:'
+      - A) How much the sensors cost to run each month
+      - B) How many alerts each analyst closes per shift
+      - C) How long the collector keeps each index
+      - D) Which relevant techniques the deployed detections can actually see
+      answer: D
+    - question: >-
+        A detection for denied connections fires during a test in which ws01 makes one
+        blocked attempt to web01. The evidence that proves the detection matched is:
       options:
-      - A) Cost against budget
-      - B) Detections available against the techniques relevant to the environment
-      - C) Agents against hosts only
-      - D) Alerts against incidents
-      answer: B
+      - A) The detection rule's text, read from its repository
+      - B) The count of workstations the sensor covers
+      - C) The alert's record of the source, destination and time of that attempt
+      - D) The analyst's note that the test was performed
+      answer: C
 - ordinal: 5
   title: Validation and Testing
   content_type: reading
@@ -269,57 +413,91 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Plan and conduct a structured security test.
-  - Document findings with reproducible evidence.
-  - Distinguish a finding from an observation.
+  - Plan a security test whose scope, timing and permitted techniques are authorised in writing
+  - Verify each scanner result by hand and record reproduction steps with captured evidence
+  - Rate each finding's severity from its demonstrable impact and distinguish it from an observation
   topics:
-  - Test planning, scope and rules of engagement.
-  - Scanning and manual verification.
-  - Evidence capture and reproducibility.
-  - Finding severity and reporting.
-  lab: 'Lab: Conduct a scan and manual verification against the lab, document every finding with reproduction
-    steps and evidence, and assign a justified severity to each.'
+  - Scope, rules of engagement and documented authorisation.
+  - Scanning the live range and verifying results by hand.
+  - 'Evidence capture: commands, output and timestamps another person can repeat.'
+  - Severity rating from impact, and the difference between findings and observations.
+  - Reporting so the system owner can confirm the finding and later retest.
+  lab: >-
+    Lab: On the medium-enterprise range, conduct the authorised test of the server zone and report
+    what it demonstrates. Evidence: the service list the scan returns for dc01 and fs01; one scan
+    result verified by hand, with the exact output of the manual check; one denied-flow test from
+    ws01 to web01 with its result; each finding written with reproduction steps and a severity
+    justified from impact. Pass: every recorded result carries the command or action that produced
+    it; every finding separates verified fact from opinion; each severity states the impact it
+    follows from; notes without security impact are marked as observations.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Read the authorisation the instructor supplies and record the scope, the permitted
+        techniques and the escalation contact.
+    - hosts: [siem01, dc01, fs01]
+      action: From siem01, run the scanning tool the instructor provides against dc01 and fs01 and
+        record the services it returns for each.
+    - hosts: [siem01, dc01]
+      action: Choose one scan result, verify it by hand against dc01 and record the exact command
+        and output that confirms or refutes it.
+    - hosts: [ws01, web01]
+      action: From ws01, attempt the connection to web01 that the flow matrix denies and record the
+        result as evidence.
+    - hosts: [siem01]
+      action: Write each finding with reproduction steps and a severity justified from impact, and
+        mark each remaining note as an observation.
   refs:
   - nist-sp-800-115
   quiz:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'Rules of engagement for a security test define:'
+    - question: >-
+        A colleague proposes testing a host that sits outside the written scope because the
+        test window is still open. The correct response is:
       options:
-      - A) The tools only
-      - B) Scope, timing, permitted techniques and escalation contacts
-      - C) The report format
-      - D) The severity scale
+      - A) Proceed, because the window authorises any host in the range
+      - B) Stop, because the authorisation's scope governs what may be tested
+      - C) Proceed, because the host is not production equipment
+      - D) Ask the host's users for verbal permission
       answer: B
-    - question: 'A scanner result should be treated as:'
+    - question: >-
+        A scanner reports an outdated service on a file server. Before the report is issued,
+        the result must be:
       options:
-      - A) A confirmed finding
-      - B) A candidate requiring manual verification
-      - C) An incident
-      - D) A false positive
-      answer: B
-    - question: 'A finding is distinguished from an observation because a finding:'
+      - A) Rated critical and escalated immediately
+      - B) Removed, because scanners err on the side of caution
+      - C) Attached to the report exactly as the scanner wrote it
+      - D) Verified by hand and recorded with reproduction steps
+      answer: D
+    - question: >-
+        The test shows a file share is readable by every domain account, and the owner already
+        knew and accepted the risk. In test vocabulary this item is best recorded as:
       options:
-      - A) Is more detailed
-      - B) Represents a demonstrable weakness with security impact
-      - C) Is from a tool
-      - D) Has higher severity
-      answer: B
-    - question: 'Reproduction steps matter because they:'
+      - A) A known finding with a stated risk acceptance
+      - B) A false positive, because the owner accepted it
+      - C) An observation with no security relevance
+      - D) An incident for the response team
+      answer: A
+    - question: Which entry gives the system owner what is needed to confirm a finding and retest it
+        after a fix?
       options:
-      - A) Lengthen the report
-      - B) Allow the owner to independently confirm and later verify the fix
-      - C) Prove tool licensing
-      - D) Set the severity
+      - A) The finding's severity, copied from the scanner's scale
+      - B) The exact command, its output and the time it was run
+      - C) A summary of the tester's opinion of the host's posture
+      - D) The count of findings the test produced overall
       answer: B
-    - question: 'Testing without documented authorisation is:'
+    - question: >-
+        During the test, an analyst notes that the server zone runs a monitoring agent. The
+        note records no weakness and no impact. In the report this item is:
       options:
-      - A) Acceptable internally
-      - B) Potentially unlawful and always professionally unacceptable
-      - C) Faster
-      - D) Standard practice
-      answer: B
+      - A) A critical finding
+      - B) A denied flow
+      - C) An observation
+      - D) A scope exception
+      answer: C
 - ordinal: 6
   title: Documentation and Handover
   content_type: reading
@@ -327,54 +505,92 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Produce operational documentation for a built environment.
-  - Define ongoing maintenance responsibilities.
-  - Conduct a structured handover.
+  - Assemble the as-built record of the hardened lab network from the evidence the earlier modules captured
+  - Write a runbook for a routine task that another person can follow without asking its author
+  - Present residual risks at handover with an owner and a recorded acceptance for each
   topics:
-  - As-built documentation.
-  - Operational runbooks.
-  - Maintenance and patch responsibility.
-  - Handover and acceptance.
-  lab: 'Lab: Produce a handover pack containing the as-built diagram, the flow matrix as implemented,
-    a runbook for two routine tasks, and a list of accepted residual risks.'
+  - As-built documentation and how it differs from the design.
+  - Runbooks for routine operations, written for the person who performs them.
+  - Residual risk, acceptance and named ownership.
+  - The handover checklist and what the receiving team must be able to do.
+  - Deviation from design, recorded where the next decision can find it.
+  lab: >-
+    Lab: On the medium-enterprise range, assemble the handover pack for the hardened lab network.
+    Evidence: the as-built zone and address record taken from fw01; the flow matrix as implemented,
+    confirmed by one positive and one negative test; a runbook for restoring the file share on fs01,
+    written so another person can follow it; the residual risk list with an owner and an acceptance
+    for each entry. Pass: every as-built value matches what the range shows; the confirmed matrix
+    records both test results; the runbook names every command and the values to enter; each
+    residual risk names an owner who accepted it.
+  lab_range:
+    template: medium-enterprise
+    steps:
+    - hosts: [siem01]
+      action: Log on to siem01 as the analyst account the instructor assigned and open the as-built
+        record from the earlier modules.
+    - hosts: [fw01]
+      action: Read the interface list and rule set on fw01 and record each zone with its address
+        block and the rules that carry its traffic.
+    - hosts: [ws01, fs01]
+      action: From ws01, connect to the file share on fs01 and record whether the connection
+        succeeds.
+    - hosts: [web01, fs01]
+      action: From web01, connect to the file share on fs01 and record whether the connection
+        succeeds.
+    - hosts: [siem01]
+      action: Write the runbook for restoring the file share on fs01 so another person can follow
+        it, naming every command and the values to enter.
+    - hosts: [siem01]
+      action: List each residual risk with the owner who accepts it, and mark any handover item the
+        receiving team cannot yet perform.
   refs:
   - nist-sp-800-37r2
   quiz:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'A runbook should be written for:'
+    - question: >-
+        The design document says the dmz holds one web server, but a mail server also runs in
+        the dmz. The as-built documentation must record:
       options:
-      - A) The designer
-      - B) The person who will perform the task, possibly under pressure
-      - C) The auditor
-      - D) The vendor
-      answer: B
-    - question: 'Residual risks at handover should be:'
+      - A) Only the web server, because the design governs
+      - B) The design document, corrected in place without a note
+      - C) What actually runs in the dmz, with the deviation from design noted
+      - D) A plan to remove the mail server from the dmz before recording
+      answer: C
+    - question: >-
+        A runbook for restoring the file share is written by the engineer who built the
+        range, for an operator who was not there. The runbook fails its purpose if it:
       options:
-      - A) Omitted to avoid concern
-      - B) Explicitly listed and formally accepted by an owner
-      - C) Resolved silently
-      - D) Left to operations to discover
-      answer: B
-    - question: 'As-built documentation differs from design documentation because it records:'
+      - A) Assumes knowledge only the builder holds
+      - B) Names each command the operator must enter
+      - C) Records the values to enter at each step
+      - D) States what a successful restore looks like
+      answer: A
+    - question: >-
+        At handover, one firewall exception added during testing remains in place because a
+        course depends on it. The residual risk is handled correctly when:
       options:
-      - A) The intended state
-      - B) What was actually implemented, including deviations
-      - C) Future plans
-      - D) Cost
+      - A) The exception is removed quietly once the course that needs it ends
+      - B) The exception is listed with its accepting owner and the reason
+      - C) The exception is left in place and is mentioned to nobody
+      - D) The exception is renamed as a permanent rule in the final build
       answer: B
-    - question: 'Handover is complete when:'
+    - question: >-
+        The receiving team takes over the hardened lab network from the build team. Handover
+        is complete when:
       options:
-      - A) The build finishes
-      - B) The receiving team can operate the system and has accepted it
-      - C) The report is filed
-      - D) Testing passes
-      answer: B
-    - question: 'Undocumented deviations from design are dangerous because they:'
+      - A) The build team finishes its last configuration change
+      - B) The report is filed in the document store
+      - C) The final test run passes on the range
+      - D) The receiving team can operate the network and has accepted it
+      answer: D
+    - question: >-
+        Six months after handover, the team must decide whether a zone can be split further.
+        The record that makes the decision possible is:
       options:
-      - A) Look untidy
-      - B) Cause future decisions to be based on an inaccurate model of the system
-      - C) Breach licensing
-      - D) Slow performance
-      answer: B
+      - A) The original project's budget spreadsheet
+      - B) The vendor's catalogue for the firewall model
+      - C) The as-built record, including every deviation from the design
+      - D) The training roster for the course that used the range
+      answer: C

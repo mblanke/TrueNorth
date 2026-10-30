@@ -1,0 +1,187 @@
+# C105 - Foundations of Cybersecurity - instructor pack (STAFF ONLY).
+# Companion to content/courses/c105-foundations-of-cybersecurity.yaml. Every answer letter below
+# is the course's key; the notes say why the keyed option is right and what each distractor tests.
+# Answers, expected values and setup notes in this file must not reach Students.
+course_code: C105
+audience: staff_only
+overview: 'Foundations of Cybersecurity is a beginner course of six 60-minute modules delivered on the
+  small-enterprise range. Each module teaches three objectives, practises them in a five-step range
+  lab, and ends with a five-item quiz passed at 70 percent. Every module uses the same range template,
+  so Students meet the same six hosts each week. Say ''Student'' throughout and keep every description
+  defensive and observable.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach (objectives and the triad), 35 lab (five range steps), 10 quiz and debrief'
+- module: 2
+  minutes: 60
+  plan: '15 teach (actors and surfaces), 35 lab (five range steps), 10 quiz and debrief'
+- module: 3
+  minutes: 60
+  plan: '15 teach (models and factors), 35 lab (five range steps), 10 quiz and debrief'
+- module: 4
+  minutes: 60
+  plan: '15 teach (mechanisms), 35 lab (five range steps), 10 quiz and debrief'
+- module: 5
+  minutes: 60
+  plan: '15 teach (functions and documents), 35 lab (five range steps), 10 quiz and debrief'
+- module: 6
+  minutes: 60
+  plan: '15 teach (tiers and triage), 35 lab (five range steps), 10 quiz and debrief'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 A (Confidentiality), M01-O01: The copy exposed the client list without changing a record or
+    stopping a service; B and C name harms that did not occur. Q2 B (Availability), M01-O01: Authorised
+    staff could not book for a morning; nothing was altered or disclosed. Q3 C (Fail-safe defaults),
+    M01-O02: The car returns to a safe state on failure; A defence in depth is about independent layers,
+    not failure behaviour. Q4 A (Least privilege), M01-O02: The grant exceeds what the web application
+    uses; B names layering, which is not the violation. Q5 C (A vulnerability), M01-O03: The default
+    password is a weakness a threat could exploit; A confuses the weakness with the actor, and D risk
+    combines likelihood and impact rather than naming the weakness.'
+- module: 2
+  notes: 'Q1 B (Publicity for a cause), M02-O01: Hours after a news story, screenshots posted for
+    attention = notoriety; espionage seeks quiet theft (A) and no theft occurs (C). Q2 C (Discovery),
+    M02-O02: Listing shared folders learns about the environment; A Collection takes the target data
+    itself and D Reconnaissance is pre-entry. Q3 A (Tools written for this one intrusion), M02-O01:
+    Bespoke tooling is the strongest capability signal; the victim''s sector, size and country say
+    nothing about the actor''s skill. Q4 D (The larger surface), M02-O03: Remote sign-in adds a
+    reachable entry point; identical hardware does not make the surface identical. Q5 B (Orders
+    adversary phases so defence can start early), M02-O02: The chain''s value is early disruption;
+    it does not attribute (A), predict commands (C) or replace log collection (D).'
+- module: 3
+  notes: 'Q1 B (Mandatory access control), M03-O01: Labels fixed centrally and no owner override = MAC;
+    A would let owners share freely and C keys on roles rather than labels. Q2 C (Yes, a held device),
+    M03-O02: Password (knowledge) plus an app code on a device the user holds (possession) spans two
+    categories; B falls for "both are secrets" and D for "two prompts always mean MFA". Q3 A
+    (Separation of duties), M03-O03: One role creating suppliers and paying invoices is the classic
+    toxic pair; B, C and D do not address the conflict. Q4 A (Privilege creep), M03-O03: The mover
+    process removed nothing; B is a runtime check, C is a model, and D is a substitute control. Q5 B
+    (The authorisation rules that govern the subject''s access to the object), M03-O01: After
+    authentication succeeds, the decision consults the system''s authorisation rules for that subject
+    and object, whatever model expresses them; A re-checks the password, C consults the wrong layer and
+    D ignores everything but
+    time.'
+- module: 4
+  notes: 'Q1 D (A digital signature), M04-O01: Proving origin and integrity needs the publisher''s
+    private key; B a posted hash carries no identity, and A shared-key encryption proves nothing to
+    customers. Q2 B (Unchanged since the digest was computed), M04-O02: A matching digest shows the
+    file matches; A overclaims safety, C borrows a certificate idea and D overclaims secrecy. Q3 C
+    (A separate secret key for every pair), M04-O01: Pairwise shared keys grow with the square of the
+    partners; A and B are red herrings and D does not grow with partner count. Q4 D (The public key
+    belongs to the named supplier), M04-O03: That is exactly what a CA vouches; A speaks of private
+    key custody, B of unbreakability and C of encrypting with the wrong key. Q5 C (Precomputed tables
+    for unsalted hashes), M04-O02: A unique salt forces per-user attack work; it does not end brute
+    force (B), phishing (A) or keylogging (D).'
+- module: 5
+  notes: 'Q1 C (Detect), M05-O01: Alerting on failed sign-ins watches for events; B prevents, A governs
+    strategy and D restores. Q2 B (The first is a policy; the second is a procedure), M05-O02: Intent
+    and requirement versus step-by-step detail; A reverses the pair and C and D mislabel both. Q3 D
+    (Compliance does not end risk), M05-O02: The named controls exist; the claim of safety is the
+    exact misconception the module corrects, and A states it. Q4 A (Govern), M05-O01: Strategy,
+    appetite and yearly review are governance work; B identifies assets and risks, C safeguards and
+    D handles incidents. Q5 B (Tailoring with justification), M05-O03: Documented reasons for each
+    dropped control are the definition; A drops without records, C copies and D gold-plates.'
+- module: 6
+  notes: 'Q1 C (Authorised activity), M06-O03: The rule fired on what the schedule permits = false
+    positive; B describes the opposite outcome (a false negative) and D duplicate alerting. Q2 B
+    (The tier that monitors alerts first), M06-O01: Tier one makes the first reality check; A is
+    tuning work that comes after confirmation, and C and D are not SOC tiers. Q3 B (A false negative),
+    M06-O03: Matched activity with no alert; A is the opposite outcome and D is a context step. Q4 D
+    (Enrichment), M06-O02: Adding context before deciding; A hands the alert on, B acts on the host
+    and C changes the rules. Q5 C (Timed fact with source), M06-O02: The only line with a time, an
+    action and a source; A and D state interpretation as fact and B offers no evidence.'
+lab_setup:
+- module: 1
+  setup: Revert the small-enterprise range to its baseline snapshot before class. Confirm jump-box accepts
+    SSH and that dc-01 answers from jump-box. Have the range documentation listing the six hosts and
+    their roles available to Students before the lab. Supply the fw-01 rule-set extract the lab reads,
+    taken from the baseline rule set unmodified, and record its action on unnamed traffic here for staff
+    only — no rule names it, so pfSense's implicit default rule denies it. Close any open Student
+    sessions before the lab starts.
+- module: 2
+  setup: Revert to baseline. Supply the fw-01 rule-set extract the lab reads, taken from the baseline
+    rule set unmodified, and confirm jump-box can query dc-01 for its listening services. The
+    port-attempt step uses TCP port 3389 from jump-box; confirm at baseline that dc-01 answers no
+    service on that port and leave the rule set at baseline, so the expected outcome the Student
+    records is a failed connection. Students record the outcome they observe.
+- module: 3
+  setup: Revert to baseline. Confirm the analyst account on jump-box, the template's only student-visible
+    account, is the account the standard-user test uses, and record its name here for staff only —
+    analyst. Supply the shared-folder rights extract the lab reads, taken from the baseline rights on
+    the shared folder on dc-01, and confirm group membership counts match the baseline. Remove any
+    temporary accounts after the lab.
+- module: 4
+  setup: Revert to baseline. Confirm a small text file exists on jump-box for hashing and record its path
+    here for staff only; do not put the path in the Student brief. Confirm sha256sum runs on jump-box.
+    No network changes are needed for this module.
+- module: 5
+  setup: Revert to baseline. Supply the two extracts the lab reads, both taken from baseline values
+    unmodified — the fw-01 rule-set extract and the dc-01 domain password-policy extract. Record the
+    expected policy values here for staff only so instructors can spot a drifted range quickly.
+    Restore the baseline if any value differs. Confirm the log on jump-box holds at least one recent
+    sign-in event for the lab's log source.
+- module: 6
+  setup: Revert to baseline. Confirm the sign-in log on jump-box is readable and holds at least five recent
+    sign-in events made up of the analyst account's successful sign-ins, at least one failed sign-in
+    from an account outside the baseline, and one successful sign-in by an account outside the
+    baseline. Seed any missing event before class, note the seeding here and remove any account seeded
+    for the event afterwards. Confirm the analyst account can sign in to jump-box during the lab. The
+    seeded set gives one event for each triage label — the analyst's own sign-ins are the false
+    positives, the failed sign-in from the unknown account needs enrichment, and the successful
+    sign-in by an account outside the baseline is the true positive.
+common_faults:
+- module: 1
+  fault: Students classify the whole incident by its headline ('phishing = confidentiality') instead of
+    classifying each event.
+  remedy: Walk the scenario sentence by sentence and ask what happened to the data at each step before
+    Students label anything.
+- module: 1
+  fault: A defensive action such as blocking a legitimate flow is recorded as 'no impact'.
+  remedy: 'Point to the availability definition: authorised users were denied the service. Record the
+    action with its impact, then discuss whether it was worth it.'
+- module: 2
+  fault: Students classify the actor by the victim's sector, or call it 'sophisticated' without evidence.
+  remedy: Use a two-column table (motivation evidence, capability evidence) and require every claim to
+    quote the case text.
+- module: 2
+  fault: Steps are mapped by the technical action instead of the adversary's goal.
+  remedy: For each event ask 'what was the adversary trying to achieve at this moment?' and keep the
+    tactic names visible.
+- module: 3
+  fault: Students count prompts instead of factor categories (a password plus a security question taken
+    as multi-factor).
+  remedy: Drill 'categories, not prompts' on the quiz design, then ask 'is it multi-factor?' as a
+    separate question from 'how strong is it?'
+- module: 3
+  fault: Students write down resources they assume the standard user can reach instead of what the
+    sign-in test showed.
+  remedy: Require the recorded list to come from the analyst-session test on jump-box; anything not
+    observed is marked as a
+    claim, not evidence.
+- module: 4
+  fault: Students say a hash can be reversed, or that a matching digest proves who published the file.
+  remedy: Re-run the two-digest comparison from the lab and ask what changed between the files; nothing
+    about the publisher was ever input.
+- module: 4
+  fault: Students hash the original file twice instead of hashing a changed copy.
+  remedy: Require two digests and exactly one changed character; walk the bench and confirm the second
+    digest was computed from the copy.
+- module: 5
+  fault: Controls are mapped to CSF functions by keyword, or counted under two functions.
+  remedy: Insist on one primary function per control with a one-sentence reason before any tally.
+- module: 5
+  fault: Students name the least-covered function without counting.
+  remedy: Require a per-function tally of the three controls first; the named gap must follow from the
+    tally.
+- module: 6
+  fault: Triage judgements say 'looks fine' with no cited evidence.
+  remedy: Require one sentence of evidence per event; reject any judgement whose evidence sentence is
+    missing.
+- module: 6
+  fault: Students key every unexplained event as a true positive.
+  remedy: Require evidence that the activity was unauthorised before true positive; a failed sign-in
+    from an unknown account is needs enrichment, and the analyst's own sign-in is a false positive.
+- module: 6
+  fault: Escalation notes lack times or sources, and guesses are stated as facts.
+  remedy: Have Students mark each line of their own note as 'fact (source)' or 'interpretation', then
+    rewrite any line that mixes the two.

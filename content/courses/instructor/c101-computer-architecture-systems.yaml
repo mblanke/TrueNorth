@@ -1,0 +1,184 @@
+# C101 - Computer Architecture & Systems - INSTRUCTOR PACK. Staff only; do not distribute to Students.
+# Companion to content/courses/c101-computer-architecture-systems.yaml (readiness: draft).
+# Every answer letter below is that quiz key; each note says why the keyed option is right and what
+# each distractor tests. Keys are to module objectives and topics, not to page numbers.
+
+course_code: C101
+audience: staff_only
+overview: 'Computer Architecture & Systems is a beginner course of six 60-minute modules on the small-enterprise
+  range (360 minutes total). Each module has the same split: 15 minutes contact, 35 minutes lab on the range
+  jump-box, and a 10-minute assessment block for the five-item quiz passed at 70 percent. Every lab observes
+  one host and ends in a recorded judgement, not a fix; say ''Student'' throughout and keep every description
+  defensive and observable.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 contact, 35 lab on the range jump-box, 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 contact, 35 lab on the range jump-box, 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 contact, 35 lab on the range jump-box, 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 contact, 35 lab on the range jump-box, 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 contact, 35 lab on the range jump-box, 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 contact, 35 lab on the range jump-box, 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B (Decode), M01-O01: Fetch has completed, so the next stage is decoding the instruction word into
+    control signals; A and D are execute and write-back stages that come after decode, and C is never a stage
+    of the cycle. Tests the ordering of fetch-decode-execute. Q2 D (Harvard), M01-O01: Separate program and
+    data storage, each with its own bus, is the Harvard definition; A is the single-store, shared-bus
+    organisation the diagram contradicts, and B and C are execution properties, not storage organisations.
+    Q3 A (A data hazard), M01-O02: The dependency is on a data value the earlier instruction has not finished
+    producing; B is a resource conflict, C is a branch dependency, and D is a memory-hierarchy event. Tests
+    the hazard taxonomy. Q4 B (The leftover state can be measured), M01-O03: Speculation is undone
+    architecturally but leaves microarchitectural state that survives, which is what timing side channels
+    read; A and D are invented harms, and C confuses architectural correctness with microarchitectural state.
+    Q5 C (Instruction set architecture), M01-O02: One binary runs unchanged because both processors implement
+    the same instruction set; A, B and D are microarchitectural properties that differ between the two
+    processors and explain the performance gap instead.'
+- module: 2
+  notes: 'Q1 C (CPU registers), M02-O01: The lowest-latency tier is where the hottest value belongs; A, B and
+    D are progressively slower tiers the designer could have chosen but did not. Tests the tier ordering.
+    Q2 A (The translation lookaside buffer), M02-O02: Page translations are cached so later touches of the
+    same page are fast; B predicts branches, and C and D are not translation caches. Q3 D (Spatial locality),
+    M02-O02: Row-order, one-touch access exploits adjacency, so the cache holds the next line before it is
+    asked for; A needs re-use of the same address over time, B is a write policy, and C keeps copies
+    consistent across cores. Q4 B (Cache hits and misses take different times), M02-O03: A shared-cache
+    timing channel exists only because the hit and miss cost gap is observable from another tenant; A is
+    false, C invents a flush schedule, and D describes device transfers, not shared-cache timing. Q5 A
+    (Direct memory access), M02-O01: DMA lets the device place data in memory without the CPU; B is a
+    CPU-initiated request into the kernel, C translates addresses, and D is a CPU protection level.'
+- module: 3
+  notes: 'Q1 B (User mode to kernel mode), M03-O01: The system call instruction traps from the unprivileged
+    caller into the kernel; A is the return path taken after the call finishes, and C and D are not privilege
+    transitions at all. Q2 D (Ring 3), M03-O03: Unprivileged applications run in the least privileged ring;
+    A is the ring the kernel itself runs in, and B and C are not where application code normally runs on x86.
+    Q3 A (The memory management unit and its page tables), M03-O02: Address-space isolation is enforced by
+    translation hardware; B is a build-time property, C takes effect only after a boundary has been crossed,
+    and D is a user agent with no enforcement role. Q4 C (It saves state and diverts execution to the
+    interrupt handler), M03-O02: Interrupt dispatch is save state, then run the handler, then resume; A would
+    postpone device service indefinitely, and B and D are not responses to an interrupt. Q5 D (NOT a reason),
+    M03-O01: The cost of a system call comes from the privilege transition, its cache and pipeline effects
+    and kernel-side argument validation; the language the entry point is written in is not the cost. Tests
+    mechanism versus implementation.'
+- module: 4
+  notes: 'Q1 C (Verified boot), M04-O01: The boot checks signatures against a trusted reference and refuses
+    unapproved components, which is enforcement at run time; A records measurements for a later verifier
+    instead of refusing, and B and D are not boot designs that check signatures. Q2 A (Measured boot),
+    M04-O01: Each component is hashed into the TPM as it starts so a verifier can compare values later; B
+    would have stopped the boot rather than record it, and C and D are unrelated controls. Q3 B (A cumulative
+    hash of the measured boot components), M04-O02: A Platform Configuration Register accumulates measurements
+    taken in order; A mistakes the register bank for a key store, and C and D are entirely different storage.
+    Q4 D (Rollback protection), M04-O03: The signature is valid, so only a version check refuses the image;
+    A is satisfied and would install it, B records but does not enforce, and C limits authentication
+    attempts. Tests why signature verification alone is not enough. Q5 B (Nothing later in the boot can
+    verify the root of trust), M04-O03: The root is accepted without proof, by definition, so nothing below
+    or after it measures it; A and C are later components the root anchors, and D invents a per-boot
+    requirement.'
+- module: 5
+  notes: 'Q1 B (It restricts the memory a device may address), M05-O01: The IOMMU confines a DMA-capable
+    device to the pages it was assigned, so a hostile dock cannot target arbitrary memory; A invents link
+    encryption, C is the blunter workaround the unit exists to avoid, and D is image signing, not address
+    control. Q2 D (Boundary scan and hardware debug access), M05-O02: JTAG exists for test and debug access
+    to the board; A, B and C are functions of other buses or power paths. Q3 A (SPI), M05-O01: Platform
+    firmware flash on small boards sits on the SPI bus; B is the general expansion bus, C is storage-oriented,
+    and D is peripheral connectivity. Tests mapping each bus to its role. Q4 C (A serial console with
+    privileged access), M05-O02: An exposed UART header commonly grants a console, and the concern is what
+    access it grants; A, B and D are values a console might display, not the capability itself. Tests access
+    versus data. Q5 D (It runs firmware the host does not verify), M05-O03: A peripheral executes its own
+    firmware that the host loads but does not check, so a tampered device persists across reimaging; A and B
+    are false as stated, and C is the opposite of sound procurement practice.'
+- module: 6
+  notes: 'Q1 B (A type 1 hypervisor), M06-O01: A hypervisor installed directly on hardware with no host
+    operating system beneath it is type 1; A is the type 2 definition, and C and D are not hypervisor types.
+    Q2 C (It performs guest-to-host page translation in hardware), M06-O01: Second-level address translation
+    resolves guest pages to host frames without a software shadow-table trap per update; A is false, because
+    a translation cache is still needed, and B and D invent memory savings. Q3 A (A virtual machine escape),
+    M06-O02: Reaching the hypervisor or host from a guest is the escape across the isolation boundary; B
+    stays inside the guest, C is an availability event, and D is routine operation. Q4 D (Containers share
+    the host kernel, so their isolation is weaker), M06-O03: One shared kernel is common ground a kernel flaw
+    exposes for every container; A inverts the design, B overstates container isolation, and C is false.
+    Q5 C (Consensus-based configuration hardening recommendations), M06-O03: A benchmark is community
+    guidance applied to a configuration; A overstates its authority, and B and D misclassify the artefact.'
+lab_setup:
+- module: 1
+  setup: Revert the small-enterprise range to its baseline snapshot and confirm jump-box is reachable over
+    SSH with the analyst account. No extra tooling is needed; lscpu is present on the base image.
+- module: 2
+  setup: Revert the range to its baseline snapshot and confirm jump-box SSH as analyst. Confirm the kernel
+    exposes /sys/devices/system/cpu/cpu0/cache on the base image; no other tooling is needed.
+- module: 3
+  setup: Revert the range to its baseline snapshot. Install the system-call tracing tool on jump-box before
+    the module and confirm the analyst account may trace the ls command with it; confirm id prints the
+    expected analyst identity.
+- module: 4
+  setup: Revert the range to its baseline snapshot. Confirm jump-box boots far enough that systemd-analyze
+    prints the firmware, loader, kernel and userspace times; if the platform does not report a firmware
+    time, say so before the lab and have Students record what is reported. Confirm the analyst account can
+    read this boot's log entries.
+- module: 5
+  setup: Revert the range to its baseline snapshot. Confirm lspci, lsusb and lsblk run for the analyst
+    account on jump-box, and note whether /sys/kernel/iommu_groups is populated on the base image so the
+    debrief can say what the count means.
+- module: 6
+  setup: Revert the range to its baseline snapshot. Confirm systemd-detect-virt and the SSH service on
+    jump-box, and supply the benchmark excerpt covering the PermitRootLogin and PasswordAuthentication
+    sections. Note the directive values the baseline image ships with so the debrief can compare.
+common_faults:
+- module: 1
+  fault: Students record the whole flags line as one feature instead of separating organisation from
+    security mitigation.
+  remedy: Put two column headings on the board (organisation, security mitigation) and classify the first
+    three flags with the class before the lab starts.
+- module: 1
+  fault: Students call speculative execution safe because the mistaken work is undone.
+  remedy: Restate the objective, undone architecturally but not microarchitecturally. Point at the
+    Vulnerability entries in lscpu as evidence the industry treats the leftover state as real.
+- module: 2
+  fault: Students call every fast repeat access temporal locality.
+  remedy: Drill the one-question test, same address again (temporal) or neighbour of the last address
+    (spatial), using the bitmap row-order case before the quiz.
+- module: 2
+  fault: Students treat the shared cache as private because each core has its own L1.
+  remedy: Draw the core-private versus shared split of the recorded cache indexes on the board and point at
+    the coherency line size as the unit another core can probe through.
+- module: 3
+  fault: Students mark every call in the trace as kernel-mode work because the kernel runs it.
+  remedy: Split the work at the call boundary, preparing the request as user-mode work and carrying it out
+    as kernel-mode. Mark call by call, not trace by trace.
+- module: 3
+  fault: Students answer Ring 0 for unprivileged applications because the kernel handles their calls.
+  remedy: Keep the two questions separate, where the application runs (Ring 3) versus where the called work
+    is done (Ring 0).
+- module: 4
+  fault: Students equate verified boot with measured boot because both involve hashes.
+  remedy: Put a two-column table on the board (enforced versus recorded) and classify each scenario into one
+    column before answering.
+- module: 4
+  fault: Students accept a valid signature as proof an image is current.
+  remedy: Use the Q4 scenario, where the signature answers who approved it and the version answers which one
+    it is; both checks are needed.
+- module: 5
+  fault: Students answer that disabling the ports is the mitigation the IOMMU provides.
+  remedy: Separate the blunt control (disable, at the cost of the dock) from the fine-grained one (restrict
+    addressing, at no cost to the user), and have Students name what each costs.
+- module: 5
+  fault: Students treat an exposed debug header as a data-leak problem, what it displays, rather than an
+    access problem, what it grants.
+  remedy: Point at the Q4 wording and ask what an attacker does first with a console, not what the console
+    prints.
+- module: 6
+  fault: Students call any hypervisor type 1 because it virtualises.
+  remedy: Ask the one question that decides the type, what runs beneath it?
+- module: 6
+  fault: Students mark a control met because the benchmark excerpt recommends it.
+  remedy: The mark is about the running configuration on jump-box; the excerpt only names the control. Read
+    the directive value first, then mark.

@@ -1,0 +1,176 @@
+course_code: C210
+audience: staff_only
+overview: 'C210 Threat Modeling & ATT&CK is an intermediate course of six 60-minute modules (6 hours) for
+  Students who have completed C107 and C105. Each module follows the same shape: 15 minutes of teaching on
+  the module objectives, a 35-minute lab on the red-vs-blue range, and a 10-minute five-item quiz passed at
+  70 percent. The modules build one model of the same range: Module 1 scopes the public-facing DMZ, Module 2
+  decomposes the network into a data flow diagram, Module 3 applies STRIDE to the log shipping path from
+  Module 2, Module 4 maps an intrusion narrative to ATT&CK and checks the telemetry the range collects,
+  Module 5 turns that telemetry check into a ranked coverage assessment, and Module 6 communicates the whole
+  model as a summary, an engineering annex and revision triggers. Students hand in lab notes each module:
+  the scope statement, the data flow diagram with discrepancies, the STRIDE threat set, the ATT&CK mapping
+  with collected-or-missing data sources, the ranked gap list, and the summary, annex and triggers.'
+timings:
+- module: 1
+  minutes: 60
+  plan: '15 teach, 35 lab (enumerate the DMZ from jump01 and read the router ruleset, then write the scope
+    statement), 10 quiz'
+- module: 2
+  minutes: 60
+  plan: '15 teach, 35 lab (DMZ entry points, server-network rules, log path, then draw the data flow diagram
+    and record discrepancies), 10 quiz'
+- module: 3
+  minutes: 60
+  plan: '15 teach, 35 lab (log path rules, who reaches siem01, then write one threat per STRIDE category
+    with mitigation and owner), 10 quiz'
+- module: 4
+  minutes: 60
+  plan: '15 teach, 35 lab (SIEM log sources, endpoint and network telemetry, then map the narrative to
+    ATT&CK and judge each data source), 10 quiz'
+- module: 5
+  minutes: 60
+  plan: '15 teach, 35 lab (record collected telemetry, choose ten techniques and value coverage, then rank
+    three gaps and propose one improvement), 10 quiz'
+- module: 6
+  minutes: 60
+  plan: '15 teach, 35 lab (re-read the router ruleset and Module 5 gaps, then write the summary, annex and
+    revision triggers), 10 quiz'
+answer_key_notes:
+- module: 1
+  notes: 'Q1 B: threat modelling works while design decisions are still cheap, and the model must be
+    revisited when the design changes. A defers to deployment, when changes are costly; C treats it as an
+    annual ritual rather than a design activity; D waits for an incident the model was meant to prevent.
+    Q2 A: an attack tree decomposes one attacker goal into the alternative paths that reach it, which is what
+    the product owner asked for. B, C and D are artefacts that show state, not adversary paths. Q3 D: a model
+    that enumerates everything cannot be maintained or acted on and is abandoned; A mistakes volume for
+    coverage, B mistakes completeness for risk reduction, C mistakes the list for audit value. Q4 C: detail
+    below the decision hides the significant risks; A, B and D give operational reasons that do not address
+    the review''s need. Q5 B: the output that changes a system is prioritised mitigations with an accountable
+    owner; A, C and D are artefacts the model may also produce but none of them reduces risk on its own.'
+- module: 2
+  notes: 'Q1 B: a trust boundary separates levels of trust or privilege, whatever the ownership, language or
+    host layout; A, C and D are plausible proxies that do not define trust. Q2 D: every location external
+    input enters is an entry point; A stops at the most obvious one, C and D name components that see traffic
+    but do not define entry. Q3 A: a model that omits the second data store misleads reviews; B, C and D give
+    cosmetic, tooling and speed reasons. Q4 C: a process transforms or acts on data in motion; A is data at
+    rest, D is an actor outside the system, and B is a line on the diagram, not an element. Q5 B: threats to
+    data at rest in the omitted store are invisible to the model; the other options describe what a cleaner
+    or cheaper diagram would change, not what threats are missed.'
+- module: 3
+  notes: 'Q1 B: a threat statement must be a concrete scenario of who does what, to what, with what effect;
+    A accepts a category label as an output, C cites a vulnerability instead of a threat, D confuses the
+    record with the mitigation. Q2 D: access control on the store and encryption of the records address
+    disclosure directly; A, B and C are real controls for other STRIDE categories. Q3 A: an endpoint that
+    floods under one looping client is denial of service, countered by rate limiting, quotas and resource
+    controls; B, C and D name categories the scenario does not show. Q4 C: an unverifiable origin is
+    spoofing; the other categories describe alteration, exposure and interruption, not identity. Q5 C: with
+    no accountable owner nothing gets mitigated; A, B and D describe paperwork states that do not change the
+    system.'
+- module: 4
+  notes: 'Q1 A: a sub-technique is a more specific means of achieving a technique; B, C and D name the other
+    ATT&CK object kinds the analyst could confuse it with. Q2 B: the data sources on a technique entry say
+    what telemetry detection needs; A, C and D name group context and likelihood, which do not promise
+    detection. Q3 B: ATT&CK documents observed adversary behaviour, so coverage claims overstate it; A, C and
+    D give reasons that are not the core limitation. Q4 C: a group entry tracks related intrusion activity as
+    one adversary; A is the tool, B the countermeasure and D the telemetry. Q5 D: ICS technology and its
+    physical consequences need separate modelling, so the Enterprise entries do not transfer; A says the
+    opposite, that the matrices are identical copies; B reverses the security claim, that industrial sites
+    need fewer entries because they are more secure; C describes a detection gap, which is a reason the
+    Enterprise detections may fail there, not why the matrix is separate.'
+- module: 5
+  notes: 'Q1 A: relevance filtering asks which adversaries plausibly target this organisation and how; B
+    restates the mistake, C and D are ordering schemes with no threat content. Q2 A: untested low-fidelity
+    detections counted as full coverage is the classic heatmap error; B, C and D name counting quirks that
+    are not the misleading one. Q3 C: threat-informed defence prioritises defences against how adversaries
+    actually operate; A, B and D restate the compliance-driven side the question contrasts. Q4 B: both the
+    environment and adversary behaviour change, so a year-old heatmap misleads; A, C and D are jokes the
+    distractor slot exists to catch. Q5 D: the gap with the greatest likely use and impact ranks first; A
+    ranks by convenience, B and C by novelty and noise.'
+- module: 6
+  notes: 'Q1 B: a living artefact is revised whenever the design or threat landscape changes; A, C and D
+    describe storing, approving and publishing a static document. Q2 B: a delivery manager needs risk, the
+    decisions required and the effort each needs; A, C and D are technical detail the engineering annex
+    carries. Q3 C: a mitigation is complete when implementation is verified to work as modelled; A, B and D
+    stop at paper states before effectiveness. Q4 A: a new external integration adds a trust boundary and
+    changes what the model must cover; B, C and D are personnel, tooling and calendar events the model does
+    not turn on. Q5 D: modelling inside the workflow lands while design decisions can still change cheaply;
+    A, C and D trade the review''s value for its cost.'
+lab_setup:
+- module: 1
+  setup: 'Revert the red-vs-blue range to baseline. From jump01 confirm blue01 is reachable and that the DMZ
+    hosts web01, web02, mx01, rproxy01 and vpn01 answer. Confirm the rtr01 rules show red-to-dmz allow and
+    red-to-corp-deny deny, so the DMZ is the only red-reachable zone, and place a copy of the current rtr01
+    firewall ruleset on blue01 for the Students to read. Students need no credentials beyond the jump01
+    account your instructor assigned.'
+- module: 2
+  setup: 'Revert the range to baseline. Confirm from jump01 that the DMZ hosts answer and that blue01 is
+    reachable. Place the current rtr01 ruleset on blue01 and confirm the server-network rules
+    (corp-to-server-ad, corp-to-server, dmz-to-server-limited) are present. Confirm log shipping works: a
+    test event from web01 appears on siem01 through relay01, so the log path can be traced.'
+- module: 3
+  setup: 'Revert the range to baseline. Keep the Module 2 data flow diagram handout available; this lab
+    reuses the log path web01 to relay01 to siem01. Re-place the current rtr01 ruleset on blue01 and confirm
+    the logs-to-siem rule is present in it, and that blue01 can read the SIEM dashboards on siem01. Do not
+    seed any attack activity: the lab reasons about the path, it does not exercise it.'
+- module: 4
+  setup: 'Revert the range to baseline and write the instructor-supplied intrusion narrative (6 to 8 steps,
+    provided in the staff pack) on the board. Confirm siem01 shows its log sources including the nids01
+    sensor events, ws01 runs sysmon and defender, and nids01 mirrors the DMZ, corporate and server zones.
+    Confirm blue01 can read the siem01 dashboards, since the Students reach nids01 telemetry through them.
+    Students need no red-team access.'
+- module: 5
+  setup: 'Revert the range to baseline. Confirm siem01 dashboards list every log source and that blue01 can
+    read them, and that ws01 and lnx01 record endpoint telemetry. Prepare a blank coverage worksheet with ten
+    technique rows and covered, partial and gap columns, or have Students rule one in their notes.'
+- module: 6
+  setup: 'Revert the range to baseline. Collect each Student''s Module 2 diagram and Module 5 gap list for
+    reuse; re-place the rtr01 ruleset on blue01, then confirm it and the siem01 dashboards still show what
+    those modules recorded. Provide a blank one-page summary template with risk, decision and effort columns.'
+common_faults:
+- module: 1
+  fault: The scope statement lists every host in the range instead of the DMZ, or omits what is out of scope.
+  remedy: Point at the rtr01 rule that lets the red team reach the DMZ only; scope answers what an adversary
+    can reach first, and an out-of-scope line shows the boundary was a decision, not an accident.
+- module: 1
+  fault: The methodology is named with no reason tied to a decision the model must support.
+  remedy: Ask 'what decision does this model have to inform this week?' and have the Student rewrite the
+    reason sentence until the methodology follows from it.
+- module: 2
+  fault: The diagram marks every host-to-host link as a trust boundary.
+  remedy: Have the Student state the trust level on each side of a link before marking it; only a difference
+    in trust or privilege is a boundary.
+- module: 2
+  fault: The discrepancy list is empty because the sketch was drawn from the rules in the first place.
+  remedy: Ask for the sketch from memory before opening rtr01; the missing log relay hop is the usual find.
+- module: 3
+  fault: Threats are written as category labels ('tampering on the log flow') with no scenario.
+  remedy: 'Require the three parts aloud: who acts, on what, with what effect; the repudiation threat at
+    siem01 is the example that forces the who.'
+- module: 3
+  fault: Every threat gets the same mitigation ('use encryption') or no owner.
+  remedy: Ask what the mitigation stops for that specific scenario, and name the role that would implement
+    it; a control that answers nothing for the scenario is a mismatch to re-map.
+- module: 4
+  fault: Narrative steps are mapped by the technical action instead of the adversary's goal.
+  remedy: For each step ask what the adversary was trying to achieve at that moment, and keep the tactic
+    names visible; the same command can serve different tactics.
+- module: 4
+  fault: Data sources are marked collected because a log source exists anywhere in the range.
+  remedy: Tie each collected-or-missing mark to the telemetry the Student recorded on siem01, ws01 or nids01,
+    and ask what in that source would actually show the technique.
+- module: 5
+  fault: Coverage values are guesses with no telemetry behind them.
+  remedy: Refuse a covered mark without naming the source that shows it; the honey01 canary alerts are the
+    clean example of evidence.
+- module: 5
+  fault: Gaps are ranked by how easy they are to close.
+  remedy: Require likelihood of use and impact if used for both gaps being compared; ease of fix is a
+    tie-breaker, not the rank.
+- module: 6
+  fault: 'The summary reads like the engineering annex: elements, flows and technique names.'
+  remedy: Have the Student read one risk aloud to a non-technical colleague; if it cannot be understood
+    without the diagram, rewrite it as risk, decision and effort.
+- module: 6
+  fault: Revision triggers are calendar events ('review quarterly') instead of change events.
+  remedy: 'Point at the Module 2 boundaries and the Module 5 gaps: a trigger is a change that would alter
+    those, such as a new integration or a new data store.'

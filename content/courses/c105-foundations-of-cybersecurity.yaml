@@ -9,6 +9,7 @@ difficulty: beginner
 duration_hours: 100
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 source:
@@ -30,57 +31,85 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Explain confidentiality, integrity and availability with concrete examples.
-  - Apply foundational design principles to a system description.
-  - Distinguish threat, vulnerability, risk and impact.
+  - Classify each event in a written incident scenario by its confidentiality, integrity or availability impact
+  - Identify where least privilege, defence in depth and fail-safe defaults are applied or missing in a described system
+  - Distinguish threat, vulnerability, impact and risk by labelling each element of a short warehouse case
   topics:
-  - CIA triad and supporting properties.
-  - Least privilege, defence in depth, fail-safe defaults.
-  - Threat, vulnerability, risk and impact.
-  - Authenticity, non-repudiation and accountability.
-  lab: 'Lab: Given a small system description, produce a table identifying three assets, the CIA property
-    most at risk for each, and one control per asset.'
+  - Assets and the confidentiality, integrity and availability triad.
+  - Classifying events by their effect on each property of the triad.
+  - Least privilege, defence in depth and fail-safe defaults in a design.
+  - Threat, vulnerability, likelihood, impact and risk as linked terms.
+  lab: >-
+    Lab: On the small-enterprise range, record what each host protects and judge the range's design
+    against defence in depth and fail-safe defaults. Evidence: each host id with its role and the
+    property of the triad most harmed if it stopped working; the default action fw-01 takes on
+    traffic that no rule names, as the instructor's rule-set extract shows it; one control that
+    protects dc-01 besides the firewall. Pass: every host listed with a property and a one-sentence
+    reason; the default action recorded exactly as the extract shows it; each principle marked
+    "applied" or "missing" with a one-sentence reason.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the start time in the lab notes.
+    - hosts: [jump-box, fw-01, dc-01, ws-01, ws-02, ws-03]
+      action: Ping each host the range documentation lists from jump-box and record every host id with
+        its role and the property of the triad most harmed if it stopped working.
+    - hosts: [jump-box]
+      action: Read the fw-01 rule-set extract the instructor supplies and record the action it takes on
+        traffic that no rule names.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, confirm dc-01 is reachable and record one control that protects it besides
+        the firewall.
+    - hosts: [jump-box]
+      action: Mark defence in depth and fail-safe defaults "applied" or "missing" in the range's design,
+        with one sentence of reason for each.
   refs:
   - nist-cswp-29
   quiz:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: A ransomware attack that encrypts files primarily harms which property first?
+    - question: A clerk copies a client list to a personal USB stick; no record is changed and no service
+        stops. Which property did the copy harm?
+      options:
+      - A) Confidentiality
+      - B) Integrity
+      - C) Availability
+      - D) Authenticity
+      answer: A
+    - question: A clinic's booking system loses power for a morning; nothing is altered and no outsider
+        reads anything. Which property did the clinic lose?
       options:
       - A) Confidentiality
       - B) Availability
       - C) Non-repudiation
-      - D) Authenticity
+      - D) Accountability
       answer: B
-    - question: 'Defence in depth means:'
+    - question: A lift's control system fails and returns the car to the nearest floor with its doors open
+        instead of continuing between floors. Which design principle does this behaviour follow?
       options:
-      - A) Relying on the strongest single control
-      - B) Layering independent controls so one failure is not fatal
-      - C) Encrypting everything
-      - D) Deploying two firewalls from one vendor
-      answer: B
-    - question: 'A vulnerability is best defined as:'
+      - A) Defence in depth
+      - B) Least privilege
+      - C) Fail-safe defaults
+      - D) Open design
+      answer: C
+    - question: A web server's service account can also read the human-resources file share, which the web
+        application never uses. Which principle does this grant violate?
       options:
-      - A) A threat actor
-      - B) A weakness that a threat can exploit
-      - C) The cost of a breach
-      - D) A security control
-      answer: B
-    - question: 'Fail-safe defaults means that on failure a system should:'
+      - A) Least privilege
+      - B) Defence in depth
+      - C) Fail-safe defaults
+      - D) Open design
+      answer: A
+    - question: 'A warehouse''s customer database is reachable from the internet and one account still has
+        its default password. In risk vocabulary, the default password is best labelled as:'
       options:
-      - A) Permit access to preserve availability
-      - B) Deny access unless explicitly permitted
-      - C) Log and continue
-      - D) Reboot
-      answer: B
-    - question: 'Non-repudiation provides assurance that:'
-      options:
-      - A) Data is encrypted
-      - B) An actor cannot credibly deny having performed an action
-      - C) Systems stay online
-      - D) Backups exist
-      answer: B
+      - A) A threat
+      - B) An impact
+      - C) A vulnerability
+      - D) A risk
+      answer: C
   po:
     qsp_code: ALJQ
     po_code: PO_001-005
@@ -91,56 +120,84 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Characterise threat actors by motivation and capability.
-  - Describe the phases of an intrusion using a recognised model.
-  - Enumerate the attack surface of a given system.
+  - Classify each actor in a published case summary by motivation and capability, citing the evidence
+  - Sequence the phases of a published intrusion narrative against a recognised adversary model
+  - Enumerate the attack surface of a described system and rank its entry points by reachability and authentication
   topics:
-  - Actor categories and motivations.
-  - Cyber kill chain and adversary lifecycle.
-  - MITRE ATT&CK tactics and techniques.
-  - Attack surface enumeration.
-  lab: 'Lab: Using MITRE ATT&CK, map a short published intrusion narrative to tactics and techniques,
-    and identify one detection opportunity per tactic.'
+  - Threat actor categories, motivation and capability as separate judgements.
+  - The intrusion kill chain as an ordered sequence of phases.
+  - MITRE ATT&CK tactics and techniques for post-entry behaviour.
+  - Digital, physical and human attack surfaces of a system.
+  - Ranking entry points by reachability, authentication and known weakness.
+  lab: >-
+    Lab: On the small-enterprise range, enumerate the attack surface an adversary could touch and
+    rank its entry points. Evidence: the services dc-01 offers to the network; each fw-01 rule that
+    allows traffic into the server network, with its source network and ports; the outcome of one
+    connection attempt from jump-box to a port dc-01 does not offer; the entry points ranked first
+    and second. Pass: all services recorded exactly as the range shows them and all rules exactly as
+    the rule-set extract shows them; each entry point ranked with a
+    one-sentence reason; the ranking uses reachability and authentication as stated factors.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the start time in the lab notes.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, list which services dc-01 offers to the network and record each service name.
+    - hosts: [jump-box]
+      action: Read the fw-01 rule-set extract the instructor supplies and record each rule that allows
+        traffic into the server network, with its source network and ports.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, attempt one connection to dc-01 on TCP port 3389, a port the recorded
+        services do not cover, and record the outcome.
+    - hosts: [jump-box]
+      action: Rank the range's entry points using reachability and authentication, and record the first
+        and second with one sentence of reason each.
   refs:
   - mitre-attack
   quiz:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'MITRE ATT&CK organises adversary behaviour primarily into:'
+    - question: An actor defaces a ministry's website within hours of a news story and posts the screenshots
+        online for attention. Which motivation best fits the evidence?
       options:
-      - A) Vulnerabilities and patches
-      - B) Tactics, techniques and procedures
-      - C) Risk scores
-      - D) Compliance controls
+      - A) Espionage for another state
+      - B) Publicity for a cause
+      - C) Direct financial theft
+      - D) A mistake by an insider
       answer: B
-    - question: 'In ATT&CK, a tactic represents:'
+    - question: An adversary who already holds a workstation lists the shared folders on the file server.
+        Which MITRE ATT&CK tactic best names this activity?
       options:
-      - A) A specific tool
-      - B) The adversary's tactical objective or goal
-      - C) A CVE identifier
-      - D) A log source
-      answer: B
-    - question: Which actor type is typically best resourced and most persistent?
-      options:
-      - A) Script kiddie
-      - B) Hacktivist
-      - C) Nation-state
-      - D) Insider by accident
+      - A) Collection
+      - B) Persistence
+      - C) Discovery
+      - D) Reconnaissance
       answer: C
-    - question: 'Attack surface is best described as:'
+    - question: A case summary describes one actor. Which observation is the strongest evidence of high
+        capability?
       options:
-      - A) The number of employees
-      - B) The sum of points where an attacker can attempt entry or extraction
-      - C) The patch level
-      - D) The firewall ruleset
-      answer: B
-    - question: 'An intrusion model such as the kill chain is useful mainly because it:'
+      - A) Tools written for this one intrusion
+      - B) The industry sector of the victim
+      - C) The size of the victim organisation
+      - D) The country the victim operates in
+      answer: A
+    - question: 'Two identical laptops differ only in that one accepts remote sign-in from the internet. In
+        attack surface terms, the internet-reachable laptop has:'
       options:
-      - A) Predicts the exact attacker
-      - B) Structures detection and disruption opportunities by phase
-      - C) Replaces logging
-      - D) Assigns blame
+      - A) The same surface, because the hardware is identical
+      - B) A smaller surface, because remote sign-in hides the desktop
+      - C) A surface that matters only after a physical break-in
+      - D) The larger surface, because remote sign-in adds an entry point
+      answer: D
+    - question: 'A defender wants the earliest moment an intrusion can be disrupted before data leaves. The
+        kill chain helps mainly because it:'
+      options:
+      - A) Names the country responsible for the intrusion
+      - B) Orders adversary phases so defence can start early
+      - C) Predicts the exact next command an adversary runs
+      - D) Removes the need to collect logs
       answer: B
 - ordinal: 3
   title: Access Control and Identity
@@ -149,56 +206,86 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Compare access control models and their appropriate use.
-  - Explain authentication factors and multi-factor authentication.
-  - Describe the authorisation decision flow.
+  - Match each stated access need to the access control model (DAC, MAC, RBAC or ABAC) that expresses it most directly
+  - Classify the factors in a sign-in design and decide whether it meets multi-factor authentication
+  - Identify the separation-of-duties conflict a proposed role set must prevent
   topics:
-  - Identification, authentication, authorisation, accounting.
-  - DAC, MAC, RBAC and ABAC.
-  - Authentication factors and MFA.
-  - Session management and credential lifecycle.
-  lab: 'Lab: Design an RBAC model for a small organisation with four job functions, define permissions
-    per role, and identify one toxic combination that separation of duties should prevent.'
+  - Identification, authentication, authorisation and accountability, in order.
+  - Discretionary, mandatory, role-based and attribute-based access control.
+  - Authentication factor categories and what makes a sign-in multi-factor.
+  - Role-permission matrices and separation of duties in small organisations.
+  lab: >-
+    Lab: On the small-enterprise range, find how the domain decides who may reach shared resources
+    and judge the design against least privilege and separation of duties. Evidence: each domain
+    security group on dc-01 with the number of accounts in it; the groups that hold rights on the
+    shared folder and what each right allows, as the instructor's rights extract shows it; the
+    resources the analyst account opens without further permission; a statement of which access
+    control model the domain's decisions resemble. Pass: all groups, rights and outcomes recorded
+    exactly as the range and the instructor's extracts show them; the model named with a
+    one-sentence reason; one change proposed for any finding that does not follow least privilege.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH as the analyst account the instructor assigned, open a terminal
+        and record the start time in the lab notes.
+    - hosts: [jump-box, dc-01]
+      action: From jump-box, list the domain security groups on dc-01 and record each group name with the
+        number of accounts in it.
+    - hosts: [jump-box]
+      action: Read the shared-folder rights extract the instructor supplies and record which groups hold
+        rights on the shared folder and what each right allows.
+    - hosts: [jump-box, dc-01]
+      action: From the analyst session on jump-box, test which shared resources on dc-01 open without
+        further permission and record each one.
+    - hosts: [jump-box]
+      action: State which access control model the domain's decisions resemble, with one sentence of evidence,
+        and propose one change for any finding that does not follow least privilege.
   refs:
   - nist-sp-800-63-4
   quiz:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Role-based access control assigns permissions to:'
+    - question: A law firm's documents carry sensitivity levels the administrator fixes centrally, and partners
+        cannot share a document outside its level. Which access control model fits?
       options:
-      - A) Individual users directly
-      - B) Roles that users are assigned to
-      - C) Devices only
-      - D) Network segments
+      - A) Discretionary access control
+      - B) Mandatory access control
+      - C) Role-based access control
+      - D) Attribute-based access control
       answer: B
-    - question: Which pair represents two genuinely different authentication factors?
+    - question: A bank's sign-in asks for a password, then for a code from a phone app that refreshes every
+        minute. Does this design meet multi-factor authentication?
       options:
-      - A) Password and PIN
-      - B) Password and hardware token
-      - C) Fingerprint and retina scan
-      - D) Two passwords
-      answer: B
-    - question: 'Separation of duties is intended to prevent:'
+      - A) No, because the code changes far too often for any user to memorise
+      - B) No, because both steps still test only what the user knows
+      - C) Yes, because the code comes from a device the user holds
+      - D) Yes, because two prompts always mean two separate authentication factors
+      answer: C
+    - question: A bookshop's role set gives one role the power to create suppliers and to pay their invoices.
+        Which control should the design add?
       options:
-      - A) Slow processing
-      - B) A single individual completing a sensitive process unchecked
-      - C) Password reuse
-      - D) Network congestion
-      answer: B
-    - question: 'Attribute-based access control decides using:'
+      - A) Separation of duties between creating and paying
+      - B) Longer passwords and longer lockouts for the accounts involved
+      - C) A second firewall installed in front of the till network
+      - D) Encryption of the stored invoices at rest in the back office
+      answer: A
+    - question: 'A clinic moves a nurse to the night shift, and she keeps the day-roster editing permission she
+        no longer needs. This outcome is best described as:'
       options:
-      - A) Only the user's role
-      - B) Attributes of subject, resource, action and environment
-      - C) IP address alone
-      - D) Group membership only
-      answer: B
-    - question: 'Accounting in the AAA model refers to:'
+      - A) Privilege creep from an incomplete mover process
+      - B) A dynamic separation-of-duties check run at access time
+      - C) Attribute-based access control with time-of-day rules
+      - D) A compensating control documented for the auditor
+      answer: A
+    - question: A user signs in successfully and asks to open a file. What does the system consult to decide
+        whether to allow it?
       options:
-      - A) Financial reporting
-      - B) Recording what an authenticated subject did
-      - C) Granting permissions
-      - D) Verifying identity
+      - A) The password database, checked a second time
+      - B) The authorisation rules that govern the subject's access to the object
+      - C) The firewall rule set that sits between the user and the file server
+      - D) The user's sign-in time and nothing else
       answer: B
 - ordinal: 4
   title: Cryptography in Practice
@@ -207,16 +294,37 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Distinguish symmetric from asymmetric cryptography and their roles.
-  - Explain what hashing does and does not provide.
-  - Describe how certificates establish trust.
+  - Select the symmetric, asymmetric, hash or signature mechanism that meets each stated protection need
+  - Predict whether changing one character of a file changes its digest and state what hashing never provides
+  - Trace a certificate chain to a trusted authority and state what the authority vouches about the key
   topics:
-  - Symmetric ciphers and key distribution.
-  - Public key cryptography and digital signatures.
-  - Cryptographic hashing and integrity.
-  - Certificates, chains and trust anchors.
-  lab: 'Lab: Generate a key pair, sign a file, verify the signature, then modify one byte of the file
-    and demonstrate that verification fails.'
+  - Symmetric ciphers, shared keys and the key distribution problem.
+  - Asymmetric key pairs and what a digital signature proves.
+  - Cryptographic hash digests, file integrity and what hashing never provides.
+  - Hashing passwords with a salt and what this does not prevent.
+  - Certificates, chains of trust and what a certificate authority vouches.
+  lab: >-
+    Lab: On the small-enterprise range, demonstrate what a hash digest does and does not provide.
+    Evidence: the sha256sum utility and the digest of the original file; the digest of a copy with
+    one character changed; a statement of whether the two digests differ and which file property the
+    digest protects; one protection need hashing never meets. Pass: both digests recorded exactly as
+    the range shows them; the effect of the one-character change described in one sentence; the unmet
+    protection need named with a one-sentence reason.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the start time in the lab notes.
+    - hosts: [jump-box]
+      action: Compute the digest of a file on jump-box with sha256sum and record the digest.
+    - hosts: [jump-box]
+      action: Change one character inside a copy of the file, compute the digest of the copy and record it.
+    - hosts: [jump-box]
+      action: Compare the two digests, record whether they differ and state which property of the file the
+        digest protects.
+    - hosts: [jump-box]
+      action: State one protection need that hashing never meets, with one sentence of reason drawn from the
+        digests recorded above.
   refs:
   - nist-sp-800-57pt1r5
   - nist-sp-800-52r2
@@ -224,41 +332,46 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'A cryptographic hash function provides:'
+    - question: A software publisher wants customers to confirm a download came unmodified from the publisher
+        and to prove who published it. Which mechanism fits best?
       options:
-      - A) Confidentiality
-      - B) Integrity verification
-      - C) Key exchange
-      - D) Non-repudiation alone
-      answer: B
-    - question: 'A digital signature is created using the signer''s:'
+      - A) Encrypting the download with a shared secret key given to customers
+      - B) Publishing the file's hash digest alongside the download
+      - C) Renaming the download before customers receive it
+      - D) A digital signature made with the publisher's private key
+      answer: D
+    - question: A technician hashes a downloaded file and the digest matches the value the publisher published.
+        What does the matching digest prove?
       options:
-      - A) Public key
-      - B) Private key
-      - C) Symmetric key
-      - D) Session key
+      - A) That the file holds no malicious code and no hidden extra data
+      - B) That the file is unchanged since the digest was computed
+      - C) That the publisher's identity has been verified by a certificate authority
+      - D) That nobody except the publisher can read the file
       answer: B
-    - question: 'The primary practical problem symmetric cryptography faces at scale is:'
+    - question: An organisation exchanges encrypted files with hundreds of partners using a symmetric cipher.
+        As partners multiply, which operational problem grows fastest?
       options:
-      - A) Speed
-      - B) Secure key distribution among many parties
-      - C) Key length
-      - D) Block size
-      answer: B
-    - question: 'A certificate authority''s role is to:'
+      - A) The rising licence cost of cipher software as the partner count grows
+      - B) The falling speed of the cipher on each partner's processors
+      - C) Securely distributing and storing a separate secret key for every pair
+      - D) The growing size of each encrypted file on the file servers
+      answer: C
+    - question: A browser accepts a certificate for a supplier's website because a certificate authority signed
+        it. What is the authority vouching for?
       options:
-      - A) Encrypt all traffic
-      - B) Vouch that a public key belongs to a named subject
-      - C) Store private keys
-      - D) Issue passwords
-      answer: B
-    - question: 'Hashing a password with a salt primarily defeats:'
+      - A) That the supplier's private key is guarded safely by the authority
+      - B) That the website cannot be broken into by any adversary
+      - C) That all traffic will be encrypted with the authority's own key
+      - D) That the public key belongs to the named supplier
+      answer: D
+    - question: A web application stores each password as a hash with a random salt unique to the account.
+        What does the salt primarily defeat?
       options:
-      - A) Brute force entirely
-      - B) Precomputed rainbow tables
-      - C) Phishing
-      - D) Keylogging
-      answer: B
+      - A) Phishing messages that trick the account holder into typing
+      - B) Brute-force guessing of every password, however long
+      - C) Precomputed tables of digests for unsalted hashes
+      - D) Keylogging software on the accounts
+      answer: C
 - ordinal: 5
   title: Security Governance and Frameworks
   content_type: reading
@@ -266,16 +379,39 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Describe the purpose of a cybersecurity framework.
-  - Explain the functions of the NIST Cybersecurity Framework 2.0.
-  - Relate policy, standard, procedure and guideline.
+  - Classify each control in a described environment under the NIST CSF 2.0 function it serves
+  - Distinguish policy, standard, procedure and guideline by the obligation each document carries
+  - Name the CSF function a control set covers least and propose one control to close the gap
   topics:
-  - Policy hierarchy and document types.
-  - NIST CSF 2.0 functions and outcomes.
-  - Control selection and tailoring.
-  - Compliance versus security.
-  lab: 'Lab: Map five existing controls in a described environment onto NIST CSF 2.0 functions and identify
-    which function is least covered.'
+  - The purpose of a cybersecurity framework for a small organisation.
+  - The six CSF 2.0 functions — Govern, Identify, Protect, Detect, Respond and Recover — and their outcomes.
+  - Policy, standard, procedure and guideline in the document hierarchy.
+  - Tailoring a control baseline to a system's risk and context.
+  - Compliance with a standard and what it does not guarantee.
+  lab: >-
+    Lab: On the small-enterprise range, map three real controls to the NIST CSF 2.0 functions they
+    serve and judge which function the range covers least. Evidence: each fw-01 rule with its source
+    network and ports; the minimum length, lockout threshold and lockout duration from the
+    instructor's password-policy extract; one recent sign-in event from the log on jump-box; the CSF function named for
+    each control and the function covered least. Pass: all three controls mapped to a function with
+    one sentence of reason; the least-covered function named; one proposed control stated for that
+    function.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the start time in the lab notes.
+    - hosts: [jump-box]
+      action: Read the fw-01 rule-set extract the instructor supplies and record each rule with its source
+        network and ports.
+    - hosts: [jump-box]
+      action: Read the domain password-policy extract the instructor supplies and record the minimum length,
+        the lockout threshold and the lockout duration.
+    - hosts: [jump-box]
+      action: From the log on jump-box, record one recent sign-in event with its time, account and outcome.
+    - hosts: [jump-box]
+      action: Map the firewall rule set, the password policy and the log source to the CSF 2.0 function each
+        serves, name the function covered least and propose one control for it.
   refs:
   - nist-cswp-29
   - nist-sp-800-37r2
@@ -283,40 +419,45 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: NIST CSF 2.0 added which function relative to version 1.1?
+    - question: A council pays for log monitoring that raises an alert when a sign-in fails five times on one
+        account. Which NIST CSF 2.0 function does this control serve?
       options:
-      - A) Detect
-      - B) Govern
-      - C) Respond
+      - A) Govern
+      - B) Protect
+      - C) Detect
       - D) Recover
-      answer: B
-    - question: 'A policy differs from a procedure in that a policy states:'
+      answer: C
+    - question: A warehouse's document set has a one-page rule that every laptop must use full-disk encryption,
+        plus a separate document listing the exact setup steps. How do the two documents relate?
       options:
-      - A) Step-by-step instructions
-      - B) Intent and requirement, not implementation detail
-      - C) Vendor product names
-      - D) Firewall rules
+      - A) Both documents are guidelines because neither one is mandatory
+      - B) The first is a policy; the second is a procedure
+      - C) The documents conflict, so the warehouse must withdraw one
+      - D) The first is a standard; the second is a guideline
       answer: B
-    - question: 'Compliance with a standard guarantees:'
+    - question: A clinic passes an audit that checks twenty named controls, and its director says the clinic
+        is now safe from breach. What is wrong with that claim?
       options:
-      - A) Complete security
-      - B) That specified controls are in place, not that risk is eliminated
-      - C) No breaches
-      - D) Insurance payout
-      answer: B
-    - question: 'Tailoring a control baseline means:'
+      - A) Nothing is wrong, because a passed audit proves no breach will happen
+      - B) The audit measured staff training and nothing else of value
+      - C) Twenty controls are too few for any clinic to rely on
+      - D) Compliance confirms the named controls exist; it does not end risk
+      answer: D
+    - question: A firm's board approves a cybersecurity risk strategy, sets the risk appetite and reviews it
+        each year. Which CSF 2.0 function covers this work?
       options:
-      - A) Ignoring controls that are inconvenient
-      - B) Adjusting the baseline to the system's risk and context with justification
-      - C) Adding every optional control
-      - D) Copying another organisation's baseline
-      answer: B
-    - question: 'The Govern function of CSF 2.0 is primarily concerned with:'
+      - A) Govern
+      - B) Identify
+      - C) Protect
+      - D) Respond
+      answer: A
+    - question: An insurer's baseline requires twelve controls, but a tiny charity drops three and documents
+        why each does not apply to it. What is this activity called?
       options:
-      - A) Packet filtering
-      - B) Establishing and monitoring cybersecurity risk management strategy and expectations
-      - C) Malware removal
-      - D) Backup scheduling
+      - A) Ignoring the three controls that are inconvenient to deliver
+      - B) Tailoring the baseline to its context with justification
+      - C) Copying whichever baseline a larger organisation already uses
+      - D) Adding every optional control the catalogue also offers to it
       answer: B
 - ordinal: 6
   title: Security Operations and the Analyst Role
@@ -325,16 +466,41 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Describe the function of a security operations centre.
-  - Explain triage and escalation of an alert.
-  - Apply an evidence-based approach to reporting a finding.
+  - Classify each alert as a true positive, a false positive or needing enrichment, citing the evidence
+  - Write an escalation note for the most serious event, separating recorded facts from interpretation
+  - Sequence the tiers of a security operations centre by the decisions each tier owns
   topics:
-  - SOC tiers, roles and workflow.
-  - Alert triage, enrichment and escalation.
-  - True positive, false positive and the cost of each.
-  - Writing defensible findings.
-  lab: 'Lab: Triage three provided alerts, classify each as true or false positive with stated evidence,
-    and write an escalation note for the one requiring further action.'
+  - The tiers of a security operations centre and the decisions each owns.
+  - Alert triage, enrichment and escalation criteria.
+  - True positives, false positives and the cost of each.
+  - Recording facts with sources, times and outcomes.
+  - Writing an escalation note that separates evidence from interpretation.
+  lab: >-
+    Lab: On the small-enterprise range, triage the sign-in events in the sign-in log on jump-box as if
+    each were an alert, and escalate the most serious one. The range's expected sign-ins are the
+    analyst account's sign-ins on jump-box; any other account, or any failed sign-in, is unexplained
+    until its evidence settles it. Evidence: the five most recent sign-in events, each with time,
+    account and outcome; the new event a fresh analyst sign-in adds to the log; a true positive, false positive
+    or needs-enrichment judgement for each event with one sentence of evidence; an escalation note for
+    the most serious event. Pass: every event triaged with cited evidence; each judgement uses one of
+    the three labels; the note separates facts with sources from interpretation.
+  lab_range:
+    template: small-enterprise
+    steps:
+    - hosts: [jump-box]
+      action: Log on to jump-box over SSH, open a terminal and record the start time in the lab notes.
+    - hosts: [jump-box]
+      action: Read the sign-in log on jump-box and record the five most recent sign-in events, each with
+        its time, account and outcome.
+    - hosts: [jump-box]
+      action: Open a second sign-in to jump-box as the analyst account the instructor assigned, read the
+        sign-in log again and record the new sign-in event it adds.
+    - hosts: [jump-box]
+      action: Triage each recorded event against the expected sign-ins stated in the lab brief, as a true
+        positive, a false positive or needing enrichment, with one sentence of evidence for each.
+    - hosts: [jump-box]
+      action: Write an escalation note for the event judged most serious, separating facts with sources and
+        times from interpretation.
   refs:
   - nist-sp-800-61r3
   - nist-sp-800-92
@@ -342,38 +508,42 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'A false negative in detection means:'
+    - question: An alert fires on every backup job's mass file copy, which the schedule authorises. Which
+        triage label fits?
       options:
-      - A) An alert fired with no real activity
-      - B) Real malicious activity produced no alert
-      - C) An alert was duplicated
-      - D) A rule failed to compile
-      answer: B
-    - question: 'Alert enrichment refers to:'
+      - A) The backup job was real malicious activity by an intruder
+      - B) The rule missed a real intrusion that was already underway
+      - C) The rule fired on activity that was actually authorised
+      - D) The rule duplicated a second alert about the same activity
+      answer: C
+    - question: A small security operations centre receives an alert about unauthorised access to a database.
+        Whose first job is confirming whether the activity is real?
       options:
-      - A) Increasing alert volume
-      - B) Adding context such as asset owner and threat intelligence to aid decision
-      - C) Deleting low-severity alerts
-      - D) Rewriting detection rules
+      - A) The tier that tunes and writes detection rules
+      - B) The tier that monitors alerts first
+      - C) The board's risk committee, which meets yearly
+      - D) The detection vendor's support desk in another country
       answer: B
-    - question: 'Excessive false positives are damaging chiefly because they:'
+    - question: 'An alert never fired although the activity matched the detection rule. After an intrusion,
+        the review records this outcome as:'
       options:
-      - A) Consume disk space
-      - B) Cause analyst fatigue so real detections are missed
-      - C) Break the SIEM
-      - D) Violate policy
+      - A) A false positive
+      - B) A false negative
+      - C) Duplicate alerting
+      - D) Alert enrichment
       answer: B
-    - question: 'A defensible finding must always include:'
+    - question: Before deciding, an analyst adds the asset owner, the sign-in history and threat intelligence
+        about the account to the alert. What is this step called?
       options:
-      - A) The analyst's opinion only
-      - B) The specific evidence and where it was observed
-      - C) A vendor recommendation
-      - D) An estimated financial loss
-      answer: B
-    - question: 'Escalation criteria exist primarily to:'
+      - A) Escalation
+      - B) Containment
+      - C) Tuning
+      - D) Enrichment
+      answer: D
+    - question: Which line belongs in an escalation note about a confirmed unauthorised read?
       options:
-      - A) Reduce staffing
-      - B) Ensure consistent, timely handling of events that exceed a tier's authority
-      - C) Improve tool performance
-      - D) Satisfy auditors only
-      answer: B
+      - A) The account owner is almost certainly the intruder who did all of this
+      - B) Something suspicious seems to have happened on the file server
+      - C) At 09:14 the backup account read the finance share (security log)
+      - D) This incident feels serious and probably needs urgent leadership attention
+      answer: C

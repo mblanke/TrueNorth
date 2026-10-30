@@ -9,6 +9,7 @@ difficulty: intermediate
 duration_hours: 100
 provenance: unsourced
 status: draft
+readiness: draft
 is_published: false
 qsp_code: ALJQ
 # Prerequisites by subject: approved by the programme owner 2026-10-20 (PR #229).
@@ -34,16 +35,41 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Distinguish hunting from alerting and incident response.
-  - Apply a structured hunting methodology.
-  - Define hunt scope, duration and success criteria.
+  - Explain how threat hunting differs from alert triage and incident response in a security operations centre
+  - Formulate a falsifiable hunt hypothesis from a technique, a data source and a target population
+  - Define hunt scope, duration and success criteria that bound a hunt to a scheduled decision point
   topics:
-  - Hunting versus monitoring.
-  - Hypothesis-driven and data-driven hunting.
-  - Hunt planning and scoping.
-  - Measuring hunt outcomes.
-  lab: 'Lab: Plan a hunt including hypothesis, data sources, scope, duration and success criteria, and
-    state in advance what result would falsify the hypothesis.'
+  - Threat hunting as proactive search, contrasted with alert-driven monitoring and incident response.
+  - Hypothesis-driven hunting built on adversary technique knowledge and falsifiable statements.
+  - Data-driven hunting that explores telemetry for anomalies without a named adversary.
+  - Planning hunts with scope, duration, success criteria and a scheduled decision point.
+  - Measuring hunt outcomes as detections and visibility improvements rather than incidents found.
+  lab: >-
+    Lab: On the soc-training range, survey the telemetry the range can produce, then draft a hunt
+    plan with a falsifiable hypothesis, named data sources, scope, duration and success criteria.
+    Evidence: the index or event source names found on siem01 and seconion01; the client count and
+    one example artefact collection available on velociraptor01; the hunt plan stating hypothesis,
+    sources, scope, duration, success criteria and the observation that would falsify the
+    hypothesis. Pass: all telemetry items recorded exactly as the range shows them; the hypothesis
+    is falsifiable, stating what observation would disprove it; scope, duration and success
+    criteria each stated with a number or date.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01]
+      action: Log on to jump01, open a terminal and record the start time in the lab notes.
+    - hosts: [jump01, siem01]
+      action: Open the SIEM on siem01 and record the index or event source names available for endpoint and
+        network telemetry.
+    - hosts: [jump01, velociraptor01]
+      action: Open Velociraptor on velociraptor01, record how many clients are connected and list one artefact
+        collection available for process events.
+    - hosts: [jump01, seconion01]
+      action: Open Security Onion on seconion01 and record which network alert and metadata views are available
+        for the victim network.
+    - hosts: [jump01]
+      action: 'Draft the hunt plan: write the hypothesis, list the sources verified, set scope, duration and
+        success criteria, and state the observation that would falsify the hypothesis.'
   refs:
   - mitre-attack
   - nist-sp-800-92
@@ -51,41 +77,46 @@ modules:
     title: Quiz 1
     pass_threshold: 70
     questions:
-    - question: 'Threat hunting differs from alert triage because hunting:'
+    - question: During a quiet week the alert queue stays empty. A senior analyst spends the shift querying
+        endpoint telemetry for scheduled-task creation that no alert covers. Which statement describes this work?
       options:
-      - A) Waits for alerts
-      - B) Proactively searches for activity that produced no alert
-      - C) Is automated
-      - D) Requires an incident
-      answer: B
-    - question: 'A falsifiable hypothesis is valuable because it:'
+      - A) It is hunting, a proactive search for activity that produced no alert
+      - B) It is alert triage, because every security operation begins with an alert
+      - C) It is incident response, because a compromise has been confirmed
+      - D) It is tuning, because the analyst is changing detection logic
+      answer: A
+    - question: 'A hunt hypothesis names a specific persistence technique on at least one server and ends when
+        every server is checked or one instance is found. Why is it well formed?'
       options:
-      - A) Is easier to prove
-      - B) Allows the hunt to conclude definitively either way
-      - C) Reduces data needs
-      - D) Avoids documentation
-      answer: B
-    - question: 'Data-driven hunting starts from:'
+      - A) It names a technique, a population and a result that settles it
+      - B) It proves the adversary is present, so the hunt cannot fail
+      - C) It is broad enough to cover any persistence mechanism the data contains
+      - D) It avoids naming a data source, so evidence leads the hunt
+      answer: A
+    - question: A hunting team has no specific adversary in mind. They group ninety days of process executions by
+        parent-child pair and examine the rarest pairs. Which kind of hunt is this?
       options:
-      - A) A specific adversary hypothesis
-      - B) Exploration of the data for anomalies
-      - C) An alert
-      - D) A vendor report
+      - A) Hypothesis-driven, because the rare pairs test a stated hypothesis
+      - B) Data-driven, because the anomalies are found by exploring the data itself
+      - C) Alert triage, because the events came from production telemetry
+      - D) Incident response, because rare pairs indicate a live compromise
       answer: B
-    - question: 'Defining hunt duration in advance prevents:'
+    - question: A hunt ran for its planned two weeks, found one unexplained but benign script, and produced
+        no detection. The programme lead still records the hunt as successful. What justifies that?
       options:
-      - A) Thorough analysis
-      - B) Unbounded effort with no decision point
-      - C) Documentation
-      - D) Scope creep only
-      answer: B
-    - question: 'The primary output of a mature hunting programme is:'
+      - A) The unexplained script proves that an adversary evaded the hunt
+      - B) Success requires an incident, and the script was too minor for one
+      - C) The hunt ran for exactly the duration stated in the plan
+      - D) The coverage gained is a result, even with no detection written
+      answer: D
+    - question: Which output justifies continuing to fund a hunting programme at the end of a quarter with no
+        incidents found?
       options:
-      - A) Incidents found
-      - B) New detections and improved visibility, whether or not activity was found
-      - C) Analyst hours
-      - D) Data volume
-      answer: B
+      - A) The number of queries the hunters ran
+      - B) The total volume of telemetry the hunters searched
+      - C) The detections and visibility improvements the hunts produced
+      - D) The analyst hours the hunts consumed
+      answer: C
 - ordinal: 2
   title: Data Sources and Analytic Techniques
   content_type: reading
@@ -93,16 +124,43 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Select data sources appropriate to a hypothesis.
-  - Apply statistical and stacking techniques at scale.
-  - Recognise the limits of each analytic approach.
+  - Select the data sources that can confirm or refute a given hunt hypothesis
+  - Apply frequency analysis, stacking and clustering to endpoint telemetry at fleet scale
+  - Judge the limits of an analytic result, including rarity that is expected and telemetry gaps
   topics:
-  - Source selection and coverage.
-  - Stacking, clustering and outlier detection.
-  - Baselining and rarity analysis.
-  - Analytic limitations and false confidence.
-  lab: 'Lab: Apply frequency analysis to process execution data across a fleet to identify rare parent-child
-    relationships, then investigate the three rarest and classify each.'
+  - 'Matching data sources to a hypothesis: process, authentication, network and cloud telemetry.'
+  - Frequency analysis and rarity ranking across a homogeneous fleet of endpoints.
+  - Stacking parent-child process relationships and clustering similar events to reduce volume.
+  - Baselining expected behaviour so that anomaly is judged against established normal.
+  - 'False confidence: rare-but-expected software, partial visibility and single-source conclusions.'
+  lab: >-
+    Lab: On the soc-training range, run a frequency analysis over process execution events across
+    the fleet, then investigate the three rarest parent-child relationships and classify each one.
+    Evidence: the total count of process events searched and the query used; the three rarest
+    parent-child pairs with the hosts and counts observed; a classification of each pair as
+    expected-but-rare, suspicious or telemetry artefact, with one sentence of reason. Pass: all
+    items recorded exactly as the range shows them; each of the three pairs classified with a
+    reason that cites the recorded counts; the query stated precisely enough to rerun on a fresh
+    range.
+  lab_range:
+    template: soc-training
+    scenario: incident-response-drill
+    steps:
+    - hosts: [jump01, siem01]
+      action: Log on to jump01, open the SIEM on siem01 and record the total count of process execution events
+        available across the fleet.
+    - hosts: [jump01, siem01]
+      action: Run a frequency analysis grouping process events by parent-child pair, order the pairs by rarity
+        and record the three rarest pairs with their counts.
+    - hosts: [jump01, velociraptor01]
+      action: For each of the three rarest pairs, open the originating host in Velociraptor on velociraptor01 and
+        record the process details around each pair.
+    - hosts: [jump01]
+      action: 'Investigate the context collected so far: check whether each parent process is deployed software, a
+        management agent or an interactive session, and record which.'
+    - hosts: [jump01]
+      action: Classify each of the three pairs as expected-but-rare, suspicious or a telemetry artefact, with one
+        sentence of reason that cites the counts recorded.
   refs:
   - mitre-attack
   - sigma
@@ -110,41 +168,46 @@ modules:
     title: Quiz 2
     pass_threshold: 70
     questions:
-    - question: 'Rarity analysis assumes that:'
+    - question: A frequency analysis ranks an accounting application's monthly licence check as the rarest
+        parent-child pair in the fleet. What is the defensible conclusion?
       options:
-      - A) Rare is always malicious
-      - B) Malicious activity is often rare, so rarity is a useful filter not a verdict
-      - C) Common is malicious
-      - D) Frequency is irrelevant
+      - A) The pair is malicious, because rarity and malice are equivalent
+      - B) The pair is rare and worth context, since rarity never convicts
+      - C) The pair is benign, because accounting software is expected
+      - D) The analysis is invalid, because expected software should be excluded first
       answer: B
-    - question: 'Stacking works best when the population is:'
+    - question: Stacking parent-child pairs across near-identical workstations gives a short, stable list; the
+        same stacking on a mixed estate produces noise. Why does it work better on the workstation fleet?
       options:
-      - A) Highly heterogeneous
-      - B) Reasonably homogeneous so outliers are meaningful
-      - C) Very small
-      - D) Unlabelled
-      answer: B
-    - question: 'Baselining before hunting is important because:'
+      - A) A homogeneous population makes the outliers meaningful, because expected variation is low
+      - B) A homogeneous population has more events, and stacking needs volume to work
+      - C) Servers and appliances log incompletely, so their stacks are always empty
+      - D) Kiosks cannot run malicious software, so their events are safe to ignore
+      answer: A
+    - question: Before hunting, the team baselines normal sign-in hours per account. What does the baseline let
+        them say that raw counts alone do not?
       options:
-      - A) It reduces data
-      - B) Anomaly is only meaningful relative to established normal
-      - C) It speeds queries
-      - D) It satisfies audit
+      - A) That any sign-in outside the recorded hours is an adversary
+      - B) That an anomaly means a deviation from established normal
+      - C) That the authentication logs are complete for every account they cover
+      - D) That the accounts with the most sign-ins are compromised
       answer: B
-    - question: 'A hunt limited to one data source risks:'
+    - question: A hunt concludes that no WMI persistence exists after searching one endpoint agent's process
+        events, and that agent does not collect WMI event subscriptions. What is wrong with the conclusion?
       options:
-      - A) Faster results
-      - B) Concluding absence of activity when only that source lacks visibility
-      - C) Better accuracy
-      - D) Lower cost
-      answer: B
-    - question: 'Clustering similar events helps a hunter by:'
+      - A) Absence was concluded from a source blind to that technique
+      - B) WMI persistence is undetectable on any endpoint agent
+      - C) The hunt needed a hypothesis before it could search
+      - D) Process events are the wrong telemetry for every persistence technique
+      answer: A
+    - question: Clustering turns forty thousand similar authentication events into six distinct patterns. What
+        has the hunter gained?
       options:
-      - A) Deleting duplicates
-      - B) Reducing volume to distinct behaviours worth examining
-      - C) Improving retention
-      - D) Assigning severity
-      answer: B
+      - A) Proof that the six patterns are the malicious ones
+      - B) A reduced retention requirement for the authentication logs
+      - C) A manageable set of behaviours, each worth one examination
+      - D) Automatic severity ratings for the six patterns
+      answer: C
 - ordinal: 3
   title: Hunting for Persistence and Lateral Movement
   content_type: reading
@@ -152,16 +215,45 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Hunt for persistence mechanisms across a fleet.
-  - Detect lateral movement patterns in authentication data.
-  - Distinguish administrative activity from adversary activity.
+  - Hunt for persistence mechanisms across a fleet by comparing scheduled tasks, run keys and services
+  - Detect lateral movement as authentication paths between hosts that normally do not communicate
+  - Separate legitimate administrative activity from adversary activity using the jump host baseline
   topics:
-  - Persistence hunting across endpoints.
-  - Authentication graph analysis.
-  - Remote execution techniques.
-  - Administrative baseline discrimination.
-  lab: 'Lab: Hunt for anomalous remote execution across authentication and process data, build a lateral
-    movement graph, and separate legitimate administrative patterns from suspicious ones.'
+  - 'Persistence mechanisms: scheduled tasks, registry run keys, services and accounts.'
+  - Fleet-wide comparison that makes one host's unusual mechanism stand out.
+  - 'Authentication graph analysis: accounts, source hosts, destination hosts and frequency.'
+  - Remote execution techniques that leave service creation or credential artefacts.
+  - 'Administrative baselines: jump host patterns, change windows and expected accounts.'
+  lab: >-
+    Lab: On the soc-training range, hunt for persistence and lateral movement by comparing
+    authentication paths and persistence mechanisms across the victim hosts, then classify each
+    finding. Evidence: the accounts that authenticated to more than one host in the window, with
+    source and destination; the scheduled tasks and run key entries on each examined workstation
+    and which ones exist on only one host; the process and authentication context collected around
+    the most unusual finding; a classification of each finding as administrative, persistence or
+    lateral movement. Pass: all items recorded exactly as the range shows them; each finding
+    classified with a reason that cites the recorded evidence; the administrative findings
+    reconciled against the jump host pattern.
+  lab_range:
+    template: soc-training
+    scenario: incident-response-drill
+    steps:
+    - hosts: [jump01, siem01]
+      action: Log on to jump01, open the SIEM on siem01 and search the authentication events for accounts that
+        authenticated to more than one victim host in the window; record each account with its source and
+        destination.
+    - hosts: [jump01, velociraptor01]
+      action: Open Velociraptor on velociraptor01 and compare the scheduled tasks and run key entries across the
+        victim workstations; record any mechanism that exists on only one host.
+    - hosts: [jump01, siem01, velociraptor01]
+      action: For the most unusual finding, collect the surrounding process and authentication context from the
+        SIEM and Velociraptor and record the timeline.
+    - hosts: [jump01]
+      action: 'Reconcile the expected administrative pattern: record which findings match change-window
+        administration from jump01 and which do not.'
+    - hosts: [jump01]
+      action: Classify each finding as administrative, persistence or lateral movement, with one sentence of
+        reason that cites the evidence recorded.
   refs:
   - mitre-attack
   - nist-sp-800-92
@@ -169,41 +261,46 @@ modules:
     title: Quiz 3
     pass_threshold: 70
     questions:
-    - question: 'Lateral movement is often visible as:'
+    - question: Across identical workstations, one host has a scheduled task running a binary from a
+        user-writable path and no other host has it. What does the fleet-wide comparison contribute?
       options:
-      - A) Inbound internet traffic
-      - B) Unusual authentication paths between hosts that normally do not communicate
-      - C) High CPU
-      - D) DNS failures
+      - A) Nothing, because scheduled tasks must be examined one host at a time
+      - 'B) Contrast: the mechanism stands out because every peer lacks it'
+      - C) Confirmation the task is malicious, because user paths are never legitimate
+      - D) A reason to ignore it, since one host cannot matter to others
       answer: B
-    - question: 'Distinguishing admin activity from adversary activity requires:'
+    - question: The authentication log shows an account signing in to eight servers within four minutes. Which
+        reading is defensible before any context is collected?
       options:
-      - A) Blocking admins
-      - B) Knowing the expected administrative baseline and jump host patterns
-      - C) More alerts
-      - D) Fewer accounts
+      - A) The account is compromised, because breadth always means theft
+      - B) The log is corrupt, because no account signs in that fast
+      - C) The servers are misconfigured, because authentication requires a ticket per host
+      - D) Possible automated lateral movement or credential misuse, worth immediate context
+      answer: D
+    - question: An administrator signs in to a jump host and then to six servers during a change window, a
+        pattern seen most months. Why is this not treated as lateral movement?
+      options:
+      - A) Because administrators cannot perform lateral movement, only adversaries can
+      - B) Because it matches the documented administrative baseline for the jump host
+      - C) Because the change window makes authentication events unrecordable
+      - D) Because six servers is too small a number to indicate movement
       answer: B
-    - question: 'Hunting persistence across a fleet is effective because:'
+    - question: An analyst reviews a week of authentication and process events. Which observation most strongly
+        separates adversary lateral movement from routine administration?
       options:
-      - A) Persistence is rare in absolute terms and stands out when compared fleet-wide
-      - B) Persistence is always malicious
-      - C) Endpoints are identical
-      - D) It needs no baseline
+      - A) A new service executing from a temporary directory on previously untouched hosts
+      - B) Authentication during a scheduled change window from the designated jump host
+      - C) The same account used on the same servers as the previous month
+      - D) An interactive sign-in by a domain administrator to a file server
       answer: A
-    - question: 'An account authenticating to many hosts in a short period suggests:'
+    - question: Service creation events appear on three servers, each within a minute of an authentication from
+        one workstation. What does the correlation add?
       options:
-      - A) Normal behaviour always
-      - B) Possible credential misuse or automated lateral movement
-      - C) Password expiry
-      - D) Clock skew
-      answer: B
-    - question: 'Jump hosts complicate lateral movement hunting because they:'
-      options:
-      - A) Log less
-      - B) Legitimately produce many-to-many authentication patterns
-      - C) Are unmanaged
-      - D) Use different protocols
-      answer: B
+      - A) Proof the service is the final objective of the intrusion
+      - B) Evidence the workstation is the patch management server
+      - 'C) A movement path: credential use followed by remote execution on each host'
+      - D) Confirmation the events are administrative and can be closed
+      answer: C
 - ordinal: 4
   title: Hunting in Encrypted and Cloud Environments
   content_type: reading
@@ -211,16 +308,44 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Hunt effectively where payload inspection is unavailable.
-  - Apply cloud-native telemetry to hunting.
-  - Recognise cloud-specific adversary techniques.
+  - Hunt in traffic where payload inspection is unavailable, using metadata and behavioural signals
+  - Interpret TLS fingerprinting, beacon regularity and volume patterns as hunt evidence
+  - Recognise cloud control plane actions in audit logs that warrant a hunt or an investigation
   topics:
-  - Metadata-based hunting.
-  - TLS fingerprinting and behavioural signals.
-  - Cloud audit logs and control plane activity.
-  - Cloud-specific techniques.
-  lab: 'Lab: Hunt for suspicious activity in cloud audit logs, focusing on identity and control plane
-    changes, and identify three actions that would warrant investigation.'
+  - 'What remains observable when payloads are encrypted: endpoints, timing, volume, certificates.'
+  - TLS fingerprinting with JA3 style hashes and certificate metadata as behavioural signals.
+  - Beacon detection through interval regularity, jitter and long-period callbacks.
+  - 'Cloud audit logs: identity, control plane changes and the telemetry they record.'
+  - 'Cloud-specific techniques: new privileged identities, credential misuse and logging disabled.'
+  lab: >-
+    Lab: On the soc-training range, hunt for command-and-control style behaviour in encrypted
+    network traffic using metadata only, and judge which connections warrant investigation.
+    Evidence: the top external TLS connections by volume and by connection count from the network
+    monitoring views; any destination whose connections repeat at a near-constant interval; the
+    certificate details recorded for the most regular destination; the enrichment, if any, held
+    for that destination in the threat intelligence platform. Pass: all items recorded exactly as
+    the range shows them; the beacon judgement states the interval and the evidence for its
+    regularity; the final classification separates suspicious from expected encrypted traffic with
+    a reason.
+  lab_range:
+    template: soc-training
+    scenario: incident-response-drill
+    steps:
+    - hosts: [jump01, seconion01]
+      action: Log on to jump01, open the network monitoring console on seconion01 and record the top external TLS
+        connections by volume and by connection count.
+    - hosts: [jump01, zeek01]
+      action: Open the Zeek logs on zeek01 and record whether any external destination repeats at a near-constant
+        interval across the window.
+    - hosts: [jump01, pcap01]
+      action: For the most regular destination, check the captured traffic on pcap01 and record the certificate
+        details and fingerprint shown.
+    - hosts: [jump01, misp01]
+      action: Search the threat intelligence platform on misp01 for the destination and record any enrichment
+        held for it.
+    - hosts: [jump01]
+      action: Classify the destination as suspicious or expected encrypted traffic, stating the interval evidence
+        and one follow-up action if it is suspicious.
   refs:
   - mitre-attack
   - nist-sp-800-145
@@ -229,40 +354,45 @@ modules:
     title: Quiz 4
     pass_threshold: 70
     questions:
-    - question: 'Where payloads are encrypted, hunting relies primarily on:'
+    - question: A team can no longer inspect payloads on the outbound proxy. Which hunting approach still works
+        without changing collection?
       options:
-      - A) Decryption
-      - B) Metadata, timing, volume and behavioural patterns
-      - C) Signatures
-      - D) File hashes
-      answer: B
-    - question: 'Cloud control plane logs are valuable because they record:'
+      - A) 'Correlate destination timing, volume, certificates and fingerprints'
+      - B) Request decryption exemptions for the destinations worth watching
+      - C) Switch every detection to signatures that match payload bytes
+      - D) Rely on endpoint hashes, since network metadata carries no signal
+      answer: A
+    - question: Every sixty seconds, one workstation opens a small TLS connection to the same external address,
+        including at night. The payload content is unreadable. What makes this a hunt hit?
       options:
-      - A) Application data
-      - B) Administrative and configuration actions against cloud resources
-      - C) Network payloads
-      - D) Endpoint processes
-      answer: B
-    - question: 'Creation of a new identity with broad permissions in cloud audit logs is:'
+      - A) The near-constant interval and small uniform volume are behavioural beacons
+      - B) The traffic is encrypted, which is being read as concealment of malice
+      - C) The workstation is new, and new hosts always beacon first
+      - D) Night traffic is prohibited by policy, which proves compromise
+      answer: A
+    - question: Two external destinations exchange similar traffic volumes, but one presents a certificate
+        self-signed days ago and a fingerprint seen on no other host in the estate. Which reading follows?
       options:
-      - A) Routine
-      - B) A high-value hunting signal warranting verification
-      - C) Undetectable
-      - D) Always automated
-      answer: B
-    - question: 'Disabling cloud audit logging is significant because it:'
+      - A) The volumes are identical, so both destinations are equally suspect
+      - B) A unique fingerprint proves the destination is benign provider infrastructure
+      - C) Fresh self-signed certificate and unique fingerprint raise priority despite unreadable payload
+      - D) Certificate details are irrelevant once traffic is encrypted end to end
+      answer: C
+    - question: In a cloud audit log, a service principal creates a new identity, grants it broad permissions,
+        then disables the audit trail. Which combination describes why this sequence warrants a hunt?
       options:
-      - A) Improves performance
-      - B) Is both an evasion technique and a strong indicator itself
-      - C) Reduces cost only
-      - D) Is required for scaling
-      answer: B
-    - question: 'Cloud environments differ for hunting principally because:'
+      - A) It is routine maintenance, and service principals cannot change audit trail settings
+      - B) Only the broad permissions matter; the logging change is a billing matter
+      - C) Disabling logging improves performance, so the sequence is plausibly maintenance
+      - D) A control plane change, and disabling logging is itself a strong indicator
+      answer: D
+    - question: In a hybrid estate, how does cloud hunting differ from on-premises hunting at the control
+        plane?
       options:
-      - A) They are more secure
-      - B) The control plane is a distinct and critical attack surface with its own telemetry
-      - C) They lack logging
-      - D) They use no identities
+      - A) Cloud providers log nothing, so hunting moves entirely to the endpoints
+      - B) The control plane is an attack surface whose configuration changes are evidence
+      - C) Cloud payloads are always encrypted, so hunting is impossible without provider consent
+      - D) On-premises identities never appear in cloud audit logs
       answer: B
 - ordinal: 5
   title: Operationalising Hunt Results
@@ -271,16 +401,43 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Convert hunt findings into durable detections.
-  - Feed findings into visibility improvement.
-  - Document hunts for reuse and repeatability.
+  - Author a tested detection rule from a confirmed hunt finding, including its false positive case
+  - Record a hunt so another analyst can rerun it and reach the same conclusion
+  - Propose remediation for the visibility gap a hunt exposed and route the finding onward
   topics:
-  - Detection authoring from hunt output.
-  - Visibility gap remediation.
-  - Hunt documentation and reuse.
-  - Automation of repeatable hunts.
-  lab: 'Lab: Take a hunt that found a technique, author a tested detection for it, document the hunt for
-    repeatability, and identify the visibility gap that allowed it to go undetected.'
+  - 'Detection authoring from hunt output: logic, thresholds and the benign case.'
+  - Validating detections against both the technique and representative normal activity.
+  - 'Hunt documentation: hypothesis, queries, data sources, findings and coverage gained.'
+  - Turning a repeatable hunt into a scheduled analytic with an owner.
+  - 'Visibility gaps: recording what could not be seen and closing it.'
+  lab: >-
+    Lab: On the soc-training range, take a confirmed hunt finding, author a detection for it,
+    check the detection against expected activity, document the hunt and record the visibility
+    gap. Evidence: the detection logic written for the finding, with the fields it matches; the
+    result of running the logic against a window of expected activity; the hunt record with
+    hypothesis, queries, sources and findings; the visibility gap the hunt exposed and the
+    telemetry that would close it. Pass: all items recorded exactly as the range shows them; the
+    detection matches the finding and does not fire on the expected window; the hunt record is
+    complete enough for another analyst to rerun.
+  lab_range:
+    template: soc-training
+    scenario: incident-response-drill
+    steps:
+    - hosts: [jump01, siem01]
+      action: Log on to jump01, open the SIEM on siem01 and rerun the search behind the confirmed finding;
+        record the matching events.
+    - hosts: [jump01, siem01]
+      action: 'Draft the detection logic for the finding: record the fields it matches and the threshold or
+        condition it applies.'
+    - hosts: [jump01, siem01]
+      action: Run the draft logic against a window of expected activity and record whether it fires on anything
+        benign.
+    - hosts: [jump01, thehive01]
+      action: Open TheHive on thehive01 and record how a confirmed finding from this detection would be routed
+        into a case.
+    - hosts: [jump01]
+      action: 'Write the hunt record: hypothesis, queries, sources, findings, the visibility gap the hunt exposed
+        and the telemetry that would close it; state whether another analyst could rerun it.'
   refs:
   - sigma
   - mitre-attack
@@ -288,41 +445,45 @@ modules:
     title: Quiz 5
     pass_threshold: 70
     questions:
-    - question: 'Every hunt should conclude with:'
+    - question: A hunt confirmed that an adversary used a specific scheduled-task name on one server. Which
+        follow-up makes the finding durable?
       options:
-      - A) An incident
-      - B) Documented findings plus detection or visibility improvements
-      - C) A new tool
-      - D) A closed ticket
-      answer: B
-    - question: 'A repeatable hunt should eventually be:'
+      - A) Author a detection on the task name and validate against task creation
+      - B) Delete the task and close the hunt without recording the query
+      - C) Save the raw events to a share and mark the hunt complete
+      - D) Wait for the vendor's next scheduled detection update to cover the technique
+      answer: A
+    - question: A detection written from a hunt fires on every software build agent in the estate. What was
+        skipped?
       options:
-      - A) Discarded
-      - B) Automated as a scheduled analytic or detection
-      - C) Performed manually forever
-      - D) Assigned to juniors
+      - A) The rule logic, which should have matched on event count instead
+      - B) Validation of the rule against representative benign activity
+      - C) A hunt to confirm the technique exists anywhere in the estate
+      - D) An escalation to incident response for every firing
       answer: B
-    - question: 'If a hunt reveals a visibility gap, the correct response is to:'
+    - question: A hunt that searched two weeks of telemetry found nothing but recorded exactly what was
+        searched. Why keep the record?
       options:
-      - A) Note it only
-      - B) Remediate the telemetry gap so future detection is possible
-      - C) Increase alert volume
-      - D) Change the hypothesis
-      answer: B
-    - question: 'Documenting a hunt that found nothing is valuable because it:'
+      - A) Nothing was found, so there is nothing worth recording
+      - B) The record justifies the budget spent on the hunters this quarter
+      - C) Empty hunts are kept only until the next audit
+      - D) It records coverage gained and prevents repeating the hunt blind
+      answer: D
+    - question: A hunt that has run quarterly with the same query and stable results should next become what?
       options:
-      - A) Fills reports
-      - B) Records coverage achieved and avoids duplicated effort
-      - C) Justifies budget
-      - D) Satisfies audit
-      answer: B
-    - question: 'Detections authored from hunts should be validated against:'
+      - A) A manual task reassigned each quarter to whoever is free
+      - B) A retired query, since repeated hunts mean the technique is gone
+      - C) A scheduled analytic with a named owner and a defined threshold
+      - D) A raw log export reviewed only after incidents
+      answer: C
+    - question: During a hunt the team learns the estate's endpoint agent collects no memory artefacts. What is
+        the correct operational output?
       options:
-      - A) The hunt data only
-      - B) Both the positive case and representative benign activity
-      - C) Vendor samples
-      - D) Nothing
-      answer: B
+      - A) A recorded visibility gap with a proposal for the missing telemetry
+      - B) A note advising hunters to avoid hypotheses the current data cannot answer
+      - C) A request to rerun the hunt once analysts learn memory analysis
+      - D) A finding that memory artefacts are irrelevant to hunting
+      answer: A
 - ordinal: 6
   title: Building a Hunting Programme
   content_type: reading
@@ -330,16 +491,37 @@ modules:
   is_required: true
   pass_threshold: 70
   objectives:
-  - Establish a hunting capability with defined outputs.
-  - Measure hunting effectiveness meaningfully.
-  - Integrate hunting with detection and response functions.
+  - Design a twelve-month hunting programme with cadence, prioritised hypotheses and named data sources
+  - Prioritise hunt hypotheses by relevance to the organisation and by current visibility
+  - Select programme metrics that reward coverage and detection output rather than incident counts
   topics:
-  - Programme structure and cadence.
-  - Skills and team composition.
-  - Meaningful hunt metrics.
-  - Integration with SOC functions.
-  lab: 'Lab: Design a twelve-month hunting programme including cadence, prioritised hypotheses, required
-    data sources and the metrics you would report to leadership.'
+  - 'Programme structure: dedicated time, cadence, team composition and skills.'
+  - Choosing hypotheses from threat intelligence, technique relevance and coverage gaps.
+  - Feeding hunt output into detection engineering and incident response.
+  - 'Metrics: detections produced, visibility gaps closed and coverage against techniques.'
+  - Reporting to leadership in terms of capability, not incident counts.
+  lab: >-
+    Lab: Using the soc-training range as the reference environment, design a twelve-month hunting
+    programme and justify each choice. Evidence: the telemetry inventory observed on the range,
+    mapped to the techniques it can and cannot confirm; three prioritised hypotheses with the data
+    source that answers each; the cadence and dedicated time proposed for the team; the metrics
+    reported to leadership with a reason each. Pass: all items recorded; each hypothesis is
+    falsifiable and names its data source; the metrics measure coverage or detection output, not
+    incident counts alone.
+  lab_range:
+    template: soc-training
+    steps:
+    - hosts: [jump01, siem01]
+      action: Log on to jump01 and record which endpoint, network and threat intelligence data sources the range
+        actually provides, using the SIEM on siem01 as the index.
+    - hosts: [jump01, misp01]
+      action: Open the threat intelligence platform on misp01 and record two adversary behaviours with
+        intelligence that the range's telemetry could confirm.
+    - hosts: [jump01, thehive01]
+      action: Open TheHive on thehive01 and record how hunt findings would flow into cases and detection work.
+    - hosts: [jump01]
+      action: 'Draft the twelve-month programme: cadence, three prioritised hypotheses with sources, dedicated
+        time and the metrics reported to leadership.'
   refs:
   - mitre-attack
   - nist-cswp-29
@@ -347,38 +529,42 @@ modules:
     title: Quiz 6
     pass_threshold: 70
     questions:
-    - question: 'Measuring a hunting programme by incidents found is flawed because:'
+    - question: A programme lead reports quarterly results as two incidents found. The same quarter's hunts
+        closed four visibility gaps and produced five detections. Why is the incident count the weaker measure?
       options:
-      - A) Incidents are rare
-      - B) It penalises hunts that correctly establish absence and improve coverage
-      - C) Incidents are hard to count
-      - D) It is subjective
-      answer: B
-    - question: 'Hunting hypotheses should be prioritised by:'
+      - A) It penalises hunts that correctly establish absence and improve coverage
+      - B) Incidents are easier to count, so the measure lacks rigour
+      - C) Incident counts should be reported weekly rather than quarterly
+      - D) The detections and the gaps belong to detection engineering, not to hunting
+      answer: A
+    - question: 'Three hypotheses: ransomware precursors in a sector the organisation does not serve;
+        living-off-the-land techniques its telemetry already covers; cloud control plane misuse in a newly
+        migrated subscription. Which ranks first?'
       options:
-      - A) Analyst interest
-      - B) Relevance of the technique to the organisation and current visibility
-      - C) Ease of query
-      - D) Data volume
-      answer: B
-    - question: 'A hunting programme without dedicated time typically:'
+      - A) The ransomware precursors, because the technique is the most damaging today
+      - B) The living-off-the-land techniques, because existing coverage makes them quickest to hunt
+      - C) The cloud control plane misuse, because it is relevant and newly visible
+      - D) Whichever hypothesis the analysts find most interesting to work on that quarter
+      answer: C
+    - question: A hunting programme is assigned to a security operations centre's existing analysts with no
+        dedicated time. What outcome is most likely by year end?
       options:
-      - A) Runs efficiently
-      - B) Is displaced by alert queue work and never happens
-      - C) Produces more findings
-      - D) Needs fewer people
+      - A) The programme runs efficiently, because alert work and hunting share context
+      - B) Alert queue work displaces the hunting and the programme quietly stops
+      - C) The programme produces more findings, because the analysts know the estate
+      - D) The programme needs no metrics, because output is visible in alerts
       answer: B
-    - question: 'Hunting should feed detection engineering because:'
+    - question: Hunt output should flow into detection engineering because the hunt has shown what?
       options:
-      - A) They share tools
-      - B) Hunt findings identify what detections are missing
-      - C) It reduces headcount
-      - D) Metrics require it
-      answer: B
-    - question: 'A useful hunting metric would be:'
+      - A) Which techniques the current detections would miss
+      - B) Which of the existing alerts the SOC could safely retire next quarter
+      - C) That the analysts prefer hunting to triage work
+      - D) That the telemetry volume is already sufficient
+      answer: A
+    - question: Which set of metrics gives leadership a fair view of a hunting programme?
       options:
-      - A) Queries run
-      - B) New validated detections produced and visibility gaps closed
-      - C) Hours worked
-      - D) Data searched
-      answer: B
+      - A) Hours worked and queries run per analyst
+      - B) Incidents found per quarter, with quiet quarters reported as absolute zeros
+      - C) Detections produced, visibility gaps closed and coverage gained against techniques
+      - D) Total data volume searched across the estate during each quarter
+      answer: C
