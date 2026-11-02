@@ -20,7 +20,7 @@ from _shared import act_as, real_tenant, real_user
 from app import auth
 from app.auth import TokenPayload, get_token_identity
 from app.main import app as fastapi_app
-from app.models import Nation, Qualification, User, UserRole
+from app.models import Nation, Qualification, RegistrationRequest, User, UserRole
 
 DEV_TENANT = uuid.UUID("00000000-0000-0000-0000-000000000001")
 PUBLIC_FIELDS = {"id", "name", "iso_alpha2", "iso_alpha3", "flag_emoji"}
@@ -226,3 +226,38 @@ def test_registered_student_is_not_held_to_the_applicant_group_rule(real_auth, d
     fastapi_app.dependency_overrides[get_token_identity] = lambda: TokenPayload(sub=student.keycloak_id)
 
     assert len(real_auth.get(route).json()) >= 2
+
+
+# ── POST /registration holds the requested ids to the same scope (#275) ────
+def _submit(real_auth, monkeypatch, **body):
+    monkeypatch.delenv("REGISTRATION_GROUP_TENANT_MAP", raising=False)
+    monkeypatch.delenv("REGISTRATION_DEFAULT_TENANT_SLUG", raising=False)
+    _as_applicant()
+    return real_auth.post("/registration", json=body)
+
+
+def test_submit_refuses_a_qualification_outside_the_applicants_scope(real_auth, db_session, quals, monkeypatch):
+    r = _submit(real_auth, monkeypatch, requested_qualification_id=str(quals["foreign"].id))
+
+    assert r.status_code == 422, r.text
+    assert db_session.query(RegistrationRequest).filter(RegistrationRequest.requested_qualification_id == quals["foreign"].id).count() == 0
+
+
+@pytest.mark.parametrize("key", ["shared", "home"])
+def test_submit_accepts_a_shared_or_own_tenant_qualification(real_auth, quals, monkeypatch, key):
+    r = _submit(real_auth, monkeypatch, requested_qualification_id=str(quals[key].id))
+
+    assert r.status_code == 201, r.text
+
+
+def test_submit_refuses_an_unknown_qualification(real_auth, quals, monkeypatch):
+    assert _submit(real_auth, monkeypatch, requested_qualification_id=str(uuid.uuid4())).status_code == 422
+
+
+def test_submit_refuses_a_retired_or_unknown_nation(real_auth, nations, monkeypatch):
+    assert _submit(real_auth, monkeypatch, nation_id=str(nations[2].id)).status_code == 422
+    assert _submit(real_auth, monkeypatch, nation_id=str(uuid.uuid4())).status_code == 422
+
+
+def test_submit_accepts_an_active_nation(real_auth, nations, monkeypatch):
+    assert _submit(real_auth, monkeypatch, nation_id=str(nations[0].id)).status_code == 201

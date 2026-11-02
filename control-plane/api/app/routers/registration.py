@@ -209,6 +209,19 @@ def submit_registration(
     role = ident.suggest_role(groups)
     tenant = ident.suggest_tenant(db, groups)
 
+    # The same scope the reference lists offer (GET /registration/nations and /qualifications):
+    # an id outside it is refused here, not dropped silently at approval.
+    if body.nation_id is not None:
+        nation = db.get(Nation, str(body.nation_id))
+        if nation is None or not nation.is_active:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown nation")
+    if body.requested_qualification_id is not None and (
+        _qualification_in_scope(db, body.requested_qualification_id, tenant.id if tenant else None) is None
+    ):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "That qualification is not available to your tenant"
+        )
+
     existing = _open_request(db, identity.sub)
     if existing is not None:
         # Re-submitting while pending edits the open request rather than
@@ -448,6 +461,16 @@ def _check_adoptable(existing: User, approver: CurrentUser, target_tenant: uuid.
         )
 
 
+def _qualification_in_scope(db: Session, qualification_id: uuid.UUID, tenant_id: uuid.UUID | None) -> Qualification | None:
+    """The qualification if it is shared catalogue content (tenant_id NULL) or belongs to
+    ``tenant_id``: the scope the reference list offers and approval enrols within."""
+    scope = Qualification.tenant_id.is_(None)
+    if tenant_id is not None:
+        scope = scope | (Qualification.tenant_id == tenant_id)
+    # tenant-safe: scope is shared catalogue (tenant_id NULL) or tenant_id, built above.
+    return db.query(Qualification).filter(Qualification.id == qualification_id, scope).first()
+
+
 def _enroll_for(
     db: Session,
     *,
@@ -455,8 +478,12 @@ def _enroll_for(
     tenant_id: uuid.UUID,
     qualification_id: uuid.UUID | None,
     learning_path_id: uuid.UUID | None,
-) -> int:
-    """Enroll a newly approved trainee. Returns the course count."""
+) -> tuple[int, bool]:
+    """Enroll a newly approved trainee. Returns (course count, qualification skipped).
+
+    A qualification outside the tenant's scope is never enrolled; it is reported as skipped so
+    the caller can record it. (An approver-chosen one is refused earlier, in ``_approve_one``.)
+    """
     count = 0
     if learning_path_id:
         count += len(
@@ -468,21 +495,15 @@ def _enroll_for(
         # Scoped to the tenant the account is being created in, or to shared
         # catalogue content (tenant_id NULL). An approver must not be able to
         # enrol someone onto another tenant's qualification by id.
-        qual = (
-            db.query(Qualification)
-            .filter(
-                Qualification.id == qualification_id,
-                (Qualification.tenant_id == tenant_id) | (Qualification.tenant_id.is_(None)),
-            )
-            .first()
-        )
-        if qual is not None:
-            # tenant-safe: reached only through the qualification scoped above.
-            courses = db.query(Course).filter(Course.qualification_id == qualification_id).all()
-            for course in courses:
-                ensure_enrollment(db, user_id=user_id, course_id=course.id, tenant_id=tenant_id)
-                count += 1
-    return count
+        qual = _qualification_in_scope(db, qualification_id, tenant_id)
+        if qual is None:
+            return count, True
+        # tenant-safe: reached only through the qualification scoped above.
+        courses = db.query(Course).filter(Course.qualification_id == qualification_id).all()
+        for course in courses:
+            ensure_enrollment(db, user_id=user_id, course_id=course.id, tenant_id=tenant_id)
+            count += 1
+    return count, False
 
 
 def _approve_one(
@@ -513,6 +534,12 @@ def _approve_one(
         raise HTTPException(status.HTTP_403_FORBIDDEN, refusal)
 
     target_tenant = _resolve_tenant(db, req, approver, tenant_id)
+    if qualification_id is not None and _qualification_in_scope(db, qualification_id, target_tenant) is None:
+        # Checked before any row is written: a refused approval leaves no half-made account.
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "That qualification is not shared and is not in the tenant being approved into",
+        )
 
     # Resolve the target row deterministically rather than by catching an
     # IntegrityError: a failed flush poisons the enclosing SAVEPOINT, which in a
@@ -577,13 +604,17 @@ def _approve_one(
 
     db.flush()
 
-    _enroll_for(
+    _, skipped = _enroll_for(
         db,
         user_id=user.id,
         tenant_id=target_tenant,
         qualification_id=qualification_id or req.requested_qualification_id,
         learning_path_id=learning_path_id or req.requested_learning_path_id,
     )
+    if skipped:
+        # Said on the record, not dropped silently: the approver sees it in the response.
+        skip_note = "The requested qualification is not in the tenant approved into, so no courses were enrolled from it."
+        note = f"{note}\n{skip_note}" if note else skip_note
 
     req.status = RegistrationStatus.approved
     req.decided_by_user_id = uuid.UUID(approver.id)

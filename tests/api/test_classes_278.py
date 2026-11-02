@@ -707,7 +707,9 @@ def test_b2_a_local_student_account_is_not_taken_over(client, world, klass, sign
 
 def test_b3_nothing_the_requester_typed_is_approved(client, world, klass, sign_in, db_session, outbox):
     other_course = _course(db_session, world["a"].id, "Other Course")
-    q = Qualification(id=uuid.uuid4(), tenant_id=world["a"].id, qsp_code="REV1", nqual="REV", title="Review")
+    # Shared, so POST /registration accepts it (#275 refuses one outside the applicant's scope):
+    # roll-call approval must still ignore what the requester typed.
+    q = Qualification(id=uuid.uuid4(), tenant_id=None, qsp_code="REV1", nqual="REV", title="Review")
     db_session.add(q)
     db_session.flush()
     other_course.qualification_id = q.id
