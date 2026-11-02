@@ -1203,6 +1203,7 @@ actually change:
 | `tn_bootstrap_admin_upn` | *(empty — required)* | The named AD account that admits everyone else. |
 | `tn_platform_tenant_id` | *(empty: the bootstrap tenant)* | `PLATFORM_TENANT_ID`: whose admins are the platform administrators. A tenant UUID to name another. |
 | `tn_site_timezone` | *(empty: the host's zone, else UTC)* | `SITE_TIMEZONE`, an IANA name such as `America/Toronto`. |
+| `tn_class_observer_consoles` | `false` | `CLASS_OBSERVER_CONSOLES`. Off: observers get live status only and the API refuses their console tickets (owner decision 2026-10-28). `true` lets observers on a class open its Students' consoles, read-only. Boolean; preflight refuses anything else. Re-run `30-config` to apply. |
 | `tn_tls_mode` | `selfsigned` | `provided` once the AD CS certificate is in `files/tls/` |
 | `tn_opensearch_disable_security` | `false` | Lab/dev override only: OpenSearch without auth or TLS ("OpenSearch" above). |
 | `tn_provisioner_backend` | `vsphere_api` | **Not** `vsphere` — that is not a registry key; preflight refuses it. `mock` for a site without vCenter. |
