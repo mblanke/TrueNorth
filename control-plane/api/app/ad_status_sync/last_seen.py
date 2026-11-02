@@ -110,3 +110,28 @@ def note(db: Session, user: User, identity) -> None:
     except Exception:  # noqa: BLE001 -- recorded on the next request instead
         db.rollback()
         logger.warning("Could not record last use of user %s", user.id, exc_info=True)
+
+
+def backfill_guid(db: Session, user: User, identity) -> None:
+    """Record the AD object GUID the token carries on an account that has none (#310).
+
+    The nightly sync deactivates an account as ``ad_removed`` only when its row carries
+    ``users.ad_object_guid``. Several paths make a directory account without it (the
+    bootstrap administrator, ``POST /users`` rows adopted at registration, demo links); the
+    GUID comes from the AD federation's read-only mapper, so the first sign-in is where it
+    is known. Never overwrites a GUID, never takes one another row holds, and never raises:
+    a failure here must not refuse the request."""
+    guid = (getattr(identity, "ad_object_guid", None) or "").strip()
+    if user.ad_object_guid or not guid or len(guid) > 36:
+        return
+    if user.source == "subject":  # result_transfer/pseudonymous.SUBJECT_SOURCE: identity-free by rule
+        return
+    try:
+        if db.query(User.id).filter(User.ad_object_guid == guid, User.id != user.id).first() is not None:
+            logger.warning("AD object GUID of user %s is already held by another account; not recorded", user.id)
+            return
+        user.ad_object_guid = guid
+        db.commit()
+    except Exception:  # noqa: BLE001 -- retried at the next sign-in
+        db.rollback()
+        logger.warning("Could not record the AD object GUID of user %s", user.id, exc_info=True)

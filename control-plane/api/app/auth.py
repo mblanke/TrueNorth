@@ -227,6 +227,7 @@ async def get_signed_in_user(
     from .ad_status_sync import last_seen
 
     last_seen.note(db, user, identity)
+    last_seen.backfill_guid(db, user, identity)
 
     return CurrentUser(
         id=str(user.id),
