@@ -630,8 +630,8 @@ async def deep_health():
 @app.websocket("/ws/{channel}")
 async def websocket_endpoint(ws: WebSocket, channel: str):
     """Real-time event stream for a signed-in user, on a channel of their tenant
-    (app/ws_auth.py: ``range.<id>``, ``exercise.<id>``, ``tenant.<id>``; admins
-    ``system.*``).
+    (app/ws_auth.py: ``range.<id>``, ``exercise.<id>``, ``tenant.<id>``; the platform
+    administrator ``system.*``).
 
     The access token is the second subprotocol: ``new WebSocket(url, ["bearer", token])``.
     No valid token, or a channel the user may not open: closed with 1008. Reply

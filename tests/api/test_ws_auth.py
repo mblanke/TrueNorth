@@ -314,7 +314,8 @@ def test_a_room_member_can_post_only_chat_or_cursor_and_the_server_names_the_sen
         assert frame["data"]["sender_user_id"] != "x", "the server stamps the sender"
 
 
-def test_an_admin_opens_system_channels(client, auth_on, db_session):
+def test_the_platform_admin_opens_system_channels(client, auth_on, db_session, monkeypatch):
+    monkeypatch.setenv("PLATFORM_TENANT_ID", str(TENANT_A))
     admin = _user(db_session, "kc-admin", UserRole.admin)
     with client.websocket_connect("/ws/system.alerts", subprotocols=admin) as ws:
         assert ws.accepted_subprotocol == "bearer"
@@ -379,3 +380,25 @@ def test_an_oversized_frame_is_refused(client, auth_on):
     with client.websocket_connect(f"/ws/tenant.{TENANT_A}", subprotocols=A) as ws:
         ws.send_text("x" * (64 * 1024 + 1))
         assert ws.receive_json() == {"type": "error", "detail": "frame too large"}
+
+
+def _refused(client, protocols):
+    with pytest.raises(WebSocketDisconnect), client.websocket_connect("/ws/system.alerts", subprotocols=protocols):
+        pass
+
+
+def test_another_tenants_admin_is_refused_system_channels(client, auth_on, db_session, monkeypatch):
+    monkeypatch.setenv("PLATFORM_TENANT_ID", str(TENANT_A))
+    _tenant(db_session, TENANT_B)
+    _refused(client, _user(db_session, "kc-admin-b", UserRole.admin, TENANT_B))
+
+
+def test_with_two_tenants_and_no_platform_tenant_nobody_opens_system_channels(client, auth_on, db_session, monkeypatch):
+    monkeypatch.delenv("PLATFORM_TENANT_ID", raising=False)
+    _tenant(db_session, TENANT_B)
+    _refused(client, _user(db_session, "kc-admin-a2", UserRole.admin, TENANT_A))
+
+
+def test_a_non_admin_of_the_platform_tenant_is_refused_system_channels(client, auth_on, db_session, monkeypatch):
+    monkeypatch.setenv("PLATFORM_TENANT_ID", str(TENANT_A))
+    _refused(client, _user(db_session, "kc-instr", UserRole.instructor, TENANT_A))
