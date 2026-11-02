@@ -440,3 +440,55 @@ def test_zone_mfa_rule_does_not_count_acr_1_as_mfa(db_session, seeded_zones):
     for good in ({"amr": ["pwd", "otp"]}, {"amr": ["hwk"]}, {"acr": "mfa"}):
         claims = {**good, "clearance_level": "secret"}
         assert auth_zone_denial(db_session, claims, None, zone_name="Cleared Zone") is None
+
+
+# ── #275: a qualification outside the tenant approved into ─────────────────
+def _pending_with_foreign_qualification(as_trainee, db_session):
+    other = Tenant(id=uuid.uuid4(), name="Other", slug=f"other-{uuid.uuid4().hex[:6]}")
+    db_session.add(other)
+    qual = Qualification(id=uuid.uuid4(), qsp_code="XFOR", nqual="NQ-XFOR", title="Foreign", tenant_id=other.id)
+    db_session.add(qual)
+    db_session.flush()
+    c = as_trainee(_identity())
+    rid = c.post("/registration", json={}).json()["id"]
+    fastapi_app.dependency_overrides.pop(get_token_identity, None)
+    # Submit refuses a qualification outside the scope, so make the stale case directly:
+    # the suggested tenant changed, or the request predates the check.
+    db_session.get(RegistrationRequest, uuid.UUID(rid)).requested_qualification_id = qual.id
+    db_session.flush()
+    return rid, qual
+
+
+def test_approve_notes_a_requested_qualification_it_could_not_enrol(as_trainee, approver, db_session, tenant, client):
+    rid, _ = _pending_with_foreign_qualification(as_trainee, db_session)
+
+    r = client.post(f"/registration/requests/{rid}/approve", json={"role": "student", "tenant_id": str(tenant.id)})
+
+    assert r.status_code == 200, r.text
+    assert "no courses were enrolled" in r.json()["decision_reason"]
+    created = db_session.query(User).filter(User.keycloak_id == TRAINEE_SUB).one()
+    assert db_session.query(Enrollment).filter(Enrollment.user_id == created.id).count() == 0
+
+
+def test_approver_cannot_choose_a_qualification_outside_the_tenant(as_trainee, approver, db_session, tenant, client):
+    rid, qual = _pending_with_foreign_qualification(as_trainee, db_session)
+
+    r = client.post(
+        f"/registration/requests/{rid}/approve",
+        json={"role": "student", "tenant_id": str(tenant.id), "qualification_id": str(qual.id)},
+    )
+
+    assert r.status_code == 422, r.text
+    assert db_session.query(User).filter(User.keycloak_id == TRAINEE_SUB).count() == 0  # nothing half-created
+    assert db_session.get(RegistrationRequest, uuid.UUID(rid)).status == RegistrationStatus.pending
+
+
+def test_bulk_approve_still_approves_a_stale_out_of_scope_request(as_trainee, approver, db_session, tenant, client):
+    rid, _ = _pending_with_foreign_qualification(as_trainee, db_session)
+
+    r = client.post(
+        "/registration/requests/bulk-approve", json={"request_ids": [rid], "role": "student", "tenant_id": str(tenant.id)}
+    )
+
+    assert r.status_code == 200, r.text
+    assert (r.json()["approved"], r.json()["failed"]) == (1, 0)
