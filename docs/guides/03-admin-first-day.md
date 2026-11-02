@@ -350,6 +350,9 @@ filters by it.
   the class is created (**Prepare & Operate → Classes → New class**). Changing them later,
   handing a class to another lead, and cancelling a class are **API only** on v1.2.0
   (`PUT` / `DELETE /classes/{id}`; lead or admin).
+- **Observer consoles** are off by default: observers see live status only. To let observers
+  open a class's consoles (read-only), set `tn_class_observer_consoles: true` in the
+  installer inventory and re-run `30-config` (`install/README.md`).
 - Approving someone into a **different** tenant is **API only** (`tenant_id` on
   `POST /registration/requests/{id}/approve`, platform administrator).
 

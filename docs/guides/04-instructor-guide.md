@@ -273,8 +273,10 @@ Class**. It works per **exercise**, so you get it for collective sessions that r
   range pages.
 
 **Observers** on the class see the calendar, roll call, sessions and ranges, attendance,
-close-out and Live Class, all read-only. ADR 0014 promises them **live screens and
-consoles**; that is **not built** on v1.2.0.
+close-out and Live Class, all read-only. **Consoles are off by default** (owner decision
+2026-10-28): observers get live status only until the installer variable
+`tn_class_observer_consoles` is `true` for the site ([install/README.md](../../install/README.md)).
+Ask your administrator.
 
 ---
 
@@ -482,7 +484,7 @@ Use a class instead whenever there is a named group of Students.
 
 - No screen to edit, hand over or cancel a class, or to set a course's default mode.
 - The instructor gets no notification of approve, reject or propose.
-- No console for class ranges (#313). No observer consoles.
+- No console for class ranges (#313). No observer consoles unless the site turns them on.
 - Teams are split by hand, not automatically.
 - A lab-drawing class session can't be booked from the Schedule form.
 - With email off, Students can still lose their seat without being told.

@@ -714,6 +714,9 @@ services:
       # installer renders tn_platform_tenant_id, by default the bootstrap tenant. Unset with
       # several tenants, nobody is (fail closed; the api logs an error at startup).
       PLATFORM_TENANT_ID: ${PLATFORM_TENANT_ID:-}
+      # Observers on a class get console tickets only when this is on (app/classes/consoles.py;
+      # installer: tn_class_observer_consoles). Off: live status only.
+      CLASS_OBSERVER_CONSOLES: ${CLASS_OBSERVER_CONSOLES:-false}
       # The site's IANA time zone for times said in words (installer tn_site_timezone).
       SITE_TIMEZONE: ${SITE_TIMEZONE:-UTC}
       REGISTRATION_DEFAULT_PROGRESSION: ${REGISTRATION_DEFAULT_PROGRESSION}
