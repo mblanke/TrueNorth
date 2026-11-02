@@ -24,8 +24,8 @@ from sqlalchemy.orm import Session
 
 from . import auth
 from .auth import CurrentUser
-from .models import Exercise, Range, UserRole
-from .rbac import Permission, user_has_permission
+from .models import Exercise, Range
+from .rbac import Permission, is_platform_admin, user_has_permission
 
 SUBPROTOCOL = "bearer"
 
@@ -87,7 +87,8 @@ def authorize(channel: str, user: CurrentUser, db: Session) -> bool:
     * ``exercise.<id>.staff``: as ``exercise.<id>``, for users who may see the answer key
       (scenario:update) — full instructor-inject events go there;
     * ``tenant.<id>``: the user's own tenant;
-    * ``system.*``: admins.
+    * ``system.*``: the platform administrator (``rbac.is_platform_admin``), not any tenant's
+      admin: alerts and health degradation concern the shared platform.
     """
     if channel.startswith("exercise.") and channel.endswith(STAFF_SUFFIX):
         raw = channel[len("exercise.") : -len(STAFF_SUFFIX)]
@@ -107,7 +108,7 @@ def authorize(channel: str, user: CurrentUser, db: Session) -> bool:
     if channel.startswith("tenant."):
         return channel[len("tenant.") :] == user.tenant_id
     if channel.startswith("system."):
-        return user.role == UserRole.admin
+        return is_platform_admin(user, db)
     return False
 
 
