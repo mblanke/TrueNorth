@@ -958,3 +958,67 @@ def test_a_run_through_the_api_sends_no_keycloak_write(client, db_session, world
     assert [r["email"] for r in run["results"]] == ["ann@corp.test"]
     assert {r.method for r in seen} == {"GET", "POST"}
     assert {r.url.path for r in seen if r.method == "POST"} == {"/auth/realms/truenorth/protocol/openid-connect/token"}
+
+
+# ── #310: an account made without ad_object_guid learns it at sign-in ──────
+def _sign_in(db, u: User, **claims):
+    ident = TokenPayload(sub=u.keycloak_id, email=u.email, preferred_username=u.email, **claims)
+    return asyncio.run(auth.get_signed_in_user(None, ident, db))
+
+
+def test_a_bootstrap_admin_without_a_guid_learns_it_at_sign_in_and_is_then_removed_with_ad(
+    client, db_session, world, kc, monkeypatch
+):
+    """The issue's case: an AD administrator made by 80-seed has no GUID, so its deletion in
+    AD was never seen. After one sign-in it is judged like any other AD account."""
+    monkeypatch.setattr(auth, "AUTH_DISABLED", False)
+    boot = _person(db_session, world["a"].id, "boot@corp.test", role=UserRole.admin, guid=False)
+    kc.users[boot.keycloak_id] = DirectoryUser(id=boot.keycloak_id, username="boot", email=boot.email,
+                                               enabled=True, federated=True)
+    guid = str(uuid.uuid4())
+
+    _sign_in(db_session, boot, ad_object_guid=guid, amr=["pwd", "otp"])
+
+    db_session.refresh(boot)
+    assert boot.ad_object_guid == guid
+    del kc.users[boot.keycloak_id]  # deleted in AD; world["admin_row"] keeps the tenant an administrator
+    run = _apply(client, world)
+    assert not _active(db_session, boot)
+    assert "ad_removed" in [r["reason"] for r in run["results"]]
+
+
+def test_a_sign_in_never_overwrites_or_steals_a_guid(db_session, world, monkeypatch):
+    monkeypatch.setattr(auth, "AUTH_DISABLED", False)
+    held = _person(db_session, world["a"].id, "held@corp.test", guid=True)
+    mine = _person(db_session, world["a"].id, "mine@corp.test", guid=False)
+    own = _person(db_session, world["a"].id, "own@corp.test", guid=True)
+    before = own.ad_object_guid
+
+    _sign_in(db_session, mine, ad_object_guid=held.ad_object_guid)  # another account's GUID
+    _sign_in(db_session, own, ad_object_guid=str(uuid.uuid4()))  # already has its own
+
+    db_session.refresh(mine)
+    db_session.refresh(own)
+    assert mine.ad_object_guid is None
+    assert own.ad_object_guid == before
+
+
+def test_a_token_without_a_guid_leaves_the_account_alone(db_session, world, monkeypatch):
+    monkeypatch.setattr(auth, "AUTH_DISABLED", False)
+    local = _person(db_session, world["a"].id, "local2@corp.test", source="local", guid=False)
+
+    _sign_in(db_session, local)
+
+    db_session.refresh(local)
+    assert local.ad_object_guid is None
+
+
+def test_a_result_transfer_subject_never_gets_a_guid(db_session, world, monkeypatch):
+    """Subjects are identity-free by rule (result_transfer/pseudonymous.py)."""
+    monkeypatch.setattr(auth, "AUTH_DISABLED", False)
+    subject = _person(db_session, world["a"].id, "subj@corp.test", source="subject", guid=False)
+
+    _sign_in(db_session, subject, ad_object_guid=str(uuid.uuid4()))
+
+    db_session.refresh(subject)
+    assert subject.ad_object_guid is None
