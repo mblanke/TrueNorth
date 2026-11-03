@@ -437,11 +437,13 @@ def test_an_idle_console_is_closed_4408(client, world, monkeypatch):
 
 
 def test_activity_keeps_a_console_from_idling(client, world, monkeypatch):
-    monkeypatch.setattr(relay_router, "IDLE_SECONDS", 0.6)
+    # The idle limit is several times the gap between sends so a stalled CI runner
+    # cannot make the activity look like silence.
+    monkeypatch.setattr(relay_router, "IDLE_SECONDS", 3.0)
     with _open(client, world.grant(world.ann)) as ws:
         ws.receive_bytes()
-        for _ in range(5):
-            time.sleep(0.25)
+        for _ in range(4):
+            time.sleep(0.5)
             ws.send_bytes(b"k")
             assert ws.receive_bytes() == b"k"
 
