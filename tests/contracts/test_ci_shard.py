@@ -66,3 +66,16 @@ def test_no_test_imports_a_conftest_by_its_bare_name():
         and p.name != "test_ci_shard.py"
     ]
     assert not offenders, f"import the directory's helper module instead: {offenders}"
+
+
+def test_the_shards_are_balanced_on_the_recorded_times():
+    """The slowest shard sets how long CI takes. Refresh scripts/ci_shard_timings.json
+    (see scripts/ci_shard.py) when files are added and this starts to fail."""
+    ci_shard = _load()
+    files = ci_shard.test_files()
+    timings = ci_shard.load_timings()
+    total = _workflow_shards()
+    untimed = [f for f in files if f not in timings]
+    assert len(untimed) <= len(files) * 0.1, f"{len(untimed)} test files have no recorded time"
+    loads = [sum(timings.get(f, 0) for f in ci_shard.shard(files, i, total)) for i in range(1, total + 1)]
+    assert max(loads) <= 1.15 * (sum(loads) / total), f"shard seconds {loads}"
