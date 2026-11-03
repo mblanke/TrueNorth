@@ -79,8 +79,27 @@ TRACKED_FIELDS = (
     "description",
     "range_id",
     "exercise_id",
+    "category",
+    "labels",
 )
 MAX_FILES_PER_UPLOAD = 10
+
+# What a ticket is about. A fixed list so triage and filtering stay consistent; the
+# reporter picks one when filing and staff can change it. Rows filed before this list
+# existed may hold another value and keep showing it.
+TICKET_CATEGORIES: dict[str, str] = {
+    "range": "Range or lab",
+    "console": "VM console or access",
+    "network": "Network or connectivity",
+    "account": "Account or sign-in",
+    "scoring": "Scoring or results",
+    "content": "Course content",
+    "platform": "TrueNorth itself",
+    "other": "Something else",
+}
+# Labels are staff triage tags, stored as one comma-separated string.
+LABEL_RE = re.compile(r"^[a-z0-9][a-z0-9._:/-]{0,29}$")
+MAX_LABELS = 10
 
 
 # ── Schemas ─────────────────────────────────────────────────────────────
@@ -92,6 +111,33 @@ def _not_blank(v: str | None) -> str | None:
     if not v:
         raise ValueError("must not be blank")
     return v
+
+
+def _clean_category(v: str | None) -> str | None:
+    if v is None:
+        return v
+    v = v.strip().lower()
+    if v not in TICKET_CATEGORIES:
+        raise ValueError(f"unknown category; use one of: {', '.join(TICKET_CATEGORIES)}")
+    return v
+
+
+def normalise_labels(v: str | None) -> str | None:
+    """Lowercase, trimmed, de-duplicated labels joined by commas; rejects anything odd."""
+    if v is None:
+        return v
+    seen: list[str] = []
+    for raw in v.split(","):
+        label = re.sub(r"\s+", "-", raw.strip().lower())
+        if not label:
+            continue
+        if not LABEL_RE.match(label):
+            raise ValueError(f"invalid label '{raw.strip()}': up to 30 characters from a-z 0-9 . _ : / -")
+        if label not in seen:
+            seen.append(label)
+    if len(seen) > MAX_LABELS:
+        raise ValueError(f"at most {MAX_LABELS} labels")
+    return ",".join(seen)
 
 
 class SupportQueueIn(BaseModel):
@@ -134,6 +180,8 @@ class TicketIn(BaseModel):
     assignee_id: uuid.UUID | None = None  # staff only
 
     _subject = field_validator("subject")(_not_blank)
+    _category = field_validator("category")(_clean_category)
+    _labels = field_validator("labels")(normalise_labels)
 
 
 class TicketUpdate(BaseModel):
@@ -153,6 +201,8 @@ class TicketUpdate(BaseModel):
     unlink_exercise: bool = False
 
     _subject = field_validator("subject")(_not_blank)
+    _category = field_validator("category")(_clean_category)
+    _labels = field_validator("labels")(normalise_labels)
 
 
 class TicketMoveIn(BaseModel):
@@ -230,6 +280,16 @@ class TicketActivityOut(BaseModel):
     created_at: datetime
 
 
+class TicketCategoryOut(BaseModel):
+    key: str
+    label: str
+
+
+class TicketLabelCountOut(BaseModel):
+    label: str
+    count: int
+
+
 class TicketAssigneeOut(BaseModel):
     id: uuid.UUID
     display_name: str
@@ -250,6 +310,18 @@ def _like(term: str) -> str:
     """A LIKE pattern matching `term` literally (``%`` and ``_`` are not wildcards)."""
     escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
+
+
+def _has_label(label: str):
+    """SQL condition: `label` is one of the comma-separated labels (exact, not a substring)."""
+    esc = label.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    col = Ticket.labels
+    return or_(
+        col == label,
+        col.like(f"{esc},%", escape="\\"),
+        col.like(f"%,{esc}", escape="\\"),
+        col.like(f"%,{esc},%", escape="\\"),
+    )
 
 
 def _content_disposition(filename: str) -> str:
@@ -343,9 +415,12 @@ def _decorate(db: Session, user: CurrentUser, tickets: list[Ticket], cls=TicketL
             .all()
         )
         queues = {r.id: r.name for r in rows}
+    staff = _staff(user)
     out = []
     for t in tickets:
         item = cls.model_validate(t)
+        if not staff:
+            item.labels = ""  # triage tags are for staff; the reporter never sees them
         item.key = f"TN-{t.number}"
         item.reporter_name = names.get(t.reporter_id, "")
         item.assignee_name = names.get(t.assignee_id, "") if t.assignee_id else ""
@@ -566,6 +641,34 @@ def list_assignees(
     return out
 
 
+@router.get("/categories", response_model=list[TicketCategoryOut])
+def list_ticket_categories(
+    user: CurrentUser = Depends(require_permission(Permission.TICKET_CREATE)),
+) -> list[TicketCategoryOut]:
+    """The fixed list of ticket categories (key and display name)."""
+    return [TicketCategoryOut(key=k, label=v) for k, v in TICKET_CATEGORIES.items()]
+
+
+@router.get("/labels", response_model=list[TicketLabelCountOut])
+def list_ticket_labels(
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.TICKET_WORK)),
+) -> list[TicketLabelCountOut]:
+    """Labels in use across the tenant's tickets, most used first (for suggestions and filters)."""
+    rows = (
+        db.query(Ticket.labels)
+        .filter(Ticket.tenant_id == tenant_uuid(user), Ticket.deleted_at.is_(None), Ticket.labels != "")
+        .all()
+    )
+    counts: dict[str, int] = {}
+    for (labels,) in rows:
+        for label in labels.split(","):
+            if label:
+                counts[label] = counts.get(label, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [TicketLabelCountOut(label=k, count=v) for k, v in ranked[:200]]
+
+
 @router.get("/board", response_model=list[TicketBoardColumn])
 def board(
     queue_id: uuid.UUID | None = Query(None),
@@ -641,6 +744,8 @@ def list_tickets(
     type: str | None = Query(None, pattern=TYPE_RE),
     queue_id: uuid.UUID | None = Query(None),
     range_id: uuid.UUID | None = Query(None),
+    category: str | None = Query(None, max_length=50),
+    label: str | None = Query(None, max_length=30, description="staff only"),
     q: str | None = Query(None, max_length=200),
     limit: int = Query(200, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -662,14 +767,22 @@ def list_tickets(
         query = query.filter(Ticket.queue_id == queue_id)
     if range_id:
         query = query.filter(Ticket.range_id == range_id)
+    if category:
+        query = query.filter(Ticket.category == category.strip().lower())
+    if label:
+        if not _staff(user):
+            raise HTTPException(403, "Labels are for support staff")
+        query = query.filter(_has_label(label.strip().lower()))
     if q:
         term = q.strip()
         like = _like(term)
         conds = [
             Ticket.subject.ilike(like, escape="\\"),
             Ticket.description.ilike(like, escape="\\"),
-            Ticket.labels.ilike(like, escape="\\"),
         ]
+        if _staff(user):
+            # Searching hidden labels would let a reporter probe them.
+            conds.append(Ticket.labels.ilike(like, escape="\\"))
         digits = term.upper().removeprefix("TN-")
         if digits.isdigit():
             conds.append(Ticket.number == int(digits))
@@ -686,6 +799,8 @@ def create_ticket(
 ) -> TicketOut:
     tid = tenant_uuid(user)
     data = body.model_dump()
+    if data["labels"] and not _staff(user):
+        raise HTTPException(403, "Only support staff can label tickets")
     if data["assignee_id"] is not None:
         if not _staff(user):
             raise HTTPException(403, "Only support staff can assign tickets")
@@ -1020,8 +1135,11 @@ def list_activity(
             return value
         return lookups[field].get(key, "something deleted")
 
+    staff = _staff(user)
     out = []
     for a in rows:
+        if a.field == "labels" and not staff:
+            continue  # triage tags (and that they changed) are staff-only
         item = TicketActivityOut.model_validate(a)
         item.actor_name = names.get(a.actor_id, "")
         item.old_value = _show(a.field, a.old_value)

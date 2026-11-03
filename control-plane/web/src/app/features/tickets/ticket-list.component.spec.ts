@@ -9,11 +9,16 @@ import { TicketsApiService } from '@core/services/tickets-api.service';
 describe('TicketListComponent', () => {
   let api: jasmine.SpyObj<TicketsApiService>;
   const user = signal<CurrentUser | null>(null);
+  const stubLookups = () => {
+    api.categories.and.returnValue(of([{ key: 'range', label: 'Range or lab' }, { key: 'other', label: 'Something else' }]));
+    api.labels.and.returnValue(of([{ label: 'boot', count: 2 }]));
+  };
 
   function create(role: CurrentUser['role']) {
     user.set({ sub: 's', id: 'u1', email: 'e', display_name: 'n', role });
-    api = jasmine.createSpyObj('TicketsApiService', ['list']);
+    api = jasmine.createSpyObj('TicketsApiService', ['list', 'categories', 'labels']);
     api.list.and.returnValue(of([]));
+    stubLookups();
     try { sessionStorage.removeItem('tn-support-tab'); } catch { /* ignore */ }
     TestBed.configureTestingModule({
       imports: [TicketListComponent],
@@ -49,8 +54,9 @@ describe('TicketListComponent', () => {
 
   it('puts critical unassigned tickets first for staff triage', () => {
     user.set({ sub: 's', id: 'u1', email: 'e', display_name: 'n', role: 'range_ops' });
-    api = jasmine.createSpyObj('TicketsApiService', ['list']);
+    api = jasmine.createSpyObj('TicketsApiService', ['list', 'categories', 'labels']);
     api.list.and.returnValue(of(SERVER_ORDER as any));
+    stubLookups();
     try { sessionStorage.removeItem('tn-support-tab'); } catch { /* ignore */ }
     TestBed.configureTestingModule({
       imports: [TicketListComponent],
@@ -63,8 +69,9 @@ describe('TicketListComponent', () => {
 
   it("keeps a Student's own tickets in the order the API gives", () => {
     user.set({ sub: 's', id: 'u1', email: 'e', display_name: 'n', role: 'student' });
-    api = jasmine.createSpyObj('TicketsApiService', ['list']);
+    api = jasmine.createSpyObj('TicketsApiService', ['list', 'categories', 'labels']);
     api.list.and.returnValue(of(SERVER_ORDER as any));
+    stubLookups();
     try { sessionStorage.removeItem('tn-support-tab'); } catch { /* ignore */ }
     TestBed.configureTestingModule({
       imports: [TicketListComponent],
@@ -82,5 +89,41 @@ describe('TicketListComponent', () => {
     expect(el.textContent).toContain('Board');
     expect(el.textContent).not.toContain('Queues'); // admin only
     expect(api.list.calls.mostRecent().args[0]?.scope).toBe('all');
+  });
+
+  describe('category and label filters (#376)', () => {
+    it('sends the category to the API and shows its name on each row', () => {
+      const fixture = create('student');
+      api.list.and.returnValue(of([{ ...t('TN-9', 'low', null), category: 'range', labels: '' }] as any));
+      fixture.componentInstance.category = 'range';
+      fixture.componentInstance.load();
+      fixture.detectChanges();
+      expect(api.list.calls.mostRecent().args[0]?.category).toBe('range');
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Range or lab');
+    });
+
+    it('offers the label filter, and label chips, to staff only', () => {
+      const staff = create('range_ops');
+      api.list.and.returnValue(of([{ ...t('TN-9', 'low', null), category: 'range', labels: 'boot,esxi-03' }] as any));
+      staff.componentInstance.label = 'boot';
+      staff.componentInstance.load();
+      staff.detectChanges();
+      expect(api.list.calls.mostRecent().args[0]?.label).toBe('boot');
+      expect((staff.nativeElement as HTMLElement).querySelector('#tk-f-label')).not.toBeNull();
+      expect(Array.from((staff.nativeElement as HTMLElement).querySelectorAll('.tn-kb-chip')).map(c => c.textContent?.trim()))
+        .toEqual(['boot', 'esxi-03']);
+    });
+
+    it('never asks for labels or shows them for a Student, even if one were sent', () => {
+      TestBed.resetTestingModule();
+      const fixture = create('student');
+      api.list.and.returnValue(of([{ ...t('TN-9', 'low', null), category: 'range', labels: 'user-error' }] as any));
+      fixture.componentInstance.label = 'user-error';
+      fixture.componentInstance.load();
+      fixture.detectChanges();
+      expect(api.list.calls.mostRecent().args[0]?.label).toBeUndefined();
+      expect(api.labels).not.toHaveBeenCalled();
+      expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('user-error');
+    });
   });
 });
