@@ -461,13 +461,13 @@ modules:
       - C) The novelty of the topic, which is high enough
       - D) The number of references, which is sufficient
       answer: B
-    - question: Across several cohorts the most common cause of failed capstone proposals has been the same. Which
-        proposal defect is it?
+    - question: A capstone proposal lists its method but defines no failure statement and no milestones. What
+        does that leave the project without?
       options:
-      - A) Underestimating the effort the technical core demands
-      - B) Missing failure statements and milestones
-      - C) Poor formatting in the methodology section of the proposal
-      - D) Reviewers disagreeing with the chosen topic
+      - A) A way to recognise early that the schedule is slipping or the claim has failed
+      - B) A methodology section laid out to the school's template
+      - C) Reviewers' agreement with the chosen topic
+      - D) A larger number of references
       answer: A
 - ordinal: 6
   title: Review and Refinement

@@ -95,9 +95,9 @@ answer_key_notes:
     A week-four checkpoint shows early whether the plan is realistic; schedule filler (B), assessor
     evidence (C) and scope reduction (D) miss the purpose. Q4 B (meaningful, evaluable result), M05-O03:
     The reviewer assesses deliverability above polish; writing quality (A), novelty (C) and reference
-    count (D) are secondary. Q5 A (underestimating the technical core), M05-O03: Underestimated core
-    effort is the commonest failure; missing failure statements (B), formatting (C) and reviewer
-    disagreement (D) are rarer.'
+    count (D) are secondary. Q5 A (no early sign of a slipping schedule or a failed claim), M05-O03: Milestones give the early
+    warning that the schedule is slipping and the failure statement says what would show the claim has failed;
+    template layout (B), reviewer agreement with the topic (C) and reference count (D) do neither.'
 - module: 6
   notes: 'Q1 B (the specialist), M06-O01: A reviewer with domain expertise challenges the assumptions a
     peer cannot see; agreement (A) and readability (C) are weaker tests, and the supervisor is not the

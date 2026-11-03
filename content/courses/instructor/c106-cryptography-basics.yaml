@@ -38,10 +38,11 @@ answer_key_notes:
     definition of a known-plaintext attack; A is guessing every key, B belongs to hash functions and D
     misnames transposition. Q3 A: Kerckhoffs''s principle says the security may rest entirely on the key;
     B is the opposite view, C and D name unrelated principles. Q4 D: once the design is public, only fresh
-    key material restores protection; A re-argues obscurity, B and C change nothing that matters. Q5 C: a
-    uniform shift keeps the frequency pattern one step apart and plainly readable, while a mixed alphabet
-    flattens it; A is false, B reverses the two ciphers and D overstates, since a mixed alphabet still
-    leaves digram and common-word evidence.'
+    key material restores protection; A re-argues obscurity, B and C change nothing that matters. Q5 A: both
+    are monoalphabetic substitutions, so each keeps the plaintext letter-frequency pattern exactly and only
+    the labels move; a uniform shift is also open to trying all 25 keys, but the frequency pattern is the same
+    for both. B reverses the two ciphers, C claims a difference that does not exist and D overstates, since a
+    mixed alphabet still leaves digram and common-word evidence.'
 - module: 2
   notes: 'Q1 C: electronic codebook mode maps identical plaintext blocks to identical ciphertext blocks,
     which is exactly what draws the outline; A misstates the key length, B confuses corruption with a
