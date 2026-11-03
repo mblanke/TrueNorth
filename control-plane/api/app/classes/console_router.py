@@ -134,6 +134,10 @@ def get_class_session_live(
     range_ids = [r.id for r in seats.values()] + ([shared.id] if shared is not None else [])
     seen = consoles.last_seen(db, cls.tenant_id, [e.user_id for e in entries if e.user_id], range_ids,
                               as_utc(evt.start_time) - consoles.PROVISION_LEAD)
+    # An observer's console needs a hypervisor that enforces view-only (S4, #369, lifts this).
+    for_you = consoles.may_open_console(live.role) and (
+        live.role != consoles.ClassRole.observer
+        or any(consoles.view_only_supported(r) for r in [*seats.values(), *filter(None, [shared])]))
     students = []
     for e in entries:
         rng = seats.get(e.id) or shared
@@ -148,8 +152,8 @@ def get_class_session_live(
         class_id=cls.id, class_name=cls.name, event_id=evt.id, session_name=evt.name, start_time=start,
         end_time=end, range_mode=live.link.range_mode, role=live.role.value,
         live=evt.state in consoles.HOLDING and start <= now < end,
-        consoles_open=consoles.in_window(evt, now) and cls.status == "open" and consoles.may_open_console(live.role),
-        consoles_for_you=consoles.may_open_console(live.role),
+        consoles_open=consoles.in_window(evt, now) and cls.status == "open" and for_you,
+        consoles_for_you=for_you,
         view_only_consoles=any(consoles.view_only_supported(r) for r in [*seats.values(), *filter(None, [shared])]),
         shared_range=_range_out(db, shared) if shared is not None else None,
         students=students, generated_at=now,

@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -29,7 +29,7 @@ class ConsoleGrant(Base):
     mirrors the ticket's flag."""
 
     __tablename__ = "console_grants"
-    __table_args__ = (Index("ix_console_grants_expires", "expires_at"),)
+    __table_args__ = (Index("ix_console_grants_expires", "expires_at"), Index("ix_console_grants_user", "user_id"))
 
     id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
@@ -40,6 +40,14 @@ class ConsoleGrant(Base):
     vm_name: Mapped[str] = mapped_column(String(255), nullable=False)
     view_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     observed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Why it was issued, and what authorised it: re-checked at every connect and renewal
+    # (policy.py). ``audience`` is student, observer or staff; a class console names its class
+    # and session window, a lab-session console its lab session.
+    audience: Mapped[str] = mapped_column(String(16), nullable=False, default="student")
+    class_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True)
+    event_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True)
+    lab_session_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), nullable=True)
+    dials: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # successful dials so far
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     live_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

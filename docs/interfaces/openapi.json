@@ -41422,6 +41422,7 @@
     },
     "/lab-access/{session_id}/console": {
       "post": {
+        "description": "No console by lab token alone. The console is a WebSocket on TrueNorth's relay\n(``/ws/console/<grant>``) that only the signed-in grant holder can open, and a token carries\nno sign-in: issuing one would hand back a URL nobody can use. Open the lab signed in\n(``POST /lab-sessions/{id}/console``). Creates no grant. The token is still checked as for\nevery other action: a lab that ended is 410, a closed enrollment 403.",
         "operationId": "open_console_by_token_lab_access__session_id__console_post",
         "parameters": [
           {
@@ -41477,6 +41478,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Always: a console is a relay socket only a signed-in user can open"
           },
           "422": {
             "content": {

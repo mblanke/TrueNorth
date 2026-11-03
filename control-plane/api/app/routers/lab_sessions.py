@@ -279,7 +279,7 @@ def open_lab_console(
     user: CurrentUser = Depends(get_current_user),
 ) -> ConsoleOut:
     s = _session_for(db, user, session_id, staff_permission=Permission.LEARNING_RECORD_WRITE, act=True)
-    return ConsoleOut(**_do(db, service.console, s, node, ws_base=relay.ws_base(request.headers)))
+    return ConsoleOut(**_do(db, service.console, s, node, ws_base=relay.ws_base(request.headers), caller=user))
 
 
 @router.post("/lab-sessions/{session_id}/evidence", response_model=LabSessionOut)
@@ -407,16 +407,21 @@ def end_lab_by_token(
     return _out(_do(db, service.end, _token_session(db, session_id, x_lab_token), reason="completed"))
 
 
-@router.post("/lab-access/{session_id}/console", response_model=ConsoleOut)
+@router.post("/lab-access/{session_id}/console", response_model=ConsoleOut,
+             responses={401: {"description": "Always: a console is a relay socket only a signed-in user can open"}})
 def open_console_by_token(
-    request: Request,
     session_id: uuid.UUID,
     node: str | None = None,
     x_lab_token: str | None = Header(None),
     db: Session = Depends(get_db),
 ) -> ConsoleOut:
-    return ConsoleOut(**_do(db, service.console, _token_session(db, session_id, x_lab_token), node,
-                            ws_base=relay.ws_base(request.headers)))
+    """No console by lab token alone. The console is a WebSocket on TrueNorth's relay
+    (``/ws/console/<grant>``) that only the signed-in grant holder can open, and a token carries
+    no sign-in: issuing one would hand back a URL nobody can use. Open the lab signed in
+    (``POST /lab-sessions/{id}/console``). Creates no grant. The token is still checked as for
+    every other action: a lab that ended is 410, a closed enrollment 403."""
+    _token_session(db, session_id, x_lab_token)
+    raise HTTPException(401, "Sign in to open the console.")
 
 
 @router.get("/lab-access/{session_id}/credentials", response_model=LabCredentialsOut)

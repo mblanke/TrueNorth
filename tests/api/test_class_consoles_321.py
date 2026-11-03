@@ -109,7 +109,7 @@ def _staff(db, cls, who: CurrentUser, role: str) -> None:
 def _mock_console(monkeypatch):
     # Observer consoles are off by default; most tests exercise them on (the setting).
     monkeypatch.setenv("CLASS_OBSERVER_CONSOLES", "on")
-    MockConsole.supports_view_only = False
+    MockConsole.supports_view_only = True  # an observer's console needs an adapter that enforces it (S4, #369)
     yield
     MockConsole.supports_view_only = False
 
@@ -361,16 +361,31 @@ def test_a_student_gets_no_live_view(client, world, db_session):
     assert _watch(client, world["ann"], world["cls"], evt, ann.range_id).status_code == 403
 
 
-def test_an_observers_console_is_marked_observed_and_audited(client, world, db_session):
+def test_an_observers_console_is_view_only_and_audited(client, world, db_session):
     evt, ann, _ = _individual(db_session, world)
     r = _watch(client, world["observer"], world["cls"], evt, ann.range_id)
     assert r.status_code == 200, r.text
-    assert r.json()["observed"] is True and r.json()["view_only"] is False
+    assert r.json()["observed"] is False and r.json()["view_only"] is True
     (row,) = _audits(db_session)
     assert row["as"] == "observer" and row["_user"] == world["observer"].id and row["machine"] == "ws1"
     assert row["event_id"] == str(evt.id) and row["class_role"] == "observer"
     # An observer's console is never anyone's attendance.
     assert db_session.query(AuditLog).filter(AuditLog.action == "class_range_open").count() == 0
+
+
+def test_no_observer_grant_where_the_adapter_cannot_enforce_view_only(client, world, db_session):
+    """vSphere WebMKS has no read-only mode: until the relay drops an observer's input itself
+    (S4, #369) an observer is refused, as when consoles are off, and no grant is made. The
+    live view says so (consoles_open false)."""
+    MockConsole.supports_view_only = False
+    evt, ann, _ = _individual(db_session, world)
+    r = _watch(client, world["observer"], world["cls"], evt, ann.range_id)
+    assert r.status_code == 403 and "view-only" in r.json()["detail"]
+    assert _grants(db_session) == [] and _audits(db_session) == []
+    body = _live(client, world["observer"], world["cls"], evt).json()
+    assert body["consoles_open"] is False and body["consoles_for_you"] is False
+    assert _watch(client, world["lead"], world["cls"], evt, ann.range_id).status_code == 200  # staff keep consoles
+    assert _live(client, world["lead"], world["cls"], evt).json()["consoles_open"] is True
 
 
 def test_observers_get_the_status_grid_but_no_console_by_default(client, world, db_session, monkeypatch):
@@ -404,7 +419,7 @@ def test_a_platform_observer_on_the_staff_list_as_an_assistant_still_watches_as_
     db_session.commit()
     assert _live(client, world["other_observer"], world["cls"], evt).json()["role"] == "observer"
     r = _watch(client, world["other_observer"], world["cls"], evt, ann.range_id)
-    assert r.status_code == 200 and r.json()["observed"] is True
+    assert r.status_code == 200 and r.json()["view_only"] is True
     assert _watch(client, world["other_observer"], world["cls"], evt, ann.range_id, "dc").status_code == 403
     (row,) = _audits(db_session)
     assert row["as"] == "observer"
@@ -563,7 +578,7 @@ def test_the_leads_grant_is_a_normal_one_and_an_observers_is_view_only(client, w
     assert _watch(client, world["observer"], world["cls"], evt, ann.range_id).status_code == 200
     by_user = {str(g.user_id): g for g in _grants(db_session)}
     assert by_user[world["lead"].id].view_only is False and by_user[world["lead"].id].vm_name.endswith("-dc")
-    assert by_user[world["observer"].id].view_only is True and by_user[world["observer"].id].observed is True
+    assert by_user[world["observer"].id].view_only is True and by_user[world["observer"].id].audience == "observer"
 
 
 def test_no_grant_for_observers_when_observer_consoles_are_off_or_for_other_tenants(
@@ -582,3 +597,133 @@ def test_an_adapter_that_cannot_give_a_console_leaves_no_grant(client, world, db
     db_session.commit()
     assert _console(client, world["ann"], ann.range_id).status_code == 502
     assert _grants(db_session) == []
+
+
+# ── A grant is asked again: at connect and while the socket is open (policy.py) ──
+
+
+def _grant_of(db, who):
+    return db.query(ConsoleGrant).filter(ConsoleGrant.user_id == uuid.UUID(who.id)).order_by(
+        ConsoleGrant.created_at.desc()).first()
+
+
+def _still(db, who):
+    """The relay's question, as it asks it: the grant's holder, as they are now."""
+    from app.console_relay import policy
+
+    db.expire_all()
+    return policy.check(db, _grant_of(db, who), who)
+
+
+def test_policy_a_students_grant_holds_while_their_session_roll_call_and_seat_do(client, world, db_session):
+    evt, ann, _ = _individual(db_session, world)
+    assert _console(client, world["ann"], ann.range_id).status_code == 200
+    ok = _still(db_session, world["ann"])
+    assert ok.ok and abs(ok.until - evt.end_time.replace(tzinfo=UTC).timestamp()) < 1  # the window caps it
+
+    entry = db_session.get(RollCallEntry, world["ann_entry"].id)
+    for off in ("removed", "forfeited", "pending"):  # taken off the roll call, or the seat forfeited
+        entry.status = off
+        db_session.commit()
+        assert not _still(db_session, world["ann"]).ok, off
+    entry.status = "signed_in"
+    db_session.commit()
+    assert _still(db_session, world["ann"]).ok
+
+    evt.end_time = NOW - timedelta(minutes=1)  # the session window closed
+    db_session.commit()
+    assert not _still(db_session, world["ann"]).ok
+    evt.end_time = NOW + timedelta(hours=1)
+    db_session.get(User, uuid.UUID(world["ann"].id)).is_active = False  # disabled
+    db_session.commit()
+    assert not _still(db_session, world["ann"]).ok
+
+
+def test_policy_a_range_that_stopped_or_is_gone_is_4404(client, world, db_session):
+    evt, ann, _ = _individual(db_session, world)
+    assert _console(client, world["ann"], ann.range_id).status_code == 200
+    rng = db_session.get(Range, ann.range_id)
+    rng.state = RangeState.stopped
+    db_session.commit()
+    v = _still(db_session, world["ann"])
+    assert (v.ok, v.code) == (False, 4404)
+    rng.state, rng.deleted_at = RangeState.ready, datetime.now(UTC)
+    db_session.commit()
+    assert _still(db_session, world["ann"]).code == 4404
+
+
+def test_policy_an_observers_grant_ends_with_the_setting_the_list_and_the_role(
+        client, world, db_session, monkeypatch):
+    evt, ann, _ = _individual(db_session, world)
+    assert _watch(client, world["observer"], world["cls"], evt, ann.range_id).status_code == 200
+    assert _still(db_session, world["observer"]).ok
+    monkeypatch.delenv("CLASS_OBSERVER_CONSOLES")  # switched off while they watch
+    assert not _still(db_session, world["observer"]).ok
+    monkeypatch.setenv("CLASS_OBSERVER_CONSOLES", "on")
+    assert _still(db_session, world["observer"]).ok
+    db_session.query(ClassStaff).filter(ClassStaff.user_id == uuid.UUID(world["observer"].id)).delete()
+    db_session.commit()  # taken off the class's observer list
+    assert not _still(db_session, world["observer"]).ok
+
+
+def test_policy_a_leads_grant_ends_with_their_role_and_the_class(client, world, db_session):
+    evt, ann, _ = _individual(db_session, world)
+    assert _watch(client, world["lead"], world["cls"], evt, ann.range_id, "dc").status_code == 200
+    assert _still(db_session, world["lead"]).ok
+    lead = db_session.get(User, uuid.UUID(world["lead"].id))
+    lead.role = UserRole.student  # demoted: no longer staff of the class
+    db_session.commit()
+    assert not _still(db_session, world["lead"]).ok
+    lead.role = UserRole.instructor
+    db_session.commit()
+    world["cls"].status = "closed"
+    db_session.commit()
+    assert not _still(db_session, world["lead"]).ok
+
+
+def test_a_student_with_a_grant_is_cut_off_at_the_end_of_their_session_over_the_socket(
+        client, world, db_session, monkeypatch):
+    """End to end with the real policy: the relay opens, then the window closes under it."""
+    import time
+
+    from app import auth
+    from app.console_backends.mock import RFB_GREETING
+    from app.console_relay import service
+    from fastapi import HTTPException
+    from starlette.websockets import WebSocketDisconnect
+
+    class Backend:
+        async def validate_token(self, token):
+            if token.startswith("good-"):
+                return {"sub": token[5:], "email": "x@example.test", "amr": ["pwd", "otp"]}
+            raise HTTPException(401, "bad token")
+
+    evt, ann, bob = _individual(db_session, world)
+    url = _console(client, world["ann"], ann.range_id).json()["url"]
+    token = url.rsplit("/", 1)[1]
+    monkeypatch.setattr(auth, "AUTH_DISABLED", False)
+    monkeypatch.setattr(auth, "get_auth_backend", lambda: Backend())
+    monkeypatch.setattr(service, "RENEW_SECONDS", 0.1)
+    kc = world["ann"].keycloak_id
+
+    def connect(who_kc):
+        return client.websocket_connect(f"/ws/console/{token}", subprotocols=["bearer", f"good-{who_kc}"])
+
+    with connect(kc) as ws:
+        assert ws.receive_bytes() == RFB_GREETING
+    # Bob cannot open Ann's grant, nor can staff of the tenant.
+    for other in ("bob", "lead"):
+        with pytest.raises(WebSocketDisconnect) as e, connect(world[other].keycloak_id):
+            pass
+        assert e.value.code == 1008
+    time.sleep(0.3)
+    with pytest.raises(WebSocketDisconnect) as e, connect(kc) as ws:
+        assert ws.receive_bytes() == RFB_GREETING
+        evt.end_time = NOW - timedelta(minutes=1)
+        db_session.commit()
+        ws.receive_bytes()
+    assert e.value.code == 1008 and "session" in e.value.reason
+    # And at connect, once the window is over, the grant opens nothing.
+    with pytest.raises(WebSocketDisconnect) as e, connect(kc) as ws:
+        ws.receive_bytes()
+    assert e.value.code == 1008

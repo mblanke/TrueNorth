@@ -18,8 +18,8 @@ import pytest
 from app import auth
 from app.console_backends import GRANT_SECONDS, MockConsole
 from app.console_backends.mock import RFB_GREETING
+from app.console_relay import policy, service
 from app.console_relay import router as relay_router
-from app.console_relay import service
 from app.console_relay.models import ConsoleGrant
 from app.models import Range, RangeState, Template, Tenant, User, UserRole
 from starlette.websockets import WebSocketDisconnect
@@ -42,6 +42,9 @@ def _user(db, tid, kc, role=UserRole.student) -> User:
     db.add(u)
     db.flush()
     return u
+
+
+world_verdict = [policy.Verdict(True)]  # what the stubbed policy answers; tests change it
 
 
 class World:
@@ -87,6 +90,11 @@ def world(db_session, monkeypatch):
 
     monkeypatch.setattr(auth, "AUTH_DISABLED", False)
     monkeypatch.setattr(auth, "get_auth_backend", lambda: Backend())
+    # The relay's mechanics here; who may keep a console open is policy.py's, tested with real
+    # classes and lab sessions in test_class_consoles_321.py and below (``verdict``).
+    monkeypatch.setattr(policy, "check", lambda db, grant, user: world_verdict[0])
+    world_verdict[0] = policy.Verdict(True)
+    monkeypatch.setattr(service, "RENEW_SECONDS", 0.1)
     MockConsole.dial_error = None
     MockConsole.dial_unreachable = False
     yield World(db_session)
@@ -280,15 +288,12 @@ def test_the_socket_closes_1001_when_the_sign_in_expires(client, world):
 # ── The machine and the hypervisor ───────────────────────────────────────────
 
 
-def test_a_range_that_is_not_running_or_is_gone_closes_4404(client, world, db_session):
+def test_a_deleted_range_closes_4502_at_the_dial(client, world, db_session):
     token = world.grant(world.ann)
-    world.rng.state = RangeState.stopped
-    db_session.commit()
-    assert _closed_with(client, token)[0] == 4404
-    world.rng.state = RangeState.ready
     world.rng.deleted_at = datetime.now(UTC)
     db_session.commit()
-    assert _closed_with(client, token)[0] == 4404
+    code, reason = _closed_with(client, token)
+    assert code == 4502 and "not running" in reason
 
 
 def test_a_hypervisor_that_refuses_the_console_closes_4502_with_its_reason(client, world):
@@ -329,3 +334,158 @@ def test_the_public_address_is_the_site_domain_else_the_request_host(monkeypatch
     assert service.ws_base({"host": "localhost:4200", "x-forwarded-proto": "http"}) == "ws://localhost:4200"
     monkeypatch.setenv("DOMAIN", "range.corp.test")
     assert service.ws_base({"host": "attacker.test"}) == "wss://range.corp.test"
+
+
+# ── Re-authorisation, lifetime and abuse bounds ──────────────────────────────
+
+
+def test_a_no_from_policy_at_connect_closes_with_its_code_and_reason(client, world):
+    token = world.grant(world.ann)
+    world_verdict[0] = policy.Verdict(False, 1008, "Your session is not open")
+    assert _closed_with(client, token) == (1008, "Your session is not open")
+    world_verdict[0] = policy.Verdict(False, 4404, "The machine is not running")
+    assert _closed_with(client, token)[0] == 4404
+    world_verdict[0] = policy.Verdict(True)
+    with _open(client, token) as ws:  # a refusal frees the grant and spends no dial
+        assert ws.receive_bytes() == RFB_GREETING
+
+
+def test_a_no_from_policy_while_connected_closes_the_socket(client, world):
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann)) as ws:
+        ws.receive_bytes()
+        world_verdict[0] = policy.Verdict(False, 1008, "You can no longer open this console")
+        ws.receive_bytes()  # the next renewal asks again
+    assert e.value.code == 1008 and "no longer" in e.value.reason
+
+
+def test_the_socket_ends_with_the_session_window(client, world):
+    world_verdict[0] = policy.Verdict(True, until=time.time() + 0.5)
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann)) as ws:
+        ws.receive_bytes()
+        ws.receive_bytes()
+    assert e.value.code == 1008 and "ended" in e.value.reason
+
+
+def test_a_withdrawn_grant_closes_with_its_own_reason(client, world, db_session):
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann)) as ws:
+        ws.receive_bytes()
+        db_session.query(ConsoleGrant).delete()
+        db_session.commit()
+        ws.receive_bytes()
+    assert e.value.code == 4404 and "withdrawn" in e.value.reason and "another window" not in e.value.reason
+
+
+def test_a_grant_taken_by_another_socket_closes_4409(client, world, db_session):
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann)) as ws:
+        ws.receive_bytes()
+        row = db_session.query(ConsoleGrant).one()
+        row.live_by = "someone-else"
+        db_session.commit()
+        ws.receive_bytes()
+    assert e.value.code == 4409 and "another window" in e.value.reason
+
+
+def test_an_idle_console_is_closed_4408(client, world, monkeypatch):
+    monkeypatch.setattr(relay_router, "IDLE_SECONDS", 0.5)
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann)) as ws:
+        ws.receive_bytes()
+        ws.receive_bytes()
+    assert e.value.code == 4408
+
+
+def test_activity_keeps_a_console_from_idling(client, world, monkeypatch):
+    monkeypatch.setattr(relay_router, "IDLE_SECONDS", 0.6)
+    with _open(client, world.grant(world.ann)) as ws:
+        ws.receive_bytes()
+        for _ in range(5):
+            time.sleep(0.25)
+            ws.send_bytes(b"k")
+            assert ws.receive_bytes() == b"k"
+
+
+def test_a_message_from_the_browser_over_the_bound_closes_1009(client, world, monkeypatch):
+    monkeypatch.setattr(relay_router, "MAX_CLIENT_MESSAGE", 1024)
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann)) as ws:
+        ws.receive_bytes()
+        ws.send_bytes(b"x" * 1025)
+        ws.receive_bytes()
+    assert e.value.code == 1009
+
+
+def test_a_grant_opens_three_times_and_then_is_used_up(client, world):
+    token = world.grant(world.ann)
+    for _ in range(service.MAX_DIALS):
+        with _open(client, token) as ws:
+            assert ws.receive_bytes() == RFB_GREETING
+        time.sleep(0.2)  # the relay gives the grant back after the browser has gone
+    code, reason = _closed_with(client, token)
+    assert code == 4410 and "used up" in reason
+
+
+def test_failed_dials_do_not_spend_a_grants_connections(client, world):
+    token = world.grant(world.ann)
+    MockConsole.dial_error = "no"
+    for _ in range(4):
+        assert _closed_with(client, token)[0] == 4502
+    MockConsole.dial_error = None
+    with _open(client, token) as ws:
+        assert ws.receive_bytes() == RFB_GREETING
+
+
+def test_a_user_holds_four_live_grants_at_most(world, db_session):
+    for _ in range(service.MAX_LIVE_GRANTS):
+        world.grant(world.ann)
+    with pytest.raises(service.GrantRefusedError) as e:
+        world.grant(world.ann)
+    assert e.value.status == 429
+    world.grant(world.bob)  # the bound is per user
+    db_session.query(ConsoleGrant).filter(ConsoleGrant.user_id == world.ann.id).first().expires_at = (
+        datetime.now(UTC) - timedelta(seconds=1))
+    db_session.commit()
+    world.grant(world.ann)  # an expired one no longer counts
+
+
+def test_dials_are_rate_limited_per_user(client, world, monkeypatch):
+    monkeypatch.setattr(service, "DIALS_PER_MINUTE", 2)
+    service._DIAL_TIMES.clear()
+    for _ in range(2):
+        with _open(client, world.grant(world.ann)) as ws:
+            ws.receive_bytes()
+        time.sleep(0.2)
+    code, reason = _closed_with(client, world.grant(world.ann))
+    assert code == 4429 and "wait" in reason
+    with _open(client, world.grant(world.bob), "kc-bob") as ws:  # another user is not limited
+        ws.receive_bytes()
+    service._DIAL_TIMES.clear()
+
+
+def test_issuing_deletes_only_the_issuers_own_lapsed_grants_never_a_held_one(world, db_session):
+    old = datetime.now(UTC) - timedelta(days=2)
+    world.grant(world.ann)
+    world.grant(world.bob)
+    world.grant(world.ann)
+    held, bob_old, lapsed_ann = db_session.query(ConsoleGrant).order_by(ConsoleGrant.created_at).all()
+    lapsed_ann.expires_at = old
+    bob_old.expires_at = old  # Bob's, lapsed: not Ann's to sweep
+    held.expires_at = old
+    held.live_until = datetime.now(UTC) + timedelta(seconds=20)  # a socket still holds it
+    db_session.commit()
+    held_id, bob_id, lapsed_id = held.id, bob_old.id, lapsed_ann.id
+    world.grant(world.ann)
+    left = {g.id for g in db_session.query(ConsoleGrant).all()}
+    assert held_id in left and bob_id in left and lapsed_id not in left
+
+
+def test_a_dial_that_outlasts_its_wait_closes_4504_and_is_logged_when_it_ends(client, world, monkeypatch, caplog):
+    monkeypatch.setattr(relay_router, "DIAL_SECONDS", 0.2)
+    real = MockConsole.dial
+
+    def slow(self, grant, *, db=None, rng=None):
+        time.sleep(0.6)
+        return real(self, grant, db=db, rng=rng)
+
+    monkeypatch.setattr(MockConsole, "dial", slow)
+    with caplog.at_level("INFO", logger="truenorth.console_relay"):
+        assert _closed_with(client, world.grant(world.ann))[0] == 4504
+        time.sleep(0.8)
+    assert "had given up on has finished" in caplog.text

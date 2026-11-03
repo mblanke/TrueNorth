@@ -4682,7 +4682,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Open Console By Token */
+        /**
+         * Open Console By Token
+         * @description No console by lab token alone. The console is a WebSocket on TrueNorth's relay
+         *     (``/ws/console/<grant>``) that only the signed-in grant holder can open, and a token carries
+         *     no sign-in: issuing one would hand back a URL nobody can use. Open the lab signed in
+         *     (``POST /lab-sessions/{id}/console``). Creates no grant. The token is still checked as for
+         *     every other action: a lab that ended is 410, a closed enrollment 403.
+         */
         post: operations["open_console_by_token_lab_access__session_id__console_post"];
         delete?: never;
         options?: never;
@@ -30483,6 +30490,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ConsoleOut"];
                 };
+            };
+            /** @description Always: a console is a relay socket only a signed-in user can open */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

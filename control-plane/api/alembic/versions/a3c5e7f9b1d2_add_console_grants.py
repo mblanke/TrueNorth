@@ -38,14 +38,21 @@ def upgrade() -> None:
         sa.Column("vm_name", sa.String(255), nullable=False),
         sa.Column("view_only", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("observed", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("audience", sa.String(16), nullable=False, server_default="student"),
+        sa.Column("class_id", GUID(), nullable=True),
+        sa.Column("event_id", GUID(), nullable=True),
+        sa.Column("lab_session_id", GUID(), nullable=True),
+        sa.Column("dials", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("live_until", sa.DateTime(timezone=True), nullable=True),
         sa.Column("live_by", sa.String(32), nullable=True),
     )
     op.create_index("ix_console_grants_expires", "console_grants", ["expires_at"])
+    op.create_index("ix_console_grants_user", "console_grants", ["user_id"])
 
 
 def downgrade() -> None:
+    op.drop_index("ix_console_grants_user", table_name="console_grants")
     op.drop_index("ix_console_grants_expires", table_name="console_grants")
     op.drop_table("console_grants")

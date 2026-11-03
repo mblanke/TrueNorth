@@ -1229,9 +1229,11 @@ def sessions_in_window(
     return rows
 
 
-def console(db: Session, session: LabSession, node: str | None = None, *, ws_base: str) -> dict[str, Any]:
-    """A console grant for the session's Student on one node (app/console_relay): ``kind``
-    ``rfb-ws`` and the ``url`` of TrueNorth's relay, which only that signed-in user can open."""
+def console(db: Session, session: LabSession, node: str | None = None, *, ws_base: str,
+            caller: Any) -> dict[str, Any]:
+    """A console grant for ``caller``, the signed-in user acting on the session (its Student, or
+    staff of the tenant), on one node (app/console_relay): ``kind`` ``rfb-ws`` and the ``url``
+    of TrueNorth's relay, which only that user can open. Asked again while the socket is open."""
     from ..console_backends import ConsoleError, get_console_backend
     from ..console_relay import service as relay
 
@@ -1247,9 +1249,13 @@ def console(db: Session, session: LabSession, node: str | None = None, *, ws_bas
     if vm is None:
         raise LabRefusedError(f"{target} has no VM yet")
     try:
-        access = relay.issue(db, get_console_backend(session.backend), user_id=session.user_id,
+        own = str(caller.id) == str(session.user_id)
+        access = relay.issue(db, get_console_backend(session.backend), user_id=uuid.UUID(str(caller.id)),
                              tenant_id=session.tenant_id, rng=rng, vm=vm, view_only=False, observed=False,
-                             base=ws_base)  # the range's own vCenter, at dial
+                             base=ws_base, audience=relay.STUDENT if own else relay.STAFF,
+                             lab_session_id=session.id)  # the range's own vCenter, at dial
+    except relay.GrantRefusedError as exc:
+        raise LabRefusedError(str(exc), exc.status) from exc
     except (ValueError, ConsoleError) as exc:
         raise LabRefusedError(str(exc), 502) from exc
     touch(db, session)

@@ -119,6 +119,19 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
     ticket is audited as `observer` or `staff`, and is never attendance. Live Class
     (`/ops/exercises/{id}/class`) of a class session's exercise follows the same list for
     observers; an exercise that is no class's session keeps the tenant-wide rule.
+
+    **Console relay (#366, 2026-11-03).** A console is no longer a hypervisor URL in the
+    browser: the answer is `kind: rfb-ws` and `wss://<tn>/ws/console/<grant>`, a socket the API
+    relays to the hypervisor (`app/console_relay`). The grant (user, VM, about five minutes,
+    three connections at most, four live per user, one socket at a time) is checked again
+    while the socket is open: the session window, the roll call and seat, observer consoles
+    on, the role, the range running; the socket ends with the window. **An observer is issued
+    a console only where the adapter enforces view-only**, so on vSphere not at all until the
+    relay drops an observer's input itself (S4, #369). **Certificates:** with `verify_ssl` on,
+    the API verifies each ESXi host's certificate against the trust store of the API container,
+    so the ESXi host certificates must chain to a CA installed there (the site CA, or VMCA's
+    root); there is no separate setting. The lab-session console (`POST /lab-sessions/{id}/console`)
+    is a grant for the signed-in caller; a lab token alone gets 401.
 20. **Students get a "My classes" page.** It covers all their classes and sessions across the week or month. It shows their status (onboarding, acknowledgement, range ready) and a **Join** button when their range is up. Email calendar invites continue as today.
 
 ### The two-view calendar (admin and instructor)

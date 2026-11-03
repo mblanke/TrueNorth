@@ -7,6 +7,13 @@ relays the RFB stream to ``wss://<host>:<port>/ticket/<ticket>`` itself, so the 
 only reaches TrueNorth and never sees the ticket or the ESXi host. Until 2026-11-03 the
 ticket URL itself was handed to the browser.
 
+**Certificates.** With the connection's ``verify_ssl`` on, the API verifies each ESXi host's
+certificate (chain and host name) against the trust store of the API container (the system
+store, ``SSL_CERT_FILE`` honoured): the ESXi host certificates must chain to a CA installed
+there (the site CA, or VMCA's root). There is no separate setting; with ``verify_ssl`` off
+nothing is verified, as for the vCenter login. Errors from the SDK are logged as their class
+and the VM id only and shown as fixed text: the fault text names hosts and addresses.
+
 The vCenter is the range's own (app/hypervisor_binding.py: the connection its build
 recorded, with that connection's login only), and the ticket is issued only for a VM
 whose range annotation (or pre-tag name) says it is this range's. Until 2026-10-11 it
@@ -173,7 +180,10 @@ class VsphereWebMKSConsole(BaseConsoleBackend):
                 disableSslCertValidation=not target["verify_ssl"],
             )
         except Exception as exc:  # noqa: BLE001 — any login failure is a console failure
-            raise ConsoleError(f"vCenter refused the console request: {exc}") from exc
+            # Fixed text for the Student; the log has the exception class and VM id only (the
+            # fault text names the vCenter's host, address and port).
+            logger.warning("console login failed: %s vm=%s", type(exc).__name__, vm_id)
+            raise ConsoleError("The vCenter refused the console request") from exc
         label = vm.get("name", vm_id)
         try:
             machine = vim.VirtualMachine(vm_id, si._stub)
@@ -184,7 +194,8 @@ class VsphereWebMKSConsole(BaseConsoleBackend):
         except ConsoleError:
             raise
         except Exception as exc:  # noqa: BLE001
-            raise ConsoleError(f"could not open the console for {label}: {exc}") from exc
+            logger.warning("console ticket failed: %s vm=%s", type(exc).__name__, vm_id)
+            raise ConsoleError(f"Could not open the console for {label}") from exc
         finally:
             Disconnect(si)
         return str(ticket.host or url.hostname), int(ticket.port or 443), str(ticket.ticket), bool(target["verify_ssl"])
