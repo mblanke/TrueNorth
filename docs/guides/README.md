@@ -11,6 +11,7 @@ order; each ends with a one-page checklist to print.
 | 04 | [Instructor guide](04-instructor-guide.md) | Instructors and content authors | Classes, roll call, sessions, consoles and the live view, close-out, exercises and exercise templates |
 | 05 | [Student quick-start](05-student-quick-start.md) | Students | Signing in and taking a course |
 | 06 | [Operations runbook](06-operations-runbook.md) | Whoever runs the platform | Upgrades, backup and restore with the drill, porting golden templates and proven content, common failures, the isolation check, feeds, the AD status sync |
+| — | [Clean-room install](clean-room-install.md) | Whoever tests the guides | The acceptance protocol: run order, stuck log, pass criteria |
 
 Conventions in every guide: `<angle-brackets>` are placeholders for the site's own values
 (no guide holds a real address, password or key); **[DECISION]** marks a step where a
