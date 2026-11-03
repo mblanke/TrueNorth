@@ -39,9 +39,10 @@ tickets as work.
 
 ## Notifications
 
-The bell in the toolbar shows the signed-in user's unread count (refreshed every minute
-and on each page change) and their latest notifications; clicking one marks it read and
-opens the ticket. Nobody is told about their own action.
+The bell in the toolbar shows the signed-in user's unread count and their latest
+notifications; clicking one marks it read and opens the ticket. Nobody is told about their
+own action. New ones arrive **live** (below); the count is also refreshed on each page
+change, and polled every minute whenever the live connection is down.
 
 | Event | Who is told |
 |---|---|
@@ -53,8 +54,25 @@ opens the ticket. Nobody is told about their own action.
 
 Rows live in the `notifications` table (`app/notifications/models.py`, `UserNotification`), written by
 `app/notifications/inbox.py` in the same transaction as the change; `/notifications` serves only the
-caller's own. In-app only for now: no email, and no live push (the WebSocket
-`send_to_user` path exists but the bell polls).
+caller's own. In-app only for now: no email.
+
+### Live push
+
+When a notification **commits**, it is pushed to its recipient's open sockets as a
+`notification` message (`app/notifications/push.py`; nothing is sent for work that rolled
+back). The browser opens `/ws/user.<its own id>` (`core/services/user-socket.service.ts`):
+the server lets a user open **only their own** `user.<id>` channel, in its one canonical
+spelling, so nobody else's socket can hold it. The access token travels as the second
+subprotocol, not in the URL; the socket reconnects with a fresh one (backing off up to a
+minute) when the server closes it at token expiry.
+
+Production runs several API workers and a user's socket is on only one of them, so the push
+is relayed between workers over Redis (`WebSocketManager`'s relay, started by the API when
+`REDIS_URL` is set; **`WS_REDIS_RELAY=false` turns it off**, and an unreachable Redis
+falls back to this worker only). Every part is optional: with no `/ws/` route (the web
+container on `:4200` has none; the edge does), no Redis, or a refused token, the bell simply
+polls. The relay now ignores its own messages by a per-instance random id; it used to
+compare memory addresses (`id(self)`), which two spawned workers can share.
 
 ## Behaviour worth knowing
 
@@ -104,7 +122,7 @@ app-wide NaN/Infinity 422-turned-500 found along the way is fixed in
 
 ## Not in this version
 
-- Email notifications, and live push for the bell (it polls once a minute).
+- Email notifications (#378).
 - AI triage ("ask AI", "run diagnostics") from the March design.
 - Images inside wiki pages, and full-text search through OpenSearch (search is
   title/body/tags matching in the database today).

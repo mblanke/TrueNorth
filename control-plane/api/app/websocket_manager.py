@@ -85,6 +85,10 @@ class WebSocketManager:
         self._user_connections: dict[str, set[str]] = {}
 
         self._redis_url = redis_url
+        # Who published a relayed message, so a worker ignores its own. Not id(self): that is
+        # a memory address, and two spawned workers can hold the manager at the same one,
+        # which would make each drop the other's messages.
+        self._origin = uuid.uuid4().hex
         self._redis: Any = None  # aioredis / redis.asyncio connection
         self._pubsub: Any = None
         self._tasks: list[asyncio.Task[Any]] = []
@@ -92,12 +96,13 @@ class WebSocketManager:
         self._lock = asyncio.Lock()
 
     # ── Lifecycle ──────────────────────────────────────────────────────
-    async def start(self) -> None:
+    async def start(self, *, heartbeat: bool = True) -> None:
         """Start background tasks (heartbeat, optional Redis listener)."""
         if self._running:
             return
         self._running = True
-        self._tasks.append(asyncio.create_task(self._heartbeat_loop()))
+        if heartbeat:
+            self._tasks.append(asyncio.create_task(self._heartbeat_loop()))
         if self._redis_url:
             await self._connect_redis()
             self._tasks.append(asyncio.create_task(self._redis_listener()))
@@ -367,7 +372,7 @@ class WebSocketManager:
                 "channel": channel,
                 "message_type": message_type,
                 "data": data,
-                "origin": id(self),  # ignore own messages
+                "origin": self._origin,  # ignore own messages
             }
         )
         try:
@@ -379,7 +384,7 @@ class WebSocketManager:
         """Background task: relay Redis pub/sub messages to local sockets."""
         if not self._pubsub:
             return
-        origin = id(self)
+        origin = self._origin
         try:
             while self._running:
                 msg = await self._pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)

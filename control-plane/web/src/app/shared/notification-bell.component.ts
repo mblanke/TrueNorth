@@ -7,11 +7,14 @@ import { NavigationEnd, Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { catchError, filter, interval, of } from 'rxjs';
 import { AppNotification, NotificationsApiService } from '@core/services/notifications-api.service';
+import { UserSocketService } from '@core/services/user-socket.service';
 
 /**
  * The toolbar bell: unread count, and a short list of the caller's notifications.
- * Polls the count every minute while the tab is visible and after each navigation;
- * opening the list fetches it fresh. Clicking an item marks it read and opens its link.
+ * New ones arrive live over the user's own socket (UserSocketService). The count is also
+ * polled every minute while the tab is visible and the socket is down, and after each
+ * navigation, so the bell works with no socket at all; reconnecting refreshes it too.
+ * Opening the list fetches it fresh. Clicking an item marks it read and opens its link.
  */
 @Component({
   selector: 'tn-notification-bell',
@@ -63,6 +66,7 @@ import { AppNotification, NotificationsApiService } from '@core/services/notific
 })
 export class NotificationBellComponent implements OnInit {
   private readonly api = inject(NotificationsApiService);
+  private readonly socket = inject(UserSocketService);
   private readonly router = inject(Router);
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly destroyRef = inject(DestroyRef);
@@ -76,10 +80,14 @@ export class NotificationBellComponent implements OnInit {
     this.refreshCount();
     interval(60_000)
       .pipe(
+        filter(() => !this.socket.connected()),
         filter(() => typeof document === 'undefined' || document.visibilityState === 'visible'),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe(() => this.refreshCount());
+    this.socket.notifications$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(n => this.onPushed(n));
+    // After a (re)connect: anything that arrived while the socket was down.
+    this.socket.opened$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.refreshCount());
     this.router.events
       .pipe(filter(e => e instanceof NavigationEnd), takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refreshCount());
@@ -115,6 +123,13 @@ export class NotificationBellComponent implements OnInit {
   @HostListener('document:keydown.escape')
   onEscape(): void {
     this.open.set(false);
+  }
+
+  /** A notification pushed over the socket: show it now (once, even if the list was loaded already). */
+  private onPushed(n: AppNotification): void {
+    if (this.items().some(i => i.id === n.id)) return;
+    this.items.set([n, ...this.items()].slice(0, 30));
+    if (!n.read) this.unread.set(this.unread() + 1);
   }
 
   private refreshCount(): void {
