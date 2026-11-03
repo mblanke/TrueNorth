@@ -190,7 +190,8 @@ async def _upstream_connect(target: Any):
     from websockets.asyncio.client import connect
 
     kwargs: dict[str, Any] = {"subprotocols": list(target.subprotocols), "open_timeout": DIAL_SECONDS,
-                              "max_size": MAX_MESSAGE_BYTES, "compression": None, "logger": _upstream_logger}
+                              "max_size": MAX_MESSAGE_BYTES, "compression": None, "logger": _upstream_logger,
+                              "proxy": None}  # the hypervisor is dialled directly, never through HTTPS_PROXY
     if target.url.startswith("wss://"):
         kwargs["ssl"] = target.ssl if target.ssl is not None else ssl.create_default_context()
     return await connect(target.url, **kwargs)
@@ -262,17 +263,23 @@ async def console_relay(ws: WebSocket, grant: str) -> None:
             await _give_back(app, grant_id, holder)
             await _refuse(ws, verdict.code, verdict.reason, subprotocol)
             return
-        if not service.dial_allowed(who.user.id):
-            await _give_back(app, grant_id, holder)
-            await _refuse(ws, CLOSE_RATE, "Too many console connections; wait a minute", subprotocol)
-            return
-        if not _dial_start(who.user.id):
+        if not _dial_start(who.user.id):  # first: a refusal here spends none of the minute's attempts
             await _give_back(app, grant_id, holder)
             await _refuse(ws, CLOSE_RATE, "Your last connection attempt is still being made; wait a moment",
                           subprotocol)
             return
         abandoned = threading.Event()
-        pending = _dial_pool.submit(_dial_blocking, app, ident, tenant_id, abandoned)
+        try:
+            allowed = service.dial_allowed(who.user.id)
+            pending = _dial_pool.submit(_dial_blocking, app, ident, tenant_id, abandoned) if allowed else None
+        except BaseException:
+            _dial_done(who.user.id)  # nothing was submitted: the user must not stay counted
+            raise
+        if pending is None:
+            _dial_done(who.user.id)
+            await _give_back(app, grant_id, holder)
+            await _refuse(ws, CLOSE_RATE, "Too many console connections; wait a minute", subprotocol)
+            return
         # Counted until the thread has really ended (or the dial was dropped while queued), not
         # until the relay stopped waiting: a dial the hypervisor is sitting on still holds a thread.
         pending.add_done_callback(lambda _f, uid=who.user.id: _dial_done(uid))

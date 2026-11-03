@@ -868,3 +868,51 @@ def test_the_grant_in_the_url_is_redacted_where_requests_are_logged():
 def test_the_upstream_handshake_is_kept_out_of_debug_logs():
     """The library prints the request line (the ticket) at DEBUG; our own logger stays at WARNING."""
     assert relay_router._upstream_logger.level == logging.WARNING
+
+
+def test_a_dial_that_cannot_be_submitted_does_not_leave_the_user_counted(client, world, monkeypatch):
+    class Broken:
+        def submit(self, *a, **k):
+            raise RuntimeError("cannot schedule new futures after shutdown")
+
+    monkeypatch.setattr(relay_router, "_dial_pool", Broken())
+    with pytest.raises((RuntimeError, WebSocketDisconnect)), _open(client, world.grant(world.ann)) as ws:  # the server error surfaces
+        ws.receive_bytes()
+    assert not relay_router._dials_in_flight
+
+
+def test_a_refusal_for_a_dial_still_out_does_not_spend_the_minutes_attempts(client, world, monkeypatch):
+    monkeypatch.setattr(relay_router, "DIAL_SECONDS", 0.2)
+    release = threading.Event()
+    real = MockConsole.dial
+    monkeypatch.setattr(MockConsole, "dial", lambda self, grant, *, db=None, rng=None: (release.wait(5), real(self, grant, db=db, rng=rng))[1])
+    spent = []
+    original = service.dial_allowed
+    monkeypatch.setattr(service, "dial_allowed", lambda uid: (spent.append(uid), original(uid))[1])
+    try:
+        assert _closed_with(client, world.grant(world.ann))[0] == 4504
+        before = len(spent)
+        for _ in range(3):
+            assert _closed_with(client, world.grant(world.ann, vm_name="b"))[0] == 4429
+        assert len(spent) == before  # the refusals cost no attempts
+    finally:
+        release.set()
+    assert _wait_for(lambda: not relay_router._dials_in_flight)
+
+
+def test_the_hypervisor_is_dialled_without_a_proxy(monkeypatch):
+    import asyncio
+
+    from app.console_backends import DialTarget
+
+    seen = {}
+
+    async def fake_connect(url, **kw):
+        seen.update(kw)
+        return object()
+
+    import websockets.asyncio.client as ws_client
+
+    monkeypatch.setattr(ws_client, "connect", fake_connect)
+    asyncio.run(relay_router._upstream_connect(DialTarget(url="ws://127.0.0.1:1/ticket/x")))
+    assert seen["proxy"] is None and seen["logger"] is relay_router._upstream_logger

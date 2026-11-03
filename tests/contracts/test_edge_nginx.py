@@ -491,22 +491,31 @@ def test_noise_agent_channel_is_allowlisted(edge):
 
 @pytest.mark.parametrize("conf", [EDGE_MAIN, WEB], ids=["edge", "web"])
 def test_a_console_grant_is_redacted_in_the_access_log(conf):
-    """Run the config's own ``map $request $tn_request_logged`` regexes (PCRE named groups
-    spelt as Python's) over request lines, as nginx would: first match wins."""
+    """Run the config's own request-log maps (``$request`` to ``$tn_request_logged``, chained)
+    over request lines, as nginx would: each map's first match wins, PCRE named groups spelt
+    as Python's."""
     text = conf.read_text()
-    block = re.search(r"map \$request \$tn_request_logged \{(.*?)\n\s*\}", text, re.S)
-    assert block, f"{conf.name}: no request log map"
-    rules = re.findall(r'"~([^"]+)"\s+"([^"]+)";', block.group(1))
-    assert len(rules) >= 2
+    maps = re.findall(r"map (\$request|\$tn_request_fetch_hidden) (\$\w+) \{(.*?)\n\s*\}", text, re.S)
+    assert [m[1] for m in maps] == ["$tn_request_fetch_hidden", "$tn_request_logged"], f"{conf.name}: request log maps"
 
-    def logged(request: str) -> str:
+    def apply(rules, request: str) -> str:
         for pattern, template in rules:
             m = re.match(pattern.replace("(?<", "(?P<"), request)
             if m:
                 return re.sub(r"\$\{(\w+)\}", lambda g, m=m: m.group(g.group(1)), template)
         return request
 
+    chain = [re.findall(r'"~([^"]+)"\s+"([^"]+)";', body) for _, _, body in maps]
+
+    def logged(request: str) -> str:
+        return apply(chain[1], apply(chain[0], request))
+
     assert logged("GET /ws/console/SECRETTOKEN HTTP/1.1") == "GET /ws/console/<redacted> HTTP/1.1"
     assert logged("GET /ws/console/SECRETTOKEN?x=1 HTTP/1.1") == "GET /ws/console/<redacted>?x=1 HTTP/1.1"
+    assert logged("GET //ws/console/SECRETTOKEN HTTP/1.1") == "GET //ws/console/<redacted> HTTP/1.1"
+    assert logged("GET http://h/ws/console/SECRETTOKEN HTTP/1.1") == "GET http://h/ws/console/<redacted> HTTP/1.1"
+    # a line holding both secrets loses both (the fetch rule used to shadow the console rule)
+    both = logged("GET /ws/console/SECRETTOKEN?x=1&fetch=OTHERSECRET HTTP/1.1")
+    assert "SECRETTOKEN" not in both and "OTHERSECRET" not in both
     assert logged("GET /au/start?fetch=SECRET&a=b HTTP/1.1") == "GET /au/start?fetch=<redacted>&a=b HTTP/1.1"
     assert logged("GET /ws/events HTTP/1.1") == "GET /ws/events HTTP/1.1"
