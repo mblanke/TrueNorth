@@ -549,9 +549,32 @@ a watermark.
 
 | Content | How it moves | Where |
 |---|---|---|
-| Range templates | The YAML file | Range Designer → **Import YAML** (validated before saving) |
+| Proven courses, range templates, scenarios and exercise templates | A signed bundle, from the test site's **Port content** panel (platform administrator) | Calendar → Content → **Port content** → **Preview a bundle** → **Import**; see "Proven content" below |
+| Range templates (any, without the proof) | The YAML file | Range Designer → **Import YAML** (validated before saving) |
 | Courses built with the Course Studio (ARC²) | The release bundle | Course Studio → **Upload release** |
 | The repository's shipped curriculum | Loaded by the installer as drafts | `tn_load_shipped_content: true` in `site.yml`, re-run `site.yml`; publish what the site uses. Off by default: a production site starts with an empty catalogue |
+
+**Proven content.** Only content that is **proven** at the test site moves this way (a range
+built from it reached Certified as it is now, it was used with passing evidence, and the
+content clock does not call it stale). The chip on each item says **Proven** or **Not proven:
+<reasons>**. The steps, with the full rules in [content-port.md](../content-port.md):
+
+1. At the test site, the platform administrator who also holds `content_review:admin` opens
+   Calendar → Content → **Port content** → **Choose content to export**, ticks the items and
+   presses **Export proven content**. Anything unproven, or needed by something selected, is
+   refused and listed.
+2. At this site, set `tn_content_port_trusted_keys` to the test site's public key (**This
+   site's key → Show** on its panel) and re-run the installer. **With no key set, every
+   import is refused.**
+3. Port the golden templates the bundle names that this site lacks (4.1 and 4.2): the
+   preview lists them as "Port this golden template first".
+4. **Preview a bundle**, tick **Replace what is here** only on conflicts you accept, then
+   **Import**. A bundle imports once. Everything lands **not yet proven** here (courses land
+   unpublished), and every account password in a range template was removed, so set the
+   scenario passwords again before building a range from it.
+
+Air-gapped sites can do the same from the command line (`scripts/content_port_inprocess.py`:
+`key`, `list`, `export`, `verify`, `preview`, `import`; see content-port.md).
 
 How instructors and authors then use them: [04 — Instructor guide](04-instructor-guide.md).
 

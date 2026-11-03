@@ -3,7 +3,9 @@
 Everything you need to take a class or a self-serve lab on TrueNorth Range. Your instructor's
 side is in [04-instructor-guide.md](04-instructor-guide.md).
 
-Checked against `main` at `fd4f79a6` (2026-10-27, v1.2.0).
+Checked against `main` at `fd4f79a6` (2026-10-27, v1.2.0); the sign-out, welcome, My classes,
+Console and "Labs are busy" parts were reconciled with `main` at `353339c2` (2026-11-02). The
+rest was not re-read end to end.
 
 ---
 
@@ -17,11 +19,10 @@ Checked against `main` at `fd4f79a6` (2026-10-27, v1.2.0).
      and no waiting. Use the email address your instructor has for you.
    - **You are on no roll call** (for example, you only want self-serve modules): you see
      **Request access to TrueNorth Range**. Fill in the form and press **Submit request**.
-     The **Waiting for approval** page checks every 30 seconds; **Check now** checks
+     An administrator reviews the request. The **Waiting for approval** page checks every 30 seconds; **Check now** checks
      straight away. If you are declined, you see why and can send a new request.
 
-There is no **Sign out** button inside the app on v1.2.0. Close the browser to end your
-session on a shared machine.
+The **Sign out** button is in the top bar. Use it to end your session on a shared machine.
 
 ## 2. Sign the Rules of use
 
@@ -33,8 +34,10 @@ Before anything else you see the **Rules of use**:
 You sign again when the rules change and once a year. The rules tell you that **your sessions
 may be observed**, including your live screens and consoles.
 
-Next comes a three-step **Welcome to TrueNorth Range**: your details, your training path and a
-short tour. You can **Skip for now**.
+Next comes **Welcome to TrueNorth Range**: your details (**Confirm your details**), your
+training path and a short tour. If your instructor put you on a roll call, you skip the first
+step, because you made no access request, and you are already enrolled on the class's
+course. You can **Skip for now**.
 
 ## 3. My classes
 
@@ -64,18 +67,24 @@ When **Join** is greyed out, the reason is shown:
 
 | You see | Why |
 |---|---|
-| "Your range is built shortly before your session." | Not built yet (built 30 minutes before) |
+| "Your range is built shortly before your session." | Not built yet (built shortly before: 30 minutes by default) |
 | "Your range is being built." | Building now |
 | "Your range is powered off. It opens when your instructor starts it." | **Paused**: your range exists and your work is kept, but its machines are stopped. Join comes back when they are running. |
 | "The shared range opens when the session starts." | A collective session: the class shares one range, only during the session |
 | "Your range could not be built. Your instructor can rebuild it." | Failed: tell your instructor |
 
-Join gives you accounts, not a console button. Your instructor tells you how to reach the
-machines for your class.
+**Console.** Next to **Join** is **Console**. It lists **Your machines**, the machines you are
+given accounts on. Press a machine to get a one-time "Console ticket" with its address, valid
+for a short time; open that address in your browser. Consoles open **during your session, from shortly before it
+starts** (for a shared range, once the session is under way). Until then the buttons are
+greyed out and the page says "Your console opens during your session…". Like your accounts,
+opening a console is recorded and counts for your attendance.
 
 **Lost seat.** If you hadn't signed in by **2 hours after your class's first session
-started**, you lose your seat. You see "You lost your seat…". Ask your instructor to
-reinstate you: it takes them one click.
+started**, you lose your seat, but only if you had been told to sign in (an onboarding or
+reminder email, or a notification in TrueNorth). You see "You lost your seat: you had not
+signed in…, 2 hours after the class started. Ask <your instructor> to reinstate you." Ask
+your instructor to reinstate you: it takes them one click.
 
 ## 5. Self-serve labs
 
@@ -88,8 +97,8 @@ Some modules have labs you start yourself, without a class:
    **End lab**. Your accounts are on the same page.
 
 **"Labs are busy, next free at HH:MM"** means the lab machines are all in use, by classes and
-other labs. Start the lab again from your course at that time. On v1.2.0 the time is shown
-in **UTC**.
+other labs. Start the lab again from your course at that time. The time is in the site's time
+zone, which your administrator sets at install (UTC if none was set).
 
 **"Waiting for a free lab. It starts automatically."** means you are in the queue. Leave the
 page open, or **Leave the queue**. You can have only one lab running at a time.
@@ -121,11 +130,11 @@ Name: ____________________   Class: ____________________   Site: _______________
 [ ] Read the Rules of use to the end → I agree → Continue
 [ ] Learn → My classes: my class is listed; chips say Onboarded, Rules of use signed,
     Seat ready
-[ ] I know how to reach my machines (ask the instructor)
+[ ] During the session: My classes → Console → my machine (opens from just before it starts)
 [ ] EVERY session: My classes → Join (this records my attendance)
 [ ] Join greyed out? Read the reason: building / paused / shared range / failed
 [ ] Self-serve lab: Moodle → Start lab → Lab page; used within 4 h, or it closes
-[ ] "Labs are busy, next free at HH:MM" (UTC) → try again then
+[ ] "Labs are busy, next free at HH:MM" (site time) → try again then
 [ ] Lost seat? → ask my instructor to reinstate me
 [ ] Problem? Help → Support → Report a problem
 ```
