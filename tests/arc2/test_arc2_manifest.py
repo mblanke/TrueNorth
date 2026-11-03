@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 from arc2 import check
-from conftest import write_run_content
+from arc2_conftest import write_run_content
 
 TS = "2026-09-24T21:00:00Z"
 SLUG = "arc2-adlm"

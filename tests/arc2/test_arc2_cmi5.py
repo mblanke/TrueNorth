@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from arc2 import check, cmi5
-from conftest import module_config
+from arc2_conftest import module_config
 from test_arc2_manifest import full_manifest, make_run, owners
 
 KB_AU = check.REPO_ROOT / "docs" / "xAPI CMI5 Reference" / "xapi-cmi5-kb" / "au" / "cmi5-au.js"
