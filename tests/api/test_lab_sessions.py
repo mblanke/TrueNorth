@@ -358,7 +358,7 @@ class TestApi:
         until(db_session, a, "ready")
         db_session.commit()
         console = client.post(f"/lab-access/{a.id}/console", headers={"X-Lab-Token": token})
-        assert console.status_code == 200 and console.json()["url"].startswith("mock://console/")
+        assert console.status_code == 200 and console.json()["kind"] == "rfb-ws" and "/ws/console/" in console.json()["url"]
         refused = client.post(f"/lab-access/{a.id}/console?node=ghost", headers={"X-Lab-Token": token})
         assert refused.status_code == 403
 

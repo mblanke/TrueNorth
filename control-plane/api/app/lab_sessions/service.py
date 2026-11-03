@@ -1229,8 +1229,11 @@ def sessions_in_window(
     return rows
 
 
-def console(db: Session, session: LabSession, node: str | None = None) -> dict[str, Any]:
+def console(db: Session, session: LabSession, node: str | None = None, *, ws_base: str) -> dict[str, Any]:
+    """A console grant for the session's Student on one node (app/console_relay): ``kind``
+    ``rfb-ws`` and the ``url`` of TrueNorth's relay, which only that signed-in user can open."""
     from ..console_backends import ConsoleError, get_console_backend
+    from ..console_relay import service as relay
 
     if session.state not in (READY, ACTIVE):
         raise LabRefusedError(f"the lab is {session.state}; the console opens once it is ready")
@@ -1244,7 +1247,9 @@ def console(db: Session, session: LabSession, node: str | None = None) -> dict[s
     if vm is None:
         raise LabRefusedError(f"{target} has no VM yet")
     try:
-        access = get_console_backend(session.backend).open(vm, db=db, rng=rng)  # the range's own vCenter
+        access = relay.issue(db, get_console_backend(session.backend), user_id=session.user_id,
+                             tenant_id=session.tenant_id, rng=rng, vm=vm, view_only=False, observed=False,
+                             base=ws_base)  # the range's own vCenter, at dial
     except (ValueError, ConsoleError) as exc:
         raise LabRefusedError(str(exc), 502) from exc
     touch(db, session)

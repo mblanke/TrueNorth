@@ -4,24 +4,38 @@ Usage:
     from app.console_backends import get_console_backend
 
     console = get_console_backend(session.backend)   # the session's provisioner backend
-    access = console.open(vm)                        # {"kind", "url", "expires_in"}
+    access = console.open(vm, relay_url=url)         # {"kind": "rfb-ws", "url", "expires_in"}
 
-Keyed by provisioner backend: ``vsphere_api`` hands out a VMware WebMKS ticket, ``mock``
-a placeholder for tests and offline development. Vendor SDKs (pyVmomi) are imported only
+Keyed by provisioner backend: ``vsphere_api`` relays VMware WebMKS (a ticket taken by
+``dial`` when the socket opens), ``mock`` an in-process RFB stub for tests and offline
+development. The browser only ever reaches TrueNorth (``/ws/console/<grant>``). Vendor SDKs (pyVmomi) are imported only
 inside this package.
 """
 
 from __future__ import annotations
 
-from .base import BaseConsoleBackend, ConsoleError, ConsoleReader, ConsoleTarget
+from .base import (
+    GRANT_SECONDS,
+    RELAY_KIND,
+    BaseConsoleBackend,
+    ConsoleError,
+    ConsoleReader,
+    ConsoleTarget,
+    DialGrant,
+    DialTarget,
+)
 from .mock import MockConsole
 from .vsphere_webmks import VsphereWebMKSConsole
 
 __all__ = [
+    "GRANT_SECONDS",
+    "RELAY_KIND",
     "BaseConsoleBackend",
     "ConsoleError",
     "ConsoleReader",
     "ConsoleTarget",
+    "DialGrant",
+    "DialTarget",
     "MockConsole",
     "VsphereWebMKSConsole",
     "console_backend_for",

@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from app import models as m
-from app.console_backends import ConsoleError
+from app.console_backends import ConsoleError, DialGrant
 from app.console_backends import vsphere_webmks as console_mod
 from app.models import HypervisorConnection
 from app.secretbox import seal
@@ -65,7 +65,9 @@ def _tag(rid):
 
 
 def _open(db, rng, vm):
-    return console_mod.VsphereWebMKSConsole().open(vm, db=db, rng=rng)
+    """What the relay does when a browser's socket opens: ask the adapter where to connect."""
+    grant = DialGrant(id="g", range_id=str(rng.id), vm_id=vm["vm_id"], vm_name=vm["name"])
+    return console_mod.VsphereWebMKSConsole().dial(grant, db=db, rng=rng)
 
 
 VM = {"name": "abcdef12-web", "vm_id": "vm-1"}
@@ -76,7 +78,7 @@ def test_the_recorded_connection_and_its_own_login_are_used(db_session, vcenter)
     rng = _range(db_session, {"vms": [VM], "connection": {"id": str(conn.id), "host": "https://vc-a.test"}})
     vcenter.machines["vm-1"] = FakeMachine("x-web", _tag(rng.id))
     out = _open(db_session, rng, VM)
-    assert out["url"] == "wss://esx1.test:443/ticket/T"
+    assert out.url == "wss://esx1.test:443/ticket/T" and out.subprotocols == ("binary",)
     kw = vcenter.connect.call_args.kwargs
     assert (kw["host"], kw["user"], kw["pwd"]) == ("vc-a.test", "svc-a", "pw-a")
 
@@ -94,7 +96,7 @@ def test_an_untagged_vm_needs_its_recorded_range_name(db_session, vcenter):
     rng = _range(db_session, {"vms": [VM]})
     vm = {"name": f"{str(rng.id)[:8]}-web", "vm_id": "vm-1"}
     vcenter.machines["vm-1"] = FakeMachine(vm["name"], None)
-    assert _open(db_session, rng, vm)["kind"] == "webmks"
+    assert _open(db_session, rng, vm).url.startswith("wss://")
     vcenter.machines["vm-1"] = FakeMachine("finance-db", None)
     with pytest.raises(ConsoleError):
         _open(db_session, rng, vm)

@@ -30,6 +30,7 @@ from _shared import act_as, real_exercise, real_tenant, real_user
 from app.auth import CurrentUser
 from app.classes.models import Class, ClassRange, ClassSession, ClassStaff, RollCallEntry
 from app.console_backends import MockConsole
+from app.console_relay.models import ConsoleGrant
 from app.models import AuditLog, Course, Range, RangeState, Template, User, UserRole
 from app.range_credentials.models import RangeCredential
 from app.scheduler.models import EventState, ScheduledEvent
@@ -179,7 +180,7 @@ def test_a_student_opens_a_console_on_their_own_seat_during_the_session(client, 
     r = _console(client, world["ann"], ann.range_id)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["kind"] == "mock" and body["url"].startswith("mock://console/") and body["machine"] == "ws1"
+    assert body["kind"] == "rfb-ws" and "/ws/console/" in body["url"] and body["machine"] == "ws1"
     assert body["vm"] == _vm(ann.range_id, "ws1")
     assert body["observed"] is False and body["view_only"] is False
 
@@ -472,8 +473,9 @@ def test_several_vms_of_one_node_each_open_their_own_console(client, world, db_s
     listed = client.get(f"/classes/attending/ranges/{rng.id}/consoles").json()["machines"]
     assert [m["name"] for m in listed] == [f"{r8}-ws1-0", f"{r8}-ws1-1"]
     r = client.post(f"/classes/attending/ranges/{rng.id}/consoles/{r8}-ws1-1")
-    assert r.status_code == 200 and r.json()["url"].startswith("mock://console/vm-b")
+    assert r.status_code == 200 and "/ws/console/" in r.json()["url"]
     (row,) = _audits(db)
+    assert db.query(ConsoleGrant).one().vm_id == "vm-b"
     assert row["vm_id"] == "vm-b"
 
 
@@ -521,3 +523,62 @@ def test_live_class_of_an_exercise_with_no_class_keeps_the_tenant_rule(client, w
     assert client.get(f"/ops/exercises/{ex.id}/class").status_code == 200
     act_as(world["b_observer"])
     assert client.get(f"/ops/exercises/{ex.id}/class").status_code == 404
+
+
+# ── The console is a grant on TrueNorth's relay (#366) ───────────────────────
+
+
+def _grants(db):
+    return db.query(ConsoleGrant).all()
+
+
+def test_a_students_console_is_a_grant_for_them_alone_on_the_relay(client, world, db_session):
+    evt, ann, bob = _individual(db_session, world)
+    r = _console(client, world["ann"], ann.range_id)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["kind"] == "rfb-ws" and body["expires_in"] == 300 and body["view_only"] is False
+    assert body["url"].startswith("wss://") and "/ws/console/" in body["url"]
+    assert "ticket" not in body["url"] and "mock" not in body["url"]  # never the hypervisor's address
+    (grant,) = _grants(db_session)
+    assert str(grant.user_id) == world["ann"].id and grant.tenant_id == world["a"].id
+    assert grant.range_id == ann.range_id and grant.vm_name == _vm(ann.range_id, "ws1")
+    assert grant.view_only is False and grant.observed is False
+    # The URL names the grant by a token, not by the row; only the token's hash is stored.
+    assert grant.token_hash not in body["url"] and str(grant.id) not in body["url"]
+
+
+def test_no_grant_is_made_for_a_seat_that_is_not_theirs_or_a_machine_that_is_not_for_students(
+        client, world, db_session):
+    evt, ann, bob = _individual(db_session, world)
+    assert _console(client, world["ann"], bob.range_id).status_code == 404  # Bob's seat
+    assert _console(client, world["ann"], ann.range_id, "dc").status_code == 404  # staff-only machine
+    assert _console(client, world["cid"], ann.range_id).status_code == 404  # another class's Student
+    assert _grants(db_session) == []
+
+
+def test_the_leads_grant_is_a_normal_one_and_an_observers_is_view_only(client, world, db_session):
+    evt, ann, _ = _individual(db_session, world)
+    assert _watch(client, world["lead"], world["cls"], evt, ann.range_id, "dc").status_code == 200
+    assert _watch(client, world["observer"], world["cls"], evt, ann.range_id).status_code == 200
+    by_user = {str(g.user_id): g for g in _grants(db_session)}
+    assert by_user[world["lead"].id].view_only is False and by_user[world["lead"].id].vm_name.endswith("-dc")
+    assert by_user[world["observer"].id].view_only is True and by_user[world["observer"].id].observed is True
+
+
+def test_no_grant_for_observers_when_observer_consoles_are_off_or_for_other_tenants(
+        client, world, db_session, monkeypatch):
+    evt, ann, _ = _individual(db_session, world)
+    for who in ("b_lead", "b_observer", "other_observer", "ann"):
+        assert _watch(client, world[who], world["cls"], evt, ann.range_id).status_code in (403, 404), who
+    monkeypatch.delenv("CLASS_OBSERVER_CONSOLES", raising=False)
+    assert _watch(client, world["observer"], world["cls"], evt, ann.range_id).status_code == 403
+    assert _grants(db_session) == []
+
+
+def test_an_adapter_that_cannot_give_a_console_leaves_no_grant(client, world, db_session):
+    evt, ann, _ = _individual(db_session, world)
+    db_session.get(Range, ann.range_id).provisioner_backend = "no-such-backend"
+    db_session.commit()
+    assert _console(client, world["ann"], ann.range_id).status_code == 502
+    assert _grants(db_session) == []

@@ -16,11 +16,12 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
+from ..console_relay import service as relay
 from ..db import get_db
 from ..lab_sessions import capacity_gate, service, tokens
 from ..lab_sessions.models import LabSession
@@ -271,13 +272,14 @@ def end_lab_session(
 
 @router.post("/lab-sessions/{session_id}/console", response_model=ConsoleOut)
 def open_lab_console(
+    request: Request,
     session_id: uuid.UUID,
     node: str | None = None,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> ConsoleOut:
     s = _session_for(db, user, session_id, staff_permission=Permission.LEARNING_RECORD_WRITE, act=True)
-    return ConsoleOut(**_do(db, service.console, s, node))
+    return ConsoleOut(**_do(db, service.console, s, node, ws_base=relay.ws_base(request.headers)))
 
 
 @router.post("/lab-sessions/{session_id}/evidence", response_model=LabSessionOut)
@@ -407,12 +409,14 @@ def end_lab_by_token(
 
 @router.post("/lab-access/{session_id}/console", response_model=ConsoleOut)
 def open_console_by_token(
+    request: Request,
     session_id: uuid.UUID,
     node: str | None = None,
     x_lab_token: str | None = Header(None),
     db: Session = Depends(get_db),
 ) -> ConsoleOut:
-    return ConsoleOut(**_do(db, service.console, _token_session(db, session_id, x_lab_token), node))
+    return ConsoleOut(**_do(db, service.console, _token_session(db, session_id, x_lab_token), node,
+                            ws_base=relay.ws_base(request.headers)))
 
 
 @router.get("/lab-access/{session_id}/credentials", response_model=LabCredentialsOut)

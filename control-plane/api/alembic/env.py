@@ -17,6 +17,7 @@ from app import (  # noqa: F401
     audit_integrity,
     classes,
     cmi5,
+    console_relay,
     content_feeds,
     content_port,
     content_review,

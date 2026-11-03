@@ -5,11 +5,41 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Hashable
 from dataclasses import dataclass, field
+from ssl import SSLContext
 from typing import Any, ClassVar
+
+#: How long a console grant (and so the ``expires_in`` of ``open``) is good for connecting.
+GRANT_SECONDS = 300
+#: ``kind`` of every console that is relayed through the API (``/ws/console/<grant>``).
+RELAY_KIND = "rfb-ws"
 
 
 class ConsoleError(Exception):
     """The console could not be opened; the message is safe to show the student."""
+
+
+@dataclass(frozen=True)
+class DialGrant:
+    """What an adapter may know of a console grant (app/console_relay): plain data, no ORM
+    object and no session. The adapter finds the VM from ``vm_id``/``vm_name`` and the range
+    it is handed, and decides nothing about who may connect (the relay did)."""
+
+    id: str
+    range_id: str
+    vm_id: str
+    vm_name: str
+    view_only: bool = False  # the relay enforces it (S4); an adapter may not widen it
+
+
+@dataclass(frozen=True)
+class DialTarget:
+    """Where the relay connects to reach one VM's screen: a WebSocket URL (it may carry a
+    one-time ticket: never log it), the TLS context to use for ``wss`` (None for ``ws``) and
+    the subprotocols to offer. The stream is RFB (WebMKS: subprotocol ``binary``)."""
+
+    url: str
+    ssl: SSLContext | None = None
+    subprotocols: tuple[str, ...] = ("binary",)
 
 
 @dataclass
@@ -33,18 +63,29 @@ class BaseConsoleBackend(ABC):
     #: console, ADR 0014 §19). A page that merely hides the keyboard is not view-only.
     supports_view_only: ClassVar[bool] = False
 
-    def open_view_only(self, vm: dict[str, Any], *, db=None, rng=None) -> dict[str, Any]:
+    def open_view_only(self, vm: dict[str, Any], *, db=None, rng=None,
+                       relay_url: str | None = None) -> dict[str, Any]:
         """As ``open``, for a console the hypervisor enforces as view-only. Only when
         ``supports_view_only``; callers fall back to ``open``, marked observed."""
         raise ConsoleError("this hypervisor has no view-only console")
 
     @abstractmethod
-    def open(self, vm: dict[str, Any], *, db=None, rng=None) -> dict[str, Any]:
+    def open(self, vm: dict[str, Any], *, db=None, rng=None, relay_url: str | None = None) -> dict[str, Any]:
         """Console access for one VM of a range (an entry of its provisioner output:
-        ``vm_id``, ``name``, ...). Returns ``{"kind", "url", "expires_in"}``; the URL is
-        single-use or short-lived, never a standing credential. ``rng`` is the VM's range
-        (and ``db`` a session): a backend reaches the hypervisor that range was built on,
-        and opens only a VM that is that range's."""
+        ``vm_id``, ``name``, ...). Returns ``{"kind", "url", "expires_in"}``: ``kind`` is
+        ``rfb-ws`` and ``url`` the ``relay_url`` the caller made for the grant it just
+        created (``/ws/console/<grant>`` on TrueNorth), good for ``expires_in`` seconds. The
+        browser never reaches the hypervisor; ``dial`` does, when the socket opens. ``rng``
+        is the VM's range (and ``db`` a session)."""
+
+    @abstractmethod
+    def dial(self, grant: DialGrant, *, db=None, rng=None) -> DialTarget:
+        """Where the relay connects for ``grant``, asked when the browser's socket opens (a
+        hypervisor ticket lives about a minute, so it is taken now, not at grant time).
+        Blocking: the relay runs it on a worker thread. ``rng`` is the grant's range (and
+        ``db`` a session): a backend reaches the hypervisor that range was built on and
+        serves only a VM that is that range's. Raises ``ConsoleError`` with a message safe
+        to show the student."""
 
     def console_reader(self, db, targets: list[ConsoleTarget]) -> ConsoleReader:
         """How many console connections are open now on each target's VMs, in one batch (the
@@ -56,3 +97,10 @@ class BaseConsoleBackend(ABC):
         tell), which the caller treats as in use."""
         keys = [t.key for t in targets]
         return lambda: dict.fromkeys(keys)
+
+
+def relay_access(relay_url: str | None) -> dict[str, Any]:
+    """The ``open`` answer of an adapter whose console is relayed."""
+    if not relay_url:
+        raise ConsoleError("no console relay address for this grant")
+    return {"kind": RELAY_KIND, "url": relay_url, "expires_in": GRANT_SECONDS}

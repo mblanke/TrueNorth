@@ -3888,14 +3888,15 @@
         "type": "object"
       },
       "ClassConsoleOut": {
-        "description": "A one-time console ticket. Short-lived and single-use; never a standing credential.",
+        "description": "A console grant: ``url`` is TrueNorth's own ``wss://<tn>/ws/console/<grant>``, opened\nsigned in (``new WebSocket(url, [\"bearer\", token])``); one socket at a time, short-lived,\nnever a standing credential. The hypervisor's ticket is never sent to the browser.",
         "properties": {
           "expires_in": {
+            "description": "Seconds the grant is good for opening a socket",
             "title": "Expires In",
             "type": "integer"
           },
           "kind": {
-            "description": "webmks (vSphere) or mock",
+            "description": "rfb-ws: an RFB stream relayed over WebSocket at ``url``",
             "title": "Kind",
             "type": "string"
           },
@@ -3916,6 +3917,7 @@
             "type": "string"
           },
           "url": {
+            "description": "The relay's WebSocket URL, ``/ws/console/<grant>`` on TrueNorth",
             "title": "Url",
             "type": "string"
           },
@@ -30236,7 +30238,7 @@
     },
     "/classes/attending/ranges/{range_id}/consoles/{vm}": {
       "post": {
-        "description": "A one-time console ticket on one of the Student's own machines, while a session of\nthe class using that range is live or within its provisioning lead. Audited\n(``range_console_open``, as ``student``), and counted as attendance evidence like opening\nthe accounts.  **class:attend**",
+        "description": "A console grant on one of the Student's own machines (``kind`` ``rfb-ws``, ``url`` the\n``wss://<tn>/ws/console/<grant>`` the browser opens signed in), while a session of\nthe class using that range is live or within its provisioning lead. Audited\n(``range_console_open``, as ``student``), and counted as attendance evidence like opening\nthe accounts.  **class:attend**",
         "operationId": "openMyRangeConsole",
         "parameters": [
           {

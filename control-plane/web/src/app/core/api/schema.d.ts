@@ -984,7 +984,8 @@ export interface paths {
         put?: never;
         /**
          * My classes: open a console on one of my machines
-         * @description A one-time console ticket on one of the Student's own machines, while a session of
+         * @description A console grant on one of the Student's own machines (``kind`` ``rfb-ws``, ``url`` the
+         *     ``wss://<tn>/ws/console/<grant>`` the browser opens signed in), while a session of
          *     the class using that range is live or within its provisioning lead. Audited
          *     (``range_console_open``, as ``student``), and counted as attendance evidence like opening
          *     the accounts.  **class:attend**
@@ -11829,14 +11830,19 @@ export interface components {
         };
         /**
          * ClassConsoleOut
-         * @description A one-time console ticket. Short-lived and single-use; never a standing credential.
+         * @description A console grant: ``url`` is TrueNorth's own ``wss://<tn>/ws/console/<grant>``, opened
+         *     signed in (``new WebSocket(url, ["bearer", token])``); one socket at a time, short-lived,
+         *     never a standing credential. The hypervisor's ticket is never sent to the browser.
          */
         ClassConsoleOut: {
-            /** Expires In */
+            /**
+             * Expires In
+             * @description Seconds the grant is good for opening a socket
+             */
             expires_in: number;
             /**
              * Kind
-             * @description webmks (vSphere) or mock
+             * @description rfb-ws: an RFB stream relayed over WebSocket at ``url``
              */
             kind: string;
             /**
@@ -11855,7 +11861,10 @@ export interface components {
              * Format: uuid
              */
             range_id: string;
-            /** Url */
+            /**
+             * Url
+             * @description The relay's WebSocket URL, ``/ws/console/<grant>`` on TrueNorth
+             */
             url: string;
             /**
              * View Only
