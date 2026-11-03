@@ -3,7 +3,7 @@
 ``dial`` starts (once per process) a WebSocket server on 127.0.0.1 and hands the relay its
 URL, so the relay's pump, close codes and single-socket rule run for real in tests and
 offline development. The stub is not a VNC server: on connect it sends the RFB protocol
-version greeting, ``b"RFB 003.008\\n"``, then echoes every message back. It offers the
+version greeting, ``b"RFB 003.008\\n"``, then echoes every message back (on a view-only ticket, ``/ticket/mock-ro``, it swallows them: input never comes back). It offers the
 ``binary`` subprotocol, as WebMKS does. Tests steer it with ``dial_error`` (the hypervisor
 refuses a ticket) and ``dial_unreachable`` (the ticket names a host that does not answer).
 """
@@ -33,10 +33,12 @@ def _stub_port() -> int:
         async def handler(conn) -> None:
             from websockets.exceptions import ConnectionClosed
 
+            read_only = conn.request.path.endswith("/mock-ro")  # a ticket the hypervisor made view-only
             try:
                 await conn.send(RFB_GREETING)
                 async for message in conn:
-                    await conn.send(message)
+                    if not read_only:
+                        await conn.send(message)
             except ConnectionClosed:  # the relay hung up, with or without a close frame
                 pass
 
@@ -96,4 +98,6 @@ class MockConsole(BaseConsoleBackend):
             raise ConsoleError(type(self).dial_error)
         if type(self).dial_unreachable:
             return DialTarget(url="ws://127.0.0.1:1/ticket/none")
+        if grant.view_only and type(self).supports_view_only:
+            return DialTarget(url=f"ws://127.0.0.1:{_stub_port()}/ticket/mock-ro", input_blocked=True)
         return DialTarget(url=f"ws://127.0.0.1:{_stub_port()}/ticket/mock")

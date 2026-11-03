@@ -25,8 +25,9 @@ Close codes (the reason is safe to show the Student):
 4409  This console grant is already open in another socket (or was taken by one).
 4410  The grant expired (about five minutes after issue) or was used for its ``MAX_DIALS``
       connections; ask for a new console.
-4429  Too many connection attempts by this user in a minute.
-4502  The hypervisor did not give a console (refused the ticket, or was unreachable).
+4429  Too many connection attempts by this user in a minute, or one is still being made.
+4502  The hypervisor did not give a console (refused the ticket, or was unreachable), or a
+      view-only grant met a console that accepts input (it is never served).
 4503  The connection to the hypervisor dropped while the console was open.
 4504  The hypervisor did not answer in time.
 ====  ================================================================================
@@ -37,6 +38,7 @@ The socket never outlives the session window or lab it was opened in, nor the si
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import contextlib
 import logging
 import ssl
@@ -56,6 +58,10 @@ from ..models import Range
 from . import policy, service
 
 logger = logging.getLogger("truenorth.console_relay")
+# The library logs the request line of the upstream handshake (it holds the ticket) at DEBUG; a
+# logger of our own, held at WARNING whatever the root is set to, keeps that out of any log.
+_upstream_logger = logging.getLogger("truenorth.console_relay.upstream")
+_upstream_logger.setLevel(logging.WARNING)
 
 router = APIRouter()
 
@@ -65,6 +71,14 @@ CLOSE_GONE, CLOSE_BUSY, CLOSE_EXPIRED = 4404, 4409, 4410
 CLOSE_UPSTREAM_REFUSED, CLOSE_UPSTREAM_LOST, CLOSE_UPSTREAM_TIMEOUT = 4502, 4503, 4504
 #: Longest the hypervisor may take to hand over a ticket and accept the connection.
 DIAL_SECONDS = 15
+#: Dials (a blocking hypervisor login and ticket) run on this pool and no other, and one user
+#: has one at a time. A hypervisor that stops answering holds a thread until the SDK gives up
+#: (``vsphere_webmks.CONNECT_TIMEOUT`` per socket operation); on the server's shared thread pool
+#: (40) a few redialling Students would take it all from every other request and renewal.
+DIAL_WORKERS = 8
+MAX_DIALS_IN_FLIGHT_PER_USER = 1
+#: A close reason is at most 123 bytes of UTF-8 (RFC 6455: 125 minus the 2-byte code).
+MAX_REASON_BYTES = 123
 #: A single RFB message (a framebuffer update) can be large; bound it, not the stream.
 MAX_MESSAGE_BYTES = 16 * 1024 * 1024
 #: The other way: RFB input (keys, pointer, clipboard text) is small. 1 MiB is generous.
@@ -77,11 +91,43 @@ IDLE_SECONDS = 600
 MAX_RENEW_FAILURES = 3
 
 
+_dial_pool = concurrent.futures.ThreadPoolExecutor(max_workers=DIAL_WORKERS, thread_name_prefix="tn-dial")
+_dials_in_flight: dict[uuid.UUID, int] = {}
+_dials_lock = threading.Lock()
+
+
+def _dial_start(user_id: uuid.UUID) -> bool:
+    """Count a dial for ``user_id`` unless one of theirs is still out; False means refuse."""
+    with _dials_lock:
+        if _dials_in_flight.get(user_id, 0) >= MAX_DIALS_IN_FLIGHT_PER_USER:
+            return False
+        _dials_in_flight[user_id] = _dials_in_flight.get(user_id, 0) + 1
+        return True
+
+
+def _dial_done(user_id: uuid.UUID) -> None:
+    with _dials_lock:
+        left = _dials_in_flight.get(user_id, 0) - 1
+        if left > 0:
+            _dials_in_flight[user_id] = left
+        else:
+            _dials_in_flight.pop(user_id, None)
+
+
+def _fit(reason: str) -> str:
+    """``reason`` cut to ``MAX_REASON_BYTES`` of UTF-8 without splitting a character: a longer
+    close frame is invalid, and the browser would see 1006 in place of the code."""
+    raw = reason.encode("utf-8")
+    if len(raw) <= MAX_REASON_BYTES:
+        return reason
+    return raw[:MAX_REASON_BYTES].decode("utf-8", errors="ignore")
+
+
 async def _refuse(ws: WebSocket, code: int, reason: str, subprotocol: str | None) -> None:
     """Close after the handshake, so the browser sees the code and reason (before it, a
     browser only sees a failed connection)."""
     await ws.accept(subprotocol=subprotocol)
-    await ws.close(code=code, reason=reason)
+    await ws.close(code=code, reason=_fit(reason))
 
 
 @contextlib.contextmanager
@@ -144,7 +190,7 @@ async def _upstream_connect(target: Any):
     from websockets.asyncio.client import connect
 
     kwargs: dict[str, Any] = {"subprotocols": list(target.subprotocols), "open_timeout": DIAL_SECONDS,
-                              "max_size": MAX_MESSAGE_BYTES, "compression": None}
+                              "max_size": MAX_MESSAGE_BYTES, "compression": None, "logger": _upstream_logger}
     if target.url.startswith("wss://"):
         kwargs["ssl"] = target.ssl if target.ssl is not None else ssl.create_default_context()
     return await connect(target.url, **kwargs)
@@ -154,7 +200,9 @@ def _dial_blocking(app: Any, ident: DialGrant, tenant_id: uuid.UUID, abandoned: 
     """``backend.dial`` on a worker thread with a session of its own (the request's is not
     thread-safe and may be gone). When the relay gave up waiting (``abandoned``) the thread
     still runs to its end, and the adapter's own ``finally`` closes its hypervisor login; this
-    logs that it did."""
+    logs that it did. A dial still queued when the relay gave up does nothing."""
+    if abandoned.is_set():
+        raise ConsoleError("The console request was abandoned")
     try:
         with _session(app) as db:
             # tenant-safe: the grant's own range, in the grant's tenant.
@@ -218,10 +266,18 @@ async def console_relay(ws: WebSocket, grant: str) -> None:
             await _give_back(app, grant_id, holder)
             await _refuse(ws, CLOSE_RATE, "Too many console connections; wait a minute", subprotocol)
             return
+        if not _dial_start(who.user.id):
+            await _give_back(app, grant_id, holder)
+            await _refuse(ws, CLOSE_RATE, "Your last connection attempt is still being made; wait a moment",
+                          subprotocol)
+            return
         abandoned = threading.Event()
+        pending = _dial_pool.submit(_dial_blocking, app, ident, tenant_id, abandoned)
+        # Counted until the thread has really ended (or the dial was dropped while queued), not
+        # until the relay stopped waiting: a dial the hypervisor is sitting on still holds a thread.
+        pending.add_done_callback(lambda _f, uid=who.user.id: _dial_done(uid))
         try:
-            target = await asyncio.wait_for(
-                run_in_threadpool(_dial_blocking, app, ident, tenant_id, abandoned), DIAL_SECONDS)
+            target = await asyncio.wait_for(asyncio.wrap_future(pending), DIAL_SECONDS)
         except TimeoutError:
             abandoned.set()
             logger.warning("console %s: dial timed out after %ss", service.short(grant_id), DIAL_SECONDS)
@@ -232,7 +288,16 @@ async def console_relay(ws: WebSocket, grant: str) -> None:
             logger.info("console %s: dial refused: %s", service.short(grant_id), type(exc).__name__)
             reason = str(exc) if isinstance(exc, ConsoleError) else "No console for this machine"
             await _give_back(app, grant_id, holder)
-            await _refuse(ws, CLOSE_UPSTREAM_REFUSED, reason[:120], subprotocol)
+            await _refuse(ws, CLOSE_UPSTREAM_REFUSED, reason, subprotocol)
+            return
+        if ident.view_only and not target.input_blocked:
+            # Fail closed: a grant made for an observer is never served from a console that types.
+            # (S4, #369, will filter the input here and lift this for the adapters that cannot.)
+            logger.warning("console %s: a view-only grant met a console that accepts input; refused",
+                           service.short(grant_id))
+            await _give_back(app, grant_id, holder)
+            await _refuse(ws, CLOSE_UPSTREAM_REFUSED, "A view-only console is not available for this machine",
+                          subprotocol)
             return
         try:
             upstream = await _upstream_connect(target)
@@ -255,7 +320,7 @@ async def console_relay(ws: WebSocket, grant: str) -> None:
         code, reason = await _pump(ws, upstream, app, facts, holder, who, verdict.until)
         await _give_back(app, grant_id, holder)
         with contextlib.suppress(RuntimeError):  # already closed by the browser
-            await ws.close(code=code, reason=reason)
+            await ws.close(code=code, reason=_fit(reason))
     finally:
         # Any way out, a cancelled task included (the shield lets these finish): the hypervisor
         # connection is closed, and the claim given back (idempotent; only its holder can clear it).

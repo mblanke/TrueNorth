@@ -44,10 +44,10 @@ from .base import (
 )
 
 try:  # pyVmomi is optional outside vSphere deployments
-    from pyVim.connect import Connect, Disconnect, SmartConnect
+    from pyVim.connect import Connect, Disconnect
     from pyVmomi import vim, vmodl
 except ImportError:  # pragma: no cover - exercised only without pyvmomi installed
-    Connect = SmartConnect = Disconnect = vim = vmodl = None
+    Connect = Disconnect = vim = vmodl = None
 
 logger = logging.getLogger(__name__)
 # A vCenter that does not answer must not hold up the lab sweep (#311 rounds 3 and 4).
@@ -136,7 +136,7 @@ class VsphereWebMKSConsole(BaseConsoleBackend):
     def open(self, vm: dict[str, Any], *, db=None, rng=None, relay_url: str | None = None) -> dict[str, Any]:
         """The relay's address for a grant; the vCenter is asked only when the socket opens
         (``dial``). Refuses early what dial could not serve at all."""
-        if SmartConnect is None:
+        if Connect is None:
             raise ConsoleError("the vSphere console needs pyvmomi on the API")
         if not str(vm.get("vm_id") or ""):
             raise ConsoleError("this VM has no hypervisor id yet")
@@ -157,7 +157,7 @@ class VsphereWebMKSConsole(BaseConsoleBackend):
 
     def _acquire(self, vm: dict[str, Any], db, rng) -> tuple[str, int, str, bool]:
         """(host, port, ticket, verify_ssl) of a WebMKS ticket for the range's own VM."""
-        if SmartConnect is None:
+        if Connect is None:
             raise ConsoleError("the vSphere console needs pyvmomi on the API")
         vm_id = str(vm.get("vm_id") or "")
         if not vm_id:
@@ -177,12 +177,18 @@ class VsphereWebMKSConsole(BaseConsoleBackend):
         if not url.hostname:
             raise ConsoleError("no vCenter is configured for this range")
         try:
-            si = SmartConnect(
+            # Connect, not SmartConnect: SmartConnect probes the API version with no timeout, and
+            # this runs on one of the relay's few dial threads (app/console_relay/router.py). With
+            # the version given and ``httpConnectionTimeout`` set, a vCenter that does not answer
+            # frees the thread after CONNECT_TIMEOUT per socket operation, as the lab sweep's login does.
+            si = Connect(
                 host=url.hostname,
                 port=url.port or 443,
                 user=target["username"],
                 pwd=target["password"],
+                version=API_VERSION,
                 disableSslCertValidation=not target["verify_ssl"],
+                httpConnectionTimeout=CONNECT_TIMEOUT,
             )
         except Exception as exc:  # noqa: BLE001 — any login failure is a console failure
             # Fixed text for the Student; the log has the exception class and VM id only (the

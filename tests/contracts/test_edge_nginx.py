@@ -484,3 +484,29 @@ def test_noise_agent_channel_is_allowlisted(edge):
     # One default, from the operator-editable list (allow-all as shipped, documented there).
     (default,) = _geo("$tn_noise_agent_client").all("default")
     assert default.source.endswith("snippets/noise-agent-cidrs.conf") and default.args == ["1"]
+
+
+# ── A console grant in the path is a bearer token: never logged ──────────────
+
+
+@pytest.mark.parametrize("conf", [EDGE_MAIN, WEB], ids=["edge", "web"])
+def test_a_console_grant_is_redacted_in_the_access_log(conf):
+    """Run the config's own ``map $request $tn_request_logged`` regexes (PCRE named groups
+    spelt as Python's) over request lines, as nginx would: first match wins."""
+    text = conf.read_text()
+    block = re.search(r"map \$request \$tn_request_logged \{(.*?)\n\s*\}", text, re.S)
+    assert block, f"{conf.name}: no request log map"
+    rules = re.findall(r'"~([^"]+)"\s+"([^"]+)";', block.group(1))
+    assert len(rules) >= 2
+
+    def logged(request: str) -> str:
+        for pattern, template in rules:
+            m = re.match(pattern.replace("(?<", "(?P<"), request)
+            if m:
+                return re.sub(r"\$\{(\w+)\}", lambda g, m=m: m.group(g.group(1)), template)
+        return request
+
+    assert logged("GET /ws/console/SECRETTOKEN HTTP/1.1") == "GET /ws/console/<redacted> HTTP/1.1"
+    assert logged("GET /ws/console/SECRETTOKEN?x=1 HTTP/1.1") == "GET /ws/console/<redacted>?x=1 HTTP/1.1"
+    assert logged("GET /au/start?fetch=SECRET&a=b HTTP/1.1") == "GET /au/start?fetch=<redacted>&a=b HTTP/1.1"
+    assert logged("GET /ws/events HTTP/1.1") == "GET /ws/events HTTP/1.1"

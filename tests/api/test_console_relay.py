@@ -10,6 +10,8 @@ grant (per role, Student's own seat, observers) is in tests/api/test_class_conso
 from __future__ import annotations
 
 import json
+import logging
+import threading
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -757,3 +759,112 @@ def test_a_step_that_raises_is_rolled_back_not_committed(client, world, db_sessi
     assert _wait_for(_released(db_session))
     db_session.expire_all()
     assert db_session.query(ConsoleGrant).one().dials == 1  # the one real dial; the failed step's write is gone
+
+
+# ── Dials: a hypervisor that does not answer ─────────────────────────────────
+
+
+def test_a_dial_runs_on_the_relays_own_threads_not_the_servers_shared_pool(client, world, monkeypatch):
+    seen = []
+    real = MockConsole.dial
+
+    def note(self, grant, *, db=None, rng=None):
+        seen.append(threading.current_thread().name)
+        return real(self, grant, db=db, rng=rng)
+
+    monkeypatch.setattr(MockConsole, "dial", note)
+    with _open(client, world.grant(world.ann)) as ws:
+        assert ws.receive_bytes() == RFB_GREETING
+    assert seen and all(name.startswith("tn-dial") for name in seen)
+    assert relay_router._dial_pool._max_workers == relay_router.DIAL_WORKERS
+
+
+def test_one_user_has_one_dial_out_at_a_time_until_it_really_ends(client, world, monkeypatch):
+    """A hypervisor that is sitting on a login holds a thread: redialling must not stack more."""
+    monkeypatch.setattr(relay_router, "DIAL_SECONDS", 0.2)
+    release = threading.Event()
+    real = MockConsole.dial
+
+    def stuck(self, grant, *, db=None, rng=None):
+        release.wait(5)
+        return real(self, grant, db=db, rng=rng)
+
+    monkeypatch.setattr(MockConsole, "dial", stuck)
+    try:
+        assert _closed_with(client, world.grant(world.ann))[0] == 4504  # gave up waiting; the thread is still out
+        code, reason = _closed_with(client, world.grant(world.ann, vm_name="b"))
+        assert code == 4429 and "still being made" in reason
+        assert _closed_with(client, world.grant(world.bob), who="kc-bob")[0] == 4504  # another user is not blocked
+    finally:
+        release.set()
+    assert _wait_for(lambda: not relay_router._dials_in_flight)
+    monkeypatch.setattr(MockConsole, "dial", real)
+    with _open(client, world.grant(world.ann, vm_name="c")) as ws:  # and Ann can dial again
+        assert ws.receive_bytes() == RFB_GREETING
+
+
+def test_a_dial_still_queued_when_the_relay_gave_up_does_nothing(monkeypatch):
+    from app.console_backends import ConsoleError, DialGrant
+
+    called = []
+    monkeypatch.setattr(relay_router, "get_console_backend", lambda kind: called.append(kind))
+    gone = threading.Event()
+    gone.set()
+    with pytest.raises(ConsoleError):
+        relay_router._dial_blocking(None, DialGrant(id="g", range_id=str(uuid.uuid4()), vm_id="v", vm_name="n"),
+                                    TENANT_A, gone)
+    assert called == []
+
+
+# ── View-only is never claimed on a console that types ───────────────────────
+
+
+def test_a_view_only_grant_is_not_served_from_a_console_that_accepts_input(client, world, db_session):
+    MockConsole.supports_view_only = False
+    code, reason = _closed_with(client, world.grant(world.ann, view_only=True))
+    assert code == 4502 and "view-only" in reason
+    assert _wait_for(_released(db_session))  # the grant was given back, not held
+
+
+def test_a_view_only_grant_on_a_console_the_hypervisor_makes_read_only_drops_input(client, world, monkeypatch):
+    monkeypatch.setattr(relay_router, "IDLE_SECONDS", 0.6)
+    MockConsole.supports_view_only = True
+    try:
+        with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann, view_only=True)) as ws:
+            assert ws.receive_bytes() == RFB_GREETING
+            ws.send_bytes(b"k")  # a normal console would send it straight back
+            ws.receive_bytes()
+        assert e.value.code == 4408  # idle: nothing, not b"k", came back
+    finally:
+        MockConsole.supports_view_only = False
+
+
+# ── What reaches a log or a close frame ──────────────────────────────────────
+
+
+def test_a_close_reason_is_cut_to_123_bytes_of_whole_characters():
+    assert relay_router._fit("short") == "short"
+    cut = relay_router._fit("é" * 100)  # 200 bytes
+    assert len(cut.encode()) <= relay_router.MAX_REASON_BYTES and set(cut) == {"é"}
+    assert len(relay_router._fit("日" * 100).encode()) <= relay_router.MAX_REASON_BYTES
+
+
+def test_a_long_non_ascii_refusal_still_reaches_the_browser_with_its_code(client, world):
+    MockConsole.dial_error = "Ça ne marche pas: " + "é" * 200
+    code, reason = _closed_with(client, world.grant(world.ann))
+    assert code == 4502 and 0 < len(reason.encode()) <= relay_router.MAX_REASON_BYTES
+
+
+def test_the_grant_in_the_url_is_redacted_where_requests_are_logged():
+    from app.middleware import RedactSecretPaths, redact_path
+
+    assert redact_path("/ws/console/abcDEF-123_x") == "/ws/console/<redacted>"
+    record = logging.LogRecord("uvicorn.access", logging.INFO, "", 0, '%s - "%s %s HTTP/%s" %d',
+                               ("1.2.3.4:5", "GET", "/ws/console/SECRETTOKEN", "1.1", 101), None)
+    RedactSecretPaths().filter(record)
+    assert "SECRETTOKEN" not in record.getMessage() and "<redacted>" in record.getMessage()
+
+
+def test_the_upstream_handshake_is_kept_out_of_debug_logs():
+    """The library prints the request line (the ticket) at DEBUG; our own logger stays at WARNING."""
+    assert relay_router._upstream_logger.level == logging.WARNING
