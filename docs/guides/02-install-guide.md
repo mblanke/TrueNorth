@@ -611,6 +611,11 @@ release, check which tenant owns the bootstrap slug (`SELECT id, slug FROM tenan
 with `tn_tenant_slug`). The first run records whichever tenant holds it, and it never
 changes after that. If it is not the operator's tenant, set `tn_platform_tenant_id` first.
 
+**Site time zone.** `tn_site_timezone` (an IANA name such as `America/Toronto`) renders
+`SITE_TIMEZONE`, which the api uses for times it says in words ("Labs are busy, next free at
+HH:MM") and for the day-before roll-call reminder. Left empty it is the host's own zone
+(`timedatectl`), else `UTC`.
+
 Read the report at the end. Expected on this site's first run:
 
 | Line | Expected | Meaning |
