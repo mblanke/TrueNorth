@@ -35,14 +35,24 @@ jobs:
       - run: ruff format --check control-plane/ scenario-engine/ tools/ ai-orchestrator/
         continue-on-error: true
 
-  test-python:
+  # The suite is split by test file across the shards (scripts/ci_shard.py): run serially it
+  # took 30 to 36 minutes, and that wait was on every PR. Each shard has its own PostgreSQL
+  # and OpenSearch, so no test shares a database with another shard. The job that follows,
+  # `test-python`, is the one name branch protection requires.
+  # Add a shard by adding its number to the matrix; tests/contracts/test_ci_shard.py proves
+  # the shards cover every file once.
+  test-python-shard:
+    name: test-python-shard (${{ matrix.shard }}/5)
     runs-on: ubuntu-latest
     needs: lint-python
-    # The suite takes ~5 min with both services. On 2026-10-08 (PR #94) the apt step below
-    # stalled for 4 h 47 min and the job ran until GitHub's 6 h limit; bound it.
-    # Raised from 30 to 45 on 2026-10-30: with the 104 course files the suite ran 29m52s on #346
-    # and hit the cap on #347 (the spine fixtures import every course per test).
-    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
+    # On 2026-10-08 (PR #94) the apt step below stalled for 4 h 47 min and the job ran until
+    # GitHub's 6 h limit; bound it. A shard takes about a fifth of the old 30 to 36 minute
+    # serial run plus setup.
+    timeout-minutes: 25
     # PostgreSQL for the tests whose claim SQLite cannot prove: row locks, partial unique
     # indexes under concurrency, the real migration chain (tests/conftest.py
     # postgres_engine). Without TEST_POSTGRES_ADMIN_URL they skip.
@@ -92,7 +102,11 @@ jobs:
           sudo -E apt-get $APT_OPTS update -qq
           sudo -E apt-get $APT_OPTS install -y -qq bubblewrap
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
-      - run: pytest tests/ --tb=short -q -rs --ignore=tests/integration --junitxml=build/test-python/junit.xml
+      - name: Run this shard's test files
+        run: |
+          python scripts/ci_shard.py ${{ matrix.shard }} 5 > shard-files.txt
+          wc -l shard-files.txt
+          pytest $(cat shard-files.txt) --tb=short -q -rs --junitxml=build/test-python/junit.xml
         env:
           AUTH_DISABLED: "true"
           DATABASE_URL: "sqlite://"
@@ -102,19 +116,48 @@ jobs:
           RATE_LIMIT_ENABLED: "false"
           TEST_POSTGRES_ADMIN_URL: "postgresql+psycopg://tn_ci:tn_ci@localhost:5432/postgres"
           TEST_OPENSEARCH_URL: "http://localhost:9200"
-      # The PostgreSQL tests skip when TEST_POSTGRES_ADMIN_URL is unset (every such skip
-      # names the variable), and pytest exits 0 when they do. Here the service is up and
-      # the URL is set, so one such skip means the lane silently stopped proving what it
-      # claims. Fail on any, and on there being no PostgreSQL test at all.
-      - name: No PostgreSQL test skipped
-        if: success() || failure()
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: test-python-junit-${{ matrix.shard }}
+          path: build/test-python/junit.xml
+          if-no-files-found: ignore
+
+  # The required check. Passes only when every shard passed and, across all shards, no
+  # PostgreSQL test was skipped.
+  test-python:
+    runs-on: ubuntu-latest
+    needs: test-python-shard
+    if: always()
+    timeout-minutes: 10
+    steps:
+      - name: Every shard passed
         run: |
-          python - build/test-python/junit.xml <<'EOF'
+          echo "shards: ${{ needs.test-python-shard.result }}"
+          test "${{ needs.test-python-shard.result }}" = "success"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: test-python-junit-*
+          path: build/junit
+      # The PostgreSQL tests skip when TEST_POSTGRES_ADMIN_URL is unset (every such skip
+      # names the variable), and pytest exits 0 when they do. Each shard has the service up
+      # and the URL set, so one such skip means the lane silently stopped proving what it
+      # claims. Fail on any, and on there being no PostgreSQL test at all. Also fail if a
+      # shard's report is missing, which would otherwise hide its skips.
+      - name: No PostgreSQL test skipped
+        run: |
+          python - build/junit <<'EOF'
+          import pathlib
           import sys
           import xml.etree.ElementTree as ET
 
-          root = ET.parse(sys.argv[1]).getroot()
-          cases = list(root.iter("testcase"))
+          reports = sorted(pathlib.Path(sys.argv[1]).glob("*/junit.xml"))
+          if len(reports) != 5:
+              print(f"::error::expected 5 shard reports, found {len(reports)}")
+              sys.exit(1)
+          cases = []
+          for report in reports:
+              cases += list(ET.parse(report).getroot().iter("testcase"))
           pg_files = ("postgres", "migration_completeness", "migration_populated_upgrade")
           skipped, ran = [], 0
           for case in cases:
@@ -124,19 +167,13 @@ jobs:
                   skipped.append(f'{case.get("classname")}::{case.get("name")}')
               elif skip is None and any(p in (case.get("classname") or "") for p in pg_files):
                   ran += 1
-          print(f"{len(cases)} test cases; {ran} in PostgreSQL test modules ran; "
-                f"{len(skipped)} skipped for want of TEST_POSTGRES_ADMIN_URL")
+          print(f"{len(cases)} test cases in {len(reports)} shards; {ran} in PostgreSQL test "
+                f"modules ran; {len(skipped)} skipped for want of TEST_POSTGRES_ADMIN_URL")
           for name in skipped:
               print(f"::error::skipped without PostgreSQL: {name}")
           if skipped or ran == 0:
               sys.exit(1)
           EOF
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: always()
-        with:
-          name: test-python-junit
-          path: build/test-python/junit.xml
-          if-no-files-found: ignore
 
   # MOSA gates — same checks as scripts/dod.sh, so local green and CI green agree.
   # docs/adr/0002-interface-versioning.md, docs/adr/0003-mosa-ratchet.md
