@@ -727,3 +727,102 @@ def test_a_student_with_a_grant_is_cut_off_at_the_end_of_their_session_over_the_
     with pytest.raises(WebSocketDisconnect) as e, connect(kc) as ws:
         ws.receive_bytes()
     assert e.value.code == 1008
+
+
+# ── The real policy through the relay: revocation, stale state, no held connection ──
+
+
+@pytest.fixture
+def relay_auth(monkeypatch):
+    from app import auth
+    from app.console_relay import service
+    from fastapi import HTTPException
+
+    class Backend:
+        async def validate_token(self, token):
+            if token.startswith("good-"):
+                return {"sub": token[5:], "email": "x@example.test", "amr": ["pwd", "otp"]}
+            raise HTTPException(401, "bad token")
+
+    monkeypatch.setattr(auth, "AUTH_DISABLED", False)
+    monkeypatch.setattr(auth, "get_auth_backend", lambda: Backend())
+    monkeypatch.setattr(service, "RENEW_SECONDS", 0.8)
+
+
+def _revoke_user(db, w, evt, ann):
+    db.get(User, uuid.UUID(w["ann"].id)).is_active = False
+
+
+def _revoke_seat(db, w, evt, ann):
+    db.get(RollCallEntry, w["ann_entry"].id).status = "forfeited"
+
+
+def _revoke_range(db, w, evt, ann):
+    db.get(Range, ann.range_id).state = RangeState.stopped
+
+
+def _revoke_window(db, w, evt, ann):
+    evt.end_time = NOW - timedelta(minutes=1)
+
+
+def _revoke_class(db, w, evt, ann):
+    w["cls"].status = "closed"
+
+
+@pytest.mark.parametrize("who,revoke,code", [
+    ("ann", _revoke_user, 1008), ("ann", _revoke_seat, 1008), ("ann", _revoke_window, 1008),
+    ("ann", _revoke_range, 4404), ("lead", _revoke_class, 1008),
+])
+def test_a_revocation_cuts_the_socket_through_the_real_policy_on_production_style_sessions(
+        client, world, db_session, relay_auth, who, revoke, code):
+    """No policy mock; every step of the relay gets a fresh session built as production's is
+    (expire_on_commit=False, closed after use), so a stale identity map would let the socket live.
+    Between renewals the relay holds no session and no open transaction."""
+    import time
+
+    from app.console_backends.mock import RFB_GREETING
+    from app.db import get_db
+    from app.main import app as fastapi_app
+    from sqlalchemy.orm import sessionmaker
+    from starlette.websockets import WebSocketDisconnect
+
+    evt, ann, _ = _individual(db_session, world)
+    if who == "ann":
+        url = _console(client, world["ann"], ann.range_id).json()["url"]
+    else:
+        url = _watch(client, world["lead"], world["cls"], evt, ann.range_id, "dc").json()["url"]
+    token = url.rsplit("/", 1)[1]
+    opened, closed = [], []
+
+    def production_style_db():
+        s = sessionmaker(bind=db_session.get_bind(), expire_on_commit=False, autoflush=False)()
+        opened.append(s)
+        try:
+            yield s
+        finally:
+            s.close()
+            closed.append(s)
+
+    fastapi_app.dependency_overrides[get_db] = production_style_db
+    with pytest.raises(WebSocketDisconnect) as e, client.websocket_connect(
+            f"/ws/console/{token}", subprotocols=["bearer", f"good-{world[who].keycloak_id}"]) as ws:
+        assert ws.receive_bytes() == RFB_GREETING
+        time.sleep(0.3)  # the relay is now sleeping until its first renewal
+        assert opened and len(closed) == len(opened), "a session is still open while the relay sleeps"
+        assert not any(s.in_transaction() for s in opened)
+        revoke(db_session, world, evt, ann)
+        db_session.commit()
+        ws.receive_bytes()
+    assert e.value.code == code, e.value.reason
+
+
+def test_a_grant_is_bound_to_the_session_it_was_issued_for(client, world, db_session):
+    from app.console_relay import policy
+
+    evt, ann, _ = _individual(db_session, world)
+    assert _console(client, world["ann"], ann.range_id).status_code == 200
+    grant = _grant_of(db_session, world["ann"])
+    assert policy.check(db_session, grant, world["ann"]).ok
+    grant.event_id = uuid.uuid4()  # another session's window is open, not the one it was made for
+    db_session.commit()
+    assert not policy.check(db_session, grant, world["ann"]).ok

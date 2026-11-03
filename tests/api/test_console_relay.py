@@ -65,8 +65,9 @@ class World:
 
     def grant(self, user: User, **kw) -> str:
         """Issue a grant as the console endpoints do; returns the URL token."""
+        vm = {**self.vm, "name": kw["vm_name"], "vm_id": kw["vm_name"]} if kw.get("vm_name") else self.vm
         access = service.issue(self.db, MockConsole(), user_id=user.id, tenant_id=TENANT_A, rng=self.rng,
-                               vm=self.vm, view_only=kw.get("view_only", False), observed=False, base=BASE)
+                               vm=vm, view_only=kw.get("view_only", False), observed=False, base=BASE)
         self.db.commit()
         assert access["kind"] == "rfb-ws" and access["expires_in"] == GRANT_SECONDS
         assert access["url"].startswith(f"{BASE}/ws/console/")
@@ -262,6 +263,7 @@ def test_a_second_socket_on_a_live_grant_is_refused_4409(client, world):
         assert code == 4409 and "already open" in reason
         first.send_bytes(b"still mine")  # the first socket is untouched
         assert first.receive_bytes() == b"still mine"
+    time.sleep(0.3)  # the relay gives the grant back after the browser has gone
     with _open(client, token) as after:  # and the grant is free again once it closed
         assert after.receive_bytes() == RFB_GREETING
 
@@ -433,10 +435,10 @@ def test_failed_dials_do_not_spend_a_grants_connections(client, world):
 
 
 def test_a_user_holds_four_live_grants_at_most(world, db_session):
-    for _ in range(service.MAX_LIVE_GRANTS):
-        world.grant(world.ann)
+    for i in range(service.MAX_LIVE_GRANTS):
+        world.grant(world.ann, vm_name=f"vm{i}")
     with pytest.raises(service.GrantRefusedError) as e:
-        world.grant(world.ann)
+        world.grant(world.ann, vm_name="vm-another")
     assert e.value.status == 429
     world.grant(world.bob)  # the bound is per user
     db_session.query(ConsoleGrant).filter(ConsoleGrant.user_id == world.ann.id).first().expires_at = (
@@ -461,9 +463,9 @@ def test_dials_are_rate_limited_per_user(client, world, monkeypatch):
 
 def test_issuing_deletes_only_the_issuers_own_lapsed_grants_never_a_held_one(world, db_session):
     old = datetime.now(UTC) - timedelta(days=2)
-    world.grant(world.ann)
+    world.grant(world.ann, vm_name="a")
     world.grant(world.bob)
-    world.grant(world.ann)
+    world.grant(world.ann, vm_name="b")
     held, bob_old, lapsed_ann = db_session.query(ConsoleGrant).order_by(ConsoleGrant.created_at).all()
     lapsed_ann.expires_at = old
     bob_old.expires_at = old  # Bob's, lapsed: not Ann's to sweep
@@ -471,7 +473,7 @@ def test_issuing_deletes_only_the_issuers_own_lapsed_grants_never_a_held_one(wor
     held.live_until = datetime.now(UTC) + timedelta(seconds=20)  # a socket still holds it
     db_session.commit()
     held_id, bob_id, lapsed_id = held.id, bob_old.id, lapsed_ann.id
-    world.grant(world.ann)
+    world.grant(world.ann, vm_name="c")
     left = {g.id for g in db_session.query(ConsoleGrant).all()}
     assert held_id in left and bob_id in left and lapsed_id not in left
 
@@ -489,3 +491,124 @@ def test_a_dial_that_outlasts_its_wait_closes_4504_and_is_logged_when_it_ends(cl
         assert _closed_with(client, world.grant(world.ann))[0] == 4504
         time.sleep(0.8)
     assert "had given up on has finished" in caplog.text
+
+
+# ── Grants: replace, count sockets, atomic claim ─────────────────────────────
+
+
+def test_asking_again_for_the_same_console_replaces_the_unused_grant(world, db_session):
+    first = world.grant(world.ann)
+    for _ in range(service.MAX_LIVE_GRANTS + 2):  # a page reopened many times never locks the Student out
+        world.grant(world.ann)
+    rows = db_session.query(ConsoleGrant).all()
+    assert len(rows) == 1 and rows[0].token_hash != service.token_hash(first)
+
+
+def test_a_grant_a_socket_holds_still_counts_and_is_not_replaced(world, db_session):
+    world.grant(world.ann)
+    row = db_session.query(ConsoleGrant).one()
+    row.dials, row.live_until = service.MAX_DIALS, datetime.now(UTC) + timedelta(seconds=20)  # used up, still open
+    db_session.commit()
+    for i in range(service.MAX_LIVE_GRANTS - 1):
+        world.grant(world.ann, vm_name=f"v{i}")
+    with pytest.raises(service.GrantRefusedError):
+        world.grant(world.ann, vm_name="one-more")
+    assert db_session.query(ConsoleGrant).filter(ConsoleGrant.id == row.id).count() == 1
+
+
+def test_a_claim_cannot_win_the_last_dial_twice(world, db_session):
+    """The dials limit is in the claim's UPDATE: a claim that read dials=2 loses to a dial that
+    was recorded between its read and its update (spent, not busy)."""
+    from sqlalchemy import update
+
+    token = world.grant(world.ann)
+    user = auth_user(world.ann)
+    real = db_session.execute
+
+    def racing(stmt, *a, **k):
+        db_session.execute = real  # one race only
+        real(update(ConsoleGrant).values(dials=service.MAX_DIALS))
+        return real(stmt, *a, **k)
+
+    db_session.execute = racing
+    try:
+        claimed = service.claim(db_session, token, user)
+    finally:
+        db_session.execute = real
+    assert claimed.outcome == service.SPENT
+    assert service.claim(db_session, token, user).outcome == service.SPENT
+
+
+def test_two_overlapping_claims_one_wins(world, db_session):
+    token = world.grant(world.ann)
+    user = auth_user(world.ann)
+    first = service.claim(db_session, token, user)
+    second = service.claim(db_session, token, user)
+    assert (first.outcome, second.outcome) == (service.OK, service.BUSY)
+    service.release(db_session, first.facts.id, first.holder)
+    assert service.claim(db_session, token, user).outcome == service.OK
+
+
+def test_empty_rate_keys_do_not_pile_up(monkeypatch):
+    service._DIAL_TIMES.clear()
+    assert service.dial_allowed("u1")
+    service._DIAL_TIMES["u1"].clear()  # a minute passed
+    assert service.dial_allowed("u2")
+    assert "u1" not in service._DIAL_TIMES
+    service._DIAL_TIMES.clear()
+
+
+def auth_user(u):
+    from app.auth import CurrentUser
+
+    return CurrentUser(id=str(u.id), email=u.email, display_name=u.display_name, role=u.role,
+                       tenant_id=str(u.tenant_id), keycloak_id=u.keycloak_id)
+
+
+# ── The relay's own database use ─────────────────────────────────────────────
+
+
+def test_closing_during_a_renewal_leaves_the_grant_free(client, world, db_session, monkeypatch):
+    real = service.renew
+
+    def slow(db, grant_id, holder):
+        time.sleep(0.4)  # the browser closes while this tick is in its thread
+        return real(db, grant_id, holder)
+
+    monkeypatch.setattr(service, "renew", slow)
+    with _open(client, world.grant(world.ann)) as ws:
+        ws.receive_bytes()
+        time.sleep(0.2)  # inside the slow renewal
+    time.sleep(1.0)
+    row = db_session.query(ConsoleGrant).one()
+    db_session.refresh(row)
+    assert row.live_by is None and row.live_until is None
+
+
+def test_a_release_that_fails_once_is_retried(client, world, db_session, monkeypatch):
+    real, calls = service.release, []
+
+    def flaky(db, grant_id, holder):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("connection reset")
+        return real(db, grant_id, holder)
+
+    monkeypatch.setattr(service, "release", flaky)
+    with _open(client, world.grant(world.ann)) as ws:
+        ws.receive_bytes()
+    time.sleep(0.5)
+    row = db_session.query(ConsoleGrant).one()
+    db_session.refresh(row)
+    assert len(calls) == 2 and row.live_by is None
+
+
+def test_a_database_error_in_a_renewal_closes_with_its_own_reason(client, world, monkeypatch):
+    def broken(db, grant_id, holder):
+        raise RuntimeError("could not connect to server")
+
+    monkeypatch.setattr(service, "renew", broken)
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann)) as ws:
+        ws.receive_bytes()
+        ws.receive_bytes()
+    assert e.value.code == 1011 and e.value.reason == "The console service had a problem. Reconnect."

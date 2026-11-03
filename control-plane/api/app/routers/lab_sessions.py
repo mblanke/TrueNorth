@@ -143,7 +143,7 @@ def _session_for(
         raise HTTPException(404, "lab session not found")
     if str(s.user_id) != str(user.id) and not user_has_permission(user, staff_permission):
         raise HTTPException(404, "lab session not found")
-    if act and str(s.user_id) == str(user.id) and _enrollment_closed(db, s):
+    if act and str(s.user_id) == str(user.id) and service.enrollment_closed(db, s):
         raise HTTPException(403, "your enrollment in this course has closed")
     return s
 
@@ -164,26 +164,11 @@ def _token_session(db: Session, session_id: uuid.UUID, token: str | None, *, act
     s = db.get(LabSession, session_id)
     if s is None or claims.get("uid") != str(s.user_id):
         raise HTTPException(404, "lab session not found")
-    if _enrollment_closed(db, s):
+    if service.enrollment_closed(db, s):
         raise HTTPException(403, "your enrollment in this course has closed")
     if act and s.state in (*service.ENDING, *service.TERMINAL):
         raise HTTPException(410, "this lab has ended")
     return s
-
-
-def _enrollment_closed(db: Session, s: LabSession) -> bool:
-    """Every enrollment of the student in the lab's course is withdrawn or failed, as
-    release_for_student counts a closed enrollment. No enrollment (staff) is not closed."""
-    from ..course_releases.models import CourseRelease
-    from ..models import Enrollment, EnrollmentStatus
-
-    # tenant-safe: the release a session (already tenant- or token-checked) points at.
-    release = db.get(CourseRelease, s.release_id)
-    if release is None:
-        return False
-    mine = db.query(Enrollment).filter(Enrollment.user_id == s.user_id, Enrollment.course_id == release.course_id)
-    statuses = {e.status for e in mine}
-    return bool(statuses) and statuses <= {EnrollmentStatus.withdrawn, EnrollmentStatus.failed}
 
 
 def _do(db: Session, fn, session: LabSession, *args, busy_ok: bool = False, **kwargs) -> Any:

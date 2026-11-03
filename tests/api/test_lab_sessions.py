@@ -411,6 +411,34 @@ class TestApi:
         db_session.commit()
         assert not still(s, UserRole.student) and not still(teacher, UserRole.instructor)
 
+    def test_a_student_withdrawn_mid_lab_loses_the_open_console_at_the_next_check(self, lab, db_session):
+        """The policy applies the issuing route's closed-enrollment rule (service.enrollment_closed):
+        a socket is cut at its next renewal and a reconnect is refused; staff keep theirs."""
+        from app.auth import CurrentUser, get_current_user
+        from app.console_relay import policy
+        from app.main import app as fastapi_app
+        from app.models import EnrollmentStatus
+
+        client, rid, course_id = lab
+        s = student(db_session)
+        a, _ = launch(db_session, s, rid)
+        until(db_session, a, "ready")
+        enrollment = ensure_enrollment(db_session, user_id=s.id, course_id=course_id, tenant_id=s.tenant_id)
+        db_session.commit()
+        me = CurrentUser(id=str(s.id), email=s.email, display_name="s", role=UserRole.student,
+                         tenant_id=str(s.tenant_id), keycloak_id=s.keycloak_id)
+        fastapi_app.dependency_overrides[get_current_user] = lambda: me
+        try:
+            assert client.post(f"/lab-sessions/{a.id}/console").status_code == 200
+        finally:
+            fastapi_app.dependency_overrides.pop(get_current_user, None)
+        grant = db_session.query(ConsoleGrant).one()
+        assert policy.check(db_session, grant, me).ok
+        enrollment.status = EnrollmentStatus.withdrawn
+        db_session.commit()
+        verdict = policy.check(db_session, grant, me)  # what the renewal and a reconnect both ask
+        assert not verdict.ok and verdict.code == 1008 and "enrollment" in verdict.reason
+
     # F14 / CR1-17: a token is checked against the session as it is now.
 
     @pytest.mark.parametrize("action", ["reset", "end", "console"])

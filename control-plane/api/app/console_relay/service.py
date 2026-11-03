@@ -16,6 +16,7 @@ import uuid
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
 from sqlalchemy import or_, update
@@ -23,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
 from ..console_backends import GRANT_SECONDS, BaseConsoleBackend, ConsoleError
-from ..models import Range
+from ..models import Range, User
 from ..tenancy import tenant_uuid
 from .models import ConsoleGrant
 
@@ -99,6 +100,8 @@ def dial_allowed(user_id: Any) -> bool:
         if len(times) >= DIALS_PER_MINUTE:
             return False
         times.append(now)
+        for key in [k for k, v in _DIAL_TIMES.items() if not v]:  # no key outlives its last dial
+            del _DIAL_TIMES[key]
         return True
 
 
@@ -110,9 +113,22 @@ def issue(db: Session, backend: BaseConsoleBackend, *, user_id: uuid.UUID, tenan
     answer (``kind`` ``rfb-ws``, ``url`` ``<base>/ws/console/<token>``). The caller commits.
     Nothing is stored when the adapter refuses."""
     now = _now()
+    # One issue at a time per user: on PostgreSQL the user's row is locked until the caller
+    # commits, so two requests cannot both count 3 and both insert. SQLite (tests, single
+    # process) has no row locks: there the cap is best effort.
+    db.query(User.id).filter(User.id == user_id).with_for_update().first()
+    # Replace, do not stack: grants for this VM that no socket ever used or holds are dropped,
+    # so reopening a console page four times does not lock the Student out for five minutes.
+    db.query(ConsoleGrant).filter(
+        ConsoleGrant.user_id == user_id, ConsoleGrant.tenant_id == tenant_id,
+        ConsoleGrant.range_id == rng.id, ConsoleGrant.vm_name == str(vm.get("name") or ""),
+        ConsoleGrant.dials == 0, or_(ConsoleGrant.live_until.is_(None), ConsoleGrant.live_until < now),
+    ).delete(synchronize_session=False)
+    # Live: a grant that can still open a socket, or one a socket holds right now.
     live = (db.query(ConsoleGrant)
             .filter(ConsoleGrant.user_id == user_id, ConsoleGrant.tenant_id == tenant_id,
-                    ConsoleGrant.expires_at > now, ConsoleGrant.dials < MAX_DIALS)
+                    or_(ConsoleGrant.live_until > now,
+                        (ConsoleGrant.expires_at > now) & (ConsoleGrant.dials < MAX_DIALS)))
             .count())
     if live >= MAX_LIVE_GRANTS:
         raise GrantRefusedError(f"You already have {MAX_LIVE_GRANTS} consoles open; close one first")
@@ -140,6 +156,13 @@ class Claim:
     outcome: str
     grant: ConsoleGrant | None = None
     holder: str = ""  # who holds the live claim, on OK: pass it to renew and release
+    facts: Any = None  # the grant as plain values, safe after the session is gone
+
+
+def _facts(g: ConsoleGrant) -> SimpleNamespace:
+    return SimpleNamespace(id=g.id, tenant_id=g.tenant_id, range_id=g.range_id, vm_id=g.vm_id, vm_name=g.vm_name,
+                           view_only=bool(g.view_only), audience=g.audience, class_id=g.class_id,
+                           event_id=g.event_id, lab_session_id=g.lab_session_id)
 
 
 def claim(db: Session, token: str, user: CurrentUser) -> Claim:
@@ -156,21 +179,26 @@ def claim(db: Session, token: str, user: CurrentUser) -> Claim:
     )
     if grant is None:
         return Claim(DENIED)
+    facts = _facts(grant)  # before the commit below: plain values for the caller
     now = _now()
     if _aware(grant.expires_at) <= now:
-        return Claim(EXPIRED, grant)
+        return Claim(EXPIRED, grant, facts=_facts(grant))
     if grant.dials >= MAX_DIALS:
-        return Claim(SPENT, grant)
+        return Claim(SPENT, grant, facts=_facts(grant))
     # One statement decides it, so two workers racing for the grant cannot both win.
     holder = secrets.token_hex(8)
     won = db.execute(
         update(ConsoleGrant)
-        .where(ConsoleGrant.id == grant.id, or_(ConsoleGrant.live_until.is_(None), ConsoleGrant.live_until < now))
+        .where(ConsoleGrant.id == grant.id, ConsoleGrant.dials < MAX_DIALS,
+               or_(ConsoleGrant.live_until.is_(None), ConsoleGrant.live_until < now))
         .values(live_until=now + LIVE_LEASE, live_by=holder),
         execution_options={"synchronize_session": False},
     ).rowcount
     db.commit()
-    return Claim(OK, grant, holder) if won else Claim(BUSY, grant)
+    if won:
+        return Claim(OK, grant, holder, facts)
+    db.refresh(grant)  # lost: to a live socket (busy), or the last dial was taken meanwhile (spent)
+    return Claim(SPENT if grant.dials >= MAX_DIALS else BUSY, grant, facts=facts)
 
 
 def record_dial(db: Session, grant_id: uuid.UUID, holder: str) -> None:

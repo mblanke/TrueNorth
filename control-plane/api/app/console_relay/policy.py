@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from ..auth import CurrentUser
 from ..classes import consoles
 from ..classes.schemas import ClassRole
+from ..lab_sessions import service as lab_service
 from ..lab_sessions.models import ACTIVE, READY, LabSession
 from ..models import Range, User
 from ..rbac import Permission, user_has_permission
@@ -52,6 +53,9 @@ def check(db: Session, grant: ConsoleGrant, user: CurrentUser) -> Verdict:
     """The cheap predicate for the grant's audience. Reads the user, range and session as they
     are now; never the grant's own say-so."""
     uid = uuid.UUID(str(user.id))
+    # Never answer from the session's identity map: production sessions keep objects after a
+    # commit (expire_on_commit=False), so a revocation made since would not be seen.
+    db.expire_all()
     # tenant-safe: the grant's user, in the grant's tenant (also the connecting user's, claim).
     row = db.query(User).filter(User.id == uid, User.tenant_id == grant.tenant_id).first()
     if row is None or not row.is_active or row.deleted_at is not None:
@@ -83,8 +87,8 @@ def _student(db: Session, grant: ConsoleGrant, user: CurrentUser, rng: Range) ->
     """A Student's own seat or shared range, a session of the class live now, the roll call
     and seat as ``ranges.student_participation`` reads them, a machine they are handed."""
     found = consoles.student_range(db, user, grant.range_id)
-    if found.session is None or found.class_id != grant.class_id:
-        return _no("Your session is not open")
+    if found.session is None or found.class_id != grant.class_id or found.session.id != grant.event_id:
+        return _no("Your session is not open")  # the grant is bound to the session it was issued for
     if _vm_machine(rng, grant.vm_name) not in consoles.student_machines(db, rng):
         return _no()
     return Verdict(True, until=_epoch(found.session.end_time))
@@ -112,6 +116,8 @@ def _lab(db: Session, grant: ConsoleGrant, user: CurrentUser) -> Verdict:
          .filter(LabSession.id == grant.lab_session_id, LabSession.tenant_id == grant.tenant_id).first())
     if s is None or s.state not in (READY, ACTIVE) or s.range_id != grant.range_id:
         return _no("The lab has ended")
+    if str(s.user_id) == str(user.id) and lab_service.enrollment_closed(db, s):
+        return _no("Your enrollment in this course has closed")  # as the issuing route
     if str(s.user_id) != str(user.id) and not user_has_permission(user, Permission.LEARNING_RECORD_WRITE):
         return _no()
     return Verdict(True, until=_epoch(s.max_expires_at))

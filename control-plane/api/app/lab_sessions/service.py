@@ -1229,6 +1229,21 @@ def sessions_in_window(
     return rows
 
 
+def enrollment_closed(db: Session, s: LabSession) -> bool:
+    """Every enrollment of the student in the lab's course is withdrawn or failed, as
+    release_for_student counts a closed enrollment. No enrollment (staff) is not closed."""
+    from ..course_releases.models import CourseRelease
+    from ..models import Enrollment, EnrollmentStatus
+
+    # tenant-safe: the release a session (already tenant- or token-checked) points at.
+    release = db.get(CourseRelease, s.release_id)
+    if release is None:
+        return False
+    mine = db.query(Enrollment).filter(Enrollment.user_id == s.user_id, Enrollment.course_id == release.course_id)
+    statuses = {e.status for e in mine}
+    return bool(statuses) and statuses <= {EnrollmentStatus.withdrawn, EnrollmentStatus.failed}
+
+
 def console(db: Session, session: LabSession, node: str | None = None, *, ws_base: str,
             caller: Any) -> dict[str, Any]:
     """A console grant for ``caller``, the signed-in user acting on the session (its Student, or

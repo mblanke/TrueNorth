@@ -20,6 +20,7 @@ Close codes (the reason is safe to show the Student):
       lab changed). Asked at connect and every ``service.RENEW_SECONDS`` while open.
 1009  The browser sent a message larger than ``MAX_CLIENT_MESSAGE`` (RFB input is tiny).
 4404  The machine is gone: the range was deleted or is not running, or the grant was withdrawn.
+1011  The database failed under a renewal (not the Student's doing); reconnect.
 4408  Idle: no bytes either way for ``IDLE_SECONDS``.
 4409  This console grant is already open in another socket (or was taken by one).
 4410  The grant expired (about five minutes after issue) or was used for its ``MAX_DIALS``
@@ -42,12 +43,10 @@ import ssl
 import threading
 import time
 import uuid
-from types import SimpleNamespace
 from typing import Any
 
-from fastapi import APIRouter, Depends, WebSocket
+from fastapi import APIRouter, WebSocket
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy.orm import Session
 from starlette.websockets import WebSocketDisconnect
 
 from .. import ws_auth
@@ -61,7 +60,7 @@ logger = logging.getLogger("truenorth.console_relay")
 router = APIRouter()
 
 CLOSE_FORBIDDEN, CLOSE_NORMAL, CLOSE_TOKEN_EXPIRED = 1008, 1000, 1001
-CLOSE_TOO_BIG, CLOSE_IDLE, CLOSE_RATE = 1009, 4408, 4429
+CLOSE_TOO_BIG, CLOSE_SERVICE, CLOSE_IDLE, CLOSE_RATE = 1009, 1011, 4408, 4429
 CLOSE_GONE, CLOSE_BUSY, CLOSE_EXPIRED = 4404, 4409, 4410
 CLOSE_UPSTREAM_REFUSED, CLOSE_UPSTREAM_LOST, CLOSE_UPSTREAM_TIMEOUT = 4502, 4503, 4504
 #: Longest the hypervisor may take to hand over a ticket and accept the connection.
@@ -82,21 +81,55 @@ async def _refuse(ws: WebSocket, code: int, reason: str, subprotocol: str | None
     await ws.close(code=code, reason=reason)
 
 
+@contextlib.contextmanager
+def _session(app: Any):
+    """A database session for one short piece of work, from the same factory the requests use
+    (``get_db``, with a test's override). The transaction is ended on the way out (a read
+    leaves one open) and the session closed: an open console holds no connection and no
+    transaction between its renewals, only while a statement runs."""
+    gen = app.dependency_overrides.get(get_db, get_db)()
+    db = next(gen)
+    try:
+        yield db
+    finally:
+        with contextlib.suppress(Exception):
+            db.commit()
+        gen.close()
+
+
+async def _call(app: Any, fn: Any, *args: Any) -> Any:
+    """``fn(db, *args)`` on a worker thread with a session of its own."""
+
+    def run() -> Any:
+        with _session(app) as db:
+            return fn(db, *args)
+
+    return await run_in_threadpool(run)
+
+
 async def _close_quietly(upstream: Any) -> None:
     with contextlib.suppress(Exception):  # already gone
         await upstream.close()
 
 
-async def _clean_up(upstream: Any, db: Session, grant_id: uuid.UUID, holder: str) -> None:
+async def _give_back(app: Any, grant_id: uuid.UUID, holder: str) -> None:
+    """Free the grant's one socket, on a session of its own (a renewal's thread may still be
+    running on another). Done before the closing frame goes out, so a browser that reconnects
+    the moment it sees the close does not meet its own previous socket. A database error is
+    retried once, then logged: the claim lapses by itself within ``service.LIVE_LEASE``."""
+    for attempt in (1, 2):
+        try:
+            await _call(app, service.release, grant_id, holder)
+            return
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("console %s: releasing the grant failed (try %d): %s",
+                           service.short(grant_id), attempt, type(exc).__name__)
+
+
+async def _clean_up(app: Any, upstream: Any, grant_id: uuid.UUID, holder: str) -> None:
     if upstream is not None:
         await _close_quietly(upstream)
-    await _give_back(db, grant_id, holder)
-
-
-async def _give_back(db: Session, grant_id: uuid.UUID, holder: str) -> None:
-    """Free the grant's one socket. Done before the closing frame goes out, so a browser that
-    reconnects the moment it sees the close does not meet its own previous socket."""
-    await run_in_threadpool(service.release, db, grant_id, holder)
+    await _give_back(app, grant_id, holder)
 
 
 async def _upstream_connect(target: Any):
@@ -115,46 +148,44 @@ def _dial_blocking(app: Any, ident: DialGrant, tenant_id: uuid.UUID, abandoned: 
     thread-safe and may be gone). When the relay gave up waiting (``abandoned``) the thread
     still runs to its end, and the adapter's own ``finally`` closes its hypervisor login; this
     logs that it did."""
-    gen = app.dependency_overrides.get(get_db, get_db)()
-    db = next(gen)
     try:
-        # tenant-safe: the grant's own range, in the grant's tenant.
-        rng = (db.query(Range)
-               .filter(Range.id == uuid.UUID(ident.range_id), Range.tenant_id == tenant_id,
-                       Range.deleted_at.is_(None))
-               .first())
-        if rng is None:
-            raise ConsoleError("The machine is not running")
-        return get_console_backend(rng.provisioner_backend).dial(ident, db=db, rng=rng)
+        with _session(app) as db:
+            # tenant-safe: the grant's own range, in the grant's tenant.
+            rng = (db.query(Range)
+                   .filter(Range.id == uuid.UUID(ident.range_id), Range.tenant_id == tenant_id,
+                           Range.deleted_at.is_(None))
+                   .first())
+            if rng is None:
+                raise ConsoleError("The machine is not running")
+            return get_console_backend(rng.provisioner_backend).dial(ident, db=db, rng=rng)
     finally:
-        gen.close()
         if abandoned.is_set():
             logger.info("console %s: a dial the relay had given up on has finished; its session is closed",
                         service.short(ident.id))
 
 
 @router.websocket("/ws/console/{grant}")
-async def console_relay(ws: WebSocket, grant: str, db: Session = Depends(get_db)) -> None:
+async def console_relay(ws: WebSocket, grant: str) -> None:
     """Relay a VM's console to the signed-in owner of ``grant``. Not an HTTP operation: the
-    published API contract lists the grant's issuing endpoints (``kind: rfb-ws``)."""
+    published API contract lists the grant's issuing endpoints (``kind: rfb-ws``).
+
+    No request-long database session: each step below takes one for as long as its statements
+    run (``_call``), so many open consoles cost no connections."""
+    app = ws.app
     subprotocol = ws_auth.SUBPROTOCOL if ws_auth.bearer_token(ws) else None
-    who = await ws_auth.ws_user(ws, db)
+    with _session(app) as db:
+        who = await ws_auth.ws_user(ws, db)
     if who is None:
         await ws.close(code=CLOSE_FORBIDDEN)
         return
-    claimed = await run_in_threadpool(service.claim, db, grant, who.user)
+    claimed = await _call(app, service.claim, grant, who.user)
     if claimed.outcome == service.DENIED:
         await ws.close(code=CLOSE_FORBIDDEN)
         return
-    row = claimed.grant
-    ident = DialGrant(id=str(row.id), range_id=str(row.range_id), vm_id=row.vm_id, vm_name=row.vm_name,
-                      view_only=bool(row.view_only))
-    # What policy.check reads, as plain values: the ORM row is the session's, and the pump
-    # asks again every few seconds.
-    facts = SimpleNamespace(id=row.id, tenant_id=row.tenant_id, range_id=row.range_id, vm_name=row.vm_name,
-                            audience=row.audience, class_id=row.class_id, event_id=row.event_id,
-                            lab_session_id=row.lab_session_id)
-    grant_id, tenant_id, holder = row.id, row.tenant_id, claimed.holder
+    facts = claimed.facts  # plain values: what DialGrant and policy.check read
+    ident = DialGrant(id=str(facts.id), range_id=str(facts.range_id), vm_id=facts.vm_id, vm_name=facts.vm_name,
+                      view_only=bool(facts.view_only))
+    grant_id, tenant_id, holder = facts.id, facts.tenant_id, claimed.holder
     if claimed.outcome == service.EXPIRED:
         await _refuse(ws, CLOSE_EXPIRED, "This console link has expired; open the console again", subprotocol)
         return
@@ -167,56 +198,56 @@ async def console_relay(ws: WebSocket, grant: str, db: Session = Depends(get_db)
 
     upstream = None
     try:
-        verdict = await run_in_threadpool(policy.check, db, facts, who.user)
+        verdict = await _call(app, policy.check, facts, who.user)
         if not verdict.ok:
-            await _give_back(db, grant_id, holder)
+            await _give_back(app, grant_id, holder)
             await _refuse(ws, verdict.code, verdict.reason, subprotocol)
             return
         if not service.dial_allowed(who.user.id):
-            await _give_back(db, grant_id, holder)
+            await _give_back(app, grant_id, holder)
             await _refuse(ws, CLOSE_RATE, "Too many console connections; wait a minute", subprotocol)
             return
         abandoned = threading.Event()
         try:
             target = await asyncio.wait_for(
-                run_in_threadpool(_dial_blocking, ws.app, ident, tenant_id, abandoned), DIAL_SECONDS)
+                run_in_threadpool(_dial_blocking, app, ident, tenant_id, abandoned), DIAL_SECONDS)
         except TimeoutError:
             abandoned.set()
             logger.warning("console %s: dial timed out after %ss", service.short(grant_id), DIAL_SECONDS)
-            await _give_back(db, grant_id, holder)
+            await _give_back(app, grant_id, holder)
             await _refuse(ws, CLOSE_UPSTREAM_TIMEOUT, "The hypervisor did not answer in time", subprotocol)
             return
         except (ValueError, ConsoleError) as exc:
             logger.info("console %s: dial refused: %s", service.short(grant_id), type(exc).__name__)
             reason = str(exc) if isinstance(exc, ConsoleError) else "No console for this machine"
-            await _give_back(db, grant_id, holder)
+            await _give_back(app, grant_id, holder)
             await _refuse(ws, CLOSE_UPSTREAM_REFUSED, reason[:120], subprotocol)
             return
         try:
             upstream = await _upstream_connect(target)
         except TimeoutError:
-            await _give_back(db, grant_id, holder)
+            await _give_back(app, grant_id, holder)
             await _refuse(ws, CLOSE_UPSTREAM_TIMEOUT, "The hypervisor did not answer in time", subprotocol)
             return
         except Exception as exc:  # noqa: BLE001 — never put the exception text in a log or reason: it may carry the ticket URL
             logger.info("console %s: hypervisor connect failed: %s", service.short(grant_id), type(exc).__name__)
-            await _give_back(db, grant_id, holder)
+            await _give_back(app, grant_id, holder)
             await _refuse(ws, CLOSE_UPSTREAM_REFUSED, "The hypervisor refused the console", subprotocol)
             return
 
-        await run_in_threadpool(service.record_dial, db, grant_id, holder)
+        await _call(app, service.record_dial, grant_id, holder)
         await ws.accept(subprotocol=subprotocol)
-        code, reason = await _pump(ws, upstream, db, facts, holder, who, verdict.until)
-        await _give_back(db, grant_id, holder)
+        code, reason = await _pump(ws, upstream, app, facts, holder, who, verdict.until)
+        await _give_back(app, grant_id, holder)
         with contextlib.suppress(RuntimeError):  # already closed by the browser
             await ws.close(code=code, reason=reason)
     finally:
         # Any way out, a cancelled task included (the shield lets these finish): the hypervisor
         # connection is closed, and the claim given back (idempotent; only its holder can clear it).
-        await asyncio.shield(_clean_up(upstream, db, grant_id, holder))
+        await asyncio.shield(_clean_up(app, upstream, grant_id, holder))
 
 
-async def _pump(ws: WebSocket, upstream: Any, db: Session, facts: Any, holder: str, who: Any,
+async def _pump(ws: WebSocket, upstream: Any, app: Any, facts: Any, holder: str, who: Any,
                 until: float | None) -> tuple[int, str]:
     """Move bytes both ways until either side closes; returns what to close the browser
     with. The hypervisor connection is closed on the way out, whichever side ended."""
@@ -259,8 +290,9 @@ async def _pump(ws: WebSocket, upstream: Any, db: Session, facts: Any, holder: s
         return CLOSE_IDLE, "The console was idle for too long"
 
     async def keep_claim() -> tuple[int, str]:
-        """Every few seconds: renew the claim and ask ``policy`` again. Ends the socket at the
-        session window's end and at the sign-in's."""
+        """Every few seconds: renew the claim and ask ``policy`` again, each on a session that
+        is gone again before the sleep. Ends the socket at the session window's end and at the
+        sign-in's."""
         window = until
         while True:
             ends = [e for e in (who.expires_at, window) if e is not None]
@@ -273,12 +305,16 @@ async def _pump(ws: WebSocket, upstream: Any, db: Session, facts: Any, holder: s
                 return CLOSE_TOKEN_EXPIRED, "Your sign-in expired; reopen the console"
             if window is not None and now >= window:
                 return CLOSE_FORBIDDEN, "Your session has ended"
-            renewed = await run_in_threadpool(service.renew, db, grant_id, holder)
-            if renewed == service.GONE:
-                return CLOSE_GONE, "This console was withdrawn"
-            if renewed == service.LOST:
-                return CLOSE_BUSY, "This console was opened in another window"
-            verdict = await run_in_threadpool(policy.check, db, facts, who.user)
+            try:
+                renewed = await _call(app, service.renew, grant_id, holder)
+                if renewed == service.GONE:
+                    return CLOSE_GONE, "This console was withdrawn"
+                if renewed == service.LOST:
+                    return CLOSE_BUSY, "This console was opened in another window"
+                verdict = await _call(app, policy.check, facts, who.user)
+            except Exception as exc:  # noqa: BLE001 — the database, not the Student's doing
+                logger.warning("console %s: renewal failed: %s", service.short(grant_id), type(exc).__name__)
+                return CLOSE_SERVICE, "The console service had a problem. Reconnect."
             if not verdict.ok:
                 return verdict.code, verdict.reason
             window = verdict.until
