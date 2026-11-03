@@ -31,14 +31,16 @@ class MyRangeConsolesOut(BaseModel):
 
 
 class ClassConsoleOut(BaseModel):
-    """A one-time console ticket. Short-lived and single-use; never a standing credential."""
+    """A console grant: ``url`` is TrueNorth's own ``wss://<tn>/ws/console/<grant>``, opened
+    signed in (``new WebSocket(url, ["bearer", token])``); one socket at a time, short-lived,
+    never a standing credential. The hypervisor's ticket is never sent to the browser."""
 
     range_id: uuid.UUID
     machine: str = Field(description="The template node id")
     vm: str = Field(description="The VM's name")
-    kind: str = Field(description="webmks (vSphere) or mock")
-    url: str
-    expires_in: int
+    kind: str = Field(description="rfb-ws: an RFB stream relayed over WebSocket at ``url``")
+    url: str = Field(description="The relay's WebSocket URL, ``/ws/console/<grant>`` on TrueNorth")
+    expires_in: int = Field(description="Seconds the grant is good for opening a socket")
     view_only: bool = Field(False, description="The hypervisor refuses input on this console")
     observed: bool = Field(False, description="An observer's console the hypervisor cannot make view-only: "
                                               "input reaches the machine, so the page says it is observed")

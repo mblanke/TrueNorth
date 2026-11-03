@@ -1,10 +1,18 @@
 """VMware WebMKS console: a one-time ticket for one VM, from vCenter through pyVmomi.
 
 ``VirtualMachine.AcquireTicket("webmks")`` returns the ESXi host, port and a ticket valid
-for a single connection that expires within about a minute if unused. The browser opens
-``wss://<host>:<port>/ticket/<ticket>`` with VMware's WebMKS SDK, so the student's browser
-must be able to reach the ESXi host (and trust its certificate); TrueNorth never relays
-the screen.
+for a single connection that expires within about a minute if unused. The API takes it in
+``dial`` when a browser's socket to ``/ws/console/<grant>`` opens (app/console_relay) and
+relays the RFB stream to ``wss://<host>:<port>/ticket/<ticket>`` itself, so the browser
+only reaches TrueNorth and never sees the ticket or the ESXi host. Until 2026-11-03 the
+ticket URL itself was handed to the browser.
+
+**Certificates.** With the connection's ``verify_ssl`` on, the API verifies each ESXi host's
+certificate (chain and host name) against the trust store of the API container (the system
+store, ``SSL_CERT_FILE`` honoured): the ESXi host certificates must chain to a CA installed
+there (the site CA, or VMCA's root). There is no separate setting; with ``verify_ssl`` off
+nothing is verified, as for the vCenter login. Errors from the SDK are logged as their class
+and the VM id only and shown as fixed text: the fault text names hosts and addresses.
 
 The vCenter is the range's own (app/hypervisor_binding.py: the connection its build
 recorded, with that connection's login only), and the ticket is issued only for a VM
@@ -18,13 +26,22 @@ from __future__ import annotations
 import logging
 import os
 import queue
+import ssl
 import threading
 import time
 from typing import Any, ClassVar
 from urllib.parse import urlparse
 
 from .. import hypervisor_binding
-from .base import BaseConsoleBackend, ConsoleError, ConsoleReader, ConsoleTarget
+from .base import (
+    BaseConsoleBackend,
+    ConsoleError,
+    ConsoleReader,
+    ConsoleTarget,
+    DialGrant,
+    DialTarget,
+    relay_access,
+)
 
 try:  # pyVmomi is optional outside vSphere deployments
     from pyVim.connect import Connect, Disconnect, SmartConnect
@@ -116,7 +133,30 @@ class VsphereWebMKSConsole(BaseConsoleBackend):
 
         return read
 
-    def open(self, vm: dict[str, Any], *, db=None, rng=None) -> dict[str, Any]:
+    def open(self, vm: dict[str, Any], *, db=None, rng=None, relay_url: str | None = None) -> dict[str, Any]:
+        """The relay's address for a grant; the vCenter is asked only when the socket opens
+        (``dial``). Refuses early what dial could not serve at all."""
+        if SmartConnect is None:
+            raise ConsoleError("the vSphere console needs pyvmomi on the API")
+        if not str(vm.get("vm_id") or ""):
+            raise ConsoleError("this VM has no hypervisor id yet")
+        if db is None or rng is None:
+            raise ConsoleError("the console needs the VM's range to find its vCenter")
+        return relay_access(relay_url)
+
+    def dial(self, grant: DialGrant, *, db=None, rng=None) -> DialTarget:
+        """``AcquireTicket("webmks")`` now, on the range's own vCenter, and the ESXi URL it
+        names: ``wss://<host>:<port>/ticket/<ticket>``, offered subprotocol ``binary``. TLS to
+        the ESXi host is checked against the system trust store (the site CA, ``SSL_CERT_FILE``
+        honoured) unless the range's connection says ``verify_ssl`` is off, as for its vCenter
+        login. The ticket is in ``url``: the caller must not log it."""
+        host, port, ticket, verify = self._acquire(
+            {"vm_id": grant.vm_id, "name": grant.vm_name}, db, rng)
+        return DialTarget(url=f"wss://{host}:{port}/ticket/{ticket}", ssl=_tls_context(verify),
+                          subprotocols=("binary",))
+
+    def _acquire(self, vm: dict[str, Any], db, rng) -> tuple[str, int, str, bool]:
+        """(host, port, ticket, verify_ssl) of a WebMKS ticket for the range's own VM."""
         if SmartConnect is None:
             raise ConsoleError("the vSphere console needs pyvmomi on the API")
         vm_id = str(vm.get("vm_id") or "")
@@ -124,10 +164,15 @@ class VsphereWebMKSConsole(BaseConsoleBackend):
             raise ConsoleError("this VM has no hypervisor id yet")
         if db is None or rng is None:
             raise ConsoleError("the console needs the VM's range to find its vCenter")
+        range_id = str(rng.id)
         try:
             target = hypervisor_binding.resolve(db, rng, self.hypervisor_type)
         except hypervisor_binding.BindingError as exc:
             raise ConsoleError(str(exc)) from exc
+        # The session is needed for the binding above and for nothing after it: end its
+        # transaction now, so no pooled connection is held while the vCenter answers (the
+        # relay runs this on a thread with a session of its own, app/console_relay/router.py).
+        db.commit()
         url = urlparse(target["url"])
         if not url.hostname:
             raise ConsoleError("no vCenter is configured for this range")
@@ -140,24 +185,36 @@ class VsphereWebMKSConsole(BaseConsoleBackend):
                 disableSslCertValidation=not target["verify_ssl"],
             )
         except Exception as exc:  # noqa: BLE001 — any login failure is a console failure
-            raise ConsoleError(f"vCenter refused the console request: {exc}") from exc
+            # Fixed text for the Student; the log has the exception class and VM id only (the
+            # fault text names the vCenter's host, address and port).
+            logger.warning("console login failed: %s vm=%s", type(exc).__name__, vm_id)
+            raise ConsoleError("The vCenter refused the console request") from exc
         label = vm.get("name", vm_id)
         try:
             machine = vim.VirtualMachine(vm_id, si._stub)
-            if not hypervisor_binding.owns(str(rng.id), str(vm.get("name") or ""), str(machine.name or ""),
+            if not hypervisor_binding.owns(range_id, str(vm.get("name") or ""), str(machine.name or ""),
                                            getattr(machine.config, "annotation", None)):
                 raise ConsoleError(f"{label} on this vCenter is not this range's VM; no console")
             ticket = machine.AcquireTicket("webmks")
         except ConsoleError:
             raise
         except Exception as exc:  # noqa: BLE001
-            raise ConsoleError(f"could not open the console for {label}: {exc}") from exc
+            logger.warning("console ticket failed: %s vm=%s", type(exc).__name__, vm_id)
+            raise ConsoleError(f"Could not open the console for {label}") from exc
         finally:
             Disconnect(si)
-        host = ticket.host or url.hostname
-        return {"kind": "webmks", "url": f"wss://{host}:{ticket.port or 443}/ticket/{ticket.ticket}", "expires_in": 60}
+        return str(ticket.host or url.hostname), int(ticket.port or 443), str(ticket.ticket), bool(target["verify_ssl"])
 
 
+def _tls_context(verify: bool) -> ssl.SSLContext:
+    """TLS for the ESXi host's WebMKS port. Verified against the system trust store by
+    default (hostname too); only a connection recorded with ``verify_ssl`` off skips it."""
+    if verify:
+        return ssl.create_default_context()
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
 
 
 def _ask_vcenter(endpoint: tuple[str, str], login: dict, jobs: list[tuple], answers: queue.Queue) -> None:

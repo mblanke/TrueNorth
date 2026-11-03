@@ -32,13 +32,18 @@ watches as an observer, whatever part the class's staff list gives them.
 A console is asked for by the VM's name (unique in its range): a template node with ``count``
 > 1 gives several VMs one machine name, and each must open its own console.
 
-**The ticket** comes from the range's own console adapter (``console_backends``, ADR 0001):
-the vendor SDK is only there. An observer gets a view-only console where the adapter can
-enforce one (``supports_view_only``); vSphere WebMKS cannot (its ticket carries no
-read-only mode), so an observer gets a normal console marked ``observed``, and the page says
-so.
+**The console** is a grant (``console_relay``, #366) on the range's own console adapter
+(``console_backends``, ADR 0001: the vendor SDK is only there). The answer is ``kind``
+``rfb-ws`` and a ``url`` on TrueNorth, ``wss://<tn>/ws/console/<grant>``: the browser opens it
+signed in (``ws_auth``) and the API relays the hypervisor's stream, so the browser never reaches
+the hypervisor and never holds its ticket. The grant is the caller's, five minutes, one socket
+at a time, and asked again (``console_relay.policy``) while the socket is open. An observer's
+grant is ``view_only``. Until the relay itself drops an observer's input (S4, #369) an observer
+gets a console only where the adapter enforces view-only (``supports_view_only``); vSphere WebMKS
+cannot (its ticket carries no read-only mode), so there an observer is refused (403) rather
+than handed a console they can type into.
 
-**Every ticket issued is audited** (``range_console_open``): who, the range, machine and VM,
+**Every grant issued is audited** (``range_console_open``): who, the range, machine and VM,
 why (``student``, ``observer`` or ``staff``), the class, the session, and how the Student takes
 part; never the ticket or its URL. A Student's console is also their attendance evidence, as
 listing the accounts is (``attendance.note_range_open``).
@@ -161,17 +166,26 @@ def view_only_supported(rng: Range) -> bool:
     return bool(backend is not None and backend.supports_view_only)
 
 
-def _open(db: Session, rng: Range, vm: dict[str, Any], *, view_only: bool) -> dict[str, Any]:
-    """A ticket from the range's own console adapter (ADR 0001). 502 when it cannot give one."""
+def _open(db: Session, user: CurrentUser, rng: Range, vm: dict[str, Any], *, view_only: bool,
+          ws_base: str, audience: str, class_id: uuid.UUID, event_id: uuid.UUID) -> dict[str, Any]:
+    """A console grant on the range's own console adapter (ADR 0001): ``{"kind": "rfb-ws",
+    "url": "<ws_base>/ws/console/<grant>", ...}``, the grant stored for ``user`` (app/console_relay).
+    ``view_only`` is the audience (an observer); the grant carries it. 502 when the adapter
+    cannot give a console."""
     from ..console_backends import ConsoleError, get_console_backend
+    from ..console_relay import service as relay
 
     if rng.state not in USABLE:
         raise HTTPException(409, "The range's machines are not running; the console opens once they are")
     try:
         backend = get_console_backend(rng.provisioner_backend)
-        if view_only and backend.supports_view_only:
-            return {**backend.open_view_only(vm, db=db, rng=rng), "view_only": True}
-        return {**backend.open(vm, db=db, rng=rng), "view_only": False}
+        enforced = view_only and backend.supports_view_only
+        access = relay.issue(db, backend, user_id=uuid.UUID(str(user.id)), tenant_id=rng.tenant_id, rng=rng, vm=vm,
+                             view_only=view_only, observed=view_only and not enforced, base=ws_base,
+                             adapter_view_only=enforced, audience=audience, class_id=class_id, event_id=event_id)
+        return {**access, "view_only": enforced}
+    except relay.GrantRefusedError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
     except (ValueError, ConsoleError) as exc:
         raise HTTPException(502, str(exc)) from exc
 
@@ -266,7 +280,8 @@ def student_range(db: Session, user: CurrentUser, range_id: uuid.UUID, now: date
     return StudentRange(rng, part, class_id, session)
 
 
-def student_console(db: Session, user: CurrentUser, range_id: uuid.UUID, vm_name: str) -> dict[str, Any]:
+def student_console(db: Session, user: CurrentUser, range_id: uuid.UUID, vm_name: str,
+                    ws_base: str) -> dict[str, Any]:
     """A console ticket on one of the Student's own machines (by VM name), during their
     session. Audited, and their attendance evidence. Commits."""
     found = student_range(db, user, range_id)
@@ -277,7 +292,8 @@ def student_console(db: Session, user: CurrentUser, range_id: uuid.UUID, vm_name
     if found.session is None:
         raise HTTPException(403, "Your console opens during your session (from shortly before it starts)")
     vm = _vm(rng, vm_name)
-    ticket = _open(db, rng, vm, view_only=False)
+    ticket = _open(db, user, rng, vm, view_only=False, ws_base=ws_base, audience=AS_STUDENT,
+                   class_id=found.class_id, event_id=found.session.id)
     _audit(db, user, rng, AS_STUDENT, vm, {"class_id": found.class_id, "event_id": found.session.id,
                                            **found.participation})
     attendance.note_range_open(db, uuid.UUID(str(user.id)), rng, found.participation)
@@ -373,7 +389,7 @@ def names_of(db: Session, tenant_id: uuid.UUID, entries: list[RollCallEntry]) ->
 
 
 def staff_console(db: Session, user: CurrentUser, live: LiveSession, range_id: uuid.UUID,
-                  vm_name: str) -> dict[str, Any]:
+                  vm_name: str, ws_base: str) -> dict[str, Any]:
     """A console ticket on a machine (by VM name) of one of the session's ranges, while its
     window is open: for its observers only the Students' machines (view only where the
     adapter can enforce it, else marked observed); for its lead, assistants and admins any
@@ -394,7 +410,13 @@ def staff_console(db: Session, user: CurrentUser, live: LiveSession, range_id: u
                                  f"({OBSERVER_CONSOLES_ENV})")
     if observer and machine_of(vm, rng.id) not in student_machines(db, rng):
         raise HTTPException(403, "Observers watch the Students' machines only")
-    ticket = _open(db, rng, vm, view_only=observer)
+    if observer and not view_only_supported(rng):
+        # S4 (#369) makes the relay itself drop an observer's input; until then an observer
+        # grant would be a console they can type into. Refused, as when consoles are off.
+        raise HTTPException(403, "Observers see the live status only on this hypervisor: its consoles cannot be "
+                                 "made view-only yet, so a console for an observer is not issued")
+    ticket = _open(db, user, rng, vm, view_only=observer, ws_base=ws_base,
+                   audience=AS_OBSERVER if observer else AS_STAFF, class_id=live.cls.id, event_id=live.evt.id)
     _audit(db, user, rng, AS_OBSERVER if observer else AS_STAFF, vm,
            {"class_id": live.cls.id, "class_role": live.role.value, "event_id": live.evt.id,
             "view_only": ticket["view_only"]})

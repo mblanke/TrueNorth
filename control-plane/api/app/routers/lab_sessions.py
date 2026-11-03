@@ -16,11 +16,12 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
+from ..console_relay import service as relay
 from ..db import get_db
 from ..lab_sessions import capacity_gate, service, tokens
 from ..lab_sessions.models import LabSession
@@ -142,7 +143,7 @@ def _session_for(
         raise HTTPException(404, "lab session not found")
     if str(s.user_id) != str(user.id) and not user_has_permission(user, staff_permission):
         raise HTTPException(404, "lab session not found")
-    if act and str(s.user_id) == str(user.id) and _enrollment_closed(db, s):
+    if act and str(s.user_id) == str(user.id) and service.enrollment_closed(db, s):
         raise HTTPException(403, "your enrollment in this course has closed")
     return s
 
@@ -163,26 +164,11 @@ def _token_session(db: Session, session_id: uuid.UUID, token: str | None, *, act
     s = db.get(LabSession, session_id)
     if s is None or claims.get("uid") != str(s.user_id):
         raise HTTPException(404, "lab session not found")
-    if _enrollment_closed(db, s):
+    if service.enrollment_closed(db, s):
         raise HTTPException(403, "your enrollment in this course has closed")
     if act and s.state in (*service.ENDING, *service.TERMINAL):
         raise HTTPException(410, "this lab has ended")
     return s
-
-
-def _enrollment_closed(db: Session, s: LabSession) -> bool:
-    """Every enrollment of the student in the lab's course is withdrawn or failed, as
-    release_for_student counts a closed enrollment. No enrollment (staff) is not closed."""
-    from ..course_releases.models import CourseRelease
-    from ..models import Enrollment, EnrollmentStatus
-
-    # tenant-safe: the release a session (already tenant- or token-checked) points at.
-    release = db.get(CourseRelease, s.release_id)
-    if release is None:
-        return False
-    mine = db.query(Enrollment).filter(Enrollment.user_id == s.user_id, Enrollment.course_id == release.course_id)
-    statuses = {e.status for e in mine}
-    return bool(statuses) and statuses <= {EnrollmentStatus.withdrawn, EnrollmentStatus.failed}
 
 
 def _do(db: Session, fn, session: LabSession, *args, busy_ok: bool = False, **kwargs) -> Any:
@@ -271,13 +257,14 @@ def end_lab_session(
 
 @router.post("/lab-sessions/{session_id}/console", response_model=ConsoleOut)
 def open_lab_console(
+    request: Request,
     session_id: uuid.UUID,
     node: str | None = None,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> ConsoleOut:
     s = _session_for(db, user, session_id, staff_permission=Permission.LEARNING_RECORD_WRITE, act=True)
-    return ConsoleOut(**_do(db, service.console, s, node))
+    return ConsoleOut(**_do(db, service.console, s, node, ws_base=relay.ws_base(request.headers), caller=user))
 
 
 @router.post("/lab-sessions/{session_id}/evidence", response_model=LabSessionOut)
@@ -405,14 +392,21 @@ def end_lab_by_token(
     return _out(_do(db, service.end, _token_session(db, session_id, x_lab_token), reason="completed"))
 
 
-@router.post("/lab-access/{session_id}/console", response_model=ConsoleOut)
+@router.post("/lab-access/{session_id}/console", response_model=ConsoleOut,
+             responses={401: {"description": "Always: a console is a relay socket only a signed-in user can open"}})
 def open_console_by_token(
     session_id: uuid.UUID,
     node: str | None = None,
     x_lab_token: str | None = Header(None),
     db: Session = Depends(get_db),
 ) -> ConsoleOut:
-    return ConsoleOut(**_do(db, service.console, _token_session(db, session_id, x_lab_token), node))
+    """No console by lab token alone. The console is a WebSocket on TrueNorth's relay
+    (``/ws/console/<grant>``) that only the signed-in grant holder can open, and a token carries
+    no sign-in: issuing one would hand back a URL nobody can use. Open the lab signed in
+    (``POST /lab-sessions/{id}/console``). Creates no grant. The token is still checked as for
+    every other action: a lab that ended is 410, a closed enrollment 403."""
+    _token_session(db, session_id, x_lab_token)
+    raise HTTPException(401, "Sign in to open the console.")
 
 
 @router.get("/lab-access/{session_id}/credentials", response_model=LabCredentialsOut)

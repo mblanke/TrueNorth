@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from app import models as m
-from app.console_backends import ConsoleError
+from app.console_backends import ConsoleError, DialGrant
 from app.console_backends import vsphere_webmks as console_mod
 from app.models import HypervisorConnection
 from app.secretbox import seal
@@ -65,7 +65,9 @@ def _tag(rid):
 
 
 def _open(db, rng, vm):
-    return console_mod.VsphereWebMKSConsole().open(vm, db=db, rng=rng)
+    """What the relay does when a browser's socket opens: ask the adapter where to connect."""
+    grant = DialGrant(id="g", range_id=str(rng.id), vm_id=vm["vm_id"], vm_name=vm["name"])
+    return console_mod.VsphereWebMKSConsole().dial(grant, db=db, rng=rng)
 
 
 VM = {"name": "abcdef12-web", "vm_id": "vm-1"}
@@ -76,9 +78,49 @@ def test_the_recorded_connection_and_its_own_login_are_used(db_session, vcenter)
     rng = _range(db_session, {"vms": [VM], "connection": {"id": str(conn.id), "host": "https://vc-a.test"}})
     vcenter.machines["vm-1"] = FakeMachine("x-web", _tag(rng.id))
     out = _open(db_session, rng, VM)
-    assert out["url"] == "wss://esx1.test:443/ticket/T"
+    assert out.url == "wss://esx1.test:443/ticket/T" and out.subprotocols == ("binary",)
     kw = vcenter.connect.call_args.kwargs
     assert (kw["host"], kw["user"], kw["pwd"]) == ("vc-a.test", "svc-a", "pw-a")
+
+
+@pytest.mark.parametrize("where", ["login", "ticket"])
+def test_sdk_faults_reach_the_student_as_fixed_text_and_the_log_has_no_host(db_session, vcenter, caplog, where):
+    """The fault text names hosts, addresses and ports: shown to nobody, logged as its class."""
+    conn = _conn(db_session)
+    rng = _range(db_session, {"vms": [VM], "connection": {"id": str(conn.id), "host": "https://vc-a.test"}})
+    vcenter.machines["vm-1"] = FakeMachine("x-web", _tag(rng.id))
+    fault = Exception("cannot complete login to esx9.secret.corp 10.9.8.7:902 ticket-T")
+    if where == "login":
+        vcenter.connect.side_effect = fault
+    else:
+        vcenter.machines["vm-1"].AcquireTicket.side_effect = fault
+    with caplog.at_level("INFO"), pytest.raises(ConsoleError) as e:
+        _open(db_session, rng, VM)
+    shown = str(e.value) + caplog.text
+    assert "secret.corp" not in shown and "10.9.8.7" not in shown and "ticket-T" not in shown
+    assert "Exception" in caplog.text and "vm-1" in caplog.text  # the class and the VM id
+
+
+def test_the_database_transaction_ends_before_the_vcenter_is_called(db_session, vcenter, monkeypatch):
+    """The adapter needs the session for the binding only: no pooled connection is held while
+    the vCenter answers."""
+    conn = _conn(db_session)
+    rng = _range(db_session, {"vms": [VM], "connection": {"id": str(conn.id), "host": "https://vc-a.test"}})
+    vcenter.machines["vm-1"] = FakeMachine("x-web", _tag(rng.id))
+    order = []
+    real_commit = db_session.commit
+    monkeypatch.setattr(db_session, "commit", lambda: (order.append("commit"), real_commit())[1])
+    vcenter.connect.side_effect = lambda **kw: (order.append("vcenter"), SimpleNamespace(_stub=None))[1]
+    _open(db_session, rng, VM)
+    assert order[:2] == ["commit", "vcenter"]
+
+
+def test_tls_is_verified_unless_the_connection_says_otherwise():
+    import ssl
+
+    on, off = console_mod._tls_context(True), console_mod._tls_context(False)
+    assert on.verify_mode == ssl.CERT_REQUIRED and on.check_hostname is True
+    assert off.verify_mode == ssl.CERT_NONE and off.check_hostname is False
 
 
 def test_another_ranges_vm_under_the_recorded_id_gets_no_ticket(db_session, vcenter):
@@ -94,7 +136,7 @@ def test_an_untagged_vm_needs_its_recorded_range_name(db_session, vcenter):
     rng = _range(db_session, {"vms": [VM]})
     vm = {"name": f"{str(rng.id)[:8]}-web", "vm_id": "vm-1"}
     vcenter.machines["vm-1"] = FakeMachine(vm["name"], None)
-    assert _open(db_session, rng, vm)["kind"] == "webmks"
+    assert _open(db_session, rng, vm).url.startswith("wss://")
     vcenter.machines["vm-1"] = FakeMachine("finance-db", None)
     with pytest.raises(ConsoleError):
         _open(db_session, rng, vm)
