@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Ruff, as a ratchet rather than a cliff. Shared by scripts/dod.sh and CI's lint-python
+# Ruff lint and format, as ratchets rather than cliffs. Shared by scripts/dod.sh and CI's lint-python
 # job so local green and CI green mean the same thing.
 #
 # The repo carries pre-existing lint debt; a gate that fails on all of it on day one
@@ -32,3 +32,25 @@ fi
 # Ratchet down automatically when the count improves, so cleanup sticks.
 if (( CUR < BASE )); then echo "  ratcheting baseline down: $BASE -> $CUR"; fi
 echo "$CUR" > "$BASELINE_FILE"
+
+# Formatting, ratcheted per FILE rather than by count. .dod-format-baseline lists the
+# files that were unformatted when this started; every other file must already be
+# `ruff format`-clean. A count would let a new unformatted file in whenever someone
+# formatted an old one. The list only shrinks: a listed file that becomes clean drops
+# off, and that edit belongs in the commit. Clear the list by formatting a whole
+# directory in a PR of its own; doing it inside feature PRs makes their diffs unreadable.
+FORMAT_BASELINE="$ROOT/.dod-format-baseline"
+echo "+ ruff format ratchet (.dod-format-baseline)"
+UNFORMATTED=$("$PY" -m ruff format --check --output-format=concise "${PY_TARGETS[@]}" \
+        --exclude="control-plane/web" 2>/dev/null | grep ': unformatted:' | cut -d: -f1 | sort -u || true)
+NEW=$(comm -23 <(printf '%s\n' "$UNFORMATTED" | sed '/^$/d') \
+        <(sed '/^$/d' "$FORMAT_BASELINE" 2>/dev/null | sort -u))
+if [[ -n "$NEW" ]]; then
+  echo "$NEW" | sed 's/^/  unformatted: /'
+  fail "files outside .dod-format-baseline need formatting — run: ruff format <file>"
+fi
+FBASE=$(sed '/^$/d' "$FORMAT_BASELINE" 2>/dev/null | wc -l | tr -d ' ')
+printf '%s\n' "$UNFORMATTED" | sed '/^$/d' > "$FORMAT_BASELINE"
+FCUR=$(wc -l < "$FORMAT_BASELINE" | tr -d ' ')
+echo "+ unformatted files: $FCUR (baseline $FBASE)"
+if (( FCUR < FBASE )); then echo "  ratcheting format baseline down: $FBASE -> $FCUR"; fi
