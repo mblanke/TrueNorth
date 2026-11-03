@@ -53,8 +53,27 @@ opens the ticket. Nobody is told about their own action.
 
 Rows live in the `notifications` table (`app/notifications/models.py`, `UserNotification`), written by
 `app/notifications/inbox.py` in the same transaction as the change; `/notifications` serves only the
-caller's own. In-app only for now: no email, and no live push (the WebSocket
-`send_to_user` path exists but the bell polls).
+caller's own. The bell polls once a minute.
+
+### Email
+
+When the install has an outgoing mail server (`SMTP_HOST` and a sender, see
+`app/notifications/smtp.py`), the *personal* events above are also emailed: assigned to you,
+a reply, a status change, an internal note. The "new ticket" broadcast to every staff member, and
+a reporter's reply to a ticket nobody owns yet, stay in the bell only.
+
+- **No ticket content leaves by email.** A message names the ticket (`TN-12`), says what
+  happened and links to it (`WEB_BASE_URL`, else the installer's `LTI_WEB_BASE_URL`). No subject,
+  details, reply text, internal-note text or person's name: mail is stored and forwarded by systems
+  the platform does not control, and the text of a ticket can describe a range.
+- **Each person can turn it off**: the *Email me about tickets* checkbox at the foot of the bell
+  (`GET`/`PUT /notifications/settings`, the caller's own row only; `notification_preferences`,
+  no row means on). The checkbox is hidden when the install has no mail server.
+- **Throttled**: someone already told about a ticket in the last five minutes (in the bell or
+  by email) is not emailed about it again, so a busy thread sends one email, not ten.
+- **After the commit, at most once.** The emails go out from a background task once the request
+  is committed; a failed send is logged, never retried into duplicates, and never fails the
+  request. A rolled-back change emails nobody.
 
 ## Behaviour worth knowing
 
@@ -104,7 +123,7 @@ app-wide NaN/Infinity 422-turned-500 found along the way is fixed in
 
 ## Not in this version
 
-- Email notifications, and live push for the bell (it polls once a minute).
+- Live push for the bell (it polls once a minute).
 - AI triage ("ask AI", "run diagnostics") from the March design.
 - Images inside wiki pages, and full-text search through OpenSearch (search is
   title/body/tags matching in the database today).

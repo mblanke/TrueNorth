@@ -6,7 +6,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { catchError, filter, interval, of } from 'rxjs';
-import { AppNotification, NotificationsApiService } from '@core/services/notifications-api.service';
+import { AppNotification, NotificationSettings, NotificationsApiService } from '@core/services/notifications-api.service';
 
 /**
  * The toolbar bell: unread count, and a short list of the caller's notifications.
@@ -39,6 +39,15 @@ import { AppNotification, NotificationsApiService } from '@core/services/notific
         } @empty {
           <p class="empty">{{ loading() ? 'Loading…' : 'Nothing new.' }}</p>
         }
+        @if (settings(); as st) {
+          @if (st.email_available) {
+            <label class="foot">
+              <input type="checkbox" [checked]="st.email_tickets" (change)="setEmail($any($event.target).checked)" />
+              Email me about tickets
+            </label>
+            @if (saveFailed()) { <p class="err" role="alert">Could not save that. Try again.</p> }
+          }
+        }
       </div>
     }
   `,
@@ -57,6 +66,8 @@ import { AppNotification, NotificationsApiService } from '@core/services/notific
     .title, .msg, .when { display: block; font-size: .84rem; }
     .msg { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .when { color: var(--text-muted); font-size: .74rem; margin-top: 2px; }
+    .foot { display: flex; gap: 8px; align-items: center; padding: 10px 12px; font-size: .8rem; color: var(--text-secondary); cursor: pointer; }
+    .err { margin: 0; padding: 0 12px 10px; font-size: .78rem; color: var(--alert, #c8102e); }
     .empty { padding: 16px 12px; margin: 0; color: var(--text-secondary); font-size: .86rem; }
     @media (max-width: 480px) { .panel { position: fixed; left: 8px; right: 8px; width: auto; top: 56px; } }
   `],
@@ -71,6 +82,9 @@ export class NotificationBellComponent implements OnInit {
   readonly unread = signal(0);
   readonly items = signal<AppNotification[]>([]);
   readonly loading = signal(false);
+  /** The caller's own email switch; null until loaded, and stays null if the API will not say. */
+  readonly settings = signal<NotificationSettings | null>(null);
+  readonly saveFailed = signal(false);
 
   ngOnInit(): void {
     this.refreshCount();
@@ -100,6 +114,17 @@ export class NotificationBellComponent implements OnInit {
     if (n.link) this.router.navigateByUrl(n.link);
   }
 
+  setEmail(on: boolean): void {
+    const before = this.settings();
+    if (!before) return;
+    this.saveFailed.set(false);
+    this.settings.set({ ...before, email_tickets: on });
+    this.api.saveSettings(on).subscribe({
+      next: saved => this.settings.set(saved),
+      error: () => { this.settings.set(before); this.saveFailed.set(true); },
+    });
+  }
+
   readAll(): void {
     this.api.markAllRead().pipe(catchError(() => of(null))).subscribe(() => {
       this.unread.set(0);
@@ -123,6 +148,7 @@ export class NotificationBellComponent implements OnInit {
   }
 
   private load(): void {
+    this.api.settings().pipe(catchError(() => of(null))).subscribe(st => this.settings.set(st));
     this.loading.set(true);
     this.api.list().pipe(catchError(() => of([] as AppNotification[]))).subscribe(list => {
       this.items.set(list);

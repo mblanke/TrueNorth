@@ -43,7 +43,7 @@ import uuid
 from datetime import UTC, datetime
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, or_, text, update
@@ -55,6 +55,7 @@ from ..auth import CurrentUser
 from ..db import get_db
 from ..models import AuditLog, Exercise, Range, User, UserRole
 from ..models_tickets import SupportQueue, Ticket, TicketActivity, TicketAttachment, TicketComment
+from ..notifications import ticket_email
 from ..notifications.inbox import existing_user_ids, notify, staff_ids
 from ..rbac import Permission, require_permission, user_has_permission
 from ..tenancy import get_owned, tenant_uuid
@@ -81,6 +82,7 @@ TRACKED_FIELDS = (
     "exercise_id",
 )
 MAX_FILES_PER_UPLOAD = 10
+EMAIL_NOTICES_KEY = "tn_ticket_email_notices"
 
 
 # ── Schemas ─────────────────────────────────────────────────────────────
@@ -380,19 +382,49 @@ def _log(db: Session, t: Ticket, user: CurrentUser, field: str, old, new) -> Non
 
 
 def _tell(
-    db: Session, t: Ticket, user: CurrentUser, recipients, title: str, message: str = "", kind: str = "ticket"
+    db: Session,
+    t: Ticket,
+    user: CurrentUser,
+    recipients,
+    title: str,
+    message: str = "",
+    kind: str = "ticket",
+    email: bool = True,
 ) -> None:
-    """Notify `recipients` (user ids) about ticket `t`, never the actor, only real users of the tenant."""
+    """Notify `recipients` (user ids) about ticket `t`, never the actor, only real users of the tenant.
+
+    The bell always gets it. An email is queued too (sent after the commit by
+    `_send_emails`) unless `email` is False or the event is not an emailable kind; it names
+    the ticket and what happened and carries none of the ticket's text
+    (app/notifications/ticket_email.py)."""
+    ids = existing_user_ids(db, t.tenant_id, recipients)
+    actor = uuid.UUID(user.id)
+    title = f"TN-{t.number}: {title}"
+    link = f"/support/{t.id}"
+    if email:  # before notify: the row about to be written must not count as "already told"
+        notices = ticket_email.prepare(
+            db, tenant_id=t.tenant_id, recipient_ids=ids, actor_id=actor, title=title, kind=kind, link=link
+        )
+        if notices:
+            db.info.setdefault(EMAIL_NOTICES_KEY, []).extend(notices)
     notify(
         db,
         tenant_id=t.tenant_id,
-        user_ids=existing_user_ids(db, t.tenant_id, recipients),
-        actor_id=uuid.UUID(user.id),
-        title=f"TN-{t.number}: {title}",
+        user_ids=ids,
+        actor_id=actor,
+        title=title,
         message=message or t.subject,
-        link=f"/support/{t.id}",
+        link=link,
         kind=kind,
     )
+
+
+def _send_emails(db: Session, background: BackgroundTasks) -> None:
+    """After the commit: hand the queued ticket emails to a background task (once)."""
+    notices = db.info.pop(EMAIL_NOTICES_KEY, None)
+    db.info.pop(ticket_email.EMAILED_KEY, None)
+    if notices:
+        background.add_task(ticket_email.send, notices)
 
 
 def _tell_status(db: Session, t: Ticket, user: CurrentUser, old_status: str) -> None:
@@ -681,6 +713,7 @@ def list_tickets(
 @router.post("", response_model=TicketOut, status_code=201)
 def create_ticket(
     body: TicketIn,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.TICKET_CREATE)),
 ) -> TicketOut:
@@ -728,6 +761,7 @@ def create_ticket(
         _tell(db, t, user, [t.assignee_id], "assigned to you", kind="ticket_assigned")
     _audit(db, user, "ticket_create", str(t.id))
     db.commit()
+    _send_emails(db, background)
     db.refresh(t)
     return _detail(db, user, t)
 
@@ -744,6 +778,7 @@ def get_ticket(
 @router.patch("/{ticket_id}", response_model=TicketOut)
 def update_ticket(
     body: TicketUpdate,
+    background: BackgroundTasks,
     ticket_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.TICKET_CREATE)),
@@ -789,6 +824,7 @@ def update_ticket(
         _tell(db, t, user, [t.assignee_id], "assigned to you", kind="ticket_assigned")
     _audit(db, user, "ticket_update", str(t.id))
     db.commit()
+    _send_emails(db, background)
     db.refresh(t)
     return _detail(db, user, t)
 
@@ -808,6 +844,7 @@ def delete_ticket(
 @router.post("/{ticket_id}/move", response_model=TicketListOut)
 def move_ticket(
     body: TicketMoveIn,
+    background: BackgroundTasks,
     ticket_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.TICKET_WORK)),
@@ -830,6 +867,7 @@ def move_ticket(
         _tell_status(db, t, user, old_status)
     _audit(db, user, "ticket_move", str(t.id))
     db.commit()
+    _send_emails(db, background)
     db.refresh(t)
     return _decorate(db, user, [t])[0]
 
@@ -858,6 +896,7 @@ def list_comments(
 @router.post("/{ticket_id}/comments", response_model=TicketCommentOut, status_code=201)
 def add_comment(
     body: TicketCommentIn,
+    background: BackgroundTasks,
     ticket_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.TICKET_CREATE)),
@@ -885,7 +924,8 @@ def add_comment(
     elif from_reporter:
         # Whoever owns it; if nobody does yet, every staff member.
         who = [t.assignee_id] if t.assignee_id else staff_ids(db, t.tenant_id)
-        _tell(db, t, user, who, "reporter replied", preview, kind="ticket_reply")
+        # Every staff member when nobody owns it yet: that is a broadcast, so bell only.
+        _tell(db, t, user, who, "reporter replied", preview, kind="ticket_reply", email=bool(t.assignee_id))
     else:
         _tell(db, t, user, [t.reporter_id], "new reply", preview, kind="ticket_reply")
     if not body.is_internal:
@@ -894,6 +934,7 @@ def add_comment(
         t.updated_at = _now()
     _audit(db, user, "ticket_comment_internal" if body.is_internal else "ticket_comment", str(t.id))
     db.commit()
+    _send_emails(db, background)
     db.refresh(c)
     out = TicketCommentOut.model_validate(c)
     out.author_name = user.display_name

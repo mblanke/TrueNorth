@@ -46,3 +46,24 @@ class UserNotification(Base):
         default=lambda: datetime.now(UTC),
         nullable=False,
     )
+
+
+class NotificationPreference(Base):
+    """One user's own notification settings (issue #378). No row means the defaults:
+    ticket emails on. Written only by that user, through ``PUT /notifications/settings``."""
+
+    __tablename__ = "notification_preferences"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    # Email about tickets (a new reply, a status change, an assignment, an internal note).
+    email_tickets: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"), default=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=text("(CURRENT_TIMESTAMP)"),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
+    )
