@@ -620,10 +620,9 @@ Read the report at the end. Expected on this site's first run:
 
 | Line | Expected | Meaning |
 |---|---|---|
-| `AI` | `disabled` (or `enabled`, all models listed) | Appendix C |
+| `AI` (without AI) or `ai models` (with AI) | `AI : disabled (tn_ai_enabled: false; ...)`, or `ai models : all listed (...)` | Appendix C. `ai models : MISSING on the endpoint` is a failure to fix |
 | `alerts` | `NOWHERE (null receiver)` with `WARNING: ALERTS ARE NOT DELIVERED` | Email is parked (§6.4). Read firing alerts on the VM instead (06 §1) |
-| vCenter privileges | provisioning allowed | §3.2. If not, the run fails because `tn_fail_on_missing_vsphere_privs: true` |
-| ai models / discovery | as configured | |
+| `can provision` and the open item `vCenter provisioning privileges` | `can provision : true`, `* vCenter provisioning privileges: OK` | §3.2. If not, the run fails because `tn_fail_on_missing_vsphere_privs: true` |
 
 ### 6.3 Prove it: run it again
 
