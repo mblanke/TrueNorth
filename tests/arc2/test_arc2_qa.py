@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 from arc2 import check, qa
-from conftest import QUESTIONS
+from arc2_conftest import QUESTIONS
 from test_arc2_manifest import full_manifest, make_run
 
 # C500-C599 sit outside the DP1/DP2 programme: qsp_code is optional and no mapping is "proposed".

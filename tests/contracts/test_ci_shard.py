@@ -54,3 +54,15 @@ def test_the_sharder_finds_every_file_pytest_would():
         and "integration" not in p.relative_to(ROOT / "tests").parts
     }
     assert set(ci_shard.test_files()) == on_disk
+
+
+def test_no_test_imports_a_conftest_by_its_bare_name():
+    """`from conftest import X` gets whichever conftest.py pytest loaded last, which depends
+    on the files the run was given. A CI shard is a subset, so it can get another directory's."""
+    offenders = [
+        p.relative_to(ROOT).as_posix()
+        for p in (ROOT / "tests").rglob("*.py")
+        if re.search(r"^\s*(from conftest import|import conftest\b)", p.read_text(), re.M)
+        and p.name != "test_ci_shard.py"
+    ]
+    assert not offenders, f"import the directory's helper module instead: {offenders}"
