@@ -116,6 +116,37 @@ describe('UserSocketService (#377)', () => {
     svc.ngOnDestroy();
   }));
 
+  it('keeps backing off when a socket opens and is dropped at once (a proxy idle policy, a deploy)', fakeAsync(() => {
+    const svc = create();
+    settle();
+    FakeSocket.all[0].open();
+    FakeSocket.all[0].drop();
+    tick(1_300); // first retry: about 1 s
+    flushMicrotasks();
+    expect(FakeSocket.all.length).toBe(2);
+    FakeSocket.all[1].open();
+    FakeSocket.all[1].drop(); // up for no time at all: the counter must not have reset
+    tick(1_400); // a reset would retry within 1.25 s; the second step waits at least 1.5 s
+    flushMicrotasks();
+    expect(FakeSocket.all.length).toBe(2);
+    tick(1_200);
+    flushMicrotasks();
+    expect(FakeSocket.all.length).toBe(3);
+    svc.ngOnDestroy();
+  }));
+
+  it('goes back to the short retry once a socket has stayed up', fakeAsync(() => {
+    const svc = create();
+    settle();
+    FakeSocket.all[0].open();
+    tick(5_100); // stable
+    FakeSocket.all[0].drop();
+    tick(1_300);
+    flushMicrotasks();
+    expect(FakeSocket.all.length).toBe(2);
+    svc.ngOnDestroy();
+  }));
+
   it('stops reconnecting for a user who has signed out, and closes the socket', fakeAsync(() => {
     const svc = create();
     settle();

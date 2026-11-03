@@ -71,8 +71,17 @@ is relayed between workers over Redis (`WebSocketManager`'s relay, started by th
 `REDIS_URL` is set; **`WS_REDIS_RELAY=false` turns it off**, and an unreachable Redis
 falls back to this worker only). Every part is optional: with no `/ws/` route (the web
 container on `:4200` has none; the edge does), no Redis, or a refused token, the bell simply
-polls. The relay now ignores its own messages by a per-instance random id; it used to
-compare memory addresses (`id(self)`), which two spawned workers can share.
+polls.
+
+The relay is built not to fail quietly. A worker connects to Redis from its own background
+task, so a slow or absent Redis never delays startup (each connect and read is bounded), keeps
+retrying with backoff if Redis is not up yet when the API boots, and reconnects after any
+Redis error (a restart, a failover); a malformed message is skipped, never fatal. It ignores
+its own messages by a per-instance random id (it used to compare memory addresses, `id(self)`,
+which two spawned workers can share), and never logs `REDIS_URL`, which can carry a password.
+Even so, a socket can be open yet deaf (Redis down on that worker), so the bell also polls every
+five minutes while connected. Leave `WS_HEARTBEAT` on (the default): it is what closes a socket
+when its token expires or its user is disabled.
 
 ## Behaviour worth knowing
 

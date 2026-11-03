@@ -12,8 +12,10 @@ import { UserSocketService } from '@core/services/user-socket.service';
 /**
  * The toolbar bell: unread count, and a short list of the caller's notifications.
  * New ones arrive live over the user's own socket (UserSocketService). The count is also
- * polled every minute while the tab is visible and the socket is down, and after each
- * navigation, so the bell works with no socket at all; reconnecting refreshes it too.
+ * polled every minute while the tab is visible and the socket is down, every five minutes
+ * even while it is up (a socket can be open yet deaf, e.g. if the server's relay between
+ * workers lost Redis), and after each navigation, so the bell works with no socket at all;
+ * reconnecting refreshes it too.
  * Opening the list fetches it fresh. Clicking an item marks it read and opens its link.
  */
 @Component({
@@ -78,9 +80,10 @@ export class NotificationBellComponent implements OnInit {
 
   ngOnInit(): void {
     this.refreshCount();
+    let tick = 0;
     interval(60_000)
       .pipe(
-        filter(() => !this.socket.connected()),
+        filter(() => !this.socket.connected() || ++tick % 5 === 0),
         filter(() => typeof document === 'undefined' || document.visibilityState === 'visible'),
         takeUntilDestroyed(this.destroyRef),
       )

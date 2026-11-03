@@ -1,4 +1,4 @@
-import { TestBed } from '@angular/core/testing';
+import { TestBed, discardPeriodicTasks, fakeAsync, tick } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
 import { Subject, of } from 'rxjs';
@@ -57,6 +57,21 @@ describe('NotificationBellComponent', () => {
       expect(fixture.componentInstance.items().filter(i => i.id === '1').length).toBe(1);
       expect(fixture.componentInstance.unread()).toBe(3);
     });
+
+    it('polls every minute while the socket is down, and only every five while it is up', fakeAsync(() => {
+      const fixture = TestBed.createComponent(NotificationBellComponent);
+      fixture.detectChanges();
+      api.unreadCount.calls.reset();
+      tick(60_000);
+      expect(api.unreadCount).toHaveBeenCalledTimes(1); // down: every minute
+      connected.set(true);
+      api.unreadCount.calls.reset();
+      tick(4 * 60_000);
+      expect(api.unreadCount).toHaveBeenCalledTimes(0); // up: quiet...
+      tick(60_000);
+      expect(api.unreadCount).toHaveBeenCalledTimes(1); // ...but a deaf socket is caught within five minutes
+      discardPeriodicTasks();
+    }));
 
     it('catches up when the socket (re)opens', () => {
       const fixture = TestBed.createComponent(NotificationBellComponent);

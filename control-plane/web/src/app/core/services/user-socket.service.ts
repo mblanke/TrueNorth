@@ -10,6 +10,8 @@ export const WEBSOCKET_FACTORY = new InjectionToken<(url: string, protocols?: st
 );
 
 const BACKOFF_MS = [1_000, 2_000, 5_000, 10_000, 30_000, 60_000];
+/** A socket must stay open this long before the retry counter resets: one that opens and is dropped at once (a proxy idle policy, a deploy) keeps backing off. */
+const STABLE_AFTER_MS = 5_000;
 
 /**
  * The signed-in user's own live channel, `/ws/user.<id>` (control-plane/api/app/ws_auth.py:
@@ -35,6 +37,7 @@ export class UserSocketService implements OnDestroy {
   private forUser: string | null = null;
   private attempt = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private stableTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     // Follows sign-in and sign-out: open for the current user, close when they leave.
@@ -60,6 +63,7 @@ export class UserSocketService implements OnDestroy {
     this.forUser = null;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    this.clearStable();
     const socket = this.socket;
     this.socket = null;
     this.connected.set(false);
@@ -88,15 +92,17 @@ export class UserSocketService implements OnDestroy {
     }
     this.socket = socket;
     socket.onopen = () => {
-      this.attempt = 0;
       this.connected.set(true);
       this.opened$.next();
+      this.clearStable();
+      this.stableTimer = setTimeout(() => (this.attempt = 0), STABLE_AFTER_MS);
     };
     socket.onmessage = ev => this.onMessage(socket, ev.data);
     socket.onclose = () => {
       if (this.socket !== socket) return;
       this.socket = null;
       this.connected.set(false);
+      this.clearStable();
       this.retry(userId);
     };
   }
@@ -114,6 +120,11 @@ export class UserSocketService implements OnDestroy {
     } else if (msg.type === 'notification' && msg.data?.id) {
       this.notifications$.next(msg.data);
     }
+  }
+
+  private clearStable(): void {
+    if (this.stableTimer) clearTimeout(this.stableTimer);
+    this.stableTimer = null;
   }
 
   private retry(userId: string): void {

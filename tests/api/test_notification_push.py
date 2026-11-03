@@ -394,11 +394,11 @@ async def test_the_relay_between_two_workers_works_on_a_real_redis():
     await a.start(heartbeat=False)
     await b.start(heartbeat=False)
     try:
-        assert a._redis is not None and b._redis is not None, "Redis must be reachable for this test"
         await a.connect(sock_a, "user.u1", user_id="u1", tenant_id="t")
         await b.connect(sock_b, "user.u1", user_id="u1", tenant_id="t")
         await b.connect(stranger, "user.u2", user_id="u2", tenant_id="t")
-        await asyncio.sleep(0.3)  # both listeners subscribed
+        await asyncio.sleep(0.5)  # each listener connects and subscribes on its own task
+        assert a._redis is not None and b._redis is not None, "Redis must be reachable for this test"
 
         await a.broadcast("user.u1", "notification", {"id": "n1"})
         await asyncio.sleep(0.5)
@@ -409,3 +409,178 @@ async def test_the_relay_between_two_workers_works_on_a_real_redis():
     finally:
         await a.shutdown()
         await b.shutdown()
+
+
+# ── The relay survives Redis (from the adversarial review of #377) ────────
+class _Pubsub:
+    """A pub/sub whose get_message replays a script: a message, an exception, or None."""
+
+    def __init__(self, script):
+        self.script = list(script)
+        self.closed = False
+
+    async def get_message(self, ignore_subscribe_messages=True, timeout=1.0):
+        if not self.script:
+            await asyncio.sleep(timeout)
+            return None
+        step = self.script.pop(0)
+        if isinstance(step, BaseException):
+            raise step
+        return step
+
+    async def aclose(self):
+        self.closed = True
+
+
+def _relayed(channel="user.u1", data=None, origin="someone-else"):
+    return {
+        "type": "pmessage",
+        "data": json.dumps(
+            {"channel": channel, "message_type": "notification", "data": data or {"id": "n"}, "origin": origin}
+        ),
+    }
+
+
+async def _until(predicate, seconds=3.0):
+    for _ in range(int(seconds / 0.02)):
+        if predicate():
+            return True
+        await asyncio.sleep(0.02)
+    return False
+
+
+def _manager_with(monkeypatch, opens):
+    """A manager whose Redis connections come from `opens`: a list of pubsubs, or exceptions to raise."""
+    from app import websocket_manager as wm
+
+    monkeypatch.setattr(wm, "REDIS_RETRY_MIN_S", 0.02)
+    monkeypatch.setattr(wm, "REDIS_RETRY_MAX_S", 0.05)
+    m = WebSocketManager(redis_url="redis://never-used:6379/0")
+    attempts = {"n": 0}
+
+    async def fake_open():
+        attempts["n"] += 1
+        step = opens.pop(0) if opens else _Pubsub([])
+        if isinstance(step, BaseException):
+            raise step
+        return FakeRedisClient(), step
+
+    monkeypatch.setattr(m, "_open_redis", fake_open)
+    return m, attempts
+
+
+class FakeRedisClient:
+    async def publish(self, channel, payload):
+        return 1
+
+    async def aclose(self):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_a_redis_error_does_not_end_the_relay(monkeypatch):
+    """A restart or failover used to end the listener for good while the sockets looked healthy."""
+    first = _Pubsub([ConnectionError("redis went away")])
+    second = _Pubsub([_relayed(data={"id": "after-reconnect"})])
+    m, attempts = _manager_with(monkeypatch, [first, second])
+    sock = FakeSocket()
+    await m.connect(sock, "user.u1", user_id="u1", tenant_id="t")
+    await m.start(heartbeat=False)
+    try:
+        assert await _until(lambda: sock.sent), "the message after the reconnect must arrive"
+        assert sock.sent[0]["data"] == {"id": "after-reconnect"}
+        assert attempts["n"] == 2 and first.closed, "it reconnected and let go of the broken connection"
+    finally:
+        await m.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_malformed_relayed_messages_are_skipped_not_fatal(monkeypatch):
+    bad = [
+        {"type": "pmessage", "data": "not json"},
+        {"type": "pmessage", "data": "[]"},
+        {"type": "pmessage", "data": "null"},
+        {"type": "pmessage", "data": json.dumps({"channel": ["unhashable"], "data": {}})},
+        {"type": "pmessage", "data": json.dumps({"channel": "user.u1", "message_type": 5, "data": {}})},
+        {"type": "pmessage", "data": json.dumps({"channel": "user.u1", "data": "not a dict"})},
+        {"type": "pmessage"},  # no data at all
+        {"type": "psubscribe", "data": 1},
+        "not even a dict",
+        None,
+        _relayed(data={"id": "the-good-one"}),
+    ]
+    m, attempts = _manager_with(monkeypatch, [_Pubsub(bad)])
+    sock = FakeSocket()
+    await m.connect(sock, "user.u1", user_id="u1", tenant_id="t")
+    await m.start(heartbeat=False)
+    try:
+        assert await _until(lambda: sock.sent)
+        assert [f["data"] for f in sock.sent] == [{"id": "the-good-one"}]
+        assert attempts["n"] == 1, "bad messages must not even cost a reconnect"
+    finally:
+        await m.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_a_redis_that_is_not_up_yet_is_picked_up_later(monkeypatch):
+    """All workers often boot before Redis. They used to fall back to local-only for good."""
+    m, attempts = _manager_with(
+        monkeypatch, [ConnectionError("refused"), ConnectionError("refused"), _Pubsub([_relayed()])]
+    )
+    sock = FakeSocket()
+    await m.connect(sock, "user.u1", user_id="u1", tenant_id="t")
+    await m.start(heartbeat=False)
+    try:
+        assert await _until(lambda: sock.sent)
+        assert attempts["n"] == 3
+    finally:
+        await m.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_a_hanging_redis_does_not_hold_up_start(monkeypatch):
+    """A blackholed REDIS_URL used to block the API's lifespan for the OS TCP timeout."""
+    from app import websocket_manager as wm
+
+    m = WebSocketManager(redis_url="redis://blackhole:6379/0")
+
+    async def hangs():
+        await asyncio.sleep(3600)
+
+    monkeypatch.setattr(m, "_open_redis", hangs)
+    await asyncio.wait_for(m.start(heartbeat=False), timeout=1.0)
+    assert m._redis is None  # not connected yet, and start() did not wait for it
+    await asyncio.wait_for(m.shutdown(), timeout=2.0)
+    assert wm.REDIS_CONNECT_TIMEOUT_S <= 5, "and the real connection is bounded"
+
+
+@pytest.mark.asyncio
+async def test_a_hung_publish_does_not_hold_the_broadcast(monkeypatch):
+    from app import websocket_manager as wm
+
+    monkeypatch.setattr(wm, "REDIS_PUBLISH_TIMEOUT_S", 0.1)
+
+    class Hung:
+        async def publish(self, channel, payload):
+            await asyncio.sleep(3600)
+
+    m = WebSocketManager()
+    m._redis = Hung()
+    sock = FakeSocket()
+    await m.connect(sock, "user.u1", user_id="u1", tenant_id="t")
+    await asyncio.wait_for(m.broadcast("user.u1", "notification", {"id": "n"}), timeout=1.0)
+    assert [f["data"] for f in sock.sent] == [{"id": "n"}], "the local socket still got it"
+
+
+def test_the_redis_url_is_never_logged(caplog):
+    """The URL can carry the password (redis://:secret@host)."""
+    import logging
+
+    m = WebSocketManager(redis_url="redis://:s3cret-pw@127.0.0.1:1/0")
+
+    async def go():
+        with caplog.at_level(logging.DEBUG, logger="truenorth.ws"):
+            await m._connect_redis()
+
+    asyncio.run(go())
+    assert "s3cret-pw" not in caplog.text
