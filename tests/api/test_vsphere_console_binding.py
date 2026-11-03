@@ -101,6 +101,20 @@ def test_sdk_faults_reach_the_student_as_fixed_text_and_the_log_has_no_host(db_s
     assert "Exception" in caplog.text and "vm-1" in caplog.text  # the class and the VM id
 
 
+def test_the_database_transaction_ends_before_the_vcenter_is_called(db_session, vcenter, monkeypatch):
+    """The adapter needs the session for the binding only: no pooled connection is held while
+    the vCenter answers."""
+    conn = _conn(db_session)
+    rng = _range(db_session, {"vms": [VM], "connection": {"id": str(conn.id), "host": "https://vc-a.test"}})
+    vcenter.machines["vm-1"] = FakeMachine("x-web", _tag(rng.id))
+    order = []
+    real_commit = db_session.commit
+    monkeypatch.setattr(db_session, "commit", lambda: (order.append("commit"), real_commit())[1])
+    vcenter.connect.side_effect = lambda **kw: (order.append("vcenter"), SimpleNamespace(_stub=None))[1]
+    _open(db_session, rng, VM)
+    assert order[:2] == ["commit", "vcenter"]
+
+
 def test_tls_is_verified_unless_the_connection_says_otherwise():
     import ssl
 

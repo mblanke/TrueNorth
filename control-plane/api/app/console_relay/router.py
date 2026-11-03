@@ -72,6 +72,9 @@ MAX_CLIENT_MESSAGE = 1024 * 1024
 #: No bytes either way for this long closes the socket (a forgotten tab holds a hypervisor
 #: console and a grant).
 IDLE_SECONDS = 600
+#: Consecutive failed renewals (an exception, never a policy "no") the socket survives: it
+#: closes on this many. The tick is ``service.RENEW_SECONDS`` and the claim lasts three ticks.
+MAX_RENEW_FAILURES = 3
 
 
 async def _refuse(ws: WebSocket, code: int, reason: str, subprotocol: str | None) -> None:
@@ -84,16 +87,20 @@ async def _refuse(ws: WebSocket, code: int, reason: str, subprotocol: str | None
 @contextlib.contextmanager
 def _session(app: Any):
     """A database session for one short piece of work, from the same factory the requests use
-    (``get_db``, with a test's override). The transaction is ended on the way out (a read
-    leaves one open) and the session closed: an open console holds no connection and no
+    (``get_db``, with a test's override). The transaction is committed when the step succeeded
+    (a read leaves one open) and rolled back when it raised; the session is closed: an open console holds no connection and no
     transaction between its renewals, only while a statement runs."""
     gen = app.dependency_overrides.get(get_db, get_db)()
     db = next(gen)
     try:
         yield db
-    finally:
+    except BaseException:
         with contextlib.suppress(Exception):
-            db.commit()
+            db.rollback()
+        raise
+    else:
+        db.commit()
+    finally:
         gen.close()
 
 
@@ -157,6 +164,10 @@ def _dial_blocking(app: Any, ident: DialGrant, tenant_id: uuid.UUID, abandoned: 
                    .first())
             if rng is None:
                 raise ConsoleError("The machine is not running")
+            # The adapter is handed the session because it needs it (vSphere: the range's
+            # vCenter binding). It must end the transaction before any network call, as
+            # vsphere_webmks does right after resolving the binding; this session is closed
+            # on the way out either way.
             return get_console_backend(rng.provisioner_backend).dial(ident, db=db, rng=rng)
     finally:
         if abandoned.is_set():
@@ -235,7 +246,11 @@ async def console_relay(ws: WebSocket, grant: str) -> None:
             await _refuse(ws, CLOSE_UPSTREAM_REFUSED, "The hypervisor refused the console", subprotocol)
             return
 
-        await _call(app, service.record_dial, grant_id, holder)
+        if not await _call(app, service.record_dial, grant_id, holder):
+            # The claim lapsed during a slow dial and another socket took the grant.
+            await _close_quietly(upstream)
+            await _refuse(ws, CLOSE_BUSY, "This console was opened in another window", subprotocol)
+            return
         await ws.accept(subprotocol=subprotocol)
         code, reason = await _pump(ws, upstream, app, facts, holder, who, verdict.until)
         await _give_back(app, grant_id, holder)
@@ -294,6 +309,9 @@ async def _pump(ws: WebSocket, upstream: Any, app: Any, facts: Any, holder: str,
         is gone again before the sleep. Ends the socket at the session window's end and at the
         sign-in's."""
         window = until
+        failures = 0  # consecutive failed renew/check steps (the database, not a denial)
+        last_ok = time.monotonic()
+        lease = service.LIVE_LEASE.total_seconds()
         while True:
             ends = [e for e in (who.expires_at, window) if e is not None]
             wait = float(service.RENEW_SECONDS)
@@ -312,9 +330,17 @@ async def _pump(ws: WebSocket, upstream: Any, app: Any, facts: Any, holder: str,
                 if renewed == service.LOST:
                     return CLOSE_BUSY, "This console was opened in another window"
                 verdict = await _call(app, policy.check, facts, who.user)
+                failures = 0
+                last_ok = time.monotonic()
             except Exception as exc:  # noqa: BLE001 — the database, not the Student's doing
-                logger.warning("console %s: renewal failed: %s", service.short(grant_id), type(exc).__name__)
-                return CLOSE_SERVICE, "The console service had a problem. Reconnect."
+                failures += 1
+                logger.warning("console %s: renewal failed (%d in a row): %s", service.short(grant_id),
+                               failures, type(exc).__name__)
+                # A transient failure (a pool timeout) is tolerated twice; the third, or one
+                # after which the next tick would find the claim lapsed, ends the socket.
+                if failures >= MAX_RENEW_FAILURES or time.monotonic() - last_ok + service.RENEW_SECONDS >= lease:
+                    return CLOSE_SERVICE, "The console service had a problem. Reconnect."
+                continue
             if not verdict.ok:
                 return verdict.code, verdict.reason
             window = verdict.until

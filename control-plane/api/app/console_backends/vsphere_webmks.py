@@ -164,10 +164,15 @@ class VsphereWebMKSConsole(BaseConsoleBackend):
             raise ConsoleError("this VM has no hypervisor id yet")
         if db is None or rng is None:
             raise ConsoleError("the console needs the VM's range to find its vCenter")
+        range_id = str(rng.id)
         try:
             target = hypervisor_binding.resolve(db, rng, self.hypervisor_type)
         except hypervisor_binding.BindingError as exc:
             raise ConsoleError(str(exc)) from exc
+        # The session is needed for the binding above and for nothing after it: end its
+        # transaction now, so no pooled connection is held while the vCenter answers (the
+        # relay runs this on a thread with a session of its own, app/console_relay/router.py).
+        db.commit()
         url = urlparse(target["url"])
         if not url.hostname:
             raise ConsoleError("no vCenter is configured for this range")
@@ -187,7 +192,7 @@ class VsphereWebMKSConsole(BaseConsoleBackend):
         label = vm.get("name", vm_id)
         try:
             machine = vim.VirtualMachine(vm_id, si._stub)
-            if not hypervisor_binding.owns(str(rng.id), str(vm.get("name") or ""), str(machine.name or ""),
+            if not hypervisor_binding.owns(range_id, str(vm.get("name") or ""), str(machine.name or ""),
                                            getattr(machine.config, "annotation", None)):
                 raise ConsoleError(f"{label} on this vCenter is not this range's VM; no console")
             ticket = machine.AcquireTicket("webmks")

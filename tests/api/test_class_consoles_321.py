@@ -716,7 +716,10 @@ def test_a_student_with_a_grant_is_cut_off_at_the_end_of_their_session_over_the_
         with pytest.raises(WebSocketDisconnect) as e, connect(world[other].keycloak_id):
             pass
         assert e.value.code == 1008
-    time.sleep(0.3)
+    deadline = time.monotonic() + 3  # the relay gives the grant back after the browser has gone
+    while time.monotonic() < deadline and _grant_of(db_session, world["ann"]).live_by is not None:
+        db_session.expire_all()
+        time.sleep(0.02)
     with pytest.raises(WebSocketDisconnect) as e, connect(kc) as ws:
         assert ws.receive_bytes() == RFB_GREETING
         evt.end_time = NOW - timedelta(minutes=1)

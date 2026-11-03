@@ -67,7 +67,9 @@ class World:
         """Issue a grant as the console endpoints do; returns the URL token."""
         vm = {**self.vm, "name": kw["vm_name"], "vm_id": kw["vm_name"]} if kw.get("vm_name") else self.vm
         access = service.issue(self.db, MockConsole(), user_id=user.id, tenant_id=TENANT_A, rng=self.rng,
-                               vm=vm, view_only=kw.get("view_only", False), observed=False, base=BASE)
+                               vm=vm, view_only=kw.get("view_only", False), observed=False, base=BASE,
+                               audience=kw.get("audience", "student"), class_id=kw.get("class_id"),
+                               event_id=kw.get("event_id"), lab_session_id=kw.get("lab_session_id"))
         self.db.commit()
         assert access["kind"] == "rfb-ws" and access["expires_in"] == GRANT_SECONDS
         assert access["url"].startswith(f"{BASE}/ws/console/")
@@ -111,6 +113,45 @@ def _closed_with(client, token, who="kc-ann", bearer=None) -> tuple[int, str]:
     with pytest.raises(WebSocketDisconnect) as e, _open(client, token, who, bearer) as ws:
         ws.receive_bytes()
     return e.value.code, e.value.reason
+
+
+def _wait_for(condition, seconds=3.0):
+    """Poll until ``condition()`` holds, up to a deadline: the relay finishes (releases the
+    grant, closes the hypervisor side) a moment after the browser has gone."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        time.sleep(0.02)
+    return condition()
+
+
+def _released(db):
+    def check():
+        db.expire_all()
+        return all(g.live_by is None and g.live_until is None for g in db.query(ConsoleGrant).all())
+
+    return check
+
+
+@pytest.fixture
+def isolated_db(client, db_session):
+    """Each relay step on a session of its own that rolls back to a savepoint, so a step that
+    raises (as it does in production, where the session is its own transaction) does not undo
+    the test's rows."""
+    from app.db import get_db
+    from app.main import app as fastapi_app
+    from sqlalchemy.orm import sessionmaker
+
+    def factory():
+        s = sessionmaker(bind=db_session.get_bind(), join_transaction_mode="create_savepoint", autoflush=False,
+                         expire_on_commit=False)()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    fastapi_app.dependency_overrides[get_db] = factory
 
 
 # ── The relay itself ─────────────────────────────────────────────────────────
@@ -255,7 +296,7 @@ def test_an_expired_grant_closes_4410_for_its_user_only(client, world, db_sessio
     assert _closed_with(client, token, "kc-bob")[0] == 1008  # the state of a grant is not told to others
 
 
-def test_a_second_socket_on_a_live_grant_is_refused_4409(client, world):
+def test_a_second_socket_on_a_live_grant_is_refused_4409(client, world, db_session):
     token = world.grant(world.ann)
     with _open(client, token) as first:
         assert first.receive_bytes() == RFB_GREETING
@@ -263,7 +304,7 @@ def test_a_second_socket_on_a_live_grant_is_refused_4409(client, world):
         assert code == 4409 and "already open" in reason
         first.send_bytes(b"still mine")  # the first socket is untouched
         assert first.receive_bytes() == b"still mine"
-    time.sleep(0.3)  # the relay gives the grant back after the browser has gone
+    assert _wait_for(_released(db_session))  # the relay gives the grant back after the browser has gone
     with _open(client, token) as after:  # and the grant is free again once it closed
         assert after.receive_bytes() == RFB_GREETING
 
@@ -298,7 +339,7 @@ def test_a_deleted_range_closes_4502_at_the_dial(client, world, db_session):
     assert code == 4502 and "not running" in reason
 
 
-def test_a_hypervisor_that_refuses_the_console_closes_4502_with_its_reason(client, world):
+def test_a_hypervisor_that_refuses_the_console_closes_4502_with_its_reason(client, world, isolated_db):
     MockConsole.dial_error = "vCenter refused the console request"
     code, reason = _closed_with(client, world.grant(world.ann))
     assert code == 4502 and reason == "vCenter refused the console request"
@@ -318,7 +359,7 @@ def test_a_hypervisor_that_does_not_answer_closes_4504(client, world, monkeypatc
     assert _closed_with(client, world.grant(world.ann))[0] == 4504
 
 
-def test_a_failed_dial_frees_the_grant(client, world, db_session):
+def test_a_failed_dial_frees_the_grant(client, world, db_session, isolated_db):
     token = world.grant(world.ann)
     MockConsole.dial_error = "no"
     assert _closed_with(client, token)[0] == 4502
@@ -414,17 +455,17 @@ def test_a_message_from_the_browser_over_the_bound_closes_1009(client, world, mo
     assert e.value.code == 1009
 
 
-def test_a_grant_opens_three_times_and_then_is_used_up(client, world):
+def test_a_grant_opens_three_times_and_then_is_used_up(client, world, db_session):
     token = world.grant(world.ann)
     for _ in range(service.MAX_DIALS):
         with _open(client, token) as ws:
             assert ws.receive_bytes() == RFB_GREETING
-        time.sleep(0.2)  # the relay gives the grant back after the browser has gone
+        assert _wait_for(_released(db_session))  # the relay gives the grant back after the browser has gone
     code, reason = _closed_with(client, token)
     assert code == 4410 and "used up" in reason
 
 
-def test_failed_dials_do_not_spend_a_grants_connections(client, world):
+def test_failed_dials_do_not_spend_a_grants_connections(client, world, isolated_db):
     token = world.grant(world.ann)
     MockConsole.dial_error = "no"
     for _ in range(4):
@@ -447,13 +488,13 @@ def test_a_user_holds_four_live_grants_at_most(world, db_session):
     world.grant(world.ann)  # an expired one no longer counts
 
 
-def test_dials_are_rate_limited_per_user(client, world, monkeypatch):
+def test_dials_are_rate_limited_per_user(client, world, db_session, monkeypatch):
     monkeypatch.setattr(service, "DIALS_PER_MINUTE", 2)
     service._DIAL_TIMES.clear()
     for _ in range(2):
         with _open(client, world.grant(world.ann)) as ws:
             ws.receive_bytes()
-        time.sleep(0.2)
+        assert _wait_for(_released(db_session))
     code, reason = _closed_with(client, world.grant(world.ann))
     assert code == 4429 and "wait" in reason
     with _open(client, world.grant(world.bob), "kc-bob") as ws:  # another user is not limited
@@ -496,12 +537,34 @@ def test_a_dial_that_outlasts_its_wait_closes_4504_and_is_logged_when_it_ends(cl
 # ── Grants: replace, count sockets, atomic claim ─────────────────────────────
 
 
-def test_asking_again_for_the_same_console_replaces_the_unused_grant(world, db_session):
+def test_asking_again_for_a_console_keeps_the_older_urls_and_counts_one_console(world, db_session, client):
     first = world.grant(world.ann)
-    for _ in range(service.MAX_LIVE_GRANTS + 2):  # a page reopened many times never locks the Student out
+    tokens = [first] + [world.grant(world.ann) for _ in range(service.MAX_LIVE_GRANTS + 2)]  # two tabs, a double click
+    assert db_session.query(ConsoleGrant).count() == len(tokens)  # nothing was deleted
+    for vm in ("b", "c", "d"):  # three more consoles: four in all, and still fine
+        world.grant(world.ann, vm_name=vm)
+    with pytest.raises(service.GrantRefusedError):  # a fifth console is one too many
+        world.grant(world.ann, vm_name="e")
+    with _open(client, first) as ws:  # the first URL still opens
+        assert ws.receive_bytes() == RFB_GREETING
+
+
+def test_one_console_has_a_bound_on_its_own_grants(world):
+    for _ in range(service.MAX_PER_CONSOLE):
         world.grant(world.ann)
-    rows = db_session.query(ConsoleGrant).all()
-    assert len(rows) == 1 and rows[0].token_hash != service.token_hash(first)
+    with pytest.raises(service.GrantRefusedError, match="several windows"):
+        world.grant(world.ann)
+
+
+def test_a_grant_for_another_audience_or_scope_is_another_console_and_is_never_replaced(world, db_session):
+    eid, lab = uuid.uuid4(), uuid.uuid4()
+    world.grant(world.ann)  # the Student's own
+    world.grant(world.ann, audience="staff", class_id=uuid.uuid4(), event_id=eid)  # same VM name, staff
+    world.grant(world.ann, event_id=uuid.uuid4())  # same VM, another session
+    world.grant(world.ann, lab_session_id=lab)  # same VM, a lab
+    assert db_session.query(ConsoleGrant).count() == 4
+    with pytest.raises(service.GrantRefusedError):  # four distinct consoles are four consoles
+        world.grant(world.ann, vm_name="elsewhere")
 
 
 def test_a_grant_a_socket_holds_still_counts_and_is_not_replaced(world, db_session):
@@ -579,13 +642,12 @@ def test_closing_during_a_renewal_leaves_the_grant_free(client, world, db_sessio
     with _open(client, world.grant(world.ann)) as ws:
         ws.receive_bytes()
         time.sleep(0.2)  # inside the slow renewal
-    time.sleep(1.0)
+    assert _wait_for(_released(db_session))
     row = db_session.query(ConsoleGrant).one()
-    db_session.refresh(row)
     assert row.live_by is None and row.live_until is None
 
 
-def test_a_release_that_fails_once_is_retried(client, world, db_session, monkeypatch):
+def test_a_release_that_fails_once_is_retried(client, world, db_session, isolated_db, monkeypatch):
     real, calls = service.release, []
 
     def flaky(db, grant_id, holder):
@@ -597,18 +659,99 @@ def test_a_release_that_fails_once_is_retried(client, world, db_session, monkeyp
     monkeypatch.setattr(service, "release", flaky)
     with _open(client, world.grant(world.ann)) as ws:
         ws.receive_bytes()
-    time.sleep(0.5)
-    row = db_session.query(ConsoleGrant).one()
-    db_session.refresh(row)
-    assert len(calls) == 2 and row.live_by is None
+    assert _wait_for(lambda: len(calls) >= 2 and _released(db_session)())
+    assert len(calls) == 2
 
 
-def test_a_database_error_in_a_renewal_closes_with_its_own_reason(client, world, monkeypatch):
-    def broken(db, grant_id, holder):
-        raise RuntimeError("could not connect to server")
+def _renewals_failing(monkeypatch, fail_on):
+    """``service.renew`` raising a pool timeout on the ticks ``fail_on(n)`` says (n from 1)."""
+    from sqlalchemy.exc import TimeoutError as PoolTimeout
 
-    monkeypatch.setattr(service, "renew", broken)
+    real, ticks = service.renew, []
+
+    def renew(db, grant_id, holder):
+        ticks.append(1)
+        if fail_on(len(ticks)):
+            raise PoolTimeout("QueuePool limit of size 25 overflow 50 reached")
+        return real(db, grant_id, holder)
+
+    monkeypatch.setattr(service, "renew", renew)
+    return ticks
+
+
+def test_one_failed_renewal_does_not_close_the_socket(client, world, isolated_db, monkeypatch, caplog):
+    ticks = _renewals_failing(monkeypatch, lambda n: n == 2)
+    with caplog.at_level("WARNING", logger="truenorth.console_relay"), _open(client, world.grant(world.ann)) as ws:
+        ws.receive_bytes()
+        assert _wait_for(lambda: len(ticks) >= 5)  # past the failed tick and several good ones
+        ws.send_bytes(b"still here")
+        assert ws.receive_bytes() == b"still here"
+    assert "renewal failed (1 in a row)" in caplog.text and "TimeoutError" in caplog.text
+
+
+def test_two_failed_renewals_in_a_row_are_tolerated_and_the_count_resets(client, world, isolated_db, monkeypatch):
+    ticks = _renewals_failing(monkeypatch, lambda n: n in (2, 3, 5, 6))
+    with _open(client, world.grant(world.ann)) as ws:
+        ws.receive_bytes()
+        assert _wait_for(lambda: len(ticks) >= 9)
+        ws.send_bytes(b"x")
+        assert ws.receive_bytes() == b"x"
+
+
+def test_three_failed_renewals_in_a_row_close_1011(client, world, isolated_db, monkeypatch):
+    _renewals_failing(monkeypatch, lambda n: n >= 2)
     with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann)) as ws:
         ws.receive_bytes()
         ws.receive_bytes()
     assert e.value.code == 1011 and e.value.reason == "The console service had a problem. Reconnect."
+
+
+def test_a_lapsing_claim_closes_without_waiting_for_the_third_failure(client, world, isolated_db, monkeypatch):
+    monkeypatch.setattr(service, "LIVE_LEASE", timedelta(seconds=0.35))  # three ticks of 0.1 s would outlive it
+    _renewals_failing(monkeypatch, lambda n: n >= 2)
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann)) as ws:
+        ws.receive_bytes()
+        ws.receive_bytes()
+    assert e.value.code == 1011
+
+
+def test_a_policy_denial_closes_at_once_not_after_three_ticks(client, world, monkeypatch):
+    ticks = _renewals_failing(monkeypatch, lambda n: False)
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann)) as ws:
+        ws.receive_bytes()
+        world_verdict[0] = policy.Verdict(False, 1008, "You can no longer open this console")
+        ws.receive_bytes()
+    assert e.value.code == 1008 and len(ticks) <= 3
+
+
+def test_a_dial_whose_claim_lapsed_meanwhile_closes_4409(client, world, db_session, isolated_db, monkeypatch):
+    real = service.record_dial
+
+    def taken(db, grant_id, holder):
+        from sqlalchemy import update
+
+        db.execute(update(ConsoleGrant).values(live_by="someone-else"))  # another socket took the grant
+        return real(db, grant_id, holder)
+
+    monkeypatch.setattr(service, "record_dial", taken)
+    code, reason = _closed_with(client, world.grant(world.ann))
+    assert code == 4409 and "another window" in reason
+    db_session.expire_all()
+    assert db_session.query(ConsoleGrant).one().dials == 0  # nothing was counted
+
+
+def test_a_step_that_raises_is_rolled_back_not_committed(client, world, db_session, isolated_db, monkeypatch):
+    from sqlalchemy import update
+
+    def writes_then_fails(db, grant_id, holder):
+        db.execute(update(ConsoleGrant).values(dials=99))
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(service, "renew", writes_then_fails)
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann)) as ws:
+        ws.receive_bytes()
+        ws.receive_bytes()
+    assert e.value.code == 1011
+    assert _wait_for(_released(db_session))
+    db_session.expire_all()
+    assert db_session.query(ConsoleGrant).one().dials == 1  # the one real dial; the failed step's write is gone

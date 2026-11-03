@@ -19,19 +19,19 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
-from sqlalchemy import or_, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
 from ..console_backends import GRANT_SECONDS, BaseConsoleBackend, ConsoleError
-from ..models import Range, User
+from ..models import Range
 from ..tenancy import tenant_uuid
 from .models import ConsoleGrant
 
 #: A connected relay renews its claim this often, and a claim lapses this long after its
 #: last renewal: a relay that died frees the grant within ``LIVE_LEASE``, not at expiry.
 RENEW_SECONDS = 10
-LIVE_LEASE = timedelta(seconds=30)
+LIVE_LEASE = timedelta(seconds=45)  # three renewal ticks: the relay tolerates two failed ones
 #: Lapsed grants are removed this long after they expired (kept briefly for support questions).
 KEEP_AFTER_EXPIRY = timedelta(hours=1)
 
@@ -40,7 +40,8 @@ KEEP_AFTER_EXPIRY = timedelta(hours=1)
 #: standing link); and one API process lets a user dial ``DIALS_PER_MINUTE`` times a minute.
 #: The rate limit is a counter in this process, not shared: with several workers the bound is
 #: that many times higher, which the other two bounds (4 grants x 3 dials) still cap.
-MAX_LIVE_GRANTS = 4
+MAX_LIVE_GRANTS = 4  # live consoles per user (see ``issue``)
+MAX_PER_CONSOLE = 8  # live grants for one console
 MAX_DIALS = 3
 DIALS_PER_MINUTE = 10
 
@@ -89,6 +90,16 @@ def ws_base(headers: Any) -> str:
     return f"{'ws' if plain else 'wss'}://{host}"
 
 
+def _lock_user(db: Session, user_id: uuid.UUID) -> None:
+    """One issue at a time per user, so two requests cannot both count 3 and both insert: a
+    PostgreSQL transaction advisory lock on the user, held until the caller commits. Not a row
+    lock: the user's row stays writable (sign-in bookkeeping), so there is no user-then-lab or
+    lab-then-user row order to deadlock on while a lab's lease is held. SQLite (tests, single
+    process) has no such lock: the cap is best effort there."""
+    if db.get_bind().dialect.name == "postgresql":
+        db.execute(select(func.pg_advisory_xact_lock(user_id.int % (1 << 63))))
+
+
 def dial_allowed(user_id: Any) -> bool:
     """Count one dial for ``user_id`` unless they dialled ``DIALS_PER_MINUTE`` times in the
     last minute (per process, see above)."""
@@ -112,34 +123,35 @@ def issue(db: Session, backend: BaseConsoleBackend, *, user_id: uuid.UUID, tenan
     """Store a grant for ``user_id`` on one VM of ``rng`` and return the adapter's ``open``
     answer (``kind`` ``rfb-ws``, ``url`` ``<base>/ws/console/<token>``). The caller commits.
     Nothing is stored when the adapter refuses."""
-    now = _now()
-    # One issue at a time per user: on PostgreSQL the user's row is locked until the caller
-    # commits, so two requests cannot both count 3 and both insert. SQLite (tests, single
-    # process) has no row locks: there the cap is best effort.
-    db.query(User.id).filter(User.id == user_id).with_for_update().first()
-    # Replace, do not stack: grants for this VM that no socket ever used or holds are dropped,
-    # so reopening a console page four times does not lock the Student out for five minutes.
-    db.query(ConsoleGrant).filter(
-        ConsoleGrant.user_id == user_id, ConsoleGrant.tenant_id == tenant_id,
-        ConsoleGrant.range_id == rng.id, ConsoleGrant.vm_name == str(vm.get("name") or ""),
-        ConsoleGrant.dials == 0, or_(ConsoleGrant.live_until.is_(None), ConsoleGrant.live_until < now),
-    ).delete(synchronize_session=False)
-    # Live: a grant that can still open a socket, or one a socket holds right now.
-    live = (db.query(ConsoleGrant)
-            .filter(ConsoleGrant.user_id == user_id, ConsoleGrant.tenant_id == tenant_id,
-                    or_(ConsoleGrant.live_until > now,
-                        (ConsoleGrant.expires_at > now) & (ConsoleGrant.dials < MAX_DIALS)))
-            .count())
-    if live >= MAX_LIVE_GRANTS:
-        raise GrantRefusedError(f"You already have {MAX_LIVE_GRANTS} consoles open; close one first")
     token = secrets.token_urlsafe(32)  # 256 bits
     url = f"{base}/ws/console/{token}"
     open_ = backend.open_view_only if adapter_view_only else backend.open
+    # The adapter first, before any lock: whatever it does with the hypervisor never happens
+    # while the user's other requests wait. A grant refused below simply drops its answer.
     access = open_(vm, db=db, rng=rng, relay_url=url)
+    now = _now()
+    vm_name = str(vm.get("name") or "")
+    _lock_user(db, user_id)
+    # Live consoles: a console is a VM for an audience and scope (range, VM, class session or
+    # lab). Grants that can still open a socket, or that a socket holds, count; two tabs or a
+    # double click on one console are one console (both URLs keep working until they expire),
+    # bounded per console so they cannot pile up.
+    rows = (db.query(ConsoleGrant.range_id, ConsoleGrant.vm_name, ConsoleGrant.audience, ConsoleGrant.class_id,
+                     ConsoleGrant.event_id, ConsoleGrant.lab_session_id)
+            .filter(ConsoleGrant.user_id == user_id, ConsoleGrant.tenant_id == tenant_id,
+                    or_(ConsoleGrant.live_until > now,
+                        (ConsoleGrant.expires_at > now) & (ConsoleGrant.dials < MAX_DIALS)))
+            .all())
+    mine = (rng.id, vm_name, audience, class_id, event_id, lab_session_id)
+    consoles = {tuple(r) for r in rows}
+    if sum(1 for r in rows if tuple(r) == mine) >= MAX_PER_CONSOLE:
+        raise GrantRefusedError("This console is already open in several windows; close one first")
+    if mine not in consoles and len(consoles) >= MAX_LIVE_GRANTS:
+        raise GrantRefusedError(f"You already have {MAX_LIVE_GRANTS} consoles open; close one first")
     db.add(ConsoleGrant(
         audience=audience, class_id=class_id, event_id=event_id, lab_session_id=lab_session_id,
         token_hash=token_hash(token), tenant_id=tenant_id, user_id=user_id, range_id=rng.id,
-        vm_id=str(vm.get("vm_id") or ""), vm_name=str(vm.get("name") or ""), view_only=view_only,
+        vm_id=str(vm.get("vm_id") or ""), vm_name=vm_name, view_only=view_only,
         observed=observed, created_at=now, expires_at=now + timedelta(seconds=GRANT_SECONDS)))
     # The issuing user's own lapsed grants only (no table-wide sweep in the request path), and
     # never one a socket still holds.
@@ -201,14 +213,16 @@ def claim(db: Session, token: str, user: CurrentUser) -> Claim:
     return Claim(SPENT if grant.dials >= MAX_DIALS else BUSY, grant, facts=facts)
 
 
-def record_dial(db: Session, grant_id: uuid.UUID, holder: str) -> None:
-    """Count a successful dial against the grant's ``MAX_DIALS``."""
-    db.execute(
+def record_dial(db: Session, grant_id: uuid.UUID, holder: str) -> bool:
+    """Count a successful dial against the grant's ``MAX_DIALS``. False when ``holder`` no
+    longer holds the claim (it lapsed during a slow dial and another socket took it)."""
+    counted = db.execute(
         update(ConsoleGrant).where(ConsoleGrant.id == grant_id, ConsoleGrant.live_by == holder)
         .values(dials=ConsoleGrant.dials + 1),
         execution_options={"synchronize_session": False},
-    )
+    ).rowcount
     db.commit()
+    return bool(counted)
 
 
 def renew(db: Session, grant_id: uuid.UUID, holder: str) -> str:
