@@ -3,13 +3,13 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
 import { ApiService, Detection } from '@core/services/api.service';
-import { DetectionPanelComponent, canonicalValidator, isDetectionObjective } from './detection-panel.component';
+import { DetectionPanelComponent, canonicalValidator, isDetectionObjective, verdictWord } from './detection-panel.component';
 
 function attempt(over: Partial<Detection> = {}): Detection {
   return {
     id: 'd1', objective_ref: 'OBJ-1', user_id: '11111111-2222-3333-4444-555555555555',
     query: 'process.name:powershell.exe', submitted_at: '2026-10-06T10:00:00Z',
-    verdict: 'missed', events_matched: 12, on_target: null, precision: null, attempts_left: null, reason: null,
+    verdict: 'recorded', events_matched: 12, submissions_left: null,
     ...over,
   };
 }
@@ -22,6 +22,15 @@ describe('validator names', () => {
     expect(isDetectionObjective('opensearch_query')).toBeTrue();
     expect(isDetectionObjective('manual_ack')).toBeFalse();
     expect(isDetectionObjective(null)).toBeFalse();
+  });
+});
+
+describe('verdictWord', () => {
+  it('reads recorded and cited, and keeps older verdicts as history', () => {
+    expect(verdictWord('recorded', false)).toBe('Recorded');
+    expect(verdictWord('cited', false)).toBe('Cited by your instructor');
+    expect(verdictWord('cited', true)).toBe('Cited');
+    expect(verdictWord('missed', false)).toBe('Missed');
   });
 });
 
@@ -72,55 +81,58 @@ describe('DetectionPanelComponent', () => {
     expect(el().querySelector('textarea[name="query"]')).toBeTruthy();
   });
 
-  it('reports an achieved detection and asks the parent to refresh', () => {
-    api.submitDetection.and.returnValue(of(attempt({ verdict: 'achieved', attempts_left: 4 })));
+  it('says the detection was recorded and the instructor judges, and asks the parent to refresh', () => {
+    api.submitDetection.and.returnValue(of(attempt({ events_matched: 12, submissions_left: 18 })));
     setup();
     submit();
     expect(api.submitDetection).toHaveBeenCalledWith('ex1', 'OBJ-1', 'process.name:powershell.exe');
-    expect(msg()).toContain('found the attack');
+    expect(msg()).toBe('Recorded: your query matched 12 events. Your instructor judges the objective.');
+    expect(msg()).not.toMatch(/achieved|missed|attempt/i);
     expect(changed).toBe(1);
   });
 
-  it('reports a missed detection with events matched and attempts left', () => {
-    api.submitDetection.and.returnValue(of(attempt({ verdict: 'missed', events_matched: 12, attempts_left: 3 })));
+  it('says how many submissions are left once few remain', () => {
+    api.submitDetection.and.returnValue(of(attempt({ events_matched: 1, submissions_left: 2 })));
     setup();
     submit();
-    expect(msg()).toBe('Your query matched 12 events but did not find enough of the attack. 3 attempts left.');
-    expect(changed).toBe(1);
+    expect(msg()).toBe('Recorded: your query matched 1 event. Your instructor judges the objective. 2 submissions left.');
   });
 
-  it('says nothing was credited when the exercise closed while judging', () => {
-    api.submitDetection.and.returnValue(of(attempt({ verdict: 'closed', attempts_left: 4 })));
-    setup();
-    submit();
-    expect(msg()).toBe('The exercise closed before your detection was judged; nothing was credited.');
-  });
-
-  it('shows why a query did not parse (422) and that no attempt was used', () => {
+  it('shows the server reason for a query outside the language (422) and that nothing was recorded', () => {
     api.submitDetection.and.returnValue(throwError(() => new HttpErrorResponse({
-      status: 422, error: { detail: 'Your query could not be parsed (no attempt used): Failed to parse query' },
+      status: 422, error: { detail: 'Your query could not be parsed (nothing recorded): Failed to parse query' },
     })));
     setup();
     submit();
-    expect(msg()).toContain('no attempt used');
+    expect(msg()).toBe('Your query could not be parsed (nothing recorded): Failed to parse query');
+    expect(changed).toBe(0);
   });
 
-  it('disables submitting once no attempts are left (429)', () => {
+  it('adds "Nothing was recorded" when a 422 detail does not say so', () => {
     api.submitDetection.and.returnValue(throwError(() => new HttpErrorResponse({
-      status: 429, error: { detail: 'No attempts left for this objective (5 used)' },
+      status: 422, error: { detail: 'Field event.label is not searchable' },
     })));
     setup();
     submit();
-    expect(msg()).toContain('No attempts left');
-    expect(component.attemptsLeft()).toBe(0);
+    expect(msg()).toBe('Field event.label is not searchable Nothing was recorded.');
+  });
+
+  it('disables submitting once the submission bound is reached (429)', () => {
+    api.submitDetection.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 429, error: { detail: 'You have submitted 20 detections for this objective in this run' },
+    })));
+    setup();
+    submit();
+    expect(msg()).toContain('20 detections');
+    expect(component.submissionsLeft()).toBe(0);
     expect(submitToggle()!.disabled).toBeTrue();
   });
 
-  it('disables submitting when the last attempt was used', () => {
-    api.submitDetection.and.returnValue(of(attempt({ verdict: 'missed', attempts_left: 0 })));
+  it('disables submitting when the last submission was used', () => {
+    api.submitDetection.and.returnValue(of(attempt({ submissions_left: 0 })));
     setup();
     submit();
-    expect(msg()).toContain('0 attempts left');
+    expect(msg()).toContain('0 submissions left');
     expect(submitToggle()!.disabled).toBeTrue();
   });
 
@@ -129,7 +141,7 @@ describe('DetectionPanelComponent', () => {
     setup();
     submit();
     expect(msg()).toContain('Try again');
-    expect(msg()).toContain('no attempt was used');
+    expect(msg()).toContain('nothing was recorded');
     expect(changed).toBe(0);
   });
 
@@ -158,22 +170,23 @@ describe('DetectionPanelComponent', () => {
     expect(submitToggle()).toBeUndefined();
   });
 
-  it('lists a Student their own attempts without precision', () => {
-    setup({ attempts: [attempt()] });
-    buttons().find(b => b.textContent?.includes('Attempts (1)'))!.click();
+  it('lists a Student their own submissions, and one an instructor cited', () => {
+    setup({ attempts: [attempt(), attempt({ id: 'd2', verdict: 'cited' })] });
+    buttons().find(b => b.textContent?.includes('Submissions (2)'))!.click();
     fixture.detectChanges();
     const headers = Array.from(el().querySelectorAll('th')).map(h => h.textContent?.trim());
-    expect(headers).toEqual(['Time', 'Query', 'Verdict', 'Events']);
+    expect(headers).toEqual(['Time', 'Query', 'Status', 'Events']);
     expect(el().querySelector('td.q')?.textContent).toContain('process.name:powershell.exe');
+    const status = Array.from(el().querySelectorAll('td.v')).map(t => t.textContent?.trim());
+    expect(status).toEqual(['Recorded', 'Cited by your instructor']);
   });
 
-  it('shows staff the Student, on target and precision', () => {
-    setup({ staff: true, canSubmit: true, attempts: [attempt({ on_target: 9, precision: 0.75 })] });
-    buttons().find(b => b.textContent?.includes('Attempts (1)'))!.click();
+  it('shows staff which Student submitted', () => {
+    setup({ staff: true, canSubmit: true, attempts: [attempt()] });
+    buttons().find(b => b.textContent?.includes('Submissions (1)'))!.click();
     fixture.detectChanges();
     const headers = Array.from(el().querySelectorAll('th')).map(h => h.textContent?.trim());
-    expect(headers).toEqual(['Time', 'Student', 'Query', 'Verdict', 'Events', 'On target', 'Precision']);
-    expect(el().querySelector('td.precision')?.textContent?.trim()).toBe('75%');
+    expect(headers).toEqual(['Time', 'Student', 'Query', 'Status', 'Events']);
     expect(el().textContent).toContain('11111111');
   });
 });

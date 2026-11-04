@@ -31,13 +31,16 @@ const objectives: Objective[] = [
 describe('ScoringComponent acknowledge control', () => {
   let fixture: ComponentFixture<ScoringComponent>;
 
-  function render(canAck: boolean): HTMLElement {
-    const api = jasmine.createSpyObj('ApiService', [
+  let api: jasmine.SpyObj<ApiService>;
+
+  function render(canAck: boolean, state = 'running'): HTMLElement {
+    api = jasmine.createSpyObj('ApiService', [
       'listExercises', 'getExercise', 'listObjectives', 'getAAR', 'ackObjective', 'generateAAR', 'getAARHtml',
-      'getAARPdf',
+      'getAARPdf', 'listDetections', 'withdrawAck',
     ]);
+    api.listDetections.and.returnValue(of([]));
     api.listExercises.and.returnValue(of([]));
-    api.getExercise.and.returnValue(of(exercise));
+    api.getExercise.and.returnValue(of({ ...exercise, state } as Exercise));
     api.listObjectives.and.returnValue(of(objectives));
     api.getAAR.and.returnValue(throwError(() => new Error('none')));
     api.getAARHtml.and.returnValue(throwError(() => ({ status: 404 })));
@@ -68,9 +71,33 @@ describe('ScoringComponent acknowledge control', () => {
     expect(ackButtons(el).length).toBe(0);
   });
 
-  it('shows Acknowledge to an instructor on unachieved objectives only', () => {
+  const withdrawButtons = (el: HTMLElement) =>
+    Array.from(el.querySelectorAll('button')).filter(b => b.textContent?.includes('Withdraw'));
+
+  it('shows Acknowledge on unachieved and Withdraw on achieved objectives to an instructor while running', () => {
     const el = render(true);
     expect(ackButtons(el).length).toBe(1);
+    expect(withdrawButtons(el).length).toBe(1);
+    // The cite list comes from every Student's submissions on this run.
+    expect(api.listDetections).toHaveBeenCalledWith('ex1');
+  });
+
+  it('offers no judging once the exercise has ended (the API answers 409)', () => {
+    const el = render(true, 'completed');
+    expect(ackButtons(el).length).toBe(0);
+    expect(withdrawButtons(el).length).toBe(0);
+    expect(api.listDetections).not.toHaveBeenCalled();
+  });
+
+  it('still judges a paused exercise', () => {
+    const el = render(true, 'paused');
+    expect(ackButtons(el).length).toBe(1);
+  });
+
+  it('never asks a Student for every submission', () => {
+    render(false);
+    expect(api.listDetections).not.toHaveBeenCalled();
+    expect(withdrawButtons(fixture.nativeElement).length).toBe(0);
   });
 });
 
@@ -106,7 +133,9 @@ describe('ScoringComponent (after-action review)', () => {
     auth = fakeAuth('instructor');
     api = jasmine.createSpyObj('ApiService', [
       'listExercises', 'getExercise', 'listObjectives', 'getAAR', 'generateAAR', 'getAARHtml', 'getAARPdf', 'ackObjective',
+      'listDetections',
     ]);
+    api.listDetections.and.returnValue(of([]));
     notify = jasmine.createSpyObj('NotificationService', ['success', 'error']);
     api.listExercises.and.returnValue(of([exercise as any]));
     api.getExercise.and.returnValue(of(exercise));
@@ -249,6 +278,21 @@ describe('ScoringComponent (after-action review)', () => {
     expect(titles).toContain('Detect C2');
     expect(titles).toContain('Write report');
     expect(text).toContain('Deliverable · instructor sign-off');
+  });
+
+  it('reads an instructor judgement as who judged it and what it cites (ADR 0020)', async () => {
+    api.listObjectives.and.returnValue(of([
+      { id: 'o1', exercise_id: 'e1', ref_id: 'detect_c2', objective_type: 'detection', description: 'Detect C2',
+        validator: 'opensearch_query', points: 40, achieved: true, achieved_at: '2026-11-03T10:00:00Z',
+        evidence: JSON.stringify({ source: 'instructor', by: 'Sgt Rivera', by_id: 'i1', note: 'Blocked the C2 domain',
+          cites: ['d1', 'd2'], students: ['u1'] }) },
+    ] as Objective[]));
+    query = { exercise: 'e1' };
+    await create();
+    fixture.detectChanges();
+    const text: string = fixture.nativeElement.textContent;
+    expect(text).toContain('Judged by Sgt Rivera: Blocked the C2 domain · cites 2 detections');
+    expect(text).not.toContain('by_id');
   });
 
   it('says the report failed to load rather than that there is none', async () => {

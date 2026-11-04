@@ -79,10 +79,6 @@ export const F2_SOON = 'Coming in R1 F2 (intervention console)';
                 </div>
                 <p>{{ detailText(it.item) }}@if (it.item.since) { <span class="muted"> · since {{ tp(it.item.since) || (it.item.since | date:'shortTime') }}</span>}</p>
                 <div class="acts">
-                  @if (lane.key === 'learning') {
-                    <button mat-stroked-button type="button" class="soon" aria-disabled="true" [matTooltip]="soon"
-                            [attr.aria-label]="'Message ' + it.student.display_name + ' (' + soon + ')'">Message</button>
-                  }
                   <button mat-button type="button" (click)="open(it.student, $event)" [attr.aria-label]="'Open ' + it.student.display_name">Open</button>
                 </div>
               </div>
@@ -207,23 +203,23 @@ export const F2_SOON = 'Coming in R1 F2 (intervention console)';
               @for (o of s.objectives ?? []; track o.ref_id) {
                 <li>
                   <span>{{ objName(o.ref_id) }} <span class="muted small">· {{ points(o.ref_id) }} pts</span></span>
-                  <span [class]="'v ' + o.state">{{ objWord(o.state) }}@if (o.misses && o.state !== 'credited') { · {{ o.misses }} missed}</span>
+                  <span [class]="'v ' + o.state">{{ objWord(o.state) }}@if (o.submissions) { · {{ o.submissions }} {{ o.submissions === 1 ? 'submission' : 'submissions' }}}</span>
                 </li>
               }
             </ul>
           </section>
           <section class="dr-sec" aria-labelledby="dr-att">
-            <h3 id="dr-att">Detection attempts <span class="small muted">{{ s.attempts_total }}</span></h3>
+            <h3 id="dr-att">Detection submissions <span class="small muted">{{ s.attempts_total }}</span></h3>
             @if ((s.attempts ?? []).length) {
               <table class="att">
-                <thead><tr><th scope="col">When</th><th scope="col">Objective</th><th scope="col">Verdict</th><th scope="col">Matched</th></tr></thead>
+                <thead><tr><th scope="col">When</th><th scope="col">Objective</th><th scope="col">Status</th><th scope="col">Matched</th></tr></thead>
                 <tbody>
                   @for (a of attemptsNewestFirst(s); track a.id) {
                     <tr>
                       <td>{{ tp(a.submitted_at) || (a.submitted_at | date:'shortTime') }}</td>
                       <td>{{ objName(a.objective_ref) }}</td>
                       <td [class]="'v ' + a.verdict">{{ verdictWord(a.verdict) }}</td>
-                      <td>{{ a.events_matched ?? '—' }}@if (a.precision !== null && a.precision !== undefined) { · {{ (a.precision * 100).toFixed(0) }}% on target}</td>
+                      <td>{{ a.events_matched ?? '—' }}</td>
                     </tr>
                     @if (a.query) { <tr class="q"><td></td><td colspan="3"><code>{{ a.query }}</code></td></tr> }
                   }
@@ -262,11 +258,10 @@ export const F2_SOON = 'Coming in R1 F2 (intervention console)';
     h2 { font-size: 14px; margin: 0; }
     h3 { font-size: 13px; margin: 0 0 8px; display: flex; justify-content: space-between; align-items: baseline; }
 
-    .queue { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .queue { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
     .qcol { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md, 8px); padding: 10px 12px; min-height: 110px; border-top-width: 3px; }
     .qcol.help { border-top-color: var(--accent); }
     .qcol.lab { border-top-color: var(--warning); }
-    .qcol.learning { border-top-color: var(--severity-low); }
     .qcol.quiet { border-top-color: var(--border-strong, var(--border)); }
     .lane-title { display: flex; justify-content: space-between; align-items: center; }
     .lane-hint { font-size: 11.5px; color: var(--text-muted); margin: 4px 0 6px; }
@@ -300,8 +295,6 @@ export const F2_SOON = 'Coming in R1 F2 (intervention console)';
     .st.lab_fault::before { border-radius: 2px; }
     .st.lab_wait { color: var(--warning); }
     .st.lab_wait::before { background: transparent; border: 2px solid currentColor; width: 6px; height: 6px; }
-    .st.learning { color: var(--severity-low); }
-    .st.learning::before { border-radius: 1px; transform: rotate(45deg); }
     .st.not_seen { color: var(--text-muted); }
     .st.not_seen::before { background: transparent; border: 2px dotted currentColor; width: 6px; height: 6px; }
     .st.ok { color: var(--success); }
@@ -318,7 +311,6 @@ export const F2_SOON = 'Coming in R1 F2 (intervention console)';
     .dr-sec:last-child { border-bottom: 0; }
     .att-box { margin-top: 8px; padding: 8px 12px; border-left: 3px solid var(--border-strong, var(--border)); background: var(--bg-secondary); font-size: 13px; border-radius: 0 6px 6px 0; }
     .att-box.lab_fault, .att-box.lab_wait { border-left-color: var(--warning); }
-    .att-box.learning { border-left-color: var(--severity-low); }
     .kv { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; font-size: 13px; margin: 0; }
     .kv dt { color: var(--text-muted); }
     .kv dd { margin: 0; }
@@ -331,8 +323,8 @@ export const F2_SOON = 'Coming in R1 F2 (intervention console)';
     .obj-list li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 13px; border-bottom: 1px dashed var(--border); }
     .obj-list li:last-child { border-bottom: 0; }
     .v { font-weight: 550; font-size: 12px; }
-    .v.credited, .v.achieved { color: var(--success); }
-    .v.missed, .v.pending, .v.not_attempted { color: var(--text-secondary); }
+    .v.credited, .v.cited, .v.achieved { color: var(--success); }
+    .v.missed, .v.pending, .v.not_attempted, .v.recorded, .v.submitted { color: var(--text-secondary); }
     .v.pending { font-style: italic; }
     table.att { width: 100%; border-collapse: collapse; font-size: 12px; }
     table.att th { text-align: left; color: var(--text-muted); font-weight: 500; padding: 4px 6px; border-bottom: 1px solid var(--border); }
@@ -341,7 +333,7 @@ export const F2_SOON = 'Coming in R1 F2 (intervention console)';
     table.att code { font-size: 11.5px; word-break: break-all; color: var(--text-secondary); }
     .dr-actions { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 20px; border-top: 1px solid var(--border); background: var(--bg-secondary); }
 
-    @media (max-width: 1100px) { .queue { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 900px) { .queue { grid-template-columns: 1fr; } }
     @container (max-width: 860px) { table.dense .c-obj, table.dense .c-score { display: none; } table.dense th { white-space: normal; } }
     @container (max-width: 480px) { table.dense .c-team, table.dense .c-last { display: none; } }
     @media (max-width: 600px) { .queue { grid-template-columns: 1fr; } }
@@ -376,7 +368,7 @@ export class LiveClassComponent implements OnInit, AfterViewInit {
     { key: 'name', label: 'Student', cls: '' },
     { key: 'team', label: 'Team', cls: 'c-team' },
     { key: 'status', label: 'Status', cls: '' },
-    { key: 'detections', label: 'Detections credited / attempted', cls: '' },
+    { key: 'detections', label: 'Detections cited / submitted', cls: '' },
     { key: 'activity', label: 'Last activity', cls: 'c-last' },
   ];
 
