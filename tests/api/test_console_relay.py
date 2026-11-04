@@ -29,6 +29,9 @@ from starlette.websockets import WebSocketDisconnect
 TENANT_A = uuid.UUID("00000000-0000-0000-0000-0000000000a1")
 TENANT_B = uuid.UUID("00000000-0000-0000-0000-0000000000b1")
 BASE = "wss://tn.test"
+# The tests' one SQLite connection serves every relay step and the test's own polling. Steps run on
+# pool threads; two at once release each other's savepoints. One at a time, as one connection can.
+_ONE_STATEMENT_AT_A_TIME = threading.RLock()
 
 
 def _tenant(db, tid):
@@ -120,12 +123,16 @@ def _closed_with(client, token, who="kc-ann", bearer=None) -> tuple[int, str]:
 def _wait_for(condition, seconds=3.0):
     """Poll until ``condition()`` holds, up to a deadline: the relay finishes (releases the
     grant, closes the hypervisor side) a moment after the browser has gone."""
+    def holds():
+        with _ONE_STATEMENT_AT_A_TIME:
+            return condition()
+
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
-        if condition():
+        if holds():
             return True
         time.sleep(0.02)
-    return condition()
+    return holds()
 
 
 def _released(db):
@@ -148,10 +155,11 @@ def isolated_db(client, db_session):
     def factory():
         s = sessionmaker(bind=db_session.get_bind(), join_transaction_mode="create_savepoint", autoflush=False,
                          expire_on_commit=False)()
-        try:
-            yield s
-        finally:
-            s.close()
+        with _ONE_STATEMENT_AT_A_TIME:  # held from the step's start to its close, on the step's own thread
+            try:
+                yield s
+            finally:
+                s.close()
 
     fastapi_app.dependency_overrides[get_db] = factory
 
