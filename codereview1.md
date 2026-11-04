@@ -285,8 +285,9 @@ cyber-physical fusion, evidence provenance and multi-enclave delivery.
 
 The implementation-ready program control pack is in
 [`docs/programs/truenorth-10x/README.md`](docs/programs/truenorth-10x/README.md). It splits
-this direction into dependency-managed branches, includes a Claude orchestrator prompt and
-defines a supervised Taz/GLM-5.3 worker protocol.
+current foundation closure (`F0–F7`) and 10× capability delivery (`00–07`) into
+dependency-managed branches, includes a Claude orchestrator prompt and defines a supervised
+Taz/GLM-5.3 worker protocol.
 
 ### The one demonstration that proves TrueNorth works
 

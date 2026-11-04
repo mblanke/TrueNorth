@@ -39,9 +39,10 @@ classes console, API schema/OpenAPI, a new timeline service/model and Angular ex
 
 ## Subsequent slices
 
-Add white-cell/manual events, telemetry references, physical provider events, AAR projection,
-signed export and retention/compaction policy. Do not store bulk telemetry in the event table;
-store immutable references and hashes.
+Add white-cell/manual events, telemetry references, physical provider events, team roster/role
+and scoring projections, approved standings/leaderboard views, AAR projection, signed export
+and retention/compaction policy. Do not store bulk telemetry in the event table; store
+immutable references and hashes.
 
 ## Recovery
 

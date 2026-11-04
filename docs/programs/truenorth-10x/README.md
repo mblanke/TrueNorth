@@ -1,4 +1,4 @@
-# TrueNorth 10x delivery program
+# TrueNorth whole-product closure and 10x delivery program
 
 Status: proposed program plan; capabilities are not implemented merely because they appear here.
 Owner: TrueNorth product owner.
@@ -7,10 +7,12 @@ Optional worker: Taz running GLM-5.3 after the served model and tool path are ve
 
 ## Why this is a control pack, not one giant branch
 
-The 10x direction crosses readiness, exercises, ranges, physical assets, AI, security
-enclaves, deployment and scale. One branch would hide dependencies, create conflicting
-migrations and make review nearly impossible. This directory lets one integrator manage the
-whole program while workers read only the section they need.
+The program has two lanes. The **foundation closure lane (`F0–F7`)** closes what is currently
+broken, stale, unproven or blocked by operational evidence. The **10x capability lane
+(`00–07`)** builds readiness, exercise, digital-twin, AI, physical, enclave and federation
+capabilities. One giant branch would hide dependencies, create conflicting migrations and
+make review nearly impossible. This directory lets one integrator manage both lanes while
+workers read only the section they need.
 
 The unit of delivery is one independently reviewable pull request. The integrator owns shared
 contracts, migration order, `STATUS.yaml` and merge sequencing. Workstream agents never edit
@@ -55,7 +57,10 @@ Source inspection at `eec5390677b58bfece641698ae84d57d2d941126` (two commits aft
 v1.2.0-rc18 tag) found working foundations for class close-out and pass/fail results, unit
 readiness, competency assertions, exercise runs, scenario evidence, content porting, result
 transfer, telemetry/LMS integrations, range lifecycle jobs and a `physical` exercise delivery
-type. Each packet requires its agent to recheck current source before work.
+type. It also found a current Ansible Moodle stage, installer variables and an installed-host
+runbook; Moodle's remaining foundation work is proof and reconciliation, not rebuilding the
+installer from an older claim. Each packet requires its agent to recheck current source before
+work.
 
 ## Program outcomes by role
 
@@ -105,6 +110,16 @@ claims about the current release.
 ## Dependency graph and delivery waves
 
 ```text
+foundation closure
+F0 release truth and scorecards
+   ├── F1 clean-room install/operations ── F3 real infrastructure and identity proof
+   ├── F2 protected CI and release controls
+   ├── F4 security and accreditation controls
+   ├── F5 existing integration compatibility
+   ├── F6 bilingual and accessibility acceptance
+   └── F7 content and operational validation (also uses F1 + F6)
+
+10x capability
 00 credibility baseline
    ├── 01 readiness evidence ledger ──┐
    ├── 02 unified exercise timeline ──┼── 04 safe AI director
@@ -114,17 +129,40 @@ claims about the current release.
               01 + 02 + 03 + 05 + 06 ─── 07 federation and scale cells
 ```
 
-- **Wave A — freeze contracts:** 00 plus ADR/contract PRs for 01, 02 and 06.
-- **Wave B — parallel foundations:** 01, 02, 03 and 06 may run in separate worktrees after
+- **Closure wave 0 — establish truth:** F0 plus 00. Do not plan against stale release notes.
+- **Closure wave 1 — parallel closure:** F1, F2, F4, F5 and F6 proceed with distinct owners.
+- **Closure wave 2 — external proof:** F3 and F7 run on named environments with named human
+  authorities. An unavailable environment is a blocker, not a simulated pass.
+- **Capability wave A — freeze contracts:** ADR/contract PRs for 01, 02 and 06.
+- **Capability wave B — parallel foundations:** 01, 02, 03 and 06 may run in separate worktrees after
   their shared contracts and migration order are accepted.
-- **Wave C — controlled effects:** 04 and 05 begin only after the timeline/effect envelope is
+- **Capability wave C — controlled effects:** 04 and 05 begin only after the timeline/effect envelope is
   stable.
-- **Wave D — federation:** 07 proves admission, isolation and recovery using completed cell
+- **Capability wave D — federation:** 07 proves admission, isolation and recovery using completed cell
   contracts. It does not mask unfinished lifecycle behavior with more hardware.
 
-All workstreams may be tracked at once. Only dependency-ready slices may modify code.
+All workstreams may be tracked at once. Only dependency-ready slices may modify code. A 10x
+feature may be developed while a foundation proof waits for hardware, but it cannot be called
+release-ready when one of its listed foundation gates remains open.
 
-## Workstream index
+[`CURRENT-GAP-MAP.md`](CURRENT-GAP-MAP.md) routes every current review finding and published
+v1.2 limitation to a closure packet. F0 revalidates that map against source before tickets are
+created, because a stale limitation is not permission to rebuild behavior that already exists.
+
+## Foundation closure index
+
+| ID | Packet | Primary skills/agents | Closure result |
+|---|---|---|---|
+| F0 | [Release truth and scorecards](workstreams/F0-release-truth-scorecards.md) | docs handoff, release verification | One current evidence record; release, IOC and COTE scorecards stay separate. |
+| F1 | [Clean-room install and operations](workstreams/F1-clean-room-install-operations.md) | docs handoff, release verification, incident diagnosis | A fresh operator installs, upgrades, backs up/restores and proves alerts, including optional Moodle. |
+| F2 | [Protected CI and release controls](workstreams/F2-protected-ci-release-controls.md) | release verification, change review | Required checks demonstrably block a failing PR and release evidence is generated from runs. |
+| F3 | [Real infrastructure and identity proof](workstreams/F3-real-infrastructure-identity.md) | release verification, job lifecycle, tenant auth | Real vCenter, Windows AD/AD CS and installed Moodle evidence is captured on named systems. |
+| F4 | [Security and accreditation controls](workstreams/F4-security-accreditation-controls.md) | tenant auth, release verification, change review | Approved encryption/key/handling design is implemented and acceptance-tested. |
+| F5 | [Existing integration compatibility](workstreams/F5-existing-integration-compatibility.md) | telemetry/LMS, API contracts, release verification | Every carried release limitation is reproduced, fixed or explicitly retained with a test. |
+| F6 | [Bilingual and accessibility acceptance](workstreams/F6-bilingual-accessibility.md) | Angular delivery, navigation design, release verification | Critical role journeys pass approved English/French and accessibility gates. |
+| F7 | [Content and operational validation](workstreams/F7-content-operational-validation.md) | curriculum traceability, scenario evidence, release verification | Approved content and representative exercises produce human-reviewed evidence. |
+
+## 10x capability index
 
 | ID | Packet | Primary skills/agents | First independently useful result |
 |---|---|---|---|
@@ -198,6 +236,10 @@ For each PR:
 
 The repository excludes the plugin `loop-me`; this explicit loop is the replacement.
 
+Foundation packets use the same loop, but environment/authority evidence may be attached to a
+verification PR instead of produced by a code diff. Never create code merely to make an
+unavailable physical environment look green.
+
 ## Decision gates that require people
 
 - Which mission-task/readiness vocabulary and authority is approved for CAF use.
@@ -214,9 +256,9 @@ Unresolved decisions go in `STATUS.yaml`; an implementation agent must not inven
 
 ## Program definition of done
 
-The program is complete only when the 12-step demonstration passes in a named supported
-environment; role journeys and failure/recovery paths are tested; all assertions have
-provenance and missing-data behavior; cross-enclave packages have signed receipts and replay
-evidence; physical/manual operations are truthful; scale claims have workload evidence; docs,
-installer and runbooks match source; and the repository DoD and release gates pass at the
-delivered commit.
+The program is complete only when all applicable `F0–F7` foundation gates are closed and the
+12-step demonstration passes in a named supported environment; role journeys and
+failure/recovery paths are tested; all assertions have provenance and missing-data behavior;
+cross-enclave packages have signed receipts and replay evidence; physical/manual operations
+are truthful; scale claims have workload evidence; docs, installer and runbooks match source;
+and the repository DoD and release gates pass at the delivered commit.

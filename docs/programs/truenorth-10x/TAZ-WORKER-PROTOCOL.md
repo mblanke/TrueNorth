@@ -131,7 +131,10 @@ while a required check is failed/blocked.
 
 Good Taz tickets: route/test repair, one API vertical slice with accepted schema, isolated
 Angular component behavior, test generation, migration diagnostics, repository-wide pointer
-search, docs/source reconciliation and long local gates.
+search, release-note/source reconciliation, documentation claim testing and long local gates.
+Taz may prepare F0/F2/F5 evidence from source and fixtures; it may not claim an installed host,
+real vCenter, Windows AD, human accessibility review, accreditation or SME acceptance that it
+did not directly and permissibly observe.
 
 Keep with Claude: product decisions, classification/safety policy, shared event schemas,
 Alembic ordering, multi-workstream conflict resolution, live operations, acceptance and merge.

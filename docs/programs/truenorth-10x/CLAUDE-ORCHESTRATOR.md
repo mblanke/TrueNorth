@@ -5,13 +5,15 @@ the entire 10x program to a single implementation branch.
 
 ## Mission
 
-Manage the TrueNorth 10x delivery program as a dependency-aware set of small, verified pull
-requests. Keep all workstreams visible, run only dependency-ready work in parallel, preserve
-security and tenant boundaries, and make no implementation claim without repository evidence.
+Manage the TrueNorth foundation-closure and 10x delivery program as a dependency-aware set of
+small, verified pull requests and evidence runs. Keep both lanes visible, run only
+dependency-ready work in parallel, preserve security and tenant boundaries, and make no
+implementation claim without repository evidence.
 
 ## Required startup
 
-1. Read `CLAUDE.md`, `docs/AGENTS.md`, `docs/programs/truenorth-10x/README.md` and
+1. Read `CLAUDE.md`, `docs/AGENTS.md`, `docs/programs/truenorth-10x/README.md`,
+   `docs/programs/truenorth-10x/CURRENT-GAP-MAP.md` and
    `docs/programs/truenorth-10x/STATUS.yaml`. If Taz will be used, also read
    `docs/programs/truenorth-10x/TAZ-WORKER-PROTOCOL.md` before contacting it.
 2. Inspect `git status`, current branch/HEAD, configured remotes, open PRs and the Alembic
@@ -19,7 +21,8 @@ security and tenant boundaries, and make no implementation claim without reposit
 3. Confirm whether Taz is available. If using it, capture the exact served GLM-5.3 model ID,
    revision, quantization, serving version, tool parser/template, context, concurrency and GPU
    topology. Do not accept an alias as proof and do not silently use a fallback.
-4. Select the highest-priority `ready` slice. Read only that packet and its matching skills.
+4. Select the highest-priority `ready` foundation or capability slice. Read only that packet
+   and its matching skills.
 5. Before creating code, state branch name, owned files, shared files, acceptance tests,
    migration/contract effect and dependencies.
 
@@ -45,15 +48,23 @@ security and tenant boundaries, and make no implementation claim without reposit
 
 ## First execution sequence
 
-1. Implement workstream 00 as one small PR.
-2. Open decision/contract PRs for workstreams 01, 02 and 06. They may be researched in
+1. Run F0's current-source reconciliation. In parallel, implement workstream 00 as one small
+   PR; neither needs a schema contract.
+2. Audit F2 required checks and F5 release limitations against current GitHub/source. Do not
+   turn an already-resolved stale limitation into new code.
+3. Start F1, F4 and F6 with separate owners. Record external environment/authority blockers
+   for F3 and F7 rather than replacing them with simulator evidence.
+4. Open decision/contract PRs for workstreams 01, 02 and 06. They may be researched in
    parallel, but the integrator resolves shared event identity, provenance fields and
    migration order.
-3. After those contracts merge, run 01 and 02 in parallel; 03 may run independently; 06 may
+5. After those contracts merge, run 01 and 02 in parallel; 03 may run independently; 06 may
    run once its classification/identity decisions are answered.
-4. Do not start 04 until 02 has an accepted event/effect envelope. Do not start automated
+6. Do not start 04 until 02 has an accepted event/effect envelope. Do not start automated
    physical effects in 05; its first slice is manual and truthful.
-5. Start 07 only after lifecycle and exchange contracts are stable enough to test a cell.
+7. Start 07 only after lifecycle and exchange contracts are stable enough to test a cell.
+
+No capability is release-ready while one of its `foundation_release_gates` in `STATUS.yaml`
+is open.
 
 ## Required worker return
 
