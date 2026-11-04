@@ -28,7 +28,7 @@ class DialGrant:
     range_id: str
     vm_id: str
     vm_name: str
-    view_only: bool = False  # the relay enforces it (S4); an adapter may not widen it
+    view_only: bool = False  # serve it only as a target with ``input_blocked``; an adapter may not widen it
 
 
 @dataclass(frozen=True)
@@ -40,6 +40,10 @@ class DialTarget:
     url: str
     ssl: SSLContext | None = None
     subprotocols: tuple[str, ...] = ("binary",)
+    #: True only when the hypervisor itself refuses input on this connection (a view-only
+    #: ticket). The relay serves a ``view_only`` grant only from a target that says so, until it
+    #: filters input itself (S4, #369): a grant must never be marked view-only on a console that types.
+    input_blocked: bool = False
 
 
 @dataclass

@@ -43,8 +43,10 @@ def _apply(pattern: str, replacement: str, value: str) -> str:
 @pytest.mark.parametrize("conf", [EDGE_MAIN, WEB], ids=["edge", "web"])
 def test_the_logged_request_and_referer_hide_the_fetch_secret(conf):
     text = conf.read_text()
-    for var, sample in (("tn_request_logged", LAUNCH), ("tn_referer_logged", LAUNCH.split(" ")[1])):
-        logged = _apply(*_map(text, var), sample)
+    # The request line goes through two chained maps (the fetch secret, then a console grant).
+    request = _apply(*_map(text, "tn_request_logged"), _apply(*_map(text, "tn_request_fetch_hidden"), LAUNCH))
+    referer = _apply(*_map(text, "tn_referer_logged"), LAUNCH.split(" ")[1])
+    for logged in (request, referer):
         assert SECRET not in logged and "fetch=<redacted>" in logged, logged
         assert "actor=" in logged  # the rest of the line is kept
 
