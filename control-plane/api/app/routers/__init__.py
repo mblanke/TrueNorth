@@ -47,6 +47,7 @@ from .software_catalogue import router as software_catalogue_router
 from .storage import router as storage_router
 from .templates import router as templates_router
 from .threat_intel import router as threat_intel_router
+from .ticket_triage import router as ticket_triage_router
 from .tickets import router as tickets_router
 from .wiki import router as wiki_router
 
@@ -99,6 +100,7 @@ __all__ = [
     "greyspace_router",
     "scenario_executions_router",
     "wiki_router",
+    "ticket_triage_router",
     "tickets_router",
     "notifications_router",
 ]

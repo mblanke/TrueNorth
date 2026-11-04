@@ -25549,6 +25549,107 @@
         "title": "TranscriptOut",
         "type": "object"
       },
+      "TriageOut": {
+        "properties": {
+          "backend": {
+            "default": "",
+            "title": "Backend",
+            "type": "string"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "labels": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "model": {
+            "default": "",
+            "title": "Model",
+            "type": "string"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "related_pages": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TriageRelatedPage"
+            },
+            "title": "Related Pages",
+            "type": "array"
+          },
+          "reply_hint": {
+            "default": "",
+            "title": "Reply Hint",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "title": "TriageOut",
+        "type": "object"
+      },
+      "TriageRelatedPage": {
+        "properties": {
+          "page_id": {
+            "format": "uuid",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "space_slug": {
+            "title": "Space Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_id",
+          "space_slug",
+          "title"
+        ],
+        "title": "TriageRelatedPage",
+        "type": "object"
+      },
+      "TriageStatusOut": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "TriageStatusOut",
+        "type": "object"
+      },
       "TrustKeyCreate": {
         "properties": {
           "not_after": {
@@ -55736,6 +55837,32 @@
         ]
       }
     },
+    "/tickets/ai-triage/status": {
+      "get": {
+        "operationId": "triage_status_tickets_ai_triage_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriageStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Triage Status",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
     "/tickets/assignees": {
       "get": {
         "operationId": "list_assignees_tickets_assignees_get",
@@ -56630,6 +56757,55 @@
           }
         ],
         "summary": "Move Ticket",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/tickets/{ticket_id}/triage": {
+      "post": {
+        "description": "A suggested category, priority, labels, summary and reply hint. Changes nothing.",
+        "operationId": "triage_ticket_tickets__ticket_id__triage_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Triage Ticket",
         "tags": [
           "tickets"
         ]
