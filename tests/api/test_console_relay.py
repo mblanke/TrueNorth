@@ -130,28 +130,44 @@ def _wait_for(condition, seconds=3.0):
 
 def _released(db):
     def check():
-        db.expire_all()
-        return all(g.live_by is None and g.live_until is None for g in db.query(ConsoleGrant).all())
+        with _STEP_LOCK:  # see isolated_db: the test's session must not begin inside a step's savepoint
+            db.expire_all()
+            return all(g.live_by is None and g.live_until is None for g in db.query(ConsoleGrant).all())
 
     return check
+
+
+#: One relay step at a time on the test's one connection (``isolated_db``).
+_STEP_LOCK = threading.Lock()
 
 
 @pytest.fixture
 def isolated_db(client, db_session):
     """Each relay step on a session of its own that rolls back to a savepoint, so a step that
     raises (as it does in production, where the session is its own transaction) does not undo
-    the test's rows."""
+    the test's rows.
+
+    The steps share one SQLite connection, and its savepoints are a stack: two steps open at
+    once (the clean-up a closed socket's ``finally`` still runs on a worker thread after the
+    client has moved on, and the next socket's sign-in) release each other's savepoints, and
+    the connection's transaction is left unusable ("no such savepoint", PendingRollbackError)
+    for the rest of the test and the next one's setup. In production each step has a
+    connection of its own, so here they take turns (``_STEP_LOCK``); the test's own session
+    begins its reads under the same lock (``_released``)."""
     from app.db import get_db
     from app.main import app as fastapi_app
     from sqlalchemy.orm import sessionmaker
 
     def factory():
+        if not _STEP_LOCK.acquire(timeout=10):
+            raise RuntimeError("a relay step held the test database for 10 s")
         s = sessionmaker(bind=db_session.get_bind(), join_transaction_mode="create_savepoint", autoflush=False,
                          expire_on_commit=False)()
         try:
             yield s
         finally:
             s.close()
+            _STEP_LOCK.release()
 
     fastapi_app.dependency_overrides[get_db] = factory
 
@@ -479,6 +495,27 @@ def test_failed_dials_do_not_spend_a_grants_connections(client, world, isolated_
         assert ws.receive_bytes() == RFB_GREETING
 
 
+def test_failed_dials_in_a_row_while_each_clean_up_is_still_running(client, world, isolated_db, monkeypatch):
+    # The client moves on as soon as it sees the close; the socket's ``finally`` gives the grant
+    # back once more on a worker thread. Held open here, that step overlaps the next socket's
+    # (CI: "no such savepoint", then PendingRollbackError, on the test above).
+    real = service.release
+
+    def slow_release(db, grant_id, holder):
+        db.query(ConsoleGrant.id).first()  # the step's savepoint is open
+        time.sleep(0.05)
+        real(db, grant_id, holder)
+
+    monkeypatch.setattr(service, "release", slow_release)
+    token = world.grant(world.ann)
+    MockConsole.dial_error = "no"
+    for _ in range(4):
+        assert _closed_with(client, token)[0] == 4502
+    MockConsole.dial_error = None
+    with _open(client, token) as ws:
+        assert ws.receive_bytes() == RFB_GREETING
+
+
 def test_a_user_holds_four_live_grants_at_most(world, db_session):
     for i in range(service.MAX_LIVE_GRANTS):
         world.grant(world.ann, vm_name=f"vm{i}")
@@ -740,8 +777,9 @@ def test_a_dial_whose_claim_lapsed_meanwhile_closes_4409(client, world, db_sessi
     monkeypatch.setattr(service, "record_dial", taken)
     code, reason = _closed_with(client, world.grant(world.ann))
     assert code == 4409 and "another window" in reason
-    db_session.expire_all()
-    assert db_session.query(ConsoleGrant).one().dials == 0  # nothing was counted
+    with _STEP_LOCK:  # the closed socket's clean-up may still be running
+        db_session.expire_all()
+        assert db_session.query(ConsoleGrant).one().dials == 0  # nothing was counted
 
 
 def test_a_step_that_raises_is_rolled_back_not_committed(client, world, db_session, isolated_db, monkeypatch):
@@ -1029,3 +1067,4 @@ def test_the_vsphere_adapter_can_be_held_view_only_by_the_relay():
 
     assert VsphereWebMKSConsole.supports_view_only is True
     assert VsphereWebMKSConsole.open_view_only is not MockConsole.open_view_only  # its own, not the base refusal
+

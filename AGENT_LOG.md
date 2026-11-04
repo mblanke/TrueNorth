@@ -24,3 +24,16 @@
   Full application verification remains pending a compatible environment.
 - Existing Compose changes, untracked nginx Dockerfile, and agent patches were
   present before this work and were left intact.
+
+## 2026-11-04 — console relay test flake (Mac)
+
+- `test_failed_dials_do_not_spend_a_grants_connections` (CI shard 4/5) was test isolation,
+  not a product defect: failed dials never touch `dials` (only `service.record_dial` does).
+  The relay's shielded `finally` clean-up keeps running on a worker thread after the
+  TestClient has cancelled the app; under `isolated_db` its savepoint and the next socket's
+  share one SQLite connection and release each other ("no such savepoint" →
+  PendingRollbackError, then the next test's setup fails on `tenants.slug`).
+- Fix in tests/api/test_console_relay.py: `isolated_db` steps take turns (`_STEP_LOCK`);
+  test-side reads take the same lock. New test holds the clean-up's savepoint open and
+  fails without the lock.
+- Next: merge the PR once CI is green.
