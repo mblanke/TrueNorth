@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session
 from .. import object_store, wiki_images
 from ..auth import CurrentUser
 from ..db import get_db
-from ..models_wiki import WikiImage, WikiPage
+from ..models_wiki import WikiImage
 from ..rbac import Permission, require_permission
 from ..tenancy import get_owned
 from . import wiki
@@ -185,7 +185,8 @@ def delete_image(
     user: CurrentUser = Depends(require_permission(Permission.WIKI_EDIT)),
 ) -> Response:
     img = _image(db, image_id, user)
-    wiki._writable(get_owned(db, wiki.WikiSpace, db.get(WikiPage, img.page_id).space_id, user))
+    _page, space = wiki._page(db, img.page_id, user)  # tenant-scoped; _image already checked it is visible
+    wiki._writable(space)
     img.soft_delete()
     wiki._audit(db, user, "wiki_image_delete", "wiki_image", str(img.id))
     key = img.object_key
