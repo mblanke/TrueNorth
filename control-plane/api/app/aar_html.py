@@ -20,6 +20,7 @@ import re
 import unicodedata
 from typing import Any
 
+
 # Characters outside latin-1 that NFKD cannot reduce but that have an obvious ASCII
 # spelling. Keyed by code point so this source stays ASCII.
 def evidence_text(raw: Any) -> str:

@@ -83,6 +83,23 @@ cannot change afterwards.
   bound.
 - Lab sessions and course releases are unchanged.
 
+## After the adversarial review (2026-11-04)
+
+- The exercise row lock re-reads the row (`populate_existing`), so an ack, a withdraw or a
+  second `/complete` that overlaps a close is refused, not applied after it.
+- An exercise made without a maximum (`max_score` 0) takes its objectives' total when judged
+  or closed (the worker's mock completion used to fill it); QSP paths create theirs at 100.
+  A maximum someone set is never rewritten.
+- The AAR renders a judgement as "Judged by X: note (cites N detections)".
+- Withdraw also uncredits pre-ADR 0020 automatic credit; a replay uncites the last run's
+  submissions, so class closeout and the live class stop counting them.
+
+Known gaps:
+
+- A withdrawn judgement's xAPI `passed` statements stay in the LRS (no void verb yet).
+- The cite checklist names Students by user-id prefix; the detection response carries no
+  names.
+
 ## Open question
 
 - **The duration clock** (ADR 0005 §6) still completes an exercise when its scenario's
