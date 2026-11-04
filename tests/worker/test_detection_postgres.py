@@ -168,9 +168,17 @@ def test_a_student_detection_is_credited_on_postgres(pg, monkeypatch):
     assert db.query(Objective).filter(Objective.exercise_id == ex.id).one().achieved is False
 
     # The instructor judges it, citing the detection: under the exercise row lock, on Postgres.
+    # A real users row: the judgement's audit entry references it, and foreign keys are enforced.
+    from app.models import User
+
+    instructor = User(keycloak_id=f"kc-i-{uuid.uuid4().hex[:8]}", email=f"i-{uuid.uuid4().hex[:8]}@example.org",
+                      display_name="Instructor One", tenant_id=tenant.id, role=UserRole.instructor)
+    db.add(instructor)
+    db.commit()
     fastapi_app.dependency_overrides[get_db] = _db
     try:
-        with acting_as(UserRole.instructor, tenant=str(tenant.id)):
+        with acting_as(UserRole.instructor, tenant=str(tenant.id)) as who:
+            who.id = str(instructor.id)
             judged = TestClient(fastapi_app).post(
                 f"/exercises/{ex.id}/objectives/detect_c2/ack", json={"cites": [resp.json()["id"]]}
             )
