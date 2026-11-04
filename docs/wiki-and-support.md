@@ -83,6 +83,32 @@ a reporter's reply to a ticket nobody owns yet, stay in the bell only.
   at the same moment on different workers can each send one.
 - **Internal notes** go to the assignee only while they are still staff.
 
+### Search (OpenSearch)
+
+`GET /wiki/search` ranks with OpenSearch when it is configured (`OPENSEARCH_URL` set and
+`SEARCH_BACKEND` not `null`; `WIKI_OPENSEARCH=false` switches it off, `=true` forces it on):
+stemming (`reset` finds `resetting`), phrases (`"lab reset"`), `-`/`NOT`, and title and tag
+boosts. Code: `app/wiki_search.py`, behind the search-backend adapter (`app/search_backends`).
+
+- **The database decides who may see a page, always.** OpenSearch is asked only for page ids,
+  restricted to the caller's tenant, and returns no text. The router then loads those ids with the
+  same rules as before (tenant, deleted, archived space, staff-only and system-owned spaces,
+  unpublished pages). The index holds no visibility at all, so a stale or wrong index can hide a
+  page from the ranking but cannot show anyone a page they may not read.
+- **Never worse than the old search.** Pages OpenSearch names come first, best first; the plain
+  substring matches follow. With no OpenSearch, a down one, or one slower than 3 s, it is exactly
+  the old search.
+- **The index follows the database.** Every save, restore, publish, move or delete of a page
+  records its new document; when that request commits it is sent (a rolled-back change sends
+  nothing), off the request, and a failure is only logged. A soft-deleted page is removed.
+- **Existing pages** are added with `POST /wiki/search/reindex` (admin; safe to repeat; indexes this
+  tenant only). Run it once after turning this on, and after restoring the index from scratch.
+  Pages saved by a script or Celery task (no request loop) are picked up by the next reindex.
+- The query is free text (`simple_query_string`: no fuzzy, near or slop), never the store's own
+  parser. Index name `truenorth-wiki`, created on first write.
+- Not run against a real cluster in CI: the request shapes are tested against a fake server and the
+  ranking against a fake backend. Try `reindex` and a search on a staging OpenSearch first.
+
 ### Images in wiki pages
 
 Editors add an image with the **Image** button, by pasting a screenshot, or by dropping a file on
@@ -163,4 +189,3 @@ app-wide NaN/Infinity 422-turned-500 found along the way is fixed in
 
 - Live push for the bell (it polls once a minute).
 - AI triage ("ask AI", "run diagnostics") from the March design.
-- Full-text search through OpenSearch (search is title/body/tags matching in the database today).

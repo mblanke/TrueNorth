@@ -62,6 +62,22 @@ class BaseSearchBackend(ABC):
         """
         ...
 
+    # Documents with a caller-chosen id (a wiki page), as opposed to append-only events.
+    # A backend that cannot hold them leaves ``supports_documents`` False and callers fall
+    # back to the database.
+    supports_documents: bool = False
+
+    async def upsert_documents(self, index: str, docs: dict[str, dict], *, settings: dict | None = None) -> int:
+        """Create or replace the document with each id in *docs*; returns how many were accepted.
+
+        *settings* is an index body (``settings`` / ``mappings``) used if the index does not exist
+        yet. Raises ``SearchBackendError`` when the store cannot answer."""
+        raise SearchBackendError("this search backend does not store documents")
+
+    async def delete_documents(self, index: str, ids: list[str]) -> int:
+        """Remove the documents with these ids (absent ones are fine); returns how many were removed."""
+        raise SearchBackendError("this search backend does not store documents")
+
     @abstractmethod
     async def health_check(self) -> bool:
         """Return True if the backend is reachable."""

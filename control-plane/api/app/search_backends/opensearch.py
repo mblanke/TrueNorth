@@ -95,6 +95,9 @@ def stamp_ingested(event: dict, now: str) -> dict:
     return out
 
 
+_ensured: set[str] = set()  # indexes this process has already created or found
+
+
 def configured() -> bool:
     """Was an OpenSearch endpoint set explicitly? Readiness only requires it then (app/health.py)."""
     return connection.url_configured()
@@ -172,6 +175,61 @@ class OpenSearchBackend(BaseSearchBackend):
             raise HTTPException(502, f"OpenSearch error: {exc}") from exc
         except Exception as exc:
             raise HTTPException(502, f"OpenSearch error: {exc}") from exc
+
+    supports_documents = True
+
+    async def _ensure_index(self, client: httpx.AsyncClient, index: str, body: dict | None) -> None:
+        if not body or index in _ensured:
+            return
+        resp = await client.head(f"{self._url}/{index}")
+        if resp.status_code == 404:
+            made = await client.put(f"{self._url}/{index}", json=body)
+            # A concurrent worker may have created it first: that is fine.
+            if made.status_code >= 300 and "resource_already_exists_exception" not in made.text:
+                made.raise_for_status()
+        elif resp.status_code >= 300:
+            resp.raise_for_status()
+        _ensured.add(index)
+
+    async def _bulk(self, client: httpx.AsyncClient, lines: list[dict], count: int) -> int:
+        resp = await client.post(
+            f"{self._url}/_bulk",
+            content="".join(json.dumps(line, default=str) + "\n" for line in lines),
+            headers={"Content-Type": "application/x-ndjson"},
+        )
+        resp.raise_for_status()
+        items = resp.json().get("items", [])
+        failed = [i for i in items if next(iter(i.values())).get("status", 500) >= 300 and next(iter(i.values())).get("status") != 404]
+        if failed:
+            raise SearchBackendError(f"OpenSearch rejected {len(failed)} of {count} documents")
+        return len(items) - len(failed)
+
+    async def upsert_documents(self, index: str, docs: dict[str, dict], *, settings: dict | None = None) -> int:
+        if not docs:
+            return 0
+        lines: list[dict] = []
+        for doc_id, doc in docs.items():
+            lines += [{"index": {"_index": index, "_id": doc_id}}, doc]
+        try:
+            async with httpx.AsyncClient(**self._client_kwargs()) as client:
+                await self._ensure_index(client, index, settings)
+                return await self._bulk(client, lines, len(docs))
+        except SearchBackendError:
+            raise
+        except Exception as exc:
+            raise SearchBackendError(f"OpenSearch error: {exc}") from exc
+
+    async def delete_documents(self, index: str, ids: list[str]) -> int:
+        if not ids:
+            return 0
+        lines = [{"delete": {"_index": index, "_id": i}} for i in ids]
+        try:
+            async with httpx.AsyncClient(**self._client_kwargs()) as client:
+                return await self._bulk(client, lines, len(ids))
+        except SearchBackendError:
+            raise
+        except Exception as exc:
+            raise SearchBackendError(f"OpenSearch error: {exc}") from exc
 
     async def match(self, index: str, query: dict, size: int = 0) -> SearchMatch:
         # The server gives up (timed_out) before the client does, so a slow query is reported
