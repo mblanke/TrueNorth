@@ -28,7 +28,7 @@ class DialGrant:
     range_id: str
     vm_id: str
     vm_name: str
-    view_only: bool = False  # serve it only as a target with ``input_blocked``; an adapter may not widen it
+    view_only: bool = False  # the relay always filters its input (rfb_filter, S4); an adapter may not widen it
 
 
 @dataclass(frozen=True)
@@ -40,10 +40,6 @@ class DialTarget:
     url: str
     ssl: SSLContext | None = None
     subprotocols: tuple[str, ...] = ("binary",)
-    #: True only when the hypervisor itself refuses input on this connection (a view-only
-    #: ticket). The relay serves a ``view_only`` grant only from a target that says so, until it
-    #: filters input itself (S4, #369): a grant must never be marked view-only on a console that types.
-    input_blocked: bool = False
 
 
 @dataclass
@@ -63,8 +59,11 @@ ConsoleReader = Callable[[], dict[Hashable, int | None]]
 
 class BaseConsoleBackend(ABC):
     kind: ClassVar[str]
-    #: The hypervisor itself refuses input on a ticket from ``open_view_only`` (an observer's
-    #: console, ADR 0014 §19). A page that merely hides the keyboard is not view-only.
+    #: A console from ``open_view_only`` really is view-only (an observer's console, ADR 0014
+    #: §19): either the hypervisor refuses input on that ticket, or the adapter's stream is RFB
+    #: and the relay's allowlist (``console_relay/rfb_filter.py``, which runs on every
+    #: ``view_only`` grant whatever the adapter) is enough. A page that merely hides the keyboard
+    #: is not view-only.
     supports_view_only: ClassVar[bool] = False
 
     def open_view_only(self, vm: dict[str, Any], *, db=None, rng=None,

@@ -374,9 +374,9 @@ def test_an_observers_console_is_view_only_and_audited(client, world, db_session
 
 
 def test_no_observer_grant_where_the_adapter_cannot_enforce_view_only(client, world, db_session):
-    """vSphere WebMKS has no read-only mode: until the relay drops an observer's input itself
-    (S4, #369) an observer is refused, as when consoles are off, and no grant is made. The
-    live view says so (consoles_open false)."""
+    """An adapter whose stream cannot be held view-only (the relay's allowlist, S4 #369, runs
+    only for one that says it can) gets no observer console: refused, as when consoles are
+    off, and no grant is made. The live view says so (consoles_open false)."""
     MockConsole.supports_view_only = False
     evt, ann, _ = _individual(db_session, world)
     r = _watch(client, world["observer"], world["cls"], evt, ann.range_id)
@@ -829,3 +829,38 @@ def test_a_grant_is_bound_to_the_session_it_was_issued_for(client, world, db_ses
     grant.event_id = uuid.uuid4()  # another session's window is open, not the one it was made for
     db_session.commit()
     assert not policy.check(db_session, grant, world["ann"]).ok
+
+
+def test_a_real_observer_session_cannot_type_into_a_students_machine(client, world, db_session, monkeypatch):
+    """End to end (S4, #369): the observer is issued a view-only console through the live
+    view, opens the socket as themself under the real policy, and everything but view
+    messages is dropped by the relay before it reaches the (echoing) hypervisor stub."""
+    from app import auth
+    from app.console_backends.mock import RFB_GREETING, RFB_SECURITY_OK, RFB_SECURITY_TYPES, RFB_SERVER_INIT
+    from app.console_relay import service
+    from fastapi import HTTPException
+
+    class Backend:
+        async def validate_token(self, token):
+            if token.startswith("good-"):
+                return {"sub": token[5:], "email": "x@example.test", "amr": ["pwd", "otp"]}
+            raise HTTPException(401, "bad token")
+
+    evt, ann, _ = _individual(db_session, world)
+    r = _watch(client, world["observer"], world["cls"], evt, ann.range_id)
+    assert r.status_code == 200 and r.json()["view_only"] is True
+    token = r.json()["url"].rsplit("/", 1)[1]
+    monkeypatch.setattr(auth, "AUTH_DISABLED", False)
+    monkeypatch.setattr(auth, "get_auth_backend", lambda: Backend())
+    monkeypatch.setattr(service, "RENEW_SECONDS", 0.1)
+    version, fbur = b"RFB 003.008\n", bytes([3, 1, 0, 0, 0, 0, 2, 128, 1, 224])
+    key, pointer = bytes([4, 1, 0, 0, 0, 0, 0xFF, 0x0D]), bytes([5, 1, 0, 10, 0, 20])
+    with client.websocket_connect(f"/ws/console/{token}",
+                                  subprotocols=["bearer", f"good-{world['observer'].keycloak_id}"]) as ws:
+        assert ws.receive_bytes() == RFB_GREETING
+        # The stub's server side answers each step: security types, SecurityResult 0, ServerInit.
+        for step, answered in ((version, RFB_SECURITY_TYPES), (b"\x01", RFB_SECURITY_OK), (b"\x00", RFB_SERVER_INIT)):
+            ws.send_bytes(step)
+            assert ws.receive_bytes() == answered
+        ws.send_bytes(key + pointer + bytes([6, 0, 0, 0, 0, 0, 0, 3]) + b"abc" + fbur)
+        assert ws.receive_bytes() == fbur

@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from app import auth
 from app.console_backends import GRANT_SECONDS, MockConsole
-from app.console_backends.mock import RFB_GREETING
+from app.console_backends.mock import RFB_GREETING, RFB_SECURITY_OK, RFB_SECURITY_TYPES, RFB_SERVER_INIT
 from app.console_relay import policy, service
 from app.console_relay import router as relay_router
 from app.console_relay.models import ConsoleGrant
@@ -816,29 +816,6 @@ def test_a_dial_still_queued_when_the_relay_gave_up_does_nothing(monkeypatch):
     assert called == []
 
 
-# ── View-only is never claimed on a console that types ───────────────────────
-
-
-def test_a_view_only_grant_is_not_served_from_a_console_that_accepts_input(client, world, db_session):
-    MockConsole.supports_view_only = False
-    code, reason = _closed_with(client, world.grant(world.ann, view_only=True))
-    assert code == 4502 and "view-only" in reason
-    assert _wait_for(_released(db_session))  # the grant was given back, not held
-
-
-def test_a_view_only_grant_on_a_console_the_hypervisor_makes_read_only_drops_input(client, world, monkeypatch):
-    monkeypatch.setattr(relay_router, "IDLE_SECONDS", 0.6)
-    MockConsole.supports_view_only = True
-    try:
-        with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann, view_only=True)) as ws:
-            assert ws.receive_bytes() == RFB_GREETING
-            ws.send_bytes(b"k")  # a normal console would send it straight back
-            ws.receive_bytes()
-        assert e.value.code == 4408  # idle: nothing, not b"k", came back
-    finally:
-        MockConsole.supports_view_only = False
-
-
 # ── What reaches a log or a close frame ──────────────────────────────────────
 
 
@@ -916,3 +893,139 @@ def test_the_hypervisor_is_dialled_without_a_proxy(monkeypatch):
     monkeypatch.setattr(ws_client, "connect", fake_connect)
     asyncio.run(relay_router._upstream_connect(DialTarget(url="ws://127.0.0.1:1/ticket/x")))
     assert seen["proxy"] is None and seen["logger"] is relay_router._upstream_logger
+
+
+# ── view-only: the RFB allowlist (S4, #369) ──────────────────────────────────
+# The mock stub echoes what the "hypervisor" receives, so what comes back is what got through.
+
+_VERSION = b"RFB 003.008\n"
+_FBUR = bytes([3, 1, 0, 0, 0, 0, 2, 128, 1, 224])
+_KEY = bytes([4, 1, 0, 0, 0, 0, 0xFF, 0x0D])
+_POINTER = bytes([5, 1, 0, 10, 0, 20])
+_SETENC = bytes([2, 0, 0, 1, 0, 0, 0, 0])
+
+
+def _cut(text: bytes) -> bytes:
+    return bytes([6, 0, 0, 0]) + len(text).to_bytes(4, "big") + text
+
+
+def _handshake(ws, shared: int = 1) -> None:
+    """The client side of a real handshake against the mock stub's server side (version, one
+    security type None, SecurityResult 0, ServerInit); the stub answers each step as it arrives,
+    so each reply shows the step got through the filter."""
+    assert ws.receive_bytes() == RFB_GREETING
+    ws.send_bytes(_VERSION)
+    assert ws.receive_bytes() == RFB_SECURITY_TYPES
+    ws.send_bytes(b"\x01")
+    assert ws.receive_bytes() == RFB_SECURITY_OK
+    ws.send_bytes(bytes([shared]))  # forced to shared by the filter; the stub does not echo it
+    assert ws.receive_bytes() == RFB_SERVER_INIT
+
+
+def test_a_view_only_console_passes_view_messages_and_drops_input(client, world, db_session):
+    with _open(client, world.grant(world.ann, view_only=True)) as ws:
+        _handshake(ws, shared=0)
+        ws.send_bytes(_KEY)
+        ws.send_bytes(_POINTER)
+        ws.send_bytes(_cut(b"rm -rf /"))
+        ws.send_bytes(_KEY + _POINTER + _FBUR + _KEY)  # several in one frame: only the view message
+        assert ws.receive_bytes() == _FBUR
+        ws.send_bytes(_SETENC)
+        assert ws.receive_bytes() == _SETENC  # nothing else was queued ahead of it
+
+
+def test_a_message_split_over_frames_is_judged_as_a_stream(client, world):
+    with _open(client, world.grant(world.ann, view_only=True)) as ws:
+        _handshake(ws)
+        for part in (_KEY[:1], _KEY[1:5], _KEY[5:] + _FBUR[:3], _FBUR[3:]):
+            ws.send_bytes(part)
+        assert ws.receive_bytes() == _FBUR  # the key was dropped whole; the FBUR was forwarded whole
+        ws.send_bytes(_FBUR[:4])
+        ws.send_bytes(_FBUR[4:])
+        assert ws.receive_bytes() == _FBUR
+
+
+def test_a_normal_grant_is_not_filtered(client, world):
+    with _open(client, world.grant(world.ann)) as ws:
+        assert ws.receive_bytes() == RFB_GREETING
+        for raw in (_KEY, _POINTER, _cut(b"x"), b"\xff\xfe"):
+            ws.send_bytes(raw)
+            assert ws.receive_bytes() == raw
+
+
+@pytest.mark.parametrize("data, code", [
+    (bytes([251]) + bytes(12), 1008),  # SetDesktopSize: unknown to the allowlist
+    (bytes([255, 0, 0, 1]) + bytes(8), 1008),  # a vendor extension
+    (bytes([2, 0, 0xFF, 0xFF]), 1009),  # 65535 encodings announced
+    (bytes([6, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF]), 1009),  # 4 GiB of clipboard text
+])
+def test_a_view_only_console_closes_on_what_it_cannot_skip(client, world, data, code):
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann, view_only=True)) as ws:
+        _handshake(ws)
+        ws.send_bytes(data)
+        ws.receive_bytes()
+    assert e.value.code == code
+
+
+def test_a_bad_handshake_closes_a_view_only_console_1008(client, world):
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann, view_only=True)) as ws:
+        assert ws.receive_bytes() == RFB_GREETING
+        ws.send_bytes(_KEY + _KEY)  # input where the protocol version goes
+        ws.receive_bytes()
+    assert e.value.code == 1008
+
+
+@pytest.mark.parametrize("greeting", [b"RFB 003.003\n", b"RFB 004.000\n"])
+def test_a_hypervisor_that_is_not_rfb_3_7_or_3_8_closes_a_view_only_console_1008(client, world, monkeypatch, greeting):
+    monkeypatch.setattr("app.console_backends.mock.RFB_GREETING", greeting)
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann, view_only=True)) as ws:
+        ws.receive_bytes()  # never shown: the filter refused the handshake first
+    assert e.value.code == 1008
+
+
+def test_a_view_only_client_that_runs_ahead_of_the_hypervisor_handshake_closes_1008(client, world):
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann, view_only=True)) as ws:
+        assert ws.receive_bytes() == RFB_GREETING
+        ws.send_bytes(_VERSION + b"\x02" + _KEY + _KEY + b"\x00" + _FBUR)  # the pipelined VNC-auth attack
+        ws.receive_bytes()
+    assert e.value.code == 1008
+
+
+def test_the_hypervisors_handshake_reaches_the_browser_unchanged_on_a_view_only_console(client, world):
+    with _open(client, world.grant(world.ann, view_only=True)) as ws:
+        _handshake(ws)  # each reply is the stub's own bytes, as it sent them
+
+
+def test_a_text_frame_closes_a_view_only_console_1003(client, world):
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann, view_only=True)) as ws:
+        _handshake(ws)
+        ws.send_text("hello")
+        ws.receive_bytes()
+    assert e.value.code == 1003
+
+
+def test_a_view_only_message_over_the_bound_closes_1009(client, world, monkeypatch):
+    monkeypatch.setattr(relay_router, "MAX_CLIENT_MESSAGE", 1024)
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann, view_only=True)) as ws:
+        _handshake(ws)
+        ws.send_bytes(_KEY * 200)
+        ws.receive_bytes()
+    assert e.value.code == 1009
+
+
+def test_dropped_input_is_not_activity_so_it_cannot_keep_a_console_open(client, world, monkeypatch):
+    monkeypatch.setattr(relay_router, "IDLE_SECONDS", 0.6)
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann, view_only=True)) as ws:
+        _handshake(ws)
+        for _ in range(8):
+            time.sleep(0.15)
+            ws.send_bytes(_KEY)
+        ws.receive_bytes()
+    assert e.value.code == 4408
+
+
+def test_the_vsphere_adapter_can_be_held_view_only_by_the_relay():
+    from app.console_backends.vsphere_webmks import VsphereWebMKSConsole
+
+    assert VsphereWebMKSConsole.supports_view_only is True
+    assert VsphereWebMKSConsole.open_view_only is not MockConsole.open_view_only  # its own, not the base refusal

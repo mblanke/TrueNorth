@@ -78,9 +78,10 @@ def vcenter_seconds() -> float:
 class VsphereWebMKSConsole(BaseConsoleBackend):
     kind: ClassVar[str] = "vsphere_api"
     hypervisor_type: ClassVar[str] = "vsphere"  # hypervisor_connections.hypervisor_type
-    # A WebMKS ticket has no read-only mode: whoever holds it can type. An observer's console
-    # is a normal one, marked observed (app/classes/consoles.py).
-    supports_view_only: ClassVar[bool] = False
+    # A WebMKS ticket has no read-only mode: whoever holds it can type. View-only is enforced
+    # by the relay (console_relay/rfb_filter.py, S4 #369), which passes only an allowlist of
+    # RFB client messages on a view-only grant; the ticket is the same as for a normal console.
+    supports_view_only: ClassVar[bool] = True
 
     def console_reader(self, db, targets: list[ConsoleTarget]) -> ConsoleReader:
         """Open WebMKS/VMRC connections (``runtime.numMksConnections``) on every target's VMs:
@@ -143,6 +144,11 @@ class VsphereWebMKSConsole(BaseConsoleBackend):
         if db is None or rng is None:
             raise ConsoleError("the console needs the VM's range to find its vCenter")
         return relay_access(relay_url)
+
+    def open_view_only(self, vm: dict[str, Any], *, db=None, rng=None,
+                       relay_url: str | None = None) -> dict[str, Any]:
+        """The same grant address: the relay filters the grant's input (``grant.view_only``)."""
+        return self.open(vm, db=db, rng=rng, relay_url=relay_url)
 
     def dial(self, grant: DialGrant, *, db=None, rng=None) -> DialTarget:
         """``AcquireTicket("webmks")`` now, on the range's own vCenter, and the ESXi URL it

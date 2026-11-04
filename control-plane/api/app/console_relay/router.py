@@ -5,7 +5,9 @@ The browser opens ``wss://<tn>/ws/console/<grant>`` as for any WebSocket here:
 belongs to that user and tenant and is unexpired and not already in use, asks the range's
 console adapter where to connect (``dial``: for vSphere a WebMKS ticket taken now), connects
 with the site's TLS trust and pumps bytes both ways. The stream is RFB; the relay does not
-parse it (S4 filters a view-only grant's input). Bytes are never logged; neither are tickets,
+parse it, except for a view-only grant (an observer's): its input is filtered by an allowlist of RFB
+messages and the hypervisor's handshake is observed, so the browser cannot get ahead of it
+(``rfb_filter``, S4 #369). Bytes are never logged; neither are tickets,
 URLs or a whole grant id.
 
 Close codes (the reason is safe to show the Student):
@@ -18,7 +20,13 @@ Close codes (the reason is safe to show the Student):
 1008  Also: the user may no longer open this console (``policy.py``: the session window closed,
       the Student left the roll call, observer consoles were switched off, the role or the
       lab changed). Asked at connect and every ``service.RENEW_SECONDS`` while open.
-1009  The browser sent a message larger than ``MAX_CLIENT_MESSAGE`` (RFB input is tiny).
+1009  The browser sent a message larger than ``MAX_CLIENT_MESSAGE`` (RFB input is tiny); on a
+      view-only console also: more encodings or clipboard text than ``rfb_filter`` allows.
+1008  Also, on a view-only console: input that is not on the allowlist and cannot be skipped
+      (an unknown message type, a bad handshake, input ahead of the hypervisor's handshake),
+      or a hypervisor handshake that is not RFB 3.7/3.8 or is refused. Key, pointer and
+      clipboard input is dropped and the console stays open.
+1003  A text frame on a view-only console (RFB is binary).
 4404  The machine is gone: the range was deleted or is not running, or the grant was withdrawn.
 1011  The database failed under a renewal (not the Student's doing); reconnect.
 4408  Idle: no bytes either way for ``IDLE_SECONDS``.
@@ -55,7 +63,7 @@ from .. import ws_auth
 from ..console_backends import ConsoleError, DialGrant, get_console_backend
 from ..db import get_db
 from ..models import Range
-from . import policy, service
+from . import policy, rfb_filter, service
 
 logger = logging.getLogger("truenorth.console_relay")
 # The library logs the request line of the upstream handshake (it holds the ticket) at DEBUG; a
@@ -68,6 +76,7 @@ router = APIRouter()
 CLOSE_FORBIDDEN, CLOSE_NORMAL, CLOSE_TOKEN_EXPIRED = 1008, 1000, 1001
 CLOSE_TOO_BIG, CLOSE_SERVICE, CLOSE_IDLE, CLOSE_RATE = 1009, 1011, 4408, 4429
 CLOSE_GONE, CLOSE_BUSY, CLOSE_EXPIRED = 4404, 4409, 4410
+CLOSE_UNSUPPORTED = 1003
 CLOSE_UPSTREAM_REFUSED, CLOSE_UPSTREAM_LOST, CLOSE_UPSTREAM_TIMEOUT = 4502, 4503, 4504
 #: Longest the hypervisor may take to hand over a ticket and accept the connection.
 DIAL_SECONDS = 15
@@ -297,15 +306,8 @@ async def console_relay(ws: WebSocket, grant: str) -> None:
             await _give_back(app, grant_id, holder)
             await _refuse(ws, CLOSE_UPSTREAM_REFUSED, reason, subprotocol)
             return
-        if ident.view_only and not target.input_blocked:
-            # Fail closed: a grant made for an observer is never served from a console that types.
-            # (S4, #369, will filter the input here and lift this for the adapters that cannot.)
-            logger.warning("console %s: a view-only grant met a console that accepts input; refused",
-                           service.short(grant_id))
-            await _give_back(app, grant_id, holder)
-            await _refuse(ws, CLOSE_UPSTREAM_REFUSED, "A view-only console is not available for this machine",
-                          subprotocol)
-            return
+        # A view-only grant is only ever served through ``rfb_filter`` (``_pump``): the filter is
+        # built from the grant, not from anything the adapter says, so no adapter can widen it.
         try:
             upstream = await _upstream_connect(target)
         except TimeoutError:
@@ -343,6 +345,9 @@ async def _pump(ws: WebSocket, upstream: Any, app: Any, facts: Any, holder: str,
     grant_id = facts.id
     last_bytes = time.monotonic()
 
+    # A view-only grant's input goes through the allowlist; any other is passed as it is.
+    view_filter = rfb_filter.ViewOnlyFilter() if facts.view_only else None
+
     async def to_upstream() -> tuple[int, str]:
         nonlocal last_bytes
         while True:
@@ -350,6 +355,21 @@ async def _pump(ws: WebSocket, upstream: Any, app: Any, facts: Any, holder: str,
             if message["type"] == "websocket.disconnect":
                 return CLOSE_NORMAL, ""
             data = message.get("bytes")
+            if view_filter is not None:
+                if data is None:  # RFB is binary: a text frame is never forwarded
+                    return CLOSE_UNSUPPORTED, "Input is not allowed on a view-only console"
+                if len(data) > MAX_CLIENT_MESSAGE:
+                    return CLOSE_TOO_BIG, "Message too large"
+                try:
+                    passed = view_filter.feed(data)
+                except rfb_filter.Violation as exc:
+                    logger.info("console %s: view-only input refused (%d dropped before)",
+                                service.short(grant_id), view_filter.dropped)
+                    return exc.code, exc.reason
+                for part in passed:
+                    last_bytes = time.monotonic()  # dropped input is not activity
+                    await upstream.send(part)
+                continue
             data = data if data is not None else message.get("text") or ""
             if len(data) > MAX_CLIENT_MESSAGE:
                 return CLOSE_TOO_BIG, "Message too large"
@@ -362,6 +382,16 @@ async def _pump(ws: WebSocket, upstream: Any, app: Any, facts: Any, holder: str,
             async for message in upstream:
                 last_bytes = time.monotonic()
                 if isinstance(message, bytes):
+                    if view_filter is not None:
+                        # The filter only observes the hypervisor's handshake (the client may not
+                        # get ahead of it); the bytes still go to the browser as they are. A
+                        # handshake it cannot vouch for ends the console before they are shown.
+                        try:
+                            view_filter.feed_server(message)
+                        except rfb_filter.Violation as exc:
+                            logger.info("console %s: the hypervisor's handshake was refused on a view-only console",
+                                        service.short(grant_id))
+                            return exc.code, exc.reason
                     await ws.send_bytes(message)
                 else:
                     await ws.send_text(message)
@@ -429,6 +459,8 @@ async def _pump(ws: WebSocket, upstream: Any, app: Any, facts: Any, holder: str,
             logger.info("console %s: relay ended: %s", service.short(grant_id), type(exc).__name__)
             return CLOSE_UPSTREAM_LOST, "The connection to the machine was lost"
     finally:
+        if view_filter is not None and view_filter.dropped:
+            logger.info("console %s: %d view-only input messages dropped", service.short(grant_id), view_filter.dropped)
         for t in tasks:
             t.cancel()
         await _close_quietly(upstream)

@@ -322,12 +322,12 @@ not screenshots.
   machine, why). Staff consoles never count as the Student's attendance.
 - **Observers** (the class's own observer list, not every observer in the tenant) see the
   same grid. **By default they get the live status only**: the page says "Observers see the
-  live status only: consoles are off for observers on this site". The reason is that a
-  vSphere console cannot be made view-only, so an observer could type into a Student's
-  machine. The setting is `CLASS_OBSERVER_CONSOLES` on the API, off by default, and the
+  live status only: consoles are off for observers on this site". The owner has not yet
+  decided to allow observers to watch Students' screens. (The console relay now drops an
+  observer's keyboard, mouse and clipboard input itself, so the setting is safe to turn on.) The setting is `CLASS_OBSERVER_CONSOLES` on the API, off by default, and the
   installer has no variable for it, so on an installer-built site it stays off. Where a
   site's administrator has turned it on, an observer may open consoles on the **Students'
-  machines only**; they are marked "observed" and the page says not to type into them.
+  machines only**; their console is view-only: keys, mouse and clipboard are not passed on.
 - Observers never see range passwords.
 
 Observers also see the calendar, roll call, sessions and ranges, attendance, close-out and

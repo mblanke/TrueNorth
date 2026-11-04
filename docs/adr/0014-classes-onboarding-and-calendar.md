@@ -111,7 +111,7 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
     as an observer whatever the staff list says. **Observers get no console tickets by
     default** (`CLASS_OBSERVER_CONSOLES`, off; owner decision 2026-10-28): §19 says read-only,
     and a vSphere WebMKS ticket has no read-only mode, so an observer could type into a
-    Student's machine. They see the status grid only (403 on the console route); the lead,
+    Student's machine (the relay's view-only allowlist, S4 #369, now makes that safe to turn on). They see the status grid only (403 on the console route); the lead,
     assistants and admins keep consoles. A site whose backend can enforce view-only
     (`BaseConsoleBackend.supports_view_only`) sets the variable on: an observer's console is
     then view-only, and where the backend cannot enforce it, a normal console marked
@@ -126,8 +126,15 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
     three connections at most, four live per user, one socket at a time) is checked again
     while the socket is open: the session window, the roll call and seat, observer consoles
     on, the role, the range running; the socket ends with the window. **An observer is issued
-    a console only where the adapter enforces view-only**, so on vSphere not at all until the
-    relay drops an observer's input itself (S4, #369). **Certificates:** with `verify_ssl` on,
+    a console only where the adapter's stream can be held view-only**; for vSphere that is the
+    relay's own allowlist (S4, #369, `console_relay/rfb_filter.py`): on a view-only grant the
+    relay frames the RFB byte stream and forwards only SetPixelFormat, SetEncodings and
+    FramebufferUpdateRequest (after a handshake it checks on both sides: it watches the
+    hypervisor's RFB 3.7/3.8 greeting and refuses any client step that runs ahead of it or
+    that the hypervisor did not offer; ClientInit is forced to shared; pseudo-encodings that
+    switch on refused client messages are stripped from SetEncodings);
+    key, pointer and clipboard messages are dropped, anything unknown closes the socket.
+    `CLASS_OBSERVER_CONSOLES` still defaults to off; it is the owner's to switch on. **Certificates:** with `verify_ssl` on,
     the API verifies each ESXi host's certificate against the trust store of the API container,
     so the ESXi host certificates must chain to a CA installed there (the site CA, or VMCA's
     root); there is no separate setting. The lab-session console (`POST /lab-sessions/{id}/console`)
