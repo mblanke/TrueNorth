@@ -47,6 +47,14 @@ describe('MarkdownViewComponent wiki images (#379)', () => {
     expect(img(f)?.src).toMatch(/^blob:/);
   }));
 
+  it('keeps the picture in the HTML when the text changes, with no gap before it comes back', fakeAsync(() => {
+    const f = show(`![shot](/api/wiki/images/${ID})`);
+    f.componentInstance.source = `Edited\n\n![shot](/api/wiki/images/${ID})`;
+    f.componentInstance.ngOnChanges();
+    f.detectChanges(); // no tick: the new <img> must already have its src
+    expect(img(f)?.src).toMatch(/^blob:/);
+  }));
+
   it('says so when the image cannot be loaded, and tries again next time', fakeAsync(() => {
     wiki.imageBlob.and.returnValue(throwError(() => new Error('404')));
     const f = show(`![shot](/api/wiki/images/${ID})`);

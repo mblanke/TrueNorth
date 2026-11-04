@@ -106,4 +106,16 @@ describe('renderMarkdown wiki images (#379)', () => {
       expect(renderMarkdown(`![a](${src})`)).not.toContain(WIKI_IMAGE_ATTR);
     }
   });
+
+  it('uses a blob URL the viewer already fetched, so a re-render does not blank the picture', () => {
+    const html = renderMarkdown(`![shot](/api/wiki/images/${ID})`, id => (id === ID ? 'blob:http://x/abc' : undefined));
+    expect(html).toContain('src="blob:http://x/abc"');
+    expect(html).toContain(`${WIKI_IMAGE_ATTR}="${ID}"`);
+  });
+
+  it('never lets the page itself supply a blob src', () => {
+    const html = renderMarkdown('<img src="blob:http://x/evil"><img src="data:image/png;base64,AAAA">', () => 'blob:http://x/ok');
+    expect(html).not.toContain('blob:');
+    expect(html).not.toContain('data:');
+  });
 });
