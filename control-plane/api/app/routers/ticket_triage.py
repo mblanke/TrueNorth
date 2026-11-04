@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Path
@@ -25,7 +26,9 @@ from sqlalchemy.orm import Session
 from .. import ticket_triage
 from ..auth import CurrentUser
 from ..db import get_db
+from ..models import AuditLog
 from ..rbac import Permission, require_permission
+from ..secretbox import SecretKeyMissingError, SecretUnreadableError
 from . import tickets
 
 logger = logging.getLogger("truenorth.api.ticket_triage")
@@ -71,17 +74,37 @@ def triage_ticket(
     """A suggested category, priority, labels, summary and reply hint. Changes nothing."""
     t = tickets._ticket(db, ticket_id, user)
     try:
+        ticket_triage.primary_backend_or_409(db)  # unavailable: say so before counting this as a request
+    except ticket_triage.UnavailableError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    since = datetime.now(UTC) - timedelta(minutes=1)
+    recent = (
+        db.query(AuditLog)
+        .filter(
+            AuditLog.user_id == uuid.UUID(user.id), AuditLog.action == "ticket_ai_triage", AuditLog.timestamp >= since
+        )
+        .count()
+    )
+    if recent >= ticket_triage.RATE_PER_MINUTE:
+        raise HTTPException(429, "That is a lot of AI requests. Wait a minute and try again.")
+    # Who asked about which ticket; never the text or the answer. Written before the backend is
+    # called so a failing or slow backend cannot be hammered without leaving a trace.
+    tickets._audit(db, user, "ticket_ai_triage", str(t.id))
+    db.commit()
+    try:
         suggestion, model, backend = ticket_triage.suggest(db, t)
     except ticket_triage.UnavailableError as exc:
         raise HTTPException(409, str(exc)) from exc
     except ticket_triage.UnusableError as exc:
         raise HTTPException(502, str(exc)) from exc
+    except (SecretKeyMissingError, SecretUnreadableError):
+        raise  # the app-wide handler answers 503 and names the key
     except (httpx.HTTPError, TimeoutError) as exc:
         logger.warning("AI backend unreachable for ticket triage: %s", exc)
         raise HTTPException(502, "The AI backend could not be reached.") from exc
-    # Who asked about which ticket; never the text or the answer.
-    tickets._audit(db, user, "ticket_ai_triage", str(t.id))
-    db.commit()
+    except Exception as exc:  # noqa: BLE001 — an odd reply from an adapter (empty choices, HTML 200) is a 502, not a crash
+        logger.warning("AI backend gave an unusable reply for ticket triage: %s", exc)
+        raise HTTPException(502, "The AI backend gave a reply this feature cannot read.") from exc
     return TriageOut(
         category=suggestion.category,
         priority=suggestion.priority,

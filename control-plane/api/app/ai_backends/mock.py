@@ -14,6 +14,7 @@ class MockEngine(BaseAIEngine):
         api_key: str | None = None,
         timeout: float = 30.0,
         model: str = "",
+        max_tokens: int = 256,
     ) -> dict:
         return {"response": f"[Mock AI] Echo: {prompt[:200]}", "model": "mock-v1"}
 
