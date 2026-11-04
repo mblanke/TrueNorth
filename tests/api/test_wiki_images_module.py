@@ -4,9 +4,8 @@ import contextlib
 import struct
 
 import pytest
+import wiki_image_bytes as b
 from app import wiki_images as wi
-
-from tests.api import wiki_image_bytes as b
 
 
 @pytest.mark.parametrize(

@@ -9,13 +9,12 @@ import uuid
 from contextlib import contextmanager
 
 import pytest
+import wiki_image_bytes as img
 from app import object_store
 from app.auth import CurrentUser, get_current_user
 from app.main import app as fastapi_app
 from app.models import Tenant, User, UserRole
 from app.models_wiki import WikiImage, WikiSpace
-
-from tests.api import wiki_image_bytes as img
 
 DEV_TENANT = "00000000-0000-0000-0000-000000000001"
 OTHER_TENANT = "00000000-0000-0000-0000-0000000000ff"
