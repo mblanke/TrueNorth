@@ -69,11 +69,19 @@ a reporter's reply to a ticket nobody owns yet, stay in the bell only.
 - **Each person can turn it off**: the *Email me about tickets* checkbox at the foot of the bell
   (`GET`/`PUT /notifications/settings`, the caller's own row only; `notification_preferences`,
   no row means on). The checkbox is hidden when the install has no mail server.
-- **Throttled**: someone already told about a ticket in the last five minutes (in the bell or
-  by email) is not emailed about it again, so a busy thread sends one email, not ten.
+- **Throttled**: someone already *emailed* about a ticket in the last five minutes is not emailed
+  about it again, so a busy thread sends one email, not ten. Only emails count (the notification is
+  marked `emailed`): a bell-only broadcast does not use up the allowance, so an assignment is not
+  swallowed by an earlier "reporter replied". Two events for one person in one request (a status
+  change and an assignment together) send one email.
 - **After the commit, at most once.** The emails go out from a background task once the request
-  is committed; a failed send is logged, never retried into duplicates, and never fails the
-  request. A rolled-back change emails nobody.
+  is committed, one attempt each (the shared SMTP channel normally retries three times; a retry
+  after a timeout that followed the relay accepting the message would be a duplicate). A failed
+  send is logged and never fails the request; a rolled-back change emails nobody. It is best
+  effort: a restart between the commit and the send drops the email, and the bell row is already
+  there. The throttle reads the database before the commit, so two requests on one ticket landing
+  at the same moment on different workers can each send one.
+- **Internal notes** go to the assignee only while they are still staff.
 
 ## Behaviour worth knowing
 

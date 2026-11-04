@@ -5,7 +5,6 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from app import notifications as notifications_pkg
 from app.auth import CurrentUser, get_current_user
 from app.main import app as fastapi_app
 from app.models import User, UserRole
@@ -62,7 +61,7 @@ def mail(monkeypatch):
     monkeypatch.setenv("SMTP_FROM", "truenorth@example.test")
     monkeypatch.setenv("WEB_BASE_URL", "https://tn.example.test/")
     chan = FakeChannel()
-    monkeypatch.setattr(notifications_pkg, "get_channel", lambda name: chan)
+    monkeypatch.setattr(ticket_email, "_channel", lambda: chan)
     return chan
 
 
@@ -296,3 +295,47 @@ class TestThrottle:
             client.post(f"/tickets/{a['id']}/comments", json={"body": "one"})
             client.post(f"/tickets/{b['id']}/comments", json={"body": "one"})
         assert len(mail.sent) == 2
+
+
+class TestReviewFindings:
+    """The adversarial review of #378: each of these was a real gap."""
+
+    def test_a_bell_only_broadcast_does_not_swallow_the_assignment_email(self, client, db_session, people, mail):
+        t = _file(client, people["student"])  # nobody owns it
+        with acting_as(people["student"]):
+            client.post(f"/tickets/{t['id']}/comments", json={"body": "any news?"})  # bell to every staff member
+        assert mail.sent == []
+        with acting_as(people["shaw"]):
+            client.patch(f"/tickets/{t['id']}", json={"assignee_id": people["chen"].id})
+        assert [m[0] for m in mail.sent] == [_email_of(db_session, people["chen"])]
+
+    def test_a_demoted_assignee_hears_nothing_about_an_internal_note(self, client, db_session, people, mail):
+        t = _file(client, people["student"])
+        with acting_as(people["shaw"]):
+            client.patch(f"/tickets/{t['id']}", json={"assignee_id": people["chen"].id})
+        mail.sent.clear()
+        _age_notifications(db_session)
+        db_session.get(User, uuid.UUID(people["chen"].id)).role = UserRole.student
+        db_session.commit()
+        with acting_as(people["shaw"]):
+            client.post(f"/tickets/{t['id']}/comments", json={"body": "private", "is_internal": True})
+        assert mail.sent == []
+        with acting_as(people["chen"]):
+            assert [n for n in client.get("/notifications").json() if n["kind"] == "ticket_note"] == []
+
+    def test_the_real_channel_is_tried_once_so_a_slow_relay_cannot_duplicate(self, monkeypatch):
+        import asyncio
+
+        import aiosmtplib
+
+        monkeypatch.setenv("SMTP_HOST", "smtp.example.test")
+        monkeypatch.setenv("SMTP_FROM", "truenorth@example.test")
+        calls = []
+
+        async def flaky(*args, **kwargs):
+            calls.append(1)
+            raise TimeoutError("the relay took the message and then went quiet")
+
+        monkeypatch.setattr(aiosmtplib, "send", flaky)
+        asyncio.run(ticket_email.send([ticket_email.Notice(uuid.uuid4(), "a@example.test", "TN-1: x", "body")]))
+        assert calls == [1]

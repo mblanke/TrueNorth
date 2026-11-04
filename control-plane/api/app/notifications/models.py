@@ -54,9 +54,7 @@ class NotificationPreference(Base):
 
     __tablename__ = "notification_preferences"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        GUID(), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
-    )
+    user_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
     # Email about tickets (a new reply, a status change, an assignment, an internal note).
     email_tickets: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"), default=True)

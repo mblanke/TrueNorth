@@ -398,25 +398,32 @@ def _tell(
     the ticket and what happened and carries none of the ticket's text
     (app/notifications/ticket_email.py)."""
     ids = existing_user_ids(db, t.tenant_id, recipients)
+    if kind == "ticket_note":  # an internal note is staff-only, even for an assignee whose role has since changed
+        staff = set(staff_ids(db, t.tenant_id))
+        ids = [i for i in ids if i in staff]
     actor = uuid.UUID(user.id)
     title = f"TN-{t.number}: {title}"
     link = f"/support/{t.id}"
-    if email:  # before notify: the row about to be written must not count as "already told"
+    emailed: set[uuid.UUID] = set()
+    if email:  # before notify: the row about to be written must not count as "already emailed"
         notices = ticket_email.prepare(
             db, tenant_id=t.tenant_id, recipient_ids=ids, actor_id=actor, title=title, kind=kind, link=link
         )
         if notices:
             db.info.setdefault(EMAIL_NOTICES_KEY, []).extend(notices)
-    notify(
-        db,
-        tenant_id=t.tenant_id,
-        user_ids=ids,
-        actor_id=actor,
-        title=title,
-        message=message or t.subject,
-        link=link,
-        kind=kind,
-    )
+            emailed = {n.user_id for n in notices}
+    for who, extra in ((emailed, {ticket_email.EMAILED_FLAG: True}), (set(ids) - emailed, None)):
+        notify(
+            db,
+            tenant_id=t.tenant_id,
+            user_ids=sorted(who),
+            actor_id=actor,
+            title=title,
+            message=message or t.subject,
+            link=link,
+            kind=kind,
+            extra=extra,
+        )
 
 
 def _send_emails(db: Session, background: BackgroundTasks) -> None:
