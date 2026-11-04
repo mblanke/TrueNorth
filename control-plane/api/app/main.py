@@ -444,8 +444,8 @@ from .routers import (
     threat_intel_router,
     tickets_router,
     transcript_router,
-    wiki_router,
     wiki_images_router,
+    wiki_router,
 )
 from .scheduler.approval_router import router as scheduling_approval_router  # noqa: E402
 from .scheduler.router import feed_router as scheduling_feed_router  # noqa: E402
