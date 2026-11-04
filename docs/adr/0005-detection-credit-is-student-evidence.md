@@ -1,6 +1,11 @@
 # ADR 0005: Detection credit comes from what the Student did
 
 - Status: accepted 2026-10-06 (credit model, instructor-only ack, exercise stays live for its duration)
+- **Superseded in part (2026-11-03) by ADR 0020:** team exercises have no answer key and no
+  automatic credit; instructors judge every objective. §1–2 (the scenario query as answer
+  key, credit on a matching submission) no longer apply to exercises. The submission
+  machinery (participants, query grammar, server-stamped window, redaction) stays, as
+  evidence for the instructor.
 - Date: 2026-10-06
 - Builds on: PR #6 (`worker/detection.py`, shipped behind `DETECTION_SCORING=off`), PR #52
   (telemetry ingest needs `telemetry:write`, which Students do not hold)

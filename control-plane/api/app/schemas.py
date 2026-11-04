@@ -247,10 +247,6 @@ class ObjectiveOut(BaseModel):
     achieved_at: datetime | None = None
 
 
-class ObjectiveAck(BaseModel):
-    evidence: str | None = None
-
-
 # ── AAR ────────────────────────────────────────────────────────────────
 class AAROut(BaseModel):
     model_config = ConfigDict(from_attributes=True)

@@ -163,10 +163,23 @@ def test_a_student_detection_is_credited_on_postgres(pg, monkeypatch):
         fastapi_app.dependency_overrides.pop(search_backend, None)
 
     assert resp.status_code == 201, resp.text
-    assert resp.json()["verdict"] == "achieved"
+    assert resp.json()["verdict"] == "recorded"  # evidence, not credit (ADR 0020)
+    db.expire_all()
+    assert db.query(Objective).filter(Objective.exercise_id == ex.id).one().achieved is False
+
+    # The instructor judges it, citing the detection: under the exercise row lock, on Postgres.
+    fastapi_app.dependency_overrides[get_db] = _db
+    try:
+        with acting_as(UserRole.instructor, tenant=str(tenant.id)):
+            judged = TestClient(fastapi_app).post(
+                f"/exercises/{ex.id}/objectives/detect_c2/ack", json={"cites": [resp.json()["id"]]}
+            )
+    finally:
+        fastapi_app.dependency_overrides.pop(get_db, None)
+    assert judged.status_code == 200, judged.text
     db.expire_all()
     obj = db.query(Objective).filter(Objective.exercise_id == ex.id).one()
-    assert obj.achieved and json.loads(obj.evidence)["student_id"] == str(student.id)
+    assert obj.achieved and json.loads(obj.evidence)["students"] == [str(student.id)]
     assert db.get(Exercise, ex.id).total_score == 40
 
 
@@ -186,8 +199,6 @@ def test_worker_guards_and_api_clock_work_against_the_native_enum(pg, monkeypatc
 
     assert overdue.id in set(sweep_overdue(db))
     with db_ops_session(pg) as s:
-        db_ops.achieve_objective(s, str(closed.id), "detect_c2", evidence="late")
-        db_ops.complete_exercise(s, str(closed.id))
         db_ops.start_exercise(s, str(closed.id))
     db.expire_all()
     assert db.get(m.Exercise, overdue.id).state == m.ExerciseState.completed
@@ -202,7 +213,7 @@ class _Slow(FakeStore):
         return await super().match(index, query, size)
 
 
-def test_concurrent_submissions_cannot_exceed_the_attempt_cap(pg, monkeypatch):
+def test_concurrent_submissions_cannot_exceed_the_submission_bound(pg, monkeypatch):
     # Review M1: twenty parallel submissions all saw "0 used" and were all judged.
     import time
 
@@ -213,14 +224,15 @@ def test_concurrent_submissions_cannot_exceed_the_attempt_cap(pg, monkeypatch):
     from app.routers.detections import search_backend
     from fastapi.testclient import TestClient
 
-    counted = detections._attempts
+    counted = detections._used
 
     def slow_count(*args):  # widen the count-then-insert window so a missing lock shows
         out = counted(*args)
         time.sleep(0.05)
         return out
 
-    monkeypatch.setattr(detections, "_attempts", slow_count)
+    monkeypatch.setattr(detections, "_used", slow_count)
+    monkeypatch.setattr(detections, "MAX_SUBMISSIONS", 5)
 
     db, factory = pg
     tenant, ex, student = _world(db)

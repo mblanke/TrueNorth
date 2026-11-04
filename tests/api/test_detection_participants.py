@@ -89,7 +89,7 @@ def test_the_booked_courses_students_submit_and_classmates_do_not(client, db_ses
     act_as(world["student"])
     r = _submit(client, world["ex"])
     assert r.status_code == 201, r.text
-    assert r.json()["verdict"] == "achieved"
+    assert r.json()["verdict"] == "recorded"  # evidence for the instructor (ADR 0020)
 
 
 def test_a_cancelled_booking_or_a_finished_enrolment_is_no_roster_seat(client, db_session, store, world):

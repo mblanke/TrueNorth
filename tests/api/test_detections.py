@@ -1,8 +1,8 @@
-"""Detection credit comes from what the Student did (ADR 0005, review finding 1).
+"""Team exercises: Student detections are evidence, instructors judge (ADR 0005, ADR 0020).
 
-The scenario query is the answer key. An idle Student scores nothing; a Student's query
-is credited only when it finds enough of the attack, precisely enough, inside the
-exercise window measured on the server's ingest clock.
+There is no answer key. A detection is run inside the exercise window (the server's ingest
+clock) and recorded with what it matched; it credits nothing. An objective is achieved only
+by an instructor's judgement, which may cite the detections it relied on.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from app.search_backends import SearchQueryError
 
 @pytest.fixture(autouse=True)
 def _any_tenant_student(monkeypatch):
-    """These tests are about credit, not who takes part: exercises here have no roster
+    """These tests are about recording and judging, not who takes part: exercises here have no roster
     (participation: tests/api/test_detection_participants.py)."""
     monkeypatch.setenv("DETECTION_SUBMIT_PARTICIPANTS_ONLY", "false")
 
@@ -53,7 +53,7 @@ def _exercise(db, *, tenant=DEV_TENANT, state=ExerciseState.running, started=STA
     db.add_all([sc, ex])
     for ref, validator, points in (("detect_c2", "opensearch_query", 40), ("detect_phish", "validate.opensearch_query", 10),
                                    ("undefined_var", "opensearch_query", 5), ("write_report", "deliverable_check", 5)):
-        # Rows carry no params (as QSP-made rows do): the answer key comes from the scenario.
+        # Rows carry no params (as QSP-made rows do): look-for guidance comes from the scenario.
         db.add(Objective(exercise_id=ex.id, ref_id=ref, objective_type=ObjectiveType.detection,
                          description=ref, validator=validator, points=points))
     db.commit()
@@ -74,65 +74,51 @@ def test_students_and_instructors_submit_observers_do_not():
     assert holders == {UserRole.admin, UserRole.instructor, UserRole.student}
 
 
-class TestCredit:
+class TestRecording:
     def test_an_idle_student_scores_nothing_however_much_attack_telemetry_exists(self, client, db_session, store):
-        # The blocker: the inject's own telemetry used to achieve the objective by itself.
         store.events = [beacon() for _ in range(50)]
         ex = _exercise(db_session)
         with acting_as(UserRole.student):
             assert client.get(f"/exercises/{ex.id}/detections").json() == []
         assert _obj(db_session, ex).achieved is False
 
-    def test_a_precise_detection_is_credited_with_the_student_named(self, client, db_session, store):
+    def test_a_detection_is_recorded_with_what_it_matched_and_credits_nothing(self, client, db_session, store):
+        # ADR 0020: no answer key, no verdict. A detection that finds exactly the attack
+        # is evidence for the instructor, never an achieved objective by itself.
         store.events = [beacon(), beacon(), *noise(n=3)]
         ex = _exercise(db_session)
-        with acting_as(UserRole.student) as student:
+        with acting_as(UserRole.student) as who:
             resp = _submit(client, ex, "url.domain:*northwind-update.example")
         assert resp.status_code == 201, resp.text
         body = resp.json()
-        assert body["verdict"] == "achieved" and body["events_matched"] == 2 and body["attempts_left"] == 4
-        assert body["on_target"] is None and body["precision"] is None  # Students do not see the key's numbers
-        obj = _obj(db_session, ex)
-        evidence = json.loads(obj.evidence)
-        assert obj.achieved and evidence["source"] == "student_detection"
-        assert evidence["student_id"] == student.id and evidence["submission_id"] == body["id"]
-        assert "query" not in evidence  # the answer key never lands where Students can read it
-        assert db_session.get(Exercise, ex.id).total_score == 40
+        assert (body["verdict"], body["events_matched"], body["submissions_left"]) == ("recorded", 2, 19)
+        assert "on_target" not in body and "precision" not in body
+        assert _obj(db_session, ex).achieved is False
+        assert db_session.get(Exercise, ex.id).total_score == 0
+        row = db_session.get(DetectionSubmission, uuid.UUID(body["id"]))
+        assert str(row.user_id) == who.id and json.loads(row.matched_ids) == ["0", "1"]
+        assert (row.threshold, row.min_precision, row.on_target) == (None, None, None)
         assert store.indices == {f"range-{ex.range_id},range-{ex.range_id}-*"}
 
-    def test_a_catch_all_query_fails_the_precision_floor(self, client, db_session, store):
-        store.events = [beacon(), beacon(), *noise(n=10)]
+    def test_a_catch_all_is_recorded_too_the_instructor_sees_what_it_matched(self, client, db_session, store):
+        store.events = [beacon(), *noise(n=10)]
         ex = _exercise(db_session)
         with acting_as(UserRole.student):
             body = _submit(client, ex, "*").json()
-        assert body["verdict"] == "missed" and body["events_matched"] == 12
+        assert (body["verdict"], body["events_matched"]) == ("recorded", 11)
         assert _obj(db_session, ex).achieved is False
 
-    def test_too_few_attack_events_found_is_missed(self, client, db_session, store):
-        store.events = [beacon(), beacon()]
+    def test_the_window_excludes_telemetry_before_the_start_and_without_server_time(self, client, db_session, store):
+        unstamped = {"event_type": "http", "url.domain": "cdn.northwind-update.example", "@timestamp": _at(5)}
+        store.events = [beacon(minutes=-30), beacon(minutes=3), unstamped]
         ex = _exercise(db_session)
         with acting_as(UserRole.student):
-            assert _submit(client, ex, "url.domain:cdn.northwind-update.example AND nope:x").json()["verdict"] == "missed"
+            assert _submit(client, ex, "url.domain:*northwind*").json()["events_matched"] == 1
 
-    def test_telemetry_before_the_exercise_started_does_not_count(self, client, db_session, store):
-        # An earlier exercise on the same (reused) range, or the inject before start.
-        store.events = [beacon(minutes=-30), beacon(minutes=-1), beacon(minutes=3)]
+    def test_any_spelling_of_the_query_validator_is_a_detection_objective(self, client, db_session, store):
         ex = _exercise(db_session)
         with acting_as(UserRole.student):
-            body = _submit(client, ex, "url.domain:*northwind*").json()
-        assert body["verdict"] == "missed" and body["events_matched"] == 1  # min_hits is 2
-
-    def test_events_without_a_server_ingest_time_do_not_count(self, client, db_session, store):
-        store.events = [{"event_type": "http", "url.domain": "cdn.northwind-update.example", "@timestamp": _at(5)}] * 3
-        ex = _exercise(db_session)
-        with acting_as(UserRole.student):
-            assert _submit(client, ex, "url.domain:*northwind*").json()["events_matched"] == 0
-
-    def test_old_validator_spelling_is_still_a_detection_objective(self, client, db_session, store):
-        store.events = [{"event_type": "email", "attachment.name": "q1.docm", "truenorth": {"ingested_at": _at(1)}}]
-        ex = _exercise(db_session)
-        with acting_as(UserRole.student):
-            assert _submit(client, ex, "attachment.name:*.docm", ref="detect_phish").json()["verdict"] == "achieved"
+            assert _submit(client, ex, "attachment.name:*.docm", ref="detect_phish").status_code == 201
 
 
 class TestRefusals:
@@ -152,43 +138,86 @@ class TestRefusals:
         with acting_as(UserRole.observer):
             assert _submit(client, ex, "a:b").status_code == 403
 
-    @pytest.mark.parametrize(("ref", "why"), [("undefined_var", "attacker_ip"), ("write_report", "not a detection")])
-    def test_unscorable_objectives_say_why(self, client, db_session, store, ref, why):
+    def test_an_objective_not_worked_by_a_detection_takes_none(self, client, db_session, store):
         ex = _exercise(db_session)
         with acting_as(UserRole.student):
-            resp = _submit(client, ex, "a:b", ref=ref)
-        assert resp.status_code == 409 and why in resp.json()["detail"]
+            resp = _submit(client, ex, "a:b", ref="write_report")
+        assert resp.status_code == 409 and "not worked by a detection" in resp.json()["detail"]
 
-    def test_already_achieved(self, client, db_session, store):
-        store.events = [beacon(), beacon()]
+    def test_an_objective_with_no_look_for_still_takes_detections(self, client, db_session, store):
+        # There is no key to need: undefined_var's guidance does not render, which no longer matters.
         ex = _exercise(db_session)
         with acting_as(UserRole.student):
-            assert _submit(client, ex, "url.domain:*northwind*").status_code == 201
-            assert _submit(client, ex, "url.domain:*northwind*").status_code == 409
+            assert _submit(client, ex, "a:b", ref="undefined_var").status_code == 201
 
-    def test_attempts_are_capped_per_student(self, client, db_session, store):
+    def test_none_after_the_instructor_judged_it_achieved(self, client, db_session, store):
+        ex = _exercise(db_session)
+        with acting_as(UserRole.instructor):
+            assert _ack(client, ex).status_code == 200
+        with acting_as(UserRole.student):
+            assert _submit(client, ex, "a:b").status_code == 409
+
+    def test_submissions_are_bounded_per_student_per_run(self, client, db_session, store):
         ex = _exercise(db_session)
         with acting_as(UserRole.student):
-            for left in (4, 3, 2, 1, 0):
-                assert _submit(client, ex, "nope:x").json()["attempts_left"] == left
+            lefts = [_submit(client, ex, "nope:x").json()["submissions_left"] for _ in range(20)]
+            assert lefts[0] == 19 and lefts[-1] == 0
             assert _submit(client, ex, "nope:x").status_code == 429
-        with acting_as(UserRole.student):  # another Student on the team has their own attempts
+        with acting_as(UserRole.student):  # another Student has their own bound
             assert _submit(client, ex, "nope:x").status_code == 201
 
-    def test_a_store_outage_is_unscored_and_costs_no_attempt(self, client, db_session, store):
-        store.down = True
+    def test_a_pending_submission_counts_and_a_long_dead_one_does_not(self, client, db_session, store):
+        ex = _exercise(db_session)
+        with acting_as(UserRole.student) as who:
+            for age in (timedelta(0), timedelta(hours=1)):
+                db_session.add(DetectionSubmission(exercise_id=ex.id, objective_ref="detect_c2", query="x",
+                                                   user_id=uuid.UUID(who.id), verdict="pending",
+                                                   window_start=STARTED, submitted_at=datetime.now(UTC) - age))
+            db_session.commit()
+            assert _submit(client, ex, "nope:x").json()["submissions_left"] == 18
+
+    def test_a_replayed_run_starts_its_bound_again(self, client, db_session, store):
         ex = _exercise(db_session)
         with acting_as(UserRole.student):
-            assert _submit(client, ex, "a:b").status_code == 503
-            store.down = False
-            assert _submit(client, ex, "nope:x").json()["attempts_left"] == 4
-        verdicts = [r.verdict for r in db_session.query(DetectionSubmission).order_by(DetectionSubmission.submitted_at)]
-        assert sorted(verdicts) == ["missed", "unscored"]
-        assert _obj(db_session, ex).achieved is False
+            for _ in range(20):
+                _submit(client, ex, "nope:x")
+            assert _submit(client, ex, "nope:x").status_code == 429
+        ex = db_session.get(Exercise, ex.id)
+        ex.started_at = STARTED + timedelta(hours=1)
+        db_session.commit()
+        with acting_as(UserRole.student):
+            assert _submit(client, ex, "nope:x").json()["submissions_left"] == 19
+
+    def test_a_query_the_store_cannot_parse_is_422_and_not_recorded(self, client, db_session):
+        class Refuses(FakeStore):
+            async def match(self, index, query, size=0):
+                raise SearchQueryError("Failed to parse query [bytes_out:>1]")
+
+        fastapi_app.dependency_overrides[search_backend] = lambda: Refuses()
+        ex = _exercise(db_session)
+        try:
+            with acting_as(UserRole.student):
+                resp = _submit(client, ex, "bytes_out:>1")
+            assert resp.status_code == 422 and "nothing recorded" in resp.json()["detail"]
+        finally:
+            fastapi_app.dependency_overrides.pop(search_backend, None)
+        assert db_session.query(DetectionSubmission).count() == 0
+
+    def test_a_store_outage_is_503_and_not_recorded(self, client, db_session):
+        from app.search_backends import NullSearchBackend
+
+        fastapi_app.dependency_overrides[search_backend] = lambda: NullSearchBackend()
+        ex = _exercise(db_session)
+        try:
+            with acting_as(UserRole.student):
+                assert _submit(client, ex, "a:b").status_code == 503
+        finally:
+            fastapi_app.dependency_overrides.pop(search_backend, None)
+        assert db_session.query(DetectionSubmission).count() == 0
 
 
-class TestAttemptsList:
-    def test_students_see_their_own_staff_see_all_with_precision(self, client, db_session, store):
+class TestSubmissionsList:
+    def test_students_see_their_own_staff_see_all(self, client, db_session, store):
         store.events = [beacon(), *noise(n=3)]
         ex = _exercise(db_session)
         with acting_as(UserRole.student):
@@ -199,9 +228,7 @@ class TestAttemptsList:
         assert [d["query"] for d in mine] == ["nope:x"]
         with acting_as(UserRole.instructor):
             every = client.get(f"/exercises/{ex.id}/detections").json()
-        assert len(every) == 2
-        http = next(d for d in every if d["query"] == "event_type:http")
-        assert (http["events_matched"], http["on_target"], http["precision"]) == (4, 1, 0.25)
+        assert sorted((d["query"], d["events_matched"]) for d in every) == [("event_type:http", 4), ("nope:x", 0)]
 
     def test_other_tenant_list_is_not_found(self, client, db_session, store):
         ex = _exercise(db_session, tenant=OTHER_TENANT)
@@ -209,132 +236,103 @@ class TestAttemptsList:
             assert client.get(f"/exercises/{ex.id}/detections").status_code == 404
 
 
-# -- review findings (adversarial review of 2026-10-06) ---------------------------------
-class _Hook(FakeStore):
-    """A store that runs ``during`` while it is judging, as a concurrent request would."""
-
-    def __init__(self, events, during):
-        super().__init__(events)
-        self.during = during
-
-    async def match(self, index, query, size=0):
-        if self.during:
-            hook, self.during = self.during, None
-            hook()
-        return await super().match(index, query, size)
+def _ack(client, ex, ref="detect_c2", **body):
+    return client.post(f"/exercises/{ex.id}/objectives/{ref}/ack", json=body or None)
 
 
-class TestReviewFindings:
-    def test_a_pending_attempt_counts_so_concurrent_submissions_cannot_exceed_the_cap(self, client, db_session, store):
-        # M1: the attempt is reserved before judging; a request still being judged counts.
-        ex = _exercise(db_session)
-        with acting_as(UserRole.student) as who:
-            for _ in range(4):
-                db_session.add(DetectionSubmission(exercise_id=ex.id, objective_ref="detect_c2", query="x",
-                                                   user_id=uuid.UUID(who.id), verdict="pending",
-                                                   window_start=STARTED, submitted_at=datetime.now(UTC)))
-            db_session.commit()
-            assert _submit(client, ex, "nope:x").json()["attempts_left"] == 0
-            assert _submit(client, ex, "nope:x").status_code == 429
+class TestJudging:
+    """ADR 0020: an instructor's judgement is the only way an exercise objective is achieved."""
 
-    def test_a_long_dead_pending_attempt_is_freed(self, client, db_session, store):
-        ex = _exercise(db_session)
-        with acting_as(UserRole.student) as who:
-            db_session.add(DetectionSubmission(exercise_id=ex.id, objective_ref="detect_c2", query="x",
-                                               user_id=uuid.UUID(who.id), verdict="pending", window_start=STARTED,
-                                               submitted_at=datetime.now(UTC) - timedelta(hours=1)))
-            db_session.commit()
-            assert _submit(client, ex, "nope:x").json()["attempts_left"] == 4
-
-    def test_no_credit_if_the_exercise_closes_while_judging(self, client, db_session):
-        # M2: results may already have gone out; the late credit must not move the score.
-        ex = _exercise(db_session)
-
-        def instructor_completes():
-            db_session.query(Exercise).filter(Exercise.id == ex.id).update({"state": ExerciseState.completed})
-            db_session.commit()
-
-        store = _Hook([beacon(), beacon()], instructor_completes)
-        fastapi_app.dependency_overrides[search_backend] = lambda: store
-        try:
-            with acting_as(UserRole.student):
-                body = _submit(client, ex, "url.domain:*northwind*").json()
-        finally:
-            fastapi_app.dependency_overrides.pop(search_backend, None)
-        assert body["verdict"] == "closed"
-        assert _obj(db_session, ex).achieved is False
-        assert db_session.get(Exercise, ex.id).total_score == 0
-
-    def test_a_replayed_run_starts_with_full_attempts_and_no_old_evidence(self, client, db_session, store):
-        # M3: attempts belong to a run; /run resets evidence along with achieved.
+    def test_an_instructor_judges_with_a_note_and_cites_the_detections_relied_on(self, client, db_session, store):
         store.events = [beacon(), beacon()]
         ex = _exercise(db_session)
-        with acting_as(UserRole.student):
-            for _ in range(5):
-                _submit(client, ex, "nope:x")
-            assert _submit(client, ex, "nope:x").status_code == 429
-        ex = db_session.get(Exercise, ex.id)
-        ex.started_at = STARTED + timedelta(hours=1)  # the replay's start
-        db_session.commit()
-        for e in store.events:
-            e["truenorth"]["ingested_at"] = _at(65)
-        with acting_as(UserRole.student):
-            body = _submit(client, ex, "url.domain:*northwind*").json()
-        assert body["verdict"] == "achieved" and body["attempts_left"] == 4
-
-    def test_run_reset_clears_the_last_runs_evidence(self, client, db_session, store):
-        ex = _exercise(db_session, state=ExerciseState.completed)
+        with acting_as(UserRole.student) as student:
+            cited = _submit(client, ex, "url.domain:*northwind*").json()["id"]
+        with acting_as(UserRole.instructor) as instructor:
+            resp = _ack(client, ex, evidence="Blue team found the beacon at 12:05", cites=[cited])
+        assert resp.status_code == 200, resp.text
         obj = _obj(db_session, ex)
-        obj.achieved, obj.evidence = True, '{"source": "student_detection"}'
+        ev = json.loads(obj.evidence)
+        assert obj.achieved and ev["source"] == "instructor" and ev["by_id"] == instructor.id
+        assert (ev["note"], ev["cites"], ev["students"]) == ("Blue team found the beacon at 12:05", [cited], [student.id])
+        assert db_session.get(Exercise, ex.id).total_score == 40
+        assert db_session.get(DetectionSubmission, uuid.UUID(cited)).verdict == "cited"
+
+    def test_a_judgement_needs_no_citation(self, client, db_session, store):
+        ex = _exercise(db_session)
+        with acting_as(UserRole.instructor):
+            assert _ack(client, ex, ref="write_report").status_code == 200
+        assert json.loads(_obj(db_session, ex, "write_report").evidence)["cites"] == []
+
+    def test_the_old_query_param_evidence_still_reaches_the_note(self, client, db_session, store):
+        # The web app and SDK always sent {"evidence": ...} as JSON; the server read a query
+        # parameter and dropped it. Now the JSON body is what counts.
+        ex = _exercise(db_session)
+        with acting_as(UserRole.instructor):
+            client.post(f"/exercises/{ex.id}/objectives/detect_c2/ack", json={"evidence": "seen live"})
+        assert json.loads(_obj(db_session, ex).evidence)["note"] == "seen live"
+
+    @pytest.mark.parametrize("which", ["other_objective", "other_exercise", "unknown"])
+    def test_only_this_objectives_detections_in_this_run_can_be_cited(self, client, db_session, store, which):
+        ex, other = _exercise(db_session), _exercise(db_session)
+        with acting_as(UserRole.student):
+            ids = {
+                "other_objective": _submit(client, ex, "a:b", ref="detect_phish").json()["id"],
+                "other_exercise": _submit(client, other, "a:b").json()["id"],
+                "unknown": str(uuid.uuid4()),
+            }
+        with acting_as(UserRole.instructor):
+            assert _ack(client, ex, cites=[ids[which]]).status_code == 422
+        assert _obj(db_session, ex).achieved is False
+
+    def test_a_detection_from_an_earlier_run_cannot_be_cited(self, client, db_session, store):
+        ex = _exercise(db_session)
+        with acting_as(UserRole.student):
+            old = _submit(client, ex, "a:b").json()["id"]
+        db_session.get(Exercise, ex.id).started_at = STARTED + timedelta(hours=1)
         db_session.commit()
         with acting_as(UserRole.instructor):
-            assert client.post(f"/exercises/{ex.id}/run").status_code == 409  # sweep M3: never by accident
-            assert _obj(db_session, ex).achieved is True
-            client.post(f"/exercises/{ex.id}/run", params={"reset": "true"})
+            assert _ack(client, ex, cites=[old]).status_code == 422
+
+    def test_students_and_observers_cannot_judge(self, client, db_session, store):
+        ex = _exercise(db_session)
+        for role in (UserRole.student, UserRole.observer):
+            with acting_as(role):
+                assert _ack(client, ex).status_code == 403
+        assert _obj(db_session, ex).achieved is False
+
+    def test_withdrawing_a_judgement_re_totals_and_uncites(self, client, db_session, store):
+        ex = _exercise(db_session)
+        with acting_as(UserRole.student):
+            cited = _submit(client, ex, "a:b").json()["id"]
+        with acting_as(UserRole.instructor):
+            _ack(client, ex, cites=[cited])
+            resp = client.delete(f"/exercises/{ex.id}/objectives/detect_c2/ack")
+            assert resp.status_code == 200, resp.text
+            assert client.delete(f"/exercises/{ex.id}/objectives/detect_c2/ack").status_code == 409
         obj = _obj(db_session, ex)
         assert (obj.achieved, obj.evidence) == (False, None)
+        assert db_session.get(Exercise, ex.id).total_score == 0
+        assert db_session.get(DetectionSubmission, uuid.UUID(cited)).verdict == "recorded"
 
-    def test_a_query_that_does_not_parse_is_422_and_free(self, client, db_session):
-        # M5: the Student's typo is not an outage, and costs no attempt.
-        class Refuses(FakeStore):
-            async def match(self, index, query, size=0):
-                raise SearchQueryError("Failed to parse query [bytes_out:>1]")
-
-        # In the detection grammar, but the store refuses it (e.g. a range on a keyword field).
-        fastapi_app.dependency_overrides[search_backend] = lambda: Refuses()
-        ex = _exercise(db_session)
-        try:
-            with acting_as(UserRole.student):
-                resp = _submit(client, ex, "bytes_out:>1")
-                assert resp.status_code == 422 and "Failed to parse" in resp.json()["detail"]
-                for _ in range(19):
-                    _submit(client, ex, "bytes_out:>1")
-                assert _submit(client, ex, "bytes_out:>1").status_code == 429  # free, but not unlimited
-        finally:
-            fastapi_app.dependency_overrides.pop(search_backend, None)
-
-    def test_no_search_backend_is_an_outage_not_a_miss(self, client, db_session):
-        from app.search_backends import NullSearchBackend
-
-        fastapi_app.dependency_overrides[search_backend] = lambda: NullSearchBackend()
-        ex = _exercise(db_session)
-        try:
-            with acting_as(UserRole.student):
-                assert _submit(client, ex, "a:b").status_code == 503
-        finally:
-            fastapi_app.dependency_overrides.pop(search_backend, None)
-
-    def test_staff_detections_are_not_recorded_as_student_evidence(self, client, db_session, store):
-        store.events = [beacon(), beacon()]
-        ex = _exercise(db_session)
+    @pytest.mark.parametrize("state", [ExerciseState.completed, ExerciseState.cancelled, ExerciseState.pending])
+    def test_judging_is_refused_once_the_exercise_is_closed(self, client, db_session, store, state):
+        ex = _exercise(db_session, state=state)
         with acting_as(UserRole.instructor):
-            assert _submit(client, ex, "url.domain:*northwind*").json()["verdict"] == "achieved"
-        assert json.loads(_obj(db_session, ex).evidence)["source"] == "staff_detection"
+            assert _ack(client, ex).status_code == 409
+            assert client.delete(f"/exercises/{ex.id}/objectives/detect_c2/ack").status_code == 409
+
+    def test_other_tenant_cannot_judge(self, client, db_session, store):
+        ex = _exercise(db_session, tenant=OTHER_TENANT)
+        with acting_as(UserRole.instructor):
+            assert _ack(client, ex).status_code == 404
+            assert client.delete(f"/exercises/{ex.id}/objectives/detect_c2/ack").status_code == 404
 
 
 class TestClosing:
     def test_complete_assesses_every_student_who_submitted(self, client, db_session, store, monkeypatch):
-        # M7: auto-assessment, the LTI grade and xAPI go to the Students who took part.
+        # M7: auto-assessment, the LTI grade and xAPI go to the Students who took part
+        # (a recorded detection is taking part).
         from app import celery_client
         from app.models import User
 

@@ -2132,7 +2132,7 @@
         "type": "object"
       },
       "AttentionOut": {
-        "description": "Something an instructor may want to look at. Only what the data says today:\n\n- ``lab_fault``: the Student's lab is failed, expired or being cleaned up (not their doing)\n- ``lab_wait``: their lab is queued, building or resetting\n- ``learning``: ``learning_signal_misses`` or more judged misses on one objective, no credit\n- ``not_seen``: no detection and no lab heartbeat for ``not_seen_minutes`` (neutral)",
+        "description": "Something an instructor may want to look at. Only what the data says today:\n\n- ``lab_fault``: the Student's lab is failed, expired or being cleaned up (not their doing)\n- ``lab_wait``: their lab is queued, building or resetting\n- ``not_seen``: no detection and no lab heartbeat for ``not_seen_minutes`` (neutral)",
         "properties": {
           "detail": {
             "title": "Detail",
@@ -2142,7 +2142,6 @@
             "enum": [
               "lab_fault",
               "lab_wait",
-              "learning",
               "not_seen"
             ],
             "title": "Kind",
@@ -3797,7 +3796,7 @@
         "type": "object"
       },
       "ClassAttemptOut": {
-        "description": "One detection attempt in this run. ``query`` and ``precision`` only for staff who may\nsee the answer key (``scenario:update``), as ``GET /exercises/{id}/detections``.",
+        "description": "One detection submission in this run (ADR 0020: evidence, never a grade). ``query`` only\nfor staff (``scenario:update``), as ``GET /exercises/{id}/detections``.",
         "properties": {
           "events_matched": {
             "anyOf": [
@@ -3818,17 +3817,6 @@
           "objective_ref": {
             "title": "Objective Ref",
             "type": "string"
-          },
-          "precision": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Precision"
           },
           "query": {
             "anyOf": [
@@ -4249,7 +4237,7 @@
         "type": "object"
       },
       "ClassObjectiveStateOut": {
-        "description": "One objective as this Student stands on it, from their own attempts only.",
+        "description": "One objective as this Student stands on it: ``credited`` when the instructor's judgement\nof it cites their detection (ADR 0020), else from their own submissions.",
         "properties": {
           "credited_at": {
             "anyOf": [
@@ -4263,11 +4251,6 @@
             ],
             "title": "Credited At"
           },
-          "misses": {
-            "default": 0,
-            "title": "Misses",
-            "type": "integer"
-          },
           "ref_id": {
             "title": "Ref Id",
             "type": "string"
@@ -4276,11 +4259,16 @@
             "enum": [
               "credited",
               "pending",
-              "missed",
+              "submitted",
               "not_attempted"
             ],
             "title": "State",
             "type": "string"
+          },
+          "submissions": {
+            "default": 0,
+            "title": "Submissions",
+            "type": "integer"
           }
         },
         "required": [
@@ -4743,12 +4731,13 @@
           },
           "attempts_credited": {
             "default": 0,
+            "description": "of those, the ones an instructor's judgement cites",
             "title": "Attempts Credited",
             "type": "integer"
           },
           "attempts_total": {
             "default": 0,
-            "description": "judged or pending attempts in this run",
+            "description": "detection submissions in this run",
             "title": "Attempts Total",
             "type": "integer"
           },
@@ -4828,7 +4817,7 @@
           },
           "score": {
             "default": 0,
-            "description": "points of the objectives this Student's own detections were credited for",
+            "description": "points of the objectives whose judgement cites this Student's detection",
             "title": "Score",
             "type": "integer"
           },
@@ -7650,19 +7639,8 @@
         "type": "object"
       },
       "DetectionOut": {
-        "description": "One attempt. ``on_target`` and ``precision`` are shown only to staff who may see the key.",
+        "description": "One submission: ``recorded``, or ``cited`` once an instructor's acknowledgement relies on\nit. Rows from before ADR 0020 keep their old verdicts. ``submissions_left`` is set on the\nresponse to a submission.",
         "properties": {
-          "attempts_left": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Attempts Left"
-          },
           "events_matched": {
             "anyOf": [
               {
@@ -7683,7 +7661,11 @@
             "title": "Objective Ref",
             "type": "string"
           },
-          "on_target": {
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "submissions_left": {
             "anyOf": [
               {
                 "type": "integer"
@@ -7692,33 +7674,7 @@
                 "type": "null"
               }
             ],
-            "title": "On Target"
-          },
-          "precision": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Precision"
-          },
-          "query": {
-            "title": "Query",
-            "type": "string"
-          },
-          "reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reason"
+            "title": "Submissions Left"
           },
           "submitted_at": {
             "anyOf": [
@@ -9091,10 +9047,6 @@
             "title": "Generated At",
             "type": "string"
           },
-          "learning_signal_misses": {
-            "title": "Learning Signal Misses",
-            "type": "integer"
-          },
           "max_score": {
             "default": 0,
             "title": "Max Score",
@@ -9151,7 +9103,6 @@
           "exercise_id",
           "exercise_name",
           "state",
-          "learning_signal_misses",
           "not_seen_minutes",
           "generated_at"
         ],
@@ -13536,6 +13487,35 @@
           }
         },
         "title": "JobView",
+        "type": "object"
+      },
+      "JudgementIn": {
+        "properties": {
+          "cites": {
+            "description": "Detection submissions on this objective, in this run, that the judgement relies on",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Cites",
+            "type": "array"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The instructor's note: what the team did",
+            "title": "Evidence"
+          }
+        },
+        "title": "JudgementIn",
         "type": "object"
       },
       "KitDefinitionIn": {
@@ -22805,7 +22785,7 @@
                 "type": "null"
               }
             ],
-            "description": "Never on an Unclassified deployment",
+            "description": "Detections an instructor cited in judging (ADR 0020); never on an Unclassified deployment",
             "title": "Detections Credited"
           },
           "display_name": {
@@ -38635,7 +38615,7 @@
     },
     "/exercises/{exercise_id}/detections": {
       "get": {
-        "description": "Detection attempts on an exercise: a Student's own; every attempt for staff.  **Permission: exercise:read**",
+        "description": "Detection submissions on an exercise: a Student's own; every submission for staff, who\njudge the objectives.  **Permission: exercise:read**",
         "operationId": "list_detections_exercises__exercise_id__detections_get",
         "parameters": [
           {
@@ -38793,8 +38773,64 @@
       }
     },
     "/exercises/{exercise_id}/objectives/{ref_id}/ack": {
+      "delete": {
+        "description": "Withdraw a judgement while the exercise is running or paused; the submissions it cited\nare recorded again, and the score is re-totalled (ADR 0020).\n\n**Permission: objective:ack**. 404 as for acknowledge; 409 if the exercise is closed or\nthe objective is not achieved.",
+        "operationId": "withdraw_objective_ack_exercises__exercise_id__objectives__ref_id__ack_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "exercise_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Exercise Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "ref_id",
+            "required": true,
+            "schema": {
+              "title": "Ref Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectiveOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Withdraw Objective Ack",
+        "tags": [
+          "exercises"
+        ]
+      },
       "post": {
-        "description": "Acknowledge (achieve) an objective on a running or paused exercise in the caller's\ntenant, recording who acknowledged it, and re-total the exercise score.\n\n**Permission: objective:ack** (instructors and admins; never Students).\n404 if the exercise is not in the caller's tenant or the objective does not exist;\n409 if the exercise is not running/paused or the objective is already achieved.",
+        "description": "Judge an objective achieved (ADR 0020: instructors judge team exercises), with a note\nand optionally the Student detections relied on (``cites``), and re-total the score.\n\n**Permission: objective:ack** (instructors and admins; never Students).\n404 if the exercise is not in the caller's tenant or the objective does not exist;\n409 if the exercise is not running/paused or the objective is already achieved;\n422 if a cited submission is not a recorded detection on this objective in this run.",
         "operationId": "acknowledge_objective_exercises__exercise_id__objectives__ref_id__ack_post",
         "parameters": [
           {
@@ -38815,24 +38851,25 @@
               "title": "Ref Id",
               "type": "string"
             }
-          },
-          {
-            "in": "query",
-            "name": "evidence",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Evidence"
-            }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/JudgementIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -38868,7 +38905,7 @@
     },
     "/exercises/{exercise_id}/objectives/{ref_id}/detections": {
       "post": {
-        "description": "Submit a detection for an objective; it is credited if it finds the attack.  **Permission: detection:submit**",
+        "description": "Record a detection for an objective as evidence for the instructor who judges it; it\ncredits nothing (ADR 0020).  **Permission: detection:submit**",
         "operationId": "submit_detection_exercises__exercise_id__objectives__ref_id__detections_post",
         "parameters": [
           {
@@ -38920,20 +38957,13 @@
             "description": "Exercise not running, objective already achieved, or not a detection objective"
           },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "The query is outside the detection language or does not parse; nothing recorded"
           },
           "429": {
-            "description": "No attempts left for this objective"
+            "description": "The submission bound for this objective is reached"
           },
           "503": {
-            "description": "The event store could not answer; the attempt was not counted"
+            "description": "The event store could not answer; nothing recorded"
           }
         },
         "security": [

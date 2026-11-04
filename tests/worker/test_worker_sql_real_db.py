@@ -471,31 +471,21 @@ class TestExercisesAndObjectives:
         world.db.commit()
         assert tasks.run_scenario(str(world.exercise.id))["status"] == "error"
 
-    def test_run_scenario_v2_starts_achieves_and_scores(self, world, monkeypatch):
+    def test_a_mock_run_starts_stays_running_and_achieves_nothing(self, world, monkeypatch):
+        # ADR 0020: instructors judge team exercises; a mock run used to achieve every
+        # objective and complete. Now it starts the exercise, plays the timeline, and stops.
         monkeypatch.setenv("PROVISIONER_BACKEND", "mock")
         ex = world.exercise
-        other = _add(world.db, m.Exercise(name="e2", range_id=world.range.id, tenant_id=world.tenant.id))
-        _add(world.db, _objective(ex, "o1", 30), _objective(ex, "o2", 70), _objective(other, "o1", 999))
+        _add(world.db, _objective(ex, "o1", 30), _objective(ex, "o2", 70))
         definition = {"timeline": [{"t": "0:01", "action": "phish"}], "objectives": [{"ref_id": "o1"}]}
 
         out = tasks.run_scenario_v2(str(ex.id), definition)
 
-        assert out["objectives_completed"] == 1
+        assert out["status"] == "running"
         e = _fresh(world.db, ex)
-        assert e.state == m.ExerciseState.completed
-        assert e.started_at is not None and e.completed_at is not None
-        # COALESCE(SUM(achieved points)) / COALESCE(SUM(all points)), this exercise only
-        assert (e.total_score, e.max_score) == (30, 100)
-        achieved = world.db.scalars(select(m.Objective).where(m.Objective.achieved.is_(True))).all()
-        assert [(o.exercise_id, o.ref_id) for o in achieved] == [(ex.id, "o1")]
-        assert achieved[0].achieved_at is not None
-        assert _fresh(world.db, other).total_score == 0
-
-    def test_run_scenario_v2_with_no_objectives_scores_zero_not_null(self, world, monkeypatch):
-        monkeypatch.setenv("PROVISIONER_BACKEND", "mock")
-        tasks.run_scenario_v2(str(world.exercise.id), {"timeline": []})
-        e = _fresh(world.db, world.exercise)
-        assert (e.state, e.total_score, e.max_score) == (m.ExerciseState.completed, 0, 0)
+        assert (e.state, e.total_score, e.completed_at) == (m.ExerciseState.running, 0, None)
+        assert e.started_at is not None
+        assert world.db.scalars(select(m.Objective).where(m.Objective.achieved.is_(True))).all() == []
 
     def test_run_scenario_v2_failure_cancels_the_exercise(self, world, notify, monkeypatch):
         # Production defect: the failure handler also set exercises.error_message, which does
@@ -518,7 +508,7 @@ class TestExercisesAndObjectives:
 
         monkeypatch.setenv("PROVISIONER_BACKEND", "mock")
         out = tasks.run_scenario_v2(str(world.exercise.id), {"timeline": [{"t": "x:y", "action": "phish"}]})
-        assert out["status"] == "completed"
+        assert out["status"] == "running"
         [rec] = world.db.scalars(select(InjectRecord)).all()
         assert (rec.status, rec.detail) == ("failed", "invalid event: timeline offset 'x:y' is not m:ss")
 
@@ -529,7 +519,6 @@ class TestExercisesAndObjectives:
         world.db.commit()
         with tasks._db_session() as db:
             assert db_ops.start_exercise(db, str(ex.id)) == 0
-            assert db_ops.complete_exercise(db, str(ex.id)) == 0
             assert db_ops.cancel_exercise(db, str(ex.id)) == 0
             assert db_ops.exercise_state(db, str(ex.id)) == state.value
         assert _fresh(world.db, ex).state == state
@@ -619,20 +608,6 @@ class TestRealBackendExercise:
         assert (e.state, e.total_score, e.completed_at) == (m.ExerciseState.running, 0, None)
         assert world.db.scalars(select(m.Objective.achieved)).one() is False
         assert notify.call_args.args[1]["phase"] == "timeline_complete"
-
-    @pytest.mark.parametrize("closed", [m.ExerciseState.completed, m.ExerciseState.cancelled])
-    def test_a_closed_exercise_keeps_its_objectives_score_and_state(self, world, closed):
-        # Review finding 6: results (LTI, xAPI, AAR) may have gone out when an instructor
-        # closed it; a worker still running must not move them.
-        ex = world.exercise
-        ex.state, ex.total_score = closed, 0
-        _add(world.db, _detection(ex, "phish", 10))
-        with tasks._db_session() as db:
-            db_ops.achieve_objective(db, str(ex.id), "phish", evidence="late")
-            db_ops.complete_exercise(db, str(ex.id))
-        assert world.db.scalars(select(m.Objective.achieved)).one() is False
-        e = _fresh(world.db, ex)
-        assert (e.state, e.total_score) == (closed, 0)
 
 
 # -- after-action reports --------------------------------------------------------------
@@ -1027,9 +1002,7 @@ PG_CALLS = {
     "exercise_scenario_yaml": lambda db: db_ops.exercise_scenario_yaml(db, ID),
     "exercise_scores_and_yaml": lambda db: db_ops.exercise_scores_and_yaml(db, ID),
     "start_exercise": lambda db: db_ops.start_exercise(db, ID),
-    "achieve_objective": lambda db: db_ops.achieve_objective(db, ID, "o1"),
     "exercise_range_backend": lambda db: db_ops.exercise_range_backend(db, ID),
-    "complete_exercise": lambda db: db_ops.complete_exercise(db, ID),
     "cancel_exercise": lambda db: db_ops.cancel_exercise(db, ID),
     "exercise_state": lambda db: db_ops.exercise_state(db, ID),
     "exercise_context": lambda db: db_ops.exercise_context(db, ID),

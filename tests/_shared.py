@@ -98,7 +98,7 @@ def _get(event: dict, dotted: str):
 
 
 class FakeStore(BaseSearchBackend):
-    """Understands what credit.judge sends: bool.filter of query_string (field:value AND
+    """Understands what evidence.matches sends: bool.filter of query_string (field:value AND
     terms, * wildcards, or ``*`` alone) and a range on truenorth.ingested_at."""
 
     def __init__(self, events=(), down=False):

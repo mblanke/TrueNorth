@@ -12,8 +12,10 @@ through its course release: a release of one of the courses booked over the run
 during the run (``lab_sessions.service.sessions_in_window``). A lab on the exercise's own
 range counts too.
 
-Per-Student credit comes from that Student's own judged attempts in this run (ADR 0005):
-``Objective.achieved`` is exercise-wide and says nothing about who earned it.
+Per-Student credit comes from the instructor's judgements (ADR 0020): an objective is
+credited to a Student when a judgement of it cites their detection. ``Objective.achieved``
+is exercise-wide and says nothing about who earned it. Rows from before ADR 0020 keep their
+automatic verdicts: ``achieved`` reads as credited, ``missed`` as submitted.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from ..aar_access import participants
-from ..detections.models import ACHIEVED, ATTEMPTS, MISSED, PENDING, DetectionSubmission
+from ..detections.models import ACHIEVED, CITED, MISSED, PENDING, RECORDED, DetectionSubmission
 from ..exercise_participants import exercise_window, roster_courses
 from ..lab_sessions import models as lab
 from ..lab_sessions.service import sessions_in_window
@@ -42,9 +44,8 @@ from .schemas import (
     ExerciseClassOut,
 )
 
-# A learning signal is evidence, never idleness: this many judged misses on one objective
-# with no credit on it.
-LEARNING_SIGNAL_MISSES = 3
+SHOWN = (PENDING, RECORDED, CITED, ACHIEVED, MISSED)  # this run's submissions, with pre-ADR 0020 history
+CREDITED = (CITED, ACHIEVED)
 # Labs that are down through no doing of the Student's, and labs on their way up.
 LAB_FAULT = (lab.FAILED, lab.EXPIRED, lab.RECONCILE)
 LAB_WAIT = (lab.QUEUED, lab.PROVISIONING, lab.BASELINING, lab.RESETTING)
@@ -96,8 +97,8 @@ def _teams(db: Session, ex: Exercise, user_ids: list[uuid.UUID]) -> dict[uuid.UU
 
 
 def _attempts(db: Session, ex: Exercise, user_ids: list[uuid.UUID]) -> list[DetectionSubmission]:
-    """This run's attempts (``window_start >= started_at``, as the attempt cap counts them).
-    Unscored and unparseable queries use no attempt, so they are not shown as attempts."""
+    """This run's submissions (``window_start >= started_at``, as the submission bound counts
+    them). A query that could not run is not recorded, so it is not shown."""
     if ex.started_at is None or not user_ids:
         return []
     return (
@@ -106,7 +107,7 @@ def _attempts(db: Session, ex: Exercise, user_ids: list[uuid.UUID]) -> list[Dete
             DetectionSubmission.exercise_id == ex.id,
             DetectionSubmission.user_id.in_(user_ids),
             DetectionSubmission.window_start >= ex.started_at,
-            DetectionSubmission.verdict.in_(ATTEMPTS),
+            DetectionSubmission.verdict.in_(SHOWN),
         )
         .order_by(DetectionSubmission.submitted_at, DetectionSubmission.id)
         .all()
@@ -123,7 +124,6 @@ def _attempt_out(row: DetectionSubmission, sees_key: bool) -> ClassAttemptOut:
     )
     if sees_key:
         out.query = row.query
-        out.precision = round(row.on_target / row.events_matched, 3) if row.events_matched else 0.0
     return out
 
 
@@ -166,25 +166,20 @@ def _student(
     attention: list[AttentionOut] = []
     for o in objectives:
         mine = by_ref.get(o.ref_id, [])
-        achieved = [r for r in mine if r.verdict == ACHIEVED]
-        misses = [r for r in mine if r.verdict == MISSED]
-        if achieved:
+        cited = [r for r in mine if r.verdict in CREDITED]
+        submitted = [r for r in mine if r.verdict in (RECORDED, MISSED)]
+        if cited:  # a withdrawn judgement puts its citations back to recorded
             credited.append(o.ref_id)
-            states.append(ClassObjectiveStateOut(ref_id=o.ref_id, state="credited", misses=len(misses),
-                                                 credited_at=_aware(achieved[0].submitted_at)))
+            states.append(ClassObjectiveStateOut(ref_id=o.ref_id, state="credited", submissions=len(mine),
+                                                 credited_at=_aware(o.achieved_at or cited[0].submitted_at)))
             continue
         if any(r.verdict == PENDING for r in mine):
             state = "pending"
-        elif misses:
-            state = "missed"
+        elif submitted or cited:
+            state = "submitted"
         else:
             state = "not_attempted"
-        states.append(ClassObjectiveStateOut(ref_id=o.ref_id, state=state, misses=len(misses)))
-        if len(misses) >= LEARNING_SIGNAL_MISSES:
-            attention.append(AttentionOut(
-                kind="learning", objective_ref=o.ref_id, since=_aware(misses[0].submitted_at),
-                detail=f"{len(misses)} judged misses on {o.ref_id} and no credit on it yet",
-            ))
+        states.append(ClassObjectiveStateOut(ref_id=o.ref_id, state=state, submissions=len(mine)))
 
     # Every lab tied to the run, each judged on its own: a fault on any one is a fault.
     labs = [_lab_out(s) for s in lab_sessions]
@@ -225,7 +220,7 @@ def _student(
         team=team,
         labs=labs,
         attempts_total=len(rows),
-        attempts_credited=sum(1 for r in rows if r.verdict == ACHIEVED),
+        attempts_credited=sum(1 for r in rows if r.verdict in CREDITED),
         credited_refs=credited,
         score=sum(points.get(ref, 0) for ref in credited),
         current_objective=current,
@@ -293,7 +288,6 @@ def build(db: Session, ex: Exercise, *, sees_key: bool, now: datetime | None = N
                      quiet_after)
             for u in students
         ],
-        learning_signal_misses=LEARNING_SIGNAL_MISSES,
         not_seen_minutes=quiet_after,
         generated_at=now,
     )
