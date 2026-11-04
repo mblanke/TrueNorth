@@ -405,8 +405,9 @@ async def complete_exercise(
 ) -> Exercise:
     """Complete an exercise and tally scores.  **Permission: exercise:complete**
 
-    Competency assessment, the LTI grade and the xAPI statement go to whoever completed it
-    and to every Student who submitted a detection in this run (app/exercise_completion).
+    Competency assessment, the LTI grade and the xAPI statement go to the exercise's Students
+    (its seat or its teams) and every Student who submitted a detection in this run, not to an
+    instructor who completes it (app/exercise_completion, #375).
     """
     from ..exercise_completion import Participant, close
 
@@ -519,17 +520,22 @@ async def acknowledge_objective(
     db.commit()
     db.refresh(obj)
     if background_tasks is not None:
-        emit_lifecycle(
-            background_tasks,
-            verb_key="passed",
-            user_id=user.id,
-            activity_type="objective",
-            activity_id=str(obj.id),
-            activity_name=obj.description or obj.ref_id,
-            result=objective_result(obj.points),
-            context_extensions={"exercise_id": str(exercise_id), "ref_id": obj.ref_id},
-            registration=exercise_id,
-        )
+        # The statement is about the exercise's Students (its seat or its teams), never the
+        # instructor, who is recorded as the assessor (#375). No Students: no statement.
+        from ..classes.credit import exercise_students
+
+        for student in exercise_students(db, ex):
+            emit_lifecycle(
+                background_tasks,
+                verb_key="passed",
+                user_id=student.id,
+                activity_type="objective",
+                activity_id=str(obj.id),
+                activity_name=obj.description or obj.ref_id,
+                result=objective_result(obj.points),
+                context_extensions={"exercise_id": str(exercise_id), "ref_id": obj.ref_id, "assessed_by": user.id},
+                registration=exercise_id,
+            )
     return obj
 
 

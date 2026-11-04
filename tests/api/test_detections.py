@@ -353,10 +353,11 @@ class TestClosing:
             with acting_as(UserRole.student) as who:
                 who.id = str(u.id)
                 _submit(client, ex, "nope:x")
-        with acting_as(UserRole.instructor) as instructor:
+        with acting_as(UserRole.instructor):
             assert client.post(f"/exercises/{ex.id}/complete").status_code == 200
         assessed = {args[1] for name, args in dispatched if name == "auto_assess_competency"}
-        assert assessed == {str(students[0].id), str(students[1].id), instructor.id}
+        # The instructor who completed it is not a participant (#375).
+        assert assessed == {str(students[0].id), str(students[1].id)}
 
     def test_the_clock_closes_running_and_paused_exercises_past_their_duration(self, db_session, monkeypatch):
         from app import celery_client
