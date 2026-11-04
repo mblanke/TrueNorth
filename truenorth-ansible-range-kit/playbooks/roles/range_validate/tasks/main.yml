@@ -1,0 +1,40 @@
+---
+# Validation runs from the probe VM inside each instance, through VMware Tools.
+# isolation:    every site isolation target must be UNREACHABLE (test, not assume)
+# connectivity: every VM reports its planned IPs; the probe reaches every gateway
+# services:     the probe reaches each listed service port
+- name: Assert isolation targets are configured
+  ansible.builtin.assert:
+    that: plan.site.isolation_probe_targets | length > 0
+    fail_msg: "site.isolation_probe_targets is empty; isolation cannot be proven"
+    quiet: true
+
+- name: Power on ranges that rest powered off, so they can be validated
+  vmware.vmware.vm_powerstate:
+    datacenter: "{{ plan.site.datacenter }}"
+    folder: "{{ tn_vm_folder_prefix }}/{{ item.folder }}"
+    name: "{{ item.vm_name }}"
+    state: powered-on
+  loop: "{{ tn_vms }}"
+  loop_control:
+    label: "{{ item.vm_name }}"
+  when: plan.power_after_build == 'poweredoff' and not ansible_check_mode
+
+- name: Wait for VMware Tools before probing
+  community.vmware.vmware_guest_tools_wait:
+    datacenter: "{{ plan.site.datacenter }}"
+    folder: "{{ tn_vm_folder_prefix }}/{{ item.folder }}"
+    name: "{{ item.vm_name }}"
+    timeout: "{{ tn_tools_timeout }}"
+  loop: "{{ tn_vms }}"
+  loop_control:
+    label: "{{ item.vm_name }}"
+  when: plan.power_after_build == 'poweredoff' and not ansible_check_mode
+
+- name: Validate each instance
+  ansible.builtin.include_tasks: instance.yml
+  loop: "{{ plan.instances }}"
+  loop_control:
+    loop_var: inst
+    label: "{{ inst.id }}"
+  when: not ansible_check_mode

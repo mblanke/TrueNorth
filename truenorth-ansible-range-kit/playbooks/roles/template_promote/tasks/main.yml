@@ -1,0 +1,62 @@
+---
+# Promote a template: tag it validated in vCenter. Run only after the template has
+# passed the image acceptance checks (reference/golden-images.md) and its provenance
+# is recorded in config/templates.yml.
+- name: Assert template alias is given
+  ansible.builtin.assert:
+    that: template_alias is defined
+    fail_msg: "Pass -e template_alias=<alias from config/templates.yml>"
+    quiet: true
+
+- name: Require a human approval for promotion
+  ansible.builtin.command:
+    argv: ["{{ tn_cli }}", "approval-check", "TEMPLATES", "promote"]
+  changed_when: false
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Load catalogue and site config
+  ansible.builtin.set_fact:
+    tn_catalogue: "{{ (lookup('ansible.builtin.file', tn_root ~ '/config/templates.yml') | from_yaml).templates }}"
+    tn_site: "{{ (lookup('ansible.builtin.file', tn_root ~ '/config/site.yml') | from_yaml).site }}"
+
+- name: Assert provenance is complete before promotion
+  ansible.builtin.assert:
+    that:
+      - template_alias in tn_catalogue
+      - tn_catalogue[template_alias][item] not in [none, '', 'TBD']
+    fail_msg: "config/templates.yml {{ template_alias }}.{{ item }} is missing or TBD"
+    quiet: true
+  loop: [vcenter_name, build_id, build_date, source_sha256]
+
+- name: Ensure the template tag category and tag exist
+  vmware.vmware.tag_categories:
+    state: present
+    tag_categories:
+      - name: "{{ tn_site.tags.template_category }}"
+        description: "TrueNorth template status"
+        cardinality: MULTIPLE
+        associable_types: [VirtualMachine]
+
+- name: Ensure the validated tag exists
+  vmware.vmware.tags:
+    state: present
+    tags:
+      - name: "{{ tn_site.tags.template_validated_tag }}"
+        category_name: "{{ tn_site.tags.template_category }}"
+        description: "Template passed TrueNorth image acceptance"
+
+- name: Read the template
+  community.vmware.vmware_guest_info:
+    datacenter: "{{ tn_site.vcenter.datacenter }}"
+    name: "{{ tn_catalogue[template_alias].vcenter_name }}"
+  register: tn_tmpl
+
+- name: Tag the template validated
+  vmware.vmware.tag_associations:
+    state: present
+    object_moid: "{{ tn_tmpl.instance.moid }}"
+    object_type: VirtualMachine
+    tags:
+      - name: "{{ tn_site.tags.template_validated_tag }}"
+        category_name: "{{ tn_site.tags.template_category }}"

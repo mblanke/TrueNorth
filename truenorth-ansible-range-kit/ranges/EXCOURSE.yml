@@ -1,0 +1,52 @@
+# Example course range: one definition, N identical student instances.
+# Each student instance gets its own slot (VLAN block and CIDR block).
+range:
+  id: EXCOURSE
+  owner: TBD
+  exercise: TBD
+  expires: 2026-12-31
+  students: 4
+  description: Example multi-student course range. Replace before use.
+
+use:
+  - blueprint: ad_forest
+    as: corp
+    params: {domain: course.local, domain_controllers: 1, workstations: 3, file_servers: 1}
+  - blueprint: dmz
+    as: dmz
+    params: {web_servers: 1}
+  - blueprint: attacker_enclave
+    as: red
+    params: {operators: 1}
+  - blueprint: core_router
+    as: core
+    params:
+      routed_networks: ["@corp-lan", "@dmz-net", "@red-net"]
+
+networks:
+  - name: span                # sensor network, promiscuous allowed for IDS capture
+    gateway: false
+    security: {promiscuous: true}
+
+vms:
+  - name: ids01
+    template: ubuntu2404
+    role: sensor
+    cpu: 4
+    memory_gb: 8
+    disk_gb: 100
+    guest_config: tools
+    nics: [span]
+
+validation:
+  probe_vm: red-op01
+  checks: [isolation, connectivity, services]
+  services:
+    - {vm: dmz-web01, port: 80}
+
+integrations:
+  range_activity: {enabled: false, profile: TBD}
+  greyspace:      {enabled: false, profile: TBD}
+  arc2:           {enabled: false, profile: TBD}
+
+power_after_build: poweredon

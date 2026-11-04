@@ -1,0 +1,79 @@
+---
+# Write results.json, integrations.json, then the manifest (evidence record).
+- name: Assemble run results
+  ansible.builtin.set_fact:
+    tn_results_doc: >-
+      {{ tn_results | combine({
+           'action': tn_action,
+           'plan_sha256': plan.plan_sha256,
+           'started': tn_started,
+           'finished': now(utc=true).isoformat(),
+           'operator': lookup('ansible.builtin.env', 'USER') | default('unknown', true),
+           'ansible_version': ansible_version.full,
+           'guest_config': tn_guest_log | default({})
+         }) }}
+
+- name: Add VM managed object IDs to results
+  ansible.builtin.set_fact:
+    tn_results_doc: >-
+      {{ tn_results_doc | combine({'instances': {item.instance: {'vms': {item.vm_name: {'moid': tn_moids[item.vm_name]}}}}},
+                                  recursive=true) }}
+  loop: "{{ tn_vms }}"
+  loop_control:
+    label: "{{ item.vm_name }}"
+  when: tn_moids is defined and item.vm_name in tn_moids
+
+- name: Write results.json
+  ansible.builtin.copy:
+    content: "{{ tn_results_doc | to_nice_json }}\n"
+    dest: "{{ tn_build_dir }}/results.json"
+    mode: "0640"
+  changed_when: false   # evidence file, not infrastructure
+  when: not ansible_check_mode
+
+- name: Write integrations.json for TrueNorth modules
+  ansible.builtin.copy:
+    content: >-
+      {{ {'range_id': range_id, 'plan_sha256': plan.plan_sha256,
+          'integrations': plan.integrations,
+          'source_scenario': plan.source_scenario,
+          'instances': plan.instances} | to_nice_json }}
+    dest: "{{ tn_build_dir }}/integrations.json"
+    mode: "0640"
+  changed_when: false   # evidence file, not infrastructure
+  when: not ansible_check_mode
+
+- name: Write the manifest
+  ansible.builtin.command:
+    argv: ["{{ tn_cli }}", "manifest", "{{ range_id }}"]
+  register: tn_manifest
+  changed_when: false   # evidence file, not infrastructure
+  failed_when: tn_manifest.rc not in [0, 4]
+  when: not ansible_check_mode and tn_action in ['build', 'reset', 'validate']
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "{{ tn_manifest.stdout_lines | default(['check mode: no results written']) }}"
+
+- name: Fail the run if any validation check failed
+  ansible.builtin.assert:
+    that: >-
+      tn_results.instances.values() | map(attribute='validation') | flatten
+      | rejectattr('pass') | list | length == 0
+    fail_msg: "Validation failed. See build/{{ range_id }}/manifest.md"
+    quiet: true
+  when: not ansible_check_mode and tn_action in ['build', 'reset', 'validate']
+
+- name: Return poweredoff ranges to rest once validation has passed
+  vmware.vmware.vm_powerstate:
+    datacenter: "{{ plan.site.datacenter }}"
+    folder: "{{ tn_vm_folder_prefix }}/{{ item.folder }}"
+    name: "{{ item.vm_name }}"
+    state: shutdown-guest
+    timeout: "{{ tn_shutdown_timeout }}"
+  loop: "{{ tn_vms }}"
+  loop_control:
+    label: "{{ item.vm_name }}"
+  when: >-
+    not ansible_check_mode and plan.power_after_build == 'poweredoff'
+    and tn_action in ['build', 'reset', 'validate']

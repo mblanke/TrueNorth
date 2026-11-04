@@ -59,6 +59,7 @@ from ..models import (
     User,
 )
 from ..moodle_backends import BaseMoodleBackend, MoodleError, get_moodle_backend
+from ..settings import classification_level
 from .models import MoodleResultCursor, MoodleResultRecord
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,10 @@ class PullBusyError(RuntimeError):
 
 class LeaseLostError(RuntimeError):
     """This run's claim lapsed and another process took it; this run wrote nothing more."""
+
+
+class UnclassifiedGradeBoundaryError(RuntimeError):
+    """A readable Moodle grade was refused at the Unclassified enclave boundary."""
 
 
 @dataclass
@@ -174,6 +179,7 @@ def pull(
 
     Raises PullBusyError, MoodleError (recorded as the cursor's ``last_error``; the cursor
     stays where it was, so nothing from a refused answer is recorded) or LeaseLostError."""
+    unclassified = classification_level() == "unclassified"
     holder = _claim(db, platform)
     summary = Summary(platform_id=platform.id)
     try:
@@ -184,6 +190,11 @@ def pull(
         for _ in range(max_pages or MAX_PAGES):
             page = backend.pull_results(platform, cursor, page_size or PAGE_SIZE)
             rows = page.get("rows") or []
+            if unclassified and any(row.get("kind") == "quiz_grade" for row in rows):
+                raise UnclassifiedGradeBoundaryError(
+                    "Unclassified deployments cannot import readable Moodle quiz grades; "
+                    "use sealed result transfer to the authoritative enclave."
+                )
             applied = 0
             for row in rows:
                 outcome = _apply(ctx, row)
@@ -210,6 +221,13 @@ def pull(
             )
             if not summary.more or not rows:
                 break
+    except UnclassifiedGradeBoundaryError as exc:
+        # The whole signed page is inspected before its first row is applied, so there is
+        # nothing from this page to roll back and its cursor remains unchanged. Keep the
+        # operator detail deliberately grade-free.
+        _save(db, platform.id, holder, last_error=str(exc), lease_until=None, lease_holder=None)
+        logger.warning("results pull from platform %s stopped at the Unclassified grade boundary", platform.id)
+        raise
     except MoodleError as exc:
         # Raised by the backend before any row of its page is applied; earlier pages are
         # committed with their cursor, so there is nothing to undo here.

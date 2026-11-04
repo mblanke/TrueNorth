@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
@@ -10,9 +12,21 @@ from sqlalchemy.orm import Session
 from ..models import User, UserRole
 from ..settings import UnsafeSettingsError, classification_level, enclave_id
 from .contract import ResultTransferError
+from .identity_backends import (
+    BasePseudonymousIdentityBackend,
+    OneTimeLogin,
+    PseudonymousIdentity,
+)
 from .models import ProvisionedSubjectCredential
 
 SUBJECT_SOURCE = "subject"
+
+
+@dataclass(frozen=True)
+class ProvisionedPseudonymousAccount:
+    credential: ProvisionedSubjectCredential
+    user: User
+    identity: PseudonymousIdentity
 
 
 def _profile_problem(user: User, tenant_id: uuid.UUID) -> str | None:
@@ -105,6 +119,126 @@ def assign_account(
     return credential, user
 
 
+def create_and_assign_account(
+    db: Session,
+    *,
+    credential_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    identity_backend: BasePseudonymousIdentityBackend,
+    now: datetime | None = None,
+) -> ProvisionedPseudonymousAccount:
+    """Create a disabled IdP identity and bind it to one imported credential.
+
+    No password exists at this stage. The caller must commit the database transaction
+    before invoking ``deliver_one_time_login`` through an approved separate channel.
+    """
+    identity = identity_backend.create_disabled_account()
+    try:
+        credential, user = assign_account(
+            db,
+            credential_id=credential_id,
+            tenant_id=tenant_id,
+            keycloak_subject=identity.subject,
+            now=now,
+        )
+    except Exception:
+        try:
+            identity_backend.delete_account(identity.subject)
+        except Exception as cleanup_exc:
+            raise ResultTransferError(
+                "pseudonymous account assignment failed and identity cleanup could not be confirmed"
+            ) from cleanup_exc
+        raise
+    return ProvisionedPseudonymousAccount(credential=credential, user=user, identity=identity)
+
+
+def _assigned_account(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    states: tuple[str, ...],
+) -> tuple[ProvisionedSubjectCredential, User]:
+    try:
+        if classification_level() != "unclassified":
+            raise ResultTransferError("pseudonymous subject accounts exist only on Unclassified")
+        local_enclave = enclave_id()
+    except UnsafeSettingsError as exc:
+        raise ResultTransferError(str(exc)) from exc
+    credential = (
+        db.query(ProvisionedSubjectCredential)
+        .filter(
+            ProvisionedSubjectCredential.tenant_id == tenant_id,
+            ProvisionedSubjectCredential.destination_enclave == local_enclave,
+            ProvisionedSubjectCredential.user_id == user_id,
+            ProvisionedSubjectCredential.state.in_(states),
+        )
+        .with_for_update()
+        .one_or_none()
+    )
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).one_or_none()
+    if credential is None or user is None or _profile_problem(user, tenant_id):
+        raise ResultTransferError("pseudonymous account was not found in this tenant")
+    return credential, user
+
+
+def deliver_one_time_login(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    identity_backend: BasePseudonymousIdentityBackend,
+    deliver: Callable[[OneTimeLogin], None],
+) -> str:
+    """Rotate and deliver a temporary login, enabling the account only afterwards.
+
+    This is both initial activation and recovery. The delivery implementation is injected:
+    this module deliberately cannot choose email, screen display, print, or another channel.
+    """
+    _, user = _assigned_account(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        states=("assigned",),
+    )
+    if not user.is_active:
+        raise ResultTransferError("revoked pseudonymous account cannot be recovered")
+    login = identity_backend.prepare_one_time_login(user.keycloak_id)
+    try:
+        deliver(login)
+    except Exception as exc:
+        try:
+            identity_backend.disable_account(user.keycloak_id)
+        except Exception as disable_exc:
+            raise ResultTransferError(
+                "one-time login delivery failed and account disable could not be confirmed"
+            ) from disable_exc
+        raise ResultTransferError("one-time login delivery failed; account remains disabled") from exc
+    identity_backend.enable_account(user.keycloak_id)
+    return login.username
+
+
+def revoke_account(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    identity_backend: BasePseudonymousIdentityBackend,
+) -> tuple[ProvisionedSubjectCredential, User]:
+    """Disable a pseudonymous identity and make its subject token unusable locally."""
+    credential, user = _assigned_account(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        states=("assigned", "revoked"),
+    )
+    identity_backend.disable_account(user.keycloak_id)
+    user.is_active = False
+    credential.state = "revoked"
+    db.flush()
+    return credential, user
+
+
 def subject_token_for_user(
     db: Session,
     *,
@@ -114,8 +248,7 @@ def subject_token_for_user(
     """Resolve an assigned local learner to the opaque token used in result packages.
 
     Credential expiry limits initial account assignment. Once assigned, the stable token
-    remains usable for that learner's training results until an explicit revocation workflow
-    is introduced.
+    remains usable for that learner's training results until the account is revoked.
     """
     try:
         if classification_level() != "unclassified":

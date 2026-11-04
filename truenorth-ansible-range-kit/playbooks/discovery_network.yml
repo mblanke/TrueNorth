@@ -1,0 +1,55 @@
+---
+# Read-only. Records every VLAN in use on every distributed switch, so the compiler
+# can avoid collisions with non-TrueNorth portgroups. Run before compiling new ranges
+# and on a schedule (ci/canary.sh does). Writes discovery/live-network.json.
+- name: Discover VLANs in use
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - vars/common.yml
+  vars:
+    range_id: DISCOVERY
+  module_defaults:
+    group/community.vmware.vmware:
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      port: "{{ vcenter_port | default(443) }}"
+      validate_certs: "{{ (lookup('ansible.builtin.file', tn_root ~ '/config/site.yml') | from_yaml).site.validate_certs }}"
+  tasks:
+    - name: Read all distributed portgroups
+      community.vmware.vmware_dvs_portgroup_info:
+        datacenter: "{{ (lookup('ansible.builtin.file', tn_root ~ '/config/site.yml') | from_yaml).site.vcenter.datacenter }}"
+        show_vlan_info: true
+        show_network_policy: false
+        show_mac_learning: false
+        show_teaming_policy: false
+        show_port_policy: false
+        show_uplinks: false
+      register: tn_all_pgs
+
+    - name: Start the VLAN list
+      ansible.builtin.set_fact:
+        tn_in_use: []
+
+    - name: Collect VLANs per portgroup (trunks keep their ranges; the compiler expands them)
+      ansible.builtin.set_fact:
+        tn_in_use: "{{ tn_in_use + [{'portgroup': item.portgroup_name,
+                                     'vlans': item.vlan_info.vlan_id | default(none),
+                                     'trunk': item.vlan_info.trunk | default(false)}] }}"
+      loop: "{{ tn_all_pgs.dvs_portgroup_info.values() | flatten }}"
+      loop_control:
+        label: "{{ item.portgroup_name }}"
+
+    - name: Ensure discovery directory exists
+      ansible.builtin.file:
+        path: "{{ tn_root }}/discovery"
+        state: directory
+        mode: "0750"
+
+    - name: Write discovery/live-network.json
+      ansible.builtin.copy:
+        content: "{{ {'collected_at': now(utc=true).isoformat(), 'vlans_in_use': tn_in_use} | to_nice_json }}\n"
+        dest: "{{ tn_root }}/discovery/live-network.json"
+        mode: "0640"

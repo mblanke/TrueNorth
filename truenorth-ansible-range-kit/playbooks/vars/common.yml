@@ -1,0 +1,16 @@
+---
+# Shared variables for every range playbook.
+# vCenter credentials are NOT here. Supply vcenter_hostname, vcenter_username and
+# vcenter_password from Ansible Vault, e.g.:
+#   export TNRANGE_ANSIBLE_ARGS="-e @vault/vcenter.yml --vault-id tn@prompt"
+# Guest credentials use the variable named by each template's guest_user_var
+# (guest_creds_linux, guest_creds_windows) as {username: ..., password: ...}.
+# Derived from playbook_dir, which extra vars cannot override. range_load asserts that
+# none of these were overridden (e.g. by a planted -e @file).
+tn_root: "{{ playbook_dir ~ '/..' }}"
+tn_cli: "{{ tn_root }}/tools/range"
+tn_build_dir: "{{ tn_root }}/build/{{ range_id }}"
+tn_snapshot_name: tn-baseline
+tn_tools_timeout: 900
+tn_shutdown_timeout: 600
+tn_probe_timeout: 3

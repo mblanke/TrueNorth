@@ -1,0 +1,63 @@
+--- a/tests/api/test_qsp_tenant_isolation.py
++++ b/tests/api/test_qsp_tenant_isolation.py
+@@ -222,3 +222,32 @@
+         with acting_as(role):
+             res = client.patch(f"/golden-images/{img.id}", json={"template_name": "ubuntu-2404-cloud"})
+         assert res.status_code == 200, res.text
++
++
++@pytest.mark.parametrize("detail", [False, True])
++def test_review_foreign_qualification_is_hidden(client, db_session, detail):
++    po = _po(db_session)
++    qual = db_session.get(Qualification, po.qualification_id)
++    qual.tenant_id = uuid.UUID(OTHER_TENANT)
++    db_session.commit()
++    with acting_as(UserRole.student):
++        path = f"/qsp/qualifications/{qual.qsp_code}/objectives" if detail else "/qsp/qualifications"
++        response = client.get(path)
++        if detail:
++            assert response.status_code == 404
++        else:
++            assert qual.qsp_code not in [q["qsp_code"] for q in response.json()]
++
++
++def test_review_shared_objective_hides_other_tenant_course(client, db_session):
++    from app.models import Course, CourseModule, ModuleContentType
++    po = _po(db_session)
++    course = Course(name="Private tenant B course", tenant_id=uuid.UUID(OTHER_TENANT))
++    db_session.add(course)
++    db_session.flush()
++    db_session.add(CourseModule(course_id=course.id, po_id=po.id, ordinal=1, title="Private module", content_type=ModuleContentType.scenario))
++    db_session.commit()
++    with acting_as(UserRole.student):
++        response = client.get("/qsp/qualifications/ALJQ/objectives")
++        assert response.status_code == 200
++        assert response.json()[0]["delivered_by"] is None, response.json()[0]["delivered_by"]
+--- a/tests/worker/test_setup_reconcile.py
++++ b/tests/worker/test_setup_reconcile.py
+@@ -354,3 +354,13 @@
+     with sr._single_run(Rec()):
+         pass
+     assert seen["ex"] == sr.lock_ttl()
++
++
++def test_review_expired_ip_check_settles_when_vcenter_unreachable(ip_world, world, monkeypatch):
++    import worker.tasks as tasks
++    ip_world["vms"][0]["ip_check"]["deadline"] = time.time() - 600
++    def offline(*args, **kwargs):
++        raise ConnectionError("review fixture: vCenter unavailable")
++    monkeypatch.setattr(tasks, "_get_backend", offline)
++    sr._reconcile_range("r1", "Range 1", ip_world, "vsphere")
++    assert world["written"] is not None, "Expired IP check is never settled during a vCenter outage"
+--- a/tests/worker/test_template_copies.py
++++ b/tests/worker/test_template_copies.py
+@@ -157,3 +157,9 @@
+         out = template_tasks.run_prune(dry_run=False)
+         assert out["unreadable_outputs"] == ["r1"]
+         assert out["dry_run"] is True and "unreadable" in out["deferred"]  # it may hold any copy
++
++
++def test_review_ip_address_host_copy_resolves():
++    host = "10.20.30.40"
++    name = tc.copy_name("ubuntu", host, "20261021")
++    assert tc.newest_on_host([name], "ubuntu", host) == name

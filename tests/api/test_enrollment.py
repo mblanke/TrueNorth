@@ -18,7 +18,7 @@ import uuid
 
 import pytest
 from app import enrollment as enrollment_mod
-from app.enrollment import courses_for_learning_path, ensure_enrollment, ensure_path_enrollment
+from app.enrollment import complete_enrollment, courses_for_learning_path, ensure_enrollment, ensure_path_enrollment
 from app.models import (
     Course,
     CourseModule,
@@ -175,6 +175,39 @@ def test_two_students_on_one_course_get_separate_progress(db_session, student, t
     b = ensure_enrollment(db_session, user_id=other.id, course_id=course.id, tenant_id=TENANT)
     assert a.id != b.id
     assert len(_progress(db_session, a)) == len(_progress(db_session, b)) == 2
+
+
+def test_unclassified_course_closeout_retains_completion_without_readable_grade(
+    db_session,
+    student,
+    monkeypatch,
+):
+    monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "unclassified")
+    course = _course(db_session, modules=1)
+    enrollment = ensure_enrollment(db_session, user_id=student.id, course_id=course.id, tenant_id=TENANT)
+    progress = _progress(db_session, enrollment)[0]
+    progress.score, progress.max_score, progress.status = 87, 100, ModuleProgressStatus.completed
+
+    complete_enrollment(db_session, enrollment)
+    db_session.refresh(enrollment)
+
+    assert enrollment.status == EnrollmentStatus.completed
+    assert enrollment.completed_at is not None
+    assert enrollment.final_score is None and enrollment.max_score is None
+    assert enrollment.final_grade is None
+
+
+def test_secret_course_closeout_keeps_authoritative_grade(db_session, student, monkeypatch):
+    monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "secret")
+    course = _course(db_session, modules=1)
+    enrollment = ensure_enrollment(db_session, user_id=student.id, course_id=course.id, tenant_id=TENANT)
+    progress = _progress(db_session, enrollment)[0]
+    progress.score, progress.max_score, progress.status = 87, 100, ModuleProgressStatus.completed
+
+    complete_enrollment(db_session, enrollment)
+
+    assert enrollment.final_score == 87 and enrollment.max_score == 100
+    assert enrollment.final_grade == "B"
 
 
 # ── learning paths ──────────────────────────────────────────────────────

@@ -28,6 +28,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from fastapi.responses import PlainTextResponse, Response
 from pydantic import BaseModel, Field
+from sqlalchemy import null
 from sqlalchemy.orm import Session, joinedload
 
 from .. import curriculum_ingest
@@ -48,6 +49,9 @@ from ..models import (
     QuizQuestionType,
 )
 from ..rbac import Permission, require_permission, user_has_permission
+from ..result_transfer.contract import ResultTransferError
+from ..result_transfer.quiz_producer import queue_live_quiz_attempt
+from ..settings import classification_level
 from ..xapi import emit_lifecycle
 from ..xapi import score_result as xapi_score_result
 from ..xapi_context import quiz_context
@@ -165,6 +169,14 @@ class AttemptResultOut(BaseModel):
     passed: bool
     results: list[QuestionResultOut]
     key_revealed: bool = Field(False, description="correct_options/explanation are filled only on the final attempt")
+    late: bool = Field(False, description="submitted after the time limit: answers were not marked")
+
+
+class UnclassifiedAttemptResultOut(BaseModel):
+    """Low-side response: the learner may see the outcome, never a readable grade or answers."""
+
+    attempt_id: uuid.UUID
+    passed: bool
     late: bool = Field(False, description="submitted after the time limit: answers were not marked")
 
 
@@ -393,7 +405,7 @@ def start_attempt(
         quiz_id=quiz.id,
         user_id=uuid.UUID(user.id),
         question_order=json.dumps([str(q.id) for q in ordered]),
-        max_score=sum(q.points for q in quiz.questions),
+        max_score=None if classification_level() == "unclassified" else sum(q.points for q in quiz.questions),
         tenant_id=user.tenant_id,
     )
     db.add(attempt)
@@ -410,7 +422,10 @@ def start_attempt(
     )
 
 
-@router.post("/attempts/{attempt_id}/submit", response_model=AttemptResultOut)
+@router.post(
+    "/attempts/{attempt_id}/submit",
+    response_model=AttemptResultOut | UnclassifiedAttemptResultOut,
+)
 def submit_attempt(
     attempt_id: uuid.UUID,
     body: AttemptSubmitIn,
@@ -434,6 +449,8 @@ def submit_attempt(
     late = _past_time_limit(quiz, attempt)
     answers = {} if late else body.answers
     reveal = _final_attempt(db, quiz, attempt)
+    unclassified = classification_level() == "unclassified"
+    submission_savepoint = db.begin_nested() if unclassified else None
 
     score = 0
     results: list[QuestionResultOut] = []
@@ -466,26 +483,29 @@ def submit_attempt(
             bucket[0] += earned
             bucket[1] += question.points
 
-        # Per-question xAPI "answered" statement
-        emit_lifecycle(
-            background_tasks,
-            "answered",
-            user.id,
-            "quiz-question",
-            str(question.id),
-            question.stem[:200],
-            result={"success": is_correct, "score": {"raw": earned, "min": 0, "max": question.points}},
-            context_extensions={"quiz_id": str(quiz.id), "attempt_id": str(attempt.id)},
-            registration=where.registration,
-            language=where.language,
-        )
+        if not unclassified:
+            # Per-question correctness and points are readable assessment results. They may
+            # leave a Secret-side deployment, but never the Unclassified enclave.
+            emit_lifecycle(
+                background_tasks,
+                "answered",
+                user.id,
+                "quiz-question",
+                str(question.id),
+                question.stem[:200],
+                result={"success": is_correct, "score": {"raw": earned, "min": 0, "max": question.points}},
+                context_extensions={"quiz_id": str(quiz.id), "attempt_id": str(attempt.id)},
+                registration=where.registration,
+                language=where.language,
+            )
 
     max_score = attempt.max_score or sum(q.points for q in quiz.questions)
     pct = (score / max_score * 100) if max_score else 0.0
     passed = pct >= quiz.pass_pct
 
-    attempt.answers = json.dumps(answers)
-    attempt.score = score
+    attempt.answers = "{}" if unclassified else json.dumps(answers)
+    attempt.score = None if unclassified else score
+    attempt.max_score = None if unclassified else max_score
     attempt.passed = passed
     attempt.submitted_at = datetime.now(UTC)
 
@@ -497,18 +517,19 @@ def submit_attempt(
     graded = xapi_score_result(score, max_score, pass_threshold=quiz.pass_pct / 100, duration=took)
     graded["success"] = passed  # the route's own verdict (the same rule), never a second opinion
     quiz_ext = {"attempt_id": str(attempt.id), "pass_threshold": quiz.pass_pct / 100}
-    emit_lifecycle(
-        background_tasks,
-        "scored",
-        user.id,
-        "quiz",
-        str(quiz.id),
-        quiz.title,
-        result={**graded, "completion": True},
-        context_extensions=quiz_ext,
-        registration=where.registration,
-        language=where.language,
-    )
+    if not unclassified:
+        emit_lifecycle(
+            background_tasks,
+            "scored",
+            user.id,
+            "quiz",
+            str(quiz.id),
+            quiz.title,
+            result={**graded, "completion": True},
+            context_extensions=quiz_ext,
+            registration=where.registration,
+            language=where.language,
+        )
     emit_lifecycle(
         background_tasks,
         "passed" if passed else "failed",
@@ -516,7 +537,7 @@ def submit_attempt(
         "quiz",
         str(quiz.id),
         quiz.title,
-        result=graded,
+        result={"success": passed, "completion": True} if unclassified else graded,
         context_extensions=quiz_ext,
         registration=where.registration,
         language=where.language,
@@ -524,10 +545,10 @@ def submit_attempt(
 
     # Module progress (if quiz is bound to a course module the user is enrolled in)
     if quiz.module_id:
-        _update_module_progress(db, quiz, uuid.UUID(user.id), int(pct), passed)
+        _update_module_progress(db, quiz, uuid.UUID(user.id), int(pct), passed, retain_score=not unclassified)
 
     # Competency auto-assessment from per-question competency mappings
-    if competency_points:
+    if competency_points and not unclassified:
         mappings = [
             {
                 "competency_code": code,
@@ -546,10 +567,35 @@ def submit_attempt(
             )
         )
 
+    if unclassified:
+        try:
+            queue_live_quiz_attempt(
+                db,
+                attempt_id=attempt.id,
+                tenant_id=uuid.UUID(user.tenant_id),
+                user_id=uuid.UUID(user.id),
+                raw_score=score,
+                max_score=max_score,
+                passed=passed,
+                occurred_at=attempt.submitted_at,
+            )
+        except ResultTransferError as exc:
+            if submission_savepoint is not None:
+                submission_savepoint.rollback()
+            raise HTTPException(503, "The authoritative result could not be sealed for transfer.") from exc
+
     db.commit()
 
     # Moodle/LTI grade pass-back (no-op unless this quiz was LTI-launched)
-    background_tasks.add_task(_push_lti_grade, uuid.UUID(user.id), quiz.id, score, max_score)
+    if not unclassified:
+        background_tasks.add_task(_push_lti_grade, uuid.UUID(user.id), quiz.id, score, max_score)
+
+    if unclassified:
+        return UnclassifiedAttemptResultOut(
+            attempt_id=attempt.id,
+            passed=passed,
+            late=late,
+        )
 
     return AttemptResultOut(
         attempt_id=attempt.id,
@@ -839,7 +885,15 @@ def _parse_questions(raw: str) -> list[dict]:
     return valid
 
 
-def _update_module_progress(db: Session, quiz: Quiz, user_id: uuid.UUID, pct: int, passed: bool) -> None:
+def _update_module_progress(
+    db: Session,
+    quiz: Quiz,
+    user_id: uuid.UUID,
+    pct: int,
+    passed: bool,
+    *,
+    retain_score: bool = True,
+) -> None:
     module = db.get(CourseModule, quiz.module_id)
     if not module:
         return
@@ -860,13 +914,18 @@ def _update_module_progress(db: Session, quiz: Quiz, user_id: uuid.UUID, pct: in
             enrollment_id=enrollment.id,
             module_id=module.id,
             status=ModuleProgressStatus.not_started,
-            score=0,
+            score=0 if retain_score else null(),
+            max_score=100 if retain_score else null(),
             attempts=0,
         )
         db.add(progress)
     progress.attempts += 1
-    progress.score = max(progress.score, pct)
-    progress.max_score = 100
+    if retain_score:
+        progress.score = max(progress.score or 0, pct)
+        progress.max_score = 100
+    else:
+        progress.score = null()
+        progress.max_score = null()
     progress.last_accessed_at = datetime.now(UTC)
     if passed and pct >= module.pass_threshold:
         progress.status = ModuleProgressStatus.completed

@@ -1,0 +1,132 @@
+---
+- name: Ensure range VM folders exist
+  vmware.vmware.folder:
+    absolute_path: "{{ plan.site.datacenter }}/vm/{{ item }}"
+    folder_type: vm
+    state: present
+  loop: "{{ plan.instances | map(attribute='folder') | unique | list }}"
+
+- name: Ensure the root range resource pool exists
+  community.vmware.vmware_resource_pool:
+    datacenter: "{{ plan.site.datacenter }}"
+    cluster: "{{ plan.site.cluster }}"
+    resource_pool: "{{ plan.site.resource_pool_root }}"
+    state: present
+  register: tn_root_pool
+
+- name: Ensure the range resource pool exists
+  community.vmware.vmware_resource_pool:
+    datacenter: "{{ plan.site.datacenter }}"
+    parent_resource_pool: "{{ plan.site.resource_pool_root }}"
+    resource_pool: "{{ plan.instances[0].resource_pool }}"
+    state: present
+  register: tn_range_pool
+  # In check mode a not-yet-created parent cannot be looked up.
+  when: not (ansible_check_mode and tn_root_pool is changed)
+
+- name: Note objects that will be created in a real run
+  ansible.builtin.debug:
+    msg: "Check mode: folders/resource pools do not exist yet, so clone checks below are skipped. A real run creates them first."
+  when: ansible_check_mode and (tn_root_pool is changed or tn_range_pool is changed)
+
+- name: Find VMs that already exist
+  community.vmware.vmware_guest_info:
+    datacenter: "{{ plan.site.datacenter }}"
+    folder: "{{ tn_vm_folder_prefix }}/{{ item.folder }}"
+    name: "{{ item.vm_name }}"
+  loop: "{{ tn_vms }}"
+  loop_control:
+    label: "{{ item.vm_name }}"
+  register: tn_pre
+  # Only "VM does not exist" counts as new. Any other error (session, permission,
+  # folder lookup) must stop the build, or an existing VM could be reconfigured.
+  failed_when: tn_pre is failed and 'non-existing VM' not in (tn_pre.msg | default(''))
+  check_mode: false
+  when: not (ansible_check_mode and (tn_root_pool is changed or tn_range_pool is changed))
+
+- name: Split new and existing VMs
+  ansible.builtin.set_fact:
+    tn_existing: "{{ tn_pre.results | default([]) | selectattr('instance', 'defined') | map(attribute='item.vm_name') | list }}"
+
+- name: Set the list of VMs this run creates
+  ansible.builtin.set_fact:
+    tn_new: "{{ tn_vms | rejectattr('vm_name', 'in', tn_existing) | map(attribute='vm_name') | list }}"
+
+- name: Read snapshots of existing VMs
+  vmware.vmware.vm_snapshot_info:
+    moid: "{{ item.instance.moid }}"
+  loop: "{{ tn_pre.results | default([]) | selectattr('instance', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.vm_name }}"
+  register: tn_pre_snaps
+  check_mode: false
+
+- name: Refuse to continue a partial build
+  ansible.builtin.assert:
+    that: >-
+      item.snapshots | default([]) | selectattr('name', 'equalto', tn_snapshot_name) | list | length == 1
+    fail_msg: >-
+      {{ item.item.item.vm_name }} exists but has no '{{ tn_snapshot_name }}' snapshot: an earlier build
+      stopped part-way. Its state is unknown, so it is not reused. Tear the range down and build again.
+    quiet: true
+  loop: "{{ tn_pre_snaps.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.item.vm_name }}"
+
+- name: Report existing VMs left untouched (rebuild = teardown then build)
+  ansible.builtin.debug:
+    msg: "{{ tn_existing | length }} VM(s) already exist and are not reconfigured: {{ tn_existing }}"
+  when: tn_existing | length > 0
+
+- name: Clone VMs in batches
+  ansible.builtin.include_tasks: clone_batch.yml
+  loop: "{{ tn_vms | selectattr('vm_name', 'in', tn_new) | batch(plan.site.clone_parallelism | int) | list }}"
+  loop_control:
+    loop_var: tn_batch
+    label: "{{ tn_batch | map(attribute='vm_name') | join(', ') }}"
+  when: not (ansible_check_mode and (tn_root_pool is changed or tn_range_pool is changed))
+
+- name: Read cloned VMs
+  community.vmware.vmware_guest_info:
+    datacenter: "{{ plan.site.datacenter }}"
+    folder: "{{ tn_vm_folder_prefix }}/{{ item.folder }}"
+    name: "{{ item.vm_name }}"
+  loop: "{{ tn_vms }}"
+  loop_control:
+    label: "{{ item.vm_name }}"
+  register: tn_vm_info
+  when: not ansible_check_mode
+
+- name: Record VM managed object IDs
+  ansible.builtin.set_fact:
+    tn_moids: "{{ tn_moids | default({}) | combine({item.item.vm_name: item.instance.moid}) }}"
+  loop: "{{ tn_vm_info.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.vm_name | default('') }}"
+  when: item.instance is defined
+
+- name: Tag VMs with range and instance tags
+  vmware.vmware.tag_associations:
+    state: present
+    object_moid: "{{ tn_moids[item.vm_name] }}"
+    object_type: VirtualMachine
+    tags: "{{ item.tags }}"
+  loop: "{{ tn_vms }}"
+  loop_control:
+    label: "{{ item.vm_name }}"
+  when: not ansible_check_mode
+  tags: [tn_vapi]
+
+- name: Pin each instance to one host (isolation mode uplink_none)
+  community.vmware.vmware_vm_vm_drs_rule:
+    cluster_name: "{{ plan.site.cluster }}"
+    drs_rule_name: "{{ item.drs_rule }}"
+    vms: "{{ item.vms | map(attribute='vm_name') | list }}"
+    enabled: true
+    mandatory: true
+    affinity_rule: true
+    state: present
+  loop: "{{ plan.instances }}"
+  loop_control:
+    label: "{{ item.drs_rule }}"
+  when: plan.site.isolation_mode == 'uplink_none' and not ansible_check_mode

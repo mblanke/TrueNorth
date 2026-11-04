@@ -1,0 +1,112 @@
+---
+# Preflight assertions. Any failure stops the build before anything is created.
+- name: Assert planned VLANs avoid every reserved VLAN
+  ansible.builtin.assert:
+    that: (tn_networks | map(attribute='vlan') | list) | intersect(plan.site.reserved_vlans) | length == 0
+    fail_msg: "Planned VLANs overlap reserved VLANs: {{ (tn_networks | map(attribute='vlan') | list) | intersect(plan.site.reserved_vlans) }}"
+    quiet: true
+
+- name: Assert every template in the plan is validated with provenance
+  ansible.builtin.assert:
+    that:
+      - item.value.validated is sameas true
+      - item.value.build_id not in [none, '', 'TBD']
+      - item.value.source_sha256 not in [none, '', 'TBD']
+    fail_msg: "Template {{ item.key }} is not validated or lacks provenance in config/templates.yml"
+    quiet: true
+  loop: "{{ plan.templates | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Read live portgroups on the range switch
+  community.vmware.vmware_dvs_portgroup_info:
+    datacenter: "{{ plan.site.datacenter }}"
+    dvswitch: "{{ plan.site.dvs }}"
+    show_vlan_info: true
+    show_network_policy: false
+    show_mac_learning: false
+    show_teaming_policy: false
+    show_port_policy: false
+    show_uplinks: false
+  register: tn_pg_info
+  check_mode: false
+
+- name: Assert the range switch exists
+  ansible.builtin.assert:
+    that: plan.site.dvs in tn_pg_info.dvs_portgroup_info
+    fail_msg: "Distributed switch {{ plan.site.dvs }} not found in datacenter {{ plan.site.datacenter }}"
+    quiet: true
+
+- name: Save live portgroups for the collision check
+  ansible.builtin.copy:
+    content: "{{ tn_pg_info.dvs_portgroup_info | to_nice_json }}\n"
+    dest: "{{ tn_build_dir }}/live-portgroups.json"
+    mode: "0640"
+  check_mode: false
+  changed_when: false   # evidence file, not infrastructure
+
+- name: Check VLAN collisions (int compare, trunks expanded, own portgroups matched exactly)
+  ansible.builtin.command:
+    argv: ["{{ tn_cli }}", "preflight-vlans", "{{ range_id }}", "--live-file", "{{ tn_build_dir }}/live-portgroups.json"]
+  changed_when: false
+  check_mode: false
+
+- name: Read templates and their tags
+  community.vmware.vmware_guest_info:
+    datacenter: "{{ plan.site.datacenter }}"
+    name: "{{ item.value.vcenter_name }}"
+    tags: true
+    tag_details: true
+  loop: "{{ plan.templates | dict2items }}"
+  loop_control:
+    label: "{{ item.value.vcenter_name }}"
+  register: tn_tmpl_info
+  check_mode: false
+  tags: [tn_vapi]
+
+- name: Assert each template is tagged validated in vCenter
+  ansible.builtin.assert:
+    that: >-
+      item.instance.tags | default([])
+      | selectattr('category_name', 'equalto', plan.site.tags.template_category)
+      | selectattr('name', 'equalto', plan.site.tags.template_validated_tag)
+      | list | length > 0
+    fail_msg: >-
+      Template {{ item.item.value.vcenter_name }} lacks tag
+      {{ plan.site.tags.template_category }}:{{ plan.site.tags.template_validated_tag }}.
+      Promote it with playbooks/template_promote.yml after it passes validation.
+    quiet: true
+  loop: "{{ tn_tmpl_info.results }}"
+  loop_control:
+    label: "{{ item.item.value.vcenter_name }}"
+  tags: [tn_vapi]
+
+- name: Read allowed datastores
+  community.vmware.vmware_datastore_info:
+    datacenter: "{{ plan.site.datacenter }}"
+    name: "{{ item }}"
+  loop: "{{ plan.site.datastores_allowed }}"
+  register: tn_ds_info
+  check_mode: false
+
+- name: Pick the first allowed datastore with room for the whole build
+  ansible.builtin.set_fact:
+    tn_datastore: >-
+      {{ (tn_ds_info.results | map(attribute='datastores') | flatten
+          | selectattr('freeSpace', 'ge', plan.totals.disk_required_gb * 1024 * 1024 * 1024)
+          | map(attribute='name') | list + [none]) | first }}
+
+- name: Assert a datastore has capacity
+  ansible.builtin.assert:
+    that: tn_datastore is not none and tn_datastore | length > 0
+    fail_msg: "No allowed datastore has {{ plan.totals.disk_required_gb }} GB free (build plus {{ plan.site.capacity_headroom_pct }}% headroom)"
+    quiet: true
+
+- name: Record isolation model for this build
+  ansible.builtin.debug:
+    msg: >-
+      Isolation mode {{ plan.site.isolation_mode }}.
+      {% if plan.site.isolation_mode == 'uplink_none' %}Switch {{ plan.site.dvs }} must have no physical NICs bound;
+      each instance is pinned to one host by a DRS affinity rule.
+      {% else %}Range VLANs are trunked; physical switches must have no L3 interface for them.{% endif %}
+      The isolation probe proves this after build.

@@ -1,0 +1,346 @@
+#!/usr/bin/env python3
+"""TrueNorth range CLI. Single entry point for humans, CI and Claude.
+
+Read-only / planning (no approval needed):
+  range validate <ID>              schema + composition checks
+  range compile  <ID> [--write-allocation]
+                                   compile build/<ID>/plan.json and plan.txt
+  range plan     <ID>              print the plan without writing it
+  range verify-plan <ID> [--require-buildable]
+  range check    <ID>              ansible --check --diff of the build
+  range drift    <ID> [--live-file F]
+                                   collect live state and compare with the plan
+  range manifest <ID> [--sign]     write build/<ID>/manifest.json + manifest.md
+  range scenario <file> --id <ID> --expires YYYY-MM-DD [--out ranges/<ID>.yml]
+  range discover                   read-only: record VLANs in use -> discovery/live-network.json
+  range list                       ranges, slots and approval state
+  range blackout-check
+
+Changes vCenter (needs a human approval and no active blackout):
+  range build    <ID>
+  range reset    <ID>
+  range teardown <ID> --confirm <ID>
+  range validate-live <ID>         run in-guest validation probes (no changes)
+
+Human only (blocked for Claude by the guard hook):
+  range approve  <ID> --action build [--action teardown] [--hours 4] [--by NAME]
+  range revoke   <ID>
+  range release  <ID> --confirm <ID>    free the slot in ranges/.allocations.json
+
+Extra ansible-playbook arguments (vault ids, inventory) come from TNRANGE_ANSIBLE_ARGS.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from tnrange.common import RangeError, load_json, repo_root  # noqa: E402
+from tnrange import gates, plan as planmod  # noqa: E402
+from tnrange.allocate import load_registry, save_registry  # noqa: E402
+from tnrange.common import load_yaml  # noqa: E402
+from tnrange.compose import compose  # noqa: E402
+from tnrange.schema import validate_range_doc  # noqa: E402
+
+ROOT = repo_root()
+
+
+ALLOWED_ARG_FLAGS = {"--vault-id", "--vault-password-file", "--ask-vault-pass", "-J",
+                     "-v", "-vv", "-vvv", "-vvvv", "--diff"}
+
+
+def operator_args() -> list[str]:
+    """TNRANGE_ANSIBLE_ARGS may only load vault files and vault ids. Anything else
+    (other -e values, --skip-tags, -i, ...) could change what the playbook acts on."""
+    args = shlex.split(os.environ.get("TNRANGE_ANSIBLE_ARGS", ""))
+    out, i = [], 0
+    while i < len(args):
+        a = args[i]
+        if a in ("-e", "--extra-vars"):
+            v = args[i + 1] if i + 1 < len(args) else ""
+            vault_dir = (ROOT / "vault").resolve()
+            vp = (ROOT / v[1:]).resolve() if v.startswith("@") else None
+            if vp is None or vp.parent != vault_dir or not vp.is_file():
+                raise RangeError(f"TNRANGE_ANSIBLE_ARGS: only '-e @vault/<file>' is allowed, got '{a} {v}'")
+            if not vp.read_text(errors="replace").startswith("$ANSIBLE_VAULT;") \
+                    and os.environ.get("TNRANGE_ALLOW_PLAINTEXT_VAULT") != "1":
+                raise RangeError(f"{v[1:]} is not ansible-vault encrypted; refusing to load it")
+            out += [a, v]
+            i += 2
+            continue
+        if a in ("--vault-id", "--vault-password-file"):
+            out += [a, args[i + 1] if i + 1 < len(args) else ""]
+            i += 2
+            continue
+        if a.split("=", 1)[0] in ALLOWED_ARG_FLAGS:
+            out.append(a)
+            i += 1
+            continue
+        raise RangeError(f"TNRANGE_ANSIBLE_ARGS: '{a}' is not allowed (vault options and -v only)")
+    return out
+
+
+def ansible(playbook: str, rid: str, check: bool = False, extra: dict | None = None) -> int:
+    # Operator (vault) args first; our own -e values last so they always win.
+    cmd = ["ansible-playbook", str(ROOT / "playbooks" / playbook),
+           "-i", "localhost,", "-c", "local"] + operator_args()
+    cmd += ["-e", f"range_id={rid}"]
+    for k, v in (extra or {}).items():
+        cmd += ["-e", f"{k}={v}"]
+    if check:
+        cmd += ["--check", "--diff"]
+    print("+ " + " ".join(shlex.quote(c) for c in cmd), flush=True)
+    env = dict(os.environ, TNRANGE_ROOT=str(ROOT))
+    return subprocess.call(cmd, env=env, cwd=str(ROOT))
+
+
+def gate(rid: str, action: str) -> None:
+    gates.check_blackout(ROOT)
+    planmod.verify_plan(ROOT, rid, require_buildable=True)
+    gates.check_approval(ROOT, rid, action)
+
+
+def cmd_validate(a):
+    path = planmod.range_path(ROOT, a.id)
+    doc = load_yaml(path)
+    errs = validate_range_doc(doc)
+    if errs:
+        raise RangeError(errs)
+    r = compose(doc, ROOT)
+    print(f"OK {r['range']['id']}: {len(r['networks'])} network(s), {len(r['vms'])} VM(s) per instance, "
+          f"{r['range']['students']} instance(s)")
+    return 0
+
+
+def cmd_compile(a):
+    p = planmod.build_plan(ROOT, a.id, write_allocation=a.write_allocation)
+    out = planmod.write_plan(ROOT, p)
+    print(planmod.render(p), end="")
+    print(f"wrote {out.relative_to(ROOT)}")
+    return 0 if p["buildable"] or a.allow_blockers else 2
+
+
+def cmd_plan(a):
+    p = planmod.build_plan(ROOT, a.id, write_allocation=False)
+    print(planmod.render(p), end="")
+    return 0
+
+
+def cmd_verify(a):
+    p = planmod.verify_plan(ROOT, a.id, require_buildable=a.require_buildable)
+    print(f"OK plan {p['plan_sha256'][:12]} is current" + (" and buildable" if p["buildable"] else ""))
+    return 0
+
+
+def cmd_check(a):
+    planmod.verify_plan(ROOT, a.id)
+    return ansible("range_build.yml", a.id, check=True)
+
+
+def cmd_build(a):
+    gate(a.id, "build")
+    return ansible("range_build.yml", a.id)
+
+
+def cmd_reset(a):
+    gate(a.id, "reset")
+    return ansible("range_reset.yml", a.id)
+
+
+def cmd_teardown(a):
+    if a.confirm != a.id:
+        raise RangeError(f"teardown needs --confirm {a.id}")
+    gates.check_blackout(ROOT)
+    planmod.verify_plan(ROOT, a.id)
+    gates.check_approval(ROOT, a.id, "teardown")
+    return ansible("range_teardown.yml", a.id, extra={"confirm": a.id})
+
+
+def cmd_validate_live(a):
+    gates.check_blackout(ROOT)
+    planmod.verify_plan(ROOT, a.id)
+    return ansible("range_validate.yml", a.id)
+
+
+def cmd_drift(a):
+    from tnrange import drift
+    if not a.live_file:
+        planmod.verify_plan(ROOT, a.id)
+        rc = ansible("range_drift_collect.yml", a.id)
+        if rc:
+            return rc
+    findings, out = drift.run(ROOT, a.id, Path(a.live_file) if a.live_file else None)
+    for f in findings:
+        print(f"DRIFT {f}")
+    print(f"{'drift found' if findings else 'no drift'}; wrote {out.relative_to(ROOT)}")
+    return 3 if findings else 0
+
+
+def cmd_manifest(a):
+    from tnrange.manifest import build_manifest
+    out = build_manifest(ROOT, a.id, sign=a.sign)
+    m = load_json(out)
+    print(f"{m['verdict']}: wrote {out.relative_to(ROOT)} (sha256 {m['manifest_sha256'][:12]})")
+    for r in m["reasons"]:
+        print(f"  reason: {r}")
+    return 0 if m["verdict"] == "PASS" else 4
+
+
+def cmd_scenario(a):
+    from tnrange.scenario import dump, scenario_to_range
+    doc = scenario_to_range(ROOT, Path(a.file), a.id, a.expires, owner=a.owner, students=a.students)
+    text = dump(doc)
+    out = Path(a.out) if a.out else ROOT / "ranges" / f"{a.id}.yml"
+    if out.exists() and not a.force:
+        raise RangeError(f"{out} exists; pass --force to overwrite")
+    out.write_text(text)
+    print(f"wrote {out}")
+    return 0
+
+
+def cmd_discover(a):
+    return ansible("discovery_network.yml", "DISCOVERY")
+
+
+def cmd_list(a):
+    reg = load_registry(ROOT)
+    files = sorted((ROOT / "ranges").glob("*.yml"))
+    print(f"{'RANGE':<14} {'SLOTS':<20} {'PLAN':<12} APPROVAL")
+    for f in files:
+        rid = f.stem
+        slots = sorted(v for k, v in reg["slots"].items() if k == rid or k.startswith(f"{rid}-S"))
+        pj = ROOT / "build" / rid / "plan.json"
+        ps = load_json(pj)["plan_sha256"][:12] if pj.exists() else "-"
+        ap = gates.approval_path(ROOT, rid)
+        apt = "-"
+        if ap.exists():
+            rec = load_json(ap)
+            apt = f"{','.join(rec['actions'])} until {rec['expires']}"
+        print(f"{rid:<14} {','.join(map(str, slots)) or '-':<20} {ps:<12} {apt}")
+    return 0
+
+
+def cmd_blackout(a):
+    w = gates.active_blackout(ROOT)
+    if w:
+        print(f"BLACKOUT until {w['end']}: {w.get('reason')}")
+        return 1
+    print("no active blackout")
+    return 0
+
+
+def cmd_approve(a):
+    p = gates.approve(ROOT, a.id, a.action, a.hours, a.by)
+    rec = load_json(p)
+    print(f"approved {a.id} for {','.join(rec['actions'])} until {rec['expires']} ({p.relative_to(ROOT)})")
+    return 0
+
+
+def cmd_revoke(a):
+    print("revoked" if gates.revoke(ROOT, a.id) else "no approval to revoke")
+    return 0
+
+
+def cmd_preflight_vlans(a):
+    from tnrange.preflight import check_or_raise
+    plan = load_json(ROOT / "build" / a.id / "plan.json")
+    site = load_yaml(ROOT / "config" / "site.yml")["site"]
+    check_or_raise(plan, load_json(Path(a.live_file)), site.get("vlan_check_ignore_portgroups"))
+    print(f"OK no VLAN collisions for {a.id}")
+    return 0
+
+
+def cmd_approval_check(a):
+    gates.check_approval(ROOT, a.id, a.action)
+    print(f"OK approval for {a.id} covers {a.action}")
+    return 0
+
+
+def cmd_release(a):
+    if a.confirm != a.id:
+        raise RangeError(f"release needs --confirm {a.id}")
+    gates.check_approval(ROOT, a.id, "release")
+    td = ROOT / "build" / a.id / "teardown.json"
+    pj = ROOT / "build" / a.id / "plan.json"
+    if not td.exists() or not pj.exists() or \
+            load_json(td).get("plan_sha256") != load_json(pj).get("plan_sha256"):
+        raise RangeError(f"{a.id}: no completed teardown recorded for the current plan "
+                         f"(build/{a.id}/teardown.json). Tear down before releasing the slot")
+    reg = load_registry(ROOT)
+    keys = [k for k in reg["slots"] if k == a.id or k.startswith(f"{a.id}-S")]
+    for k in keys:
+        del reg["slots"][k]
+    save_registry(ROOT, reg)
+    print(f"released {len(keys)} slot(s) for {a.id}")
+    return 0
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="range", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    def add(name, fn, *args):
+        p = sub.add_parser(name)
+        for spec in args:
+            spec(p)
+        p.set_defaults(fn=fn)
+        return p
+
+    rid = lambda p: p.add_argument("id")  # noqa: E731
+    add("validate", cmd_validate, rid)
+    p = add("compile", cmd_compile, rid)
+    p.add_argument("--write-allocation", action="store_true")
+    p.add_argument("--allow-blockers", action="store_true", help="exit 0 even if not buildable")
+    add("plan", cmd_plan, rid)
+    p = add("verify-plan", cmd_verify, rid)
+    p.add_argument("--require-buildable", action="store_true")
+    add("check", cmd_check, rid)
+    add("build", cmd_build, rid)
+    add("reset", cmd_reset, rid)
+    p = add("teardown", cmd_teardown, rid)
+    p.add_argument("--confirm", required=True)
+    add("validate-live", cmd_validate_live, rid)
+    p = add("drift", cmd_drift, rid)
+    p.add_argument("--live-file")
+    p = add("manifest", cmd_manifest, rid)
+    p.add_argument("--sign", action="store_true")
+    p = add("scenario", cmd_scenario)
+    p.add_argument("file")
+    p.add_argument("--id", required=True)
+    p.add_argument("--expires", required=True)
+    p.add_argument("--owner", default="TBD")
+    p.add_argument("--students", type=int, default=1)
+    p.add_argument("--out")
+    p.add_argument("--force", action="store_true")
+    add("discover", cmd_discover)
+    add("list", cmd_list)
+    add("blackout-check", cmd_blackout)
+    p = add("approve", cmd_approve, rid)
+    p.add_argument("--action", action="append", required=True)
+    p.add_argument("--hours", type=float, default=4)
+    p.add_argument("--by")
+    add("revoke", cmd_revoke, rid)
+    p = add("preflight-vlans", cmd_preflight_vlans, rid)
+    p.add_argument("--live-file", required=True)
+    p = add("approval-check", cmd_approval_check, rid)
+    p.add_argument("action")
+    p = add("release", cmd_release, rid)
+    p.add_argument("--confirm", required=True)
+
+    a = ap.parse_args(argv)
+    try:
+        return a.fn(a)
+    except RangeError as exc:
+        print(f"ERROR:\n{exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,50 @@
+# TrueNorth range site configuration.
+# Every value marked TBD must be confirmed by discovery before a real build.
+# The compiler refuses to produce a buildable plan while required fields are TBD
+# (use --allow-tbd for planning-only output).
+site:
+  vcenter:
+    hostname_var: vcenter_hostname        # resolved from Ansible vault, never stored here
+    datacenter: TBD
+    cluster: TBD
+    dvs: TBD                              # distributed switch that carries range traffic
+    datastores_allowed: [TBD]
+    folder_root: TrueNorth/Ranges         # VM folder path under the datacenter
+    resource_pool_root: TrueNorth-Ranges
+
+  tags:
+    range_category: truenorth-range       # tag = parent range id (teardown key)
+    instance_category: truenorth-instance # tag = instance id (per student)
+    template_category: truenorth-template
+    template_validated_tag: validated
+
+  # Isolation model. Pick one after confirming with the network team:
+  #   uplink_none      - range portgroups have no active/standby uplinks; all VMs of an
+  #                      instance are pinned to one host with a DRS VM-VM affinity rule.
+  #   vlan_trunk_no_l3 - range VLANs are trunked on physical uplinks, and the physical
+  #                      switches have NO L3 interface or route for them (must be verified).
+  isolation_mode: TBD
+
+  # Allocation pools. Each range instance gets one "slot": a contiguous VLAN block and
+  # a CIDR block. Allocations are recorded in ranges/.allocations.json (committed) so the
+  # same definition always gets the same VLANs and addresses.
+  vlan_pool: {start: 2000, end: 3999}     # TBD confirm with network team
+  vlans_per_slot: 16
+  reserved_vlans: []                      # TBD management, storage, vMotion, production
+  cidr_pool: 10.200.0.0/14                # TBD confirm no overlap with DND networks
+  slot_prefix: 20                         # each slot = one /20 = 16 x /24
+  network_prefix: 24
+  reserved_cidrs: []                      # TBD management, storage, production ranges
+  # Portgroups ignored by VLAN collision checks. Uplink portgroups trunk every VLAN by design.
+  vlan_check_ignore_portgroups: ['.*-DVUplinks-\d+$']
+  first_host_offset: 10                   # auto-assigned hosts start at .10; .1 is gateway
+
+  # Probe targets the isolation test must NOT be able to reach from inside a range.
+  # Use addresses that answer when reachable (e.g. management gateway, DNS, vCenter).
+  isolation_probe_targets: []             # TBD e.g. [{host: 192.0.2.1, port: 443}]
+
+  capacity_headroom_pct: 20
+  max_students: 40
+  clone_mode: full                        # full | linked
+  clone_parallelism: 6
+  validate_certs: true

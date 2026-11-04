@@ -1,0 +1,21 @@
+blueprint:
+  name: dmz
+  description: Exposed service segment with Linux web servers.
+  params:
+    web_servers: {type: int, default: 1, min: 0, max: 20}
+    template:    {type: str, default: ubuntu2404}
+
+networks:
+  - name: net
+    gateway: true
+
+vms:
+  - name: web{nn}
+    count: ${web_servers}
+    template: ${template}
+    role: web_server
+    cpu: 2
+    memory_gb: 2
+    disk_gb: 40
+    guest_config: tools
+    nics: [net]

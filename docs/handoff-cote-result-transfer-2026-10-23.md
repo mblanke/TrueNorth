@@ -61,22 +61,34 @@ The Unclassified receiving side now persists verified credentials in
 `provisioned_subject_credentials`. Import is idempotent by credential ID and digest, requires
 the trusted Secret source, local Unclassified destination, unexpired validity and an active
 local tenant, and leaves the credential `available` without a user mapping. The newest slice
-can assign that credential once to a new identity-free TN Student using a Keycloak UUID
-supplied by the caller. It creates a separate random TN ID, synthetic email and learner alias,
-then records the link and assignment time. It refuses Secret execution, a foreign tenant or
-destination, expiry, reuse, and any real identity attributes. It does **not** create the
-Keycloak account or deliver a password; the next slice is that adapter and approved one-time
-credential channel. Migration `6fa2b4d8e310` passed the full SQLite downgrade/re-upgrade
+can assign that credential once to a new identity-free TN Student. The Keycloak adapter now
+creates a disabled, marker-tagged account first and passes its returned UUID into the existing
+assignment guard. It creates a separate random TN ID, synthetic email and learner alias, then
+records the link and assignment time. It refuses Secret execution, a foreign tenant or
+destination, expiry, reuse, real identity attributes, and lifecycle operations against an
+ordinary Keycloak account. A failed TN bind deletes the disabled Keycloak orphan. Migration
+`6fa2b4d8e310` passed the full SQLite downgrade/re-upgrade
 round-trip. A tenant-scoped Unclassified resolver now returns the assigned opaque token for a
 local learner, and migration `7ab3c5e9f421` enforces one token per local user. This is the
 prerequisite a scoring producer needs; it does not itself remove any legacy score storage.
 
-The first quiz producer seam is also implemented but intentionally not wired to the live
-route. It accepts only a completed attempt belonging to the learner and tenant, requires that
-learner's immutable pinned course release, resolves the assigned opaque subject, and queues
-the encrypted result in the caller's transaction. Before wiring it, change the Unclassified
-quiz response, attempts, module progress, competency assessment, xAPI and LTI paths so they do
-not retain or transmit readable scores or answers. Secret-mode grading must remain unchanged.
+Initial activation and password recovery are implemented as a separate service operation:
+Keycloak first disables the account and rotates a temporary password; TN supplies it only to
+an injected approved-channel callback; Keycloak enables the account only after delivery
+succeeds. Callback failure re-disables it, and password values are excluded from object
+representations and error messages. Revocation disables Keycloak, deactivates the TN account
+and marks the imported credential revoked so the result-token resolver and recovery both fail.
+There is deliberately no public API or selected delivery medium yet; that operator channel
+requires security-authority approval and audit/UI wiring.
+
+The first quiz producer is now wired to the live Unclassified route. It accepts only an
+attempt belonging to the learner and tenant, requires the learner's immutable pinned course
+release, resolves the assigned opaque subject, and seals the in-memory grade into the encrypted
+outbox in the same transaction. The local attempt and progress records retain pass/fail but no
+answers or numeric grade, no competency grade row is created, the learner response is
+pass/fail-only, per-question/numeric xAPI is suppressed and no numeric LTI grade task is queued.
+Secret-mode behavior remains unchanged. If sealing fails, submission rolls back and returns a
+generic unavailable response instead of losing or retaining the grade.
 
 A public-key trust registry is now implemented in `app/result_transfer/trust.py` with migration
 `8bc4d6fa0532`. Entries are bound to remote enclave, purpose, key ID and validity window;
@@ -95,10 +107,11 @@ screen and external ceremony/runbook are still open.
 
 ## Verification evidence
 
-The full repository gate passed at commit `ce9b65d2`:
+The full repository gate passed on the current local, uncommitted tree based on
+`0e045bc401e7`:
 
 ```text
-8786 passed, 164 skipped, 59 warnings in 441.44s
+8807 passed, 164 skipped, 59 warnings
 DoD PASS
 ```
 
@@ -110,7 +123,10 @@ On this Mac, run the gate with Homebrew OpenSSL first. `/usr/bin/openssl` is Lib
 `openssl passwd -6`, causing six unrelated work-site template tests to fail:
 
 ```bash
-PATH=/opt/homebrew/bin:$PATH RUFF_CACHE_DIR=/private/tmp/tn-ruff-cache bash scripts/dod.sh
+PATH=/opt/homebrew/opt/openssl@3/bin:$PATH \
+PY=/tmp/truenorth-codex-venv311/bin/python \
+RUFF_CACHE_DIR=/tmp/tn-ruff-cache \
+bash scripts/dod.sh
 ```
 
 PostgreSQL-only tests were skipped because `TEST_POSTGRES_ADMIN_URL` is not configured. Run the
@@ -133,30 +149,29 @@ before merge.
 
 ## Highest-priority unfinished work
 
-The current Unclassified app is **not yet compliant with the owner data rule**. Existing users,
-quiz attempts, module progress, enrollments and other learning tables still carry names and/or
-readable numeric scores. The new outbox proves a safe destination format; no quiz, practical
-exercise or class-close-out producer calls it yet.
+The current Unclassified app is **not yet compliant with the owner data rule**. The live quiz
+journey now meets its bounded rule, but existing users, historical records, enrollments and
+other learning/result tables still carry identity and/or readable numeric values. Practical
+exercise and class-close-out producers do not call the outbox yet.
 
 Continue in this order:
 
 1. Use the completed schema inventory to remove each database finding. Add the still-missing
    behavior tests for API responses, xAPI/LRS, LTI, logs, traces, object/search stores,
    support exports and backups.
-2. Complete pseudonymous login provisioning: use an adapter to create the identity-free
-   Keycloak account first, assign the signed credential to its returned UUID, and deliver a
-   one-time login through an approved separate channel. Add revocation and recovery. Never
-   use the TN `users.id` as the opaque token or copy the person mapping to Unclassified.
+2. Select and accredit the separate one-time-login delivery channel, then add a
+   platform-operator workflow and audit events around the implemented create, activate,
+   recover and revoke services. Never return a password from an API, use the TN `users.id` as
+   the opaque token, or copy the person mapping to Unclassified.
 3. Put signing/decryption keys behind a key-provider adapter and add the operator web screen
    and formal ceremony for the implemented trust-store API. Keep generated test keys and a
    controlled development provider; production must use the approved HSM/KMS boundary.
 4. Add quarantine/import workflow: copied, scanned, verified, awaiting mapping/release,
    accepted/rejected. Enforce package age/count policy and audit every transition. The current
    media helper assumes an external malware check.
-5. Integrate one producer end to end, preferably quiz submission. Seal the numeric result in
-   the same transaction boundary, persist only pass/fail on Unclassified, commit Secret import
-   idempotently by package ID, and return the signed receipt. Preserve normal Secret-mode
-   grading behavior.
+5. Demonstrate the completed quiz producer across two installations: export, quarantine,
+   idempotent Secret import, subject mapping and signed receipt. Preserve normal Secret-mode
+   grading behavior and repeat the producer pattern for the remaining assessment types.
 6. Repeat for practical exercises and class close-out, then add staff UI/API for outbox,
    quarantine, correction approval and receipts without displaying low-side grades.
 7. Demonstrate 100 synthetic results between two isolated TN databases, including duplicate

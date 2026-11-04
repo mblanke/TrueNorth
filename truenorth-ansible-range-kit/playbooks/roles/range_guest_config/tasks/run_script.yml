@@ -1,0 +1,55 @@
+---
+- name: "Upload script | {{ vm.vm_name ~ ' ' ~ script.name }}"
+  community.vmware.vmware_guest_file_operation:
+    datacenter: "{{ plan.site.datacenter }}"
+    folder: "{{ tn_vm_folder_prefix }}/{{ vm.folder }}"
+    vm_id: "{{ vm.vm_name }}"
+    vm_id_type: vm_name
+    vm_username: "{{ tn_creds.username }}"
+    vm_password: "{{ tn_creds.password }}"
+    copy:
+      src: "{{ script.src }}"
+      dest: "{{ tn_guest_dir }}{{ tn_sep }}tn-{{ script.name }}{{ script.src | splitext | last }}"
+      overwrite: true
+  vars:
+    tn_creds: "{{ lookup('ansible.builtin.vars', vm.guest_user_var) }}"
+  no_log: "{{ tn_no_log | default(true) }}"
+
+- name: "Run script | {{ vm.vm_name ~ ' ' ~ script.name }}"
+  community.vmware.vmware_vm_shell:
+    datacenter: "{{ plan.site.datacenter }}"
+    folder: "{{ tn_vm_folder_prefix }}/{{ vm.folder }}"
+    vm_id: "{{ vm.vm_name }}"
+    vm_id_type: vm_name
+    vm_username: "{{ tn_creds.username }}"
+    vm_password: "{{ tn_creds.password }}"
+    vm_shell: "{{ tn_shell }}"
+    vm_shell_args: >-
+      {{ (tn_guest_dir ~ '/tn-' ~ script.name ~ '.sh')
+         if vm.os_family == 'linux'
+         else ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' ~ tn_guest_dir ~ tn_sep ~ 'tn-' ~ script.name ~ '.ps1') }}
+    vm_shell_env: "{{ tn_guest_env }}"
+    wait_for_process: true
+    timeout: 1800
+  vars:
+    tn_creds: "{{ lookup('ansible.builtin.vars', vm.guest_user_var) }}"
+  no_log: "{{ tn_no_log | default(true) }}"
+
+- name: "Remove script from guest | {{ vm.vm_name ~ ' ' ~ script.name }}"
+  community.vmware.vmware_vm_shell:
+    datacenter: "{{ plan.site.datacenter }}"
+    folder: "{{ tn_vm_folder_prefix }}/{{ vm.folder }}"
+    vm_id: "{{ vm.vm_name }}"
+    vm_id_type: vm_name
+    vm_username: "{{ tn_creds.username }}"
+    vm_password: "{{ tn_creds.password }}"
+    vm_shell: "{{ tn_shell }}"
+    vm_shell_args: >-
+      {{ ('-c "rm -f ' ~ tn_guest_dir ~ '/tn-' ~ script.name ~ '.sh"')
+         if vm.os_family == 'linux'
+         else ('-NoProfile -Command "Remove-Item -Force ' ~ tn_guest_dir ~ tn_sep ~ 'tn-' ~ script.name ~ '.ps1"') }}
+    wait_for_process: true
+    timeout: 120
+  vars:
+    tn_creds: "{{ lookup('ansible.builtin.vars', vm.guest_user_var) }}"
+  no_log: "{{ tn_no_log | default(true) }}"

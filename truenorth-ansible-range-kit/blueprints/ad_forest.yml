@@ -1,0 +1,48 @@
+blueprint:
+  name: ad_forest
+  description: Active Directory forest on one LAN - domain controllers, optional file servers, workstations.
+  params:
+    domain:             {type: str, default: corp.local}
+    domain_controllers: {type: int, default: 1, min: 1, max: 4}
+    file_servers:       {type: int, default: 0, min: 0, max: 10}
+    workstations:       {type: int, default: 2, min: 0, max: 100}
+    server_template:    {type: str, default: win2022}
+    client_template:    {type: str, default: win11}
+
+networks:
+  - name: lan
+    gateway: true
+
+vms:
+  - name: dc{nn}
+    count: ${domain_controllers}
+    template: ${server_template}
+    role: domain_controller
+    cpu: 2
+    memory_gb: 4
+    disk_gb: 60
+    guest_config: tools
+    nics: [lan]
+    vars: {domain: "${domain}"}
+
+  - name: fs{nn}
+    count: ${file_servers}
+    template: ${server_template}
+    role: file_server
+    cpu: 2
+    memory_gb: 4
+    disk_gb: 120
+    guest_config: tools
+    nics: [lan]
+    vars: {domain: "${domain}"}
+
+  - name: ws{nn}
+    count: ${workstations}
+    template: ${client_template}
+    role: workstation
+    cpu: 2
+    memory_gb: 4
+    disk_gb: 64
+    guest_config: tools
+    nics: [lan]
+    vars: {domain: "${domain}"}

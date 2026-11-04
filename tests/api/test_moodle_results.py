@@ -43,7 +43,7 @@ from app.models import (
 )
 from app.moodle_backends import LocalTrueNorthMoodle, MoodleError, fake
 from app.moodle_results import service
-from app.moodle_results.models import MoodleResultCursor
+from app.moodle_results.models import MoodleResultCursor, MoodleResultRecord
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from test_course_publications import DEV_TENANT, accepted, live, publish, ready  # noqa: F401
@@ -248,6 +248,42 @@ class TestRecording:
         assert (body["pages"], body["rows"], body["cursor"], body["applied"]) == (2, 2, "2", 2)
         status = course.client.get(f"/integrations/platforms/{course.platform.id}/moodle-results").json()
         assert status["rows_seen"] == 2 and status["rows_applied"] == 2
+
+
+class TestUnclassifiedBoundary:
+    def test_grade_page_is_refused_without_consuming_cursor_or_writing_records(
+        self, course, db_session, monkeypatch
+    ):
+        monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "unclassified")
+        _view(course)
+        _grade(course, grade=87)
+
+        refused = _pull(course)
+
+        assert refused.status_code == 409
+        assert refused.json()["detail"] == (
+            "Unclassified deployments cannot import readable Moodle quiz grades; "
+            "use sealed result transfer to the authoritative enclave."
+        )
+        cursor = db_session.get(MoodleResultCursor, course.platform.id)
+        assert cursor.cursor == ""
+        assert (cursor.rows_seen, cursor.rows_applied) == (0, 0)
+        assert "87" not in cursor.last_error
+        assert db_session.query(MoodleResultRecord).filter_by(platform_id=course.platform.id).count() == 0
+        assert _attempts(db_session, course) == []
+        progress = db_session.query(ModuleProgress).filter_by(enrollment_id=course.enrollment.id).all()
+        assert len(progress) == 6
+        assert all(p.status == ModuleProgressStatus.not_started and p.last_accessed_at is None for p in progress)
+        db_session.refresh(course.enrollment)
+        assert course.enrollment.status == EnrollmentStatus.enrolled
+
+        # The refused page was not consumed. The authoritative enclave can ingest the
+        # same signed rows later without a reset or an operator repairing the cursor.
+        monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "secret")
+        accepted_pull = _pull(course)
+        assert accepted_pull.status_code == 200, accepted_pull.text
+        assert (accepted_pull.json()["rows"], accepted_pull.json()["applied"]) == (2, 2)
+        assert _progress(db_session, course).score == 87
 
 
 class TestTwoCourses:

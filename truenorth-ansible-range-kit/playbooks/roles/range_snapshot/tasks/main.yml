@@ -1,0 +1,111 @@
+---
+# tn_snapshot_action: baseline | revert
+# Baseline: clean guest shutdown, then a powered-off snapshot (no memory state),
+# taken once. Revert: return every VM to that snapshot, then power on per plan.
+- name: Resolve VM IDs when not set by the build
+  when: tn_moids is not defined and not ansible_check_mode
+  block:
+    - name: Read range VMs
+      community.vmware.vmware_guest_info:
+        datacenter: "{{ plan.site.datacenter }}"
+        folder: "{{ tn_vm_folder_prefix }}/{{ item.folder }}"
+        name: "{{ item.vm_name }}"
+      loop: "{{ tn_vms }}"
+      loop_control:
+        label: "{{ item.vm_name }}"
+      register: tn_vm_info
+    - name: Record VM managed object IDs
+      ansible.builtin.set_fact:
+        tn_moids: "{{ tn_moids | default({}) | combine({item.item.vm_name: item.instance.moid}) }}"
+      loop: "{{ tn_vm_info.results }}"
+      loop_control:
+        label: "{{ item.item.vm_name }}"
+
+- name: Take baseline snapshots
+  when: tn_snapshot_action == 'baseline' and not ansible_check_mode
+  block:
+    - name: Read existing snapshots
+      vmware.vmware.vm_snapshot_info:
+        moid: "{{ tn_moids[item.vm_name] }}"
+      loop: "{{ tn_vms }}"
+      loop_control:
+        label: "{{ item.vm_name }}"
+      register: tn_snap_info
+
+    - name: Start the list of VMs without a baseline
+      ansible.builtin.set_fact:
+        tn_need_baseline: []
+
+    - name: Collect VMs without a baseline
+      ansible.builtin.set_fact:
+        tn_need_baseline: "{{ (tn_need_baseline | default([])) + [item.item.vm_name] }}"
+      loop: "{{ tn_snap_info.results }}"
+      loop_control:
+        label: "{{ item.item.vm_name }}"
+      when: item.snapshots | default([]) | selectattr('name', 'equalto', tn_snapshot_name) | list | length == 0
+
+    - name: Shut down guests that need a baseline
+      vmware.vmware.vm_powerstate:
+        datacenter: "{{ plan.site.datacenter }}"
+        moid: "{{ tn_moids[item] }}"
+        state: shutdown-guest
+        timeout: "{{ tn_shutdown_timeout }}"
+      loop: "{{ tn_need_baseline | default([]) }}"
+
+    - name: Create the baseline snapshot
+      vmware.vmware.vm_snapshot:
+        moid: "{{ tn_moids[item] }}"
+        snapshot_name: "{{ tn_snapshot_name }}"
+        description: "TrueNorth baseline | plan {{ plan.plan_sha256 }}"
+        memory_dump: false
+        quiesce: false
+        state: present
+      loop: "{{ tn_need_baseline | default([]) }}"
+
+- name: Revert to baseline snapshots
+  when: tn_snapshot_action == 'revert' and not ansible_check_mode
+  block:
+    - name: Read existing snapshots
+      vmware.vmware.vm_snapshot_info:
+        moid: "{{ tn_moids[item.vm_name] }}"
+      loop: "{{ tn_vms }}"
+      loop_control:
+        label: "{{ item.vm_name }}"
+      register: tn_snap_info
+
+    - name: Assert every VM has a baseline
+      ansible.builtin.assert:
+        that: item.snapshots | default([]) | selectattr('name', 'equalto', tn_snapshot_name) | list | length == 1
+        fail_msg: "{{ item.item.vm_name }} has no single '{{ tn_snapshot_name }}' snapshot; reset is not possible. Rebuild instead."
+        quiet: true
+      loop: "{{ tn_snap_info.results }}"
+      loop_control:
+        label: "{{ item.item.vm_name }}"
+
+    - name: Revert
+      vmware.vmware.vm_snapshot_revert:
+        moid: "{{ tn_moids[item.vm_name] }}"
+        snapshot_name: "{{ tn_snapshot_name }}"
+        suppress_power_on: true
+      loop: "{{ tn_vms }}"
+      loop_control:
+        label: "{{ item.vm_name }}"
+
+- name: Power on for validation (build - newly baselined VMs; reset - all VMs)
+  vmware.vmware.vm_powerstate:
+    datacenter: "{{ plan.site.datacenter }}"
+    moid: "{{ tn_moids[item.vm_name] }}"
+    state: powered-on   # validation runs powered on; range_report applies poweredoff afterwards
+  loop: "{{ tn_vms if tn_snapshot_action == 'revert' else (tn_vms | selectattr('vm_name', 'in', tn_need_baseline | default([])) | list) }}"
+  loop_control:
+    label: "{{ item.vm_name }}"
+  when: not ansible_check_mode
+
+- name: Wait for VMware Tools on powered-on VMs
+  community.vmware.vmware_guest_tools_wait:
+    moid: "{{ tn_moids[item.vm_name] }}"
+    timeout: "{{ tn_tools_timeout }}"
+  loop: "{{ tn_vms if tn_snapshot_action == 'revert' else (tn_vms | selectattr('vm_name', 'in', tn_need_baseline | default([])) | list) }}"
+  loop_control:
+    label: "{{ item.vm_name }}"
+  when: not ansible_check_mode

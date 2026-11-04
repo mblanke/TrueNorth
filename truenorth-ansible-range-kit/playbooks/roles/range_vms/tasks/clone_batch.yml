@@ -1,0 +1,73 @@
+---
+# Clones one batch of NEW VMs in parallel. Existing VMs are never touched: to change
+# an existing range, tear it down and build again. VMs are created powered off; guest
+# configuration powers them on. Addresses are applied in-guest, because range networks
+# are isolated and vCenter guest customisation cannot rely on DHCP there.
+- name: Clone batch
+  community.vmware.vmware_guest:
+    datacenter: "{{ plan.site.datacenter }}"
+    cluster: "{{ plan.site.cluster }}"
+    folder: "{{ tn_vm_folder_prefix }}/{{ vm.folder }}"
+    resource_pool: "{{ vm.resource_pool }}"
+    name: "{{ vm.vm_name }}"
+    template: "{{ vm.template }}"
+    datastore: "{{ tn_datastore }}"
+    linked_clone: "{{ plan.site.clone_mode == 'linked' }}"
+    snapshot_src: "{{ 'tn-clone-source' if plan.site.clone_mode == 'linked' else omit }}"
+    hardware:
+      num_cpus: "{{ vm.cpu }}"
+      memory_mb: "{{ vm.memory_mb }}"
+      hotadd_cpu: false
+      hotadd_memory: false
+    disk:
+      - size_gb: "{{ vm.disk_gb }}"
+        type: thin
+        datastore: "{{ tn_datastore }}"
+    networks: "{{ vm.vmware_networks }}"
+    annotation: "TrueNorth {{ vm.instance }} | role {{ vm.role }} | plan {{ plan.plan_sha256[:12] }}"
+    state: present
+  loop: "{{ tn_batch }}"
+  loop_control:
+    loop_var: vm
+    label: "{{ vm.vm_name }}"
+  async: "{{ 0 if ansible_check_mode else 3600 }}"
+  poll: 0
+  register: tn_clone_jobs
+
+- name: Wait for batch clones to finish
+  ansible.builtin.async_status:
+    jid: "{{ job.ansible_job_id }}"
+  loop: "{{ tn_clone_jobs.results }}"
+  loop_control:
+    loop_var: job
+    label: "{{ job.vm.vm_name }}"
+  register: tn_clone_done
+  until: tn_clone_done.finished
+  retries: 360
+  delay: 10
+  when: not ansible_check_mode and job.ansible_job_id is defined
+
+- name: Read VMs cloned in this batch
+  community.vmware.vmware_guest_info:
+    datacenter: "{{ plan.site.datacenter }}"
+    folder: "{{ tn_vm_folder_prefix }}/{{ vm.folder }}"
+    name: "{{ vm.vm_name }}"
+  loop: "{{ tn_batch }}"
+  loop_control:
+    loop_var: vm
+    label: "{{ vm.vm_name }}"
+  register: tn_batch_info
+  when: not ansible_check_mode
+
+- name: Tag this batch immediately, so a later failure still leaves them teardown-able
+  vmware.vmware.tag_associations:
+    state: present
+    object_moid: "{{ r.instance.moid }}"
+    object_type: VirtualMachine
+    tags: "{{ r.vm.tags }}"
+  loop: "{{ tn_batch_info.results | default([]) }}"
+  loop_control:
+    loop_var: r
+    label: "{{ r.vm.vm_name | default('') }}"
+  when: not ansible_check_mode and r.instance is defined
+  tags: [tn_vapi]

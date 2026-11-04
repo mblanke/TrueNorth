@@ -1,0 +1,7 @@
+---
+- name: "SSH guest access is not configured | {{ vm.vm_name }}"
+  ansible.builtin.fail:
+    msg: >-
+      guest_config 'ssh' needs a build network that the control node can reach and a
+      decision on how it is removed before the baseline snapshot. This has not been set up.
+      Use guest_config: tools, or implement ssh.yml per reference/guest-access.md.

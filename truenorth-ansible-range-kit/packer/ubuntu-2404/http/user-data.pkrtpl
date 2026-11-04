@@ -1,0 +1,18 @@
+#cloud-config
+# Ubuntu autoinstall for the TrueNorth golden image. LAB-VALIDATE.
+autoinstall:
+  version: 1
+  locale: en_CA.UTF-8
+  keyboard: {layout: us}
+  storage: {layout: {name: lvm}}
+  identity:
+    hostname: tn-template
+    username: ${guest_user}
+    password: "${guest_password_hash}"
+  ssh:
+    install-server: true
+    allow-pw: true
+  packages: [open-vm-tools]
+  late-commands:
+    - "echo '${guest_user} ALL=(ALL) NOPASSWD:ALL' > /target/etc/sudoers.d/90-tn-guest-ops"
+    - "chmod 440 /target/etc/sudoers.d/90-tn-guest-ops"

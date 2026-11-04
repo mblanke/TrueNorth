@@ -1,0 +1,21 @@
+blueprint:
+  name: attacker_enclave
+  description: Red cell segment with operator workstations. The first operator VM is the default validation probe.
+  params:
+    operators: {type: int, default: 1, min: 1, max: 20}
+    template:  {type: str, default: kali}
+
+networks:
+  - name: net
+    gateway: true
+
+vms:
+  - name: op{nn}
+    count: ${operators}
+    template: ${template}
+    role: attacker
+    cpu: 4
+    memory_gb: 8
+    disk_gb: 80
+    guest_config: tools
+    nics: [net]

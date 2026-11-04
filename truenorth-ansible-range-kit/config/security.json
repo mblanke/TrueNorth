@@ -1,0 +1,4 @@
+{
+  "_comment": "Human-only file (protected by the guard hook). Set require_signed_approvals to true once /etc/truenorth/approval.key is deployed (see ci/README.md). From then on, unsigned approvals are rejected and accounts that cannot read the key cannot make real changes.",
+  "require_signed_approvals": false
+}

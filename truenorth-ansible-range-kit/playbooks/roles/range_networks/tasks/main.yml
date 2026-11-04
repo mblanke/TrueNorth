@@ -1,0 +1,40 @@
+---
+# One distributed portgroup per range network. Security policy defaults to reject
+# promiscuous, forged transmits and MAC changes unless the definition allows them.
+- name: Assert every portgroup is inside this range's namespace
+  ansible.builtin.assert:
+    that: >-
+      tn_networks | map(attribute='portgroup')
+      | reject('match', '^TN-' ~ range_id ~ '(-S[0-9]{2})?-[a-z][a-z0-9-]*$') | list | length == 0
+    fail_msg: "The plan names a portgroup outside TN-{{ range_id }}-*. Refusing to create or change it."
+    quiet: true
+
+- name: Create range portgroups
+  community.vmware.vmware_dvs_portgroup:
+    portgroup_name: "{{ item.portgroup }}"
+    switch_name: "{{ plan.site.dvs }}"
+    vlan_id: "{{ item.vlan }}"
+    port_binding: static
+    port_allocation: elastic
+    num_ports: 8
+    network_policy:
+      inherited: false
+      promiscuous: "{{ item.security.promiscuous }}"
+      forged_transmits: "{{ item.security.forged_transmits }}"
+      mac_changes: "{{ item.security.mac_changes }}"
+    state: present
+  loop: "{{ tn_networks }}"
+  loop_control:
+    label: "{{ item.portgroup }} vlan {{ item.vlan }}"
+
+- name: Tag range portgroups
+  vmware.vmware.tag_associations:
+    state: present
+    object_name: "{{ item.portgroup }}"
+    object_type: DistributedVirtualPortgroup
+    tags: "{{ item.tags }}"
+  loop: "{{ tn_networks }}"
+  loop_control:
+    label: "{{ item.portgroup }}"
+  when: not ansible_check_mode
+  tags: [tn_vapi]

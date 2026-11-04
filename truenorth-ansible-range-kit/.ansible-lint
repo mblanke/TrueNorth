@@ -1,0 +1,12 @@
+---
+profile: production
+exclude_paths:
+  - build/
+  - discovery/
+  - tests/
+  - .claude/
+  - packer/
+skip_list:
+  - var-naming[no-role-prefix]   # roles share tn_* facts by design
+  - run-once
+  - jinja[spacing]               # whitespace-control in folded shell strings is deliberate

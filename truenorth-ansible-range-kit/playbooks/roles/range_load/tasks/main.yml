@@ -1,0 +1,98 @@
+---
+# Load the compiled plan. Ansible never computes allocations; it only reads plan.json.
+- name: Assert range_id is a single, well-formed parent range ID
+  ansible.builtin.assert:
+    that:
+      - range_id is defined
+      - range_id is string
+      - range_id is match('^[A-Z][A-Z0-9]{1,11}(-[0-9]{1,4})?$')
+    fail_msg: "Pass exactly one parent range ID, e.g. -e range_id=CANARY. Wildcards and 'all' are refused."
+    quiet: true
+
+- name: Assert vCenter credentials come from vault variables
+  ansible.builtin.assert:
+    that:
+      - vcenter_hostname is defined
+      - vcenter_username is defined
+      - vcenter_password is defined
+    fail_msg: "vcenter_hostname/username/password are not defined. Load them from Ansible Vault (see vars/common.yml)."
+    quiet: true
+
+- name: Assert the action matches the playbook being run
+  ansible.builtin.assert:
+    that:
+      - tn_action == tn_expected[ansible_play_name].action
+      - (tn_changes | bool) == tn_expected[ansible_play_name].changes
+    fail_msg: "tn_action/tn_changes were overridden for '{{ ansible_play_name }}'. Refusing to run."
+    quiet: true
+  vars:
+    tn_expected:
+      Build a TrueNorth range from its compiled plan: {action: build, changes: true}
+      Reset a TrueNorth range to its baseline snapshot and re-validate: {action: reset, changes: true}
+      Validate a live TrueNorth range (probes run in-guest; no changes): {action: validate, changes: false}
+      Tear down a TrueNorth range by tag: {action: teardown, changes: true}
+      Collect live state of a TrueNorth range for drift comparison (read-only): {action: drift, changes: false}
+
+- name: Assert gate paths were not overridden
+  ansible.builtin.assert:
+    that:
+      - (tn_root | realpath) == ((playbook_dir ~ '/..') | realpath)
+      - (tn_cli | realpath) == ((playbook_dir ~ '/../tools/range') | realpath)
+      - (tn_build_dir | realpath) == ((playbook_dir ~ '/../build/' ~ range_id) | realpath)
+    fail_msg: "tn_root/tn_cli/tn_build_dir differ from the repo this playbook lives in. Refusing to run."
+    quiet: true
+
+- name: Verify the compiled plan is current
+  ansible.builtin.command:
+    argv: "{{ [tn_cli, 'verify-plan', range_id] + (['--require-buildable'] if tn_action in ['build', 'reset'] else []) }}"
+  changed_when: false
+  check_mode: false
+
+- name: Refuse to change anything during a blackout window
+  ansible.builtin.command:
+    argv: ["{{ tn_cli }}", "blackout-check"]
+  changed_when: false
+  check_mode: false
+  when: tn_changes | default(true) | bool and not ansible_check_mode
+
+- name: Require a human approval for this action (real runs only)
+  ansible.builtin.command:
+    argv: ["{{ tn_cli }}", "approval-check", "{{ range_id }}", "{{ tn_action }}"]
+  changed_when: false
+  check_mode: false
+  when: tn_changes | bool and not ansible_check_mode
+
+- name: Read the plan file
+  ansible.builtin.set_fact:
+    tn_plan_file: "{{ lookup('ansible.builtin.file', tn_build_dir ~ '/plan.json') | from_json }}"
+
+- name: Load the plan
+  ansible.builtin.set_fact:
+    plan: "{{ tn_plan_file }}"
+
+- name: Assert the plan was not overridden (e.g. by -e plan=...) and belongs to this range
+  ansible.builtin.assert:
+    that:
+      - (plan | to_json(sort_keys=true)) == (tn_plan_on_disk | from_json | to_json(sort_keys=true))
+      - plan.range_id == range_id
+    fail_msg: "The plan in use differs from build/{{ range_id }}/plan.json, or is for another range. Refusing to run."
+    quiet: true
+  vars:
+    # Read straight from the repo path; neither tn_build_dir nor tn_plan_file is trusted here.
+    tn_plan_on_disk: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../build/' ~ range_id ~ '/plan.json') }}"
+
+- name: Flatten instances into network and VM lists
+  ansible.builtin.set_fact:
+    tn_validate_certs: "{{ plan.site.validate_certs }}"
+    tn_networks: "{{ plan.instances | map(attribute='networks') | flatten }}"
+    tn_vms: "{{ plan.instances | map(attribute='vms') | flatten }}"
+    tn_vm_folder_prefix: "/{{ plan.site.datacenter }}/vm"
+    tn_started: "{{ now(utc=true).isoformat() }}"
+    tn_results: "{{ tn_results | default({'instances': {}}) }}"
+
+- name: Show what this run covers
+  ansible.builtin.debug:
+    msg: >-
+      {{ range_id }} plan {{ plan.plan_sha256[:12] }}:
+      {{ plan.totals.instances }} instance(s), {{ tn_networks | length }} portgroup(s),
+      {{ tn_vms | length }} VM(s){{ ' [CHECK MODE]' if ansible_check_mode else '' }}

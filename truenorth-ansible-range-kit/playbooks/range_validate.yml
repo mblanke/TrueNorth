@@ -1,0 +1,23 @@
+---
+# Validate a live TrueNorth range (probes run in-guest; no changes)
+- name: Validate a live TrueNorth range (probes run in-guest; no changes)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - vars/common.yml
+  module_defaults:
+    group/community.vmware.vmware: &vcenter
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      port: "{{ vcenter_port | default(443) }}"
+      validate_certs: "{{ tn_validate_certs | default(true) }}"
+    group/vmware.vmware.vmware: *vcenter
+  vars:
+    tn_action: validate
+    tn_changes: false
+  roles:
+    - range_load
+    - range_validate
+    - range_report

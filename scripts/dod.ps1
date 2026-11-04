@@ -80,27 +80,16 @@ if ($env:DOD_WEB -eq "1") {
 }
 
 # Record WHICH STATE passed, byte-identical in format to dod.sh so either platform's
-# marker is readable by the other. HEAD + a hash of the full diff against HEAD covers
-# staged and unstaged changes alike; `git write-tree` would hash only the index and
-# was blind to precisely the unstaged damage this marker exists to catch.
-#
-# `git diff --output=` writes raw bytes, avoiding PowerShell's line-ending rewriting,
-# so an empty diff hashes to e3b0c44298fc1c14 on Windows exactly as it does on Linux.
-# Do NOT redirect git's stderr here. In PowerShell 5.1 redirecting a native
-# command's stderr wraps every line in a NativeCommandError, which under
-# $ErrorActionPreference = "Stop" is terminating — so git's harmless
-# "LF will be replaced by CRLF" notice killed the gate after a clean run and it
-# exited 1 without ever printing PASS. Relax the preference instead.
+# marker is readable by the other. `worktree_fingerprint.py` covers the binary tracked diff
+# plus every non-ignored untracked path, mode, type and content without following symlinks;
+# `git write-tree` would hash only the index.
 $prevEAP = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 try {
   $head = (& git rev-parse HEAD)
   if ($LASTEXITCODE -ne 0 -or -not $head) { $head = "nohead" }
-  $tmp = [System.IO.Path]::GetTempFileName()
-  try {
-    & git diff HEAD --output="$tmp" | Out-Null
-    $sha = (Get-FileHash -Path $tmp -Algorithm SHA256).Hash.ToLower().Substring(0, 16)
-  } finally { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
+  $sha = (& $PY scripts/worktree_fingerprint.py)
+  if ($LASTEXITCODE -ne 0 -or -not $sha) { throw "worktree fingerprint failed" }
 } finally { $ErrorActionPreference = $prevEAP }
 $stamp = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 [System.IO.File]::WriteAllText((Join-Path $root ".dod-pass"), "${head}:${sha}`n$stamp`n")

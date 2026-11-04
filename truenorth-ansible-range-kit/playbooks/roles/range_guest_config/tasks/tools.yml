@@ -1,0 +1,99 @@
+---
+# Configure one guest through VMware Tools guest operations. Works on isolated
+# networks because nothing travels over the range network: vCenter talks to Tools.
+- name: "Power on | {{ vm.vm_name }}"
+  vmware.vmware.vm_powerstate:
+    datacenter: "{{ plan.site.datacenter }}"
+    moid: "{{ tn_moids[vm.vm_name] }}"
+    state: powered-on
+
+- name: "Wait for VMware Tools | {{ vm.vm_name }}"
+  community.vmware.vmware_guest_tools_wait:
+    moid: "{{ tn_moids[vm.vm_name] }}"
+    timeout: "{{ tn_tools_timeout }}"
+
+- name: "Read NIC MAC addresses | {{ vm.vm_name }}"
+  community.vmware.vmware_guest_network:
+    moid: "{{ tn_moids[vm.vm_name] }}"
+    gather_network_info: true
+  register: tn_nicinfo
+
+- name: "Start guest environment from the plan | {{ vm.vm_name }}"
+  ansible.builtin.set_fact:
+    tn_guest_env: "{{ vm.guest_env }}"
+
+- name: "Add NIC addressing keyed by MAC | {{ vm.vm_name }}"
+  ansible.builtin.set_fact:
+    tn_guest_env: "{{ tn_guest_env + ['TN_NIC_' ~ idx ~ '=' ~ tn_mac ~ '|' ~ nic.ip ~ '/' ~ nic.prefix ~ '|' ~ (nic.gateway or '')] }}"
+  vars:
+    tn_mac: >-
+      {{ tn_nicinfo.network_info | selectattr('network_name', 'equalto', nic.portgroup)
+         | map(attribute='mac_address') | first }}
+  loop: "{{ vm.nics }}"
+  loop_control:
+    loop_var: nic
+    index_var: idx
+    label: "{{ nic.portgroup }} {{ nic.ip }}"
+
+- name: "Pick script set | {{ vm.vm_name }}"
+  ansible.builtin.set_fact:
+    tn_scripts: >-
+      {{ [{'src': role_path ~ '/files/' ~ vm.os_family ~ '/common' ~ tn_ext[vm.os_family], 'name': 'common'}]
+         + ([{'src': role_path ~ '/files/' ~ vm.os_family ~ '/' ~ vm.role ~ tn_ext[vm.os_family], 'name': vm.role}]
+            if (role_path ~ '/files/' ~ vm.os_family ~ '/' ~ vm.role ~ tn_ext[vm.os_family]) is file else []) }}
+    tn_guest_dir: "{{ tn_os.dir[vm.os_family] }}"
+    tn_sep: "{{ tn_os.sep[vm.os_family] }}"
+    tn_shell: "{{ tn_os.shell[vm.os_family] }}"
+  vars:
+    tn_ext: {linux: .sh, windows: .ps1}
+    tn_os:
+      dir: {linux: /tmp, windows: 'C:\Windows\Temp'}
+      sep: {linux: /, windows: '\'}
+      shell: {linux: /bin/bash, windows: 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'}
+
+- name: "Upload and run configuration scripts | {{ vm.vm_name }}"
+  ansible.builtin.include_tasks: run_script.yml
+  loop: "{{ tn_scripts }}"
+  loop_control:
+    loop_var: script
+    label: "{{ script.name }}"
+
+- name: "Reboot Windows guests so the rename takes effect | {{ vm.vm_name }}"
+  when: vm.os_family == 'windows'
+  block:
+    - name: "Reboot | {{ vm.vm_name }}"
+      vmware.vmware.vm_powerstate:
+        datacenter: "{{ plan.site.datacenter }}"
+        moid: "{{ tn_moids[vm.vm_name] }}"
+        state: reboot-guest
+    - name: "Wait for the guest to go down | {{ vm.vm_name }}"
+      community.vmware.vmware_guest_info:
+        datacenter: "{{ plan.site.datacenter }}"
+        moid: "{{ tn_moids[vm.vm_name] }}"
+      register: tn_rb
+      until: tn_rb.instance.guest_tools_status | default('') != 'guestToolsRunning'
+      retries: 60
+      delay: 5
+      # If the reboot was faster than our polling we never see Tools down. Then
+      # check uptime-independent state below instead of failing.
+      failed_when: false
+    - name: "Wait for VMware Tools after reboot | {{ vm.vm_name }}"
+      community.vmware.vmware_guest_tools_wait:
+        moid: "{{ tn_moids[vm.vm_name] }}"
+        timeout: "{{ tn_tools_timeout }}"
+
+- name: "Confirm the guest reports its new name | {{ vm.vm_name }}"
+  community.vmware.vmware_guest_info:
+    datacenter: "{{ plan.site.datacenter }}"
+    moid: "{{ tn_moids[vm.vm_name] }}"
+    schema: vsphere
+    properties: [guest.hostName]
+  register: tn_hn
+  until: (tn_hn.instance.guest.hostName | default('') | lower).split('.')[0] == vm.name | lower
+  retries: 36
+  delay: 5
+  when: vm.os_family == 'windows'
+
+- name: "Record which configuration ran | {{ vm.vm_name }}"
+  ansible.builtin.set_fact:
+    tn_guest_log: "{{ tn_guest_log | default({}) | combine({vm.vm_name: tn_scripts | map(attribute='name') | list}) }}"

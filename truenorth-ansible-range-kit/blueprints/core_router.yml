@@ -1,0 +1,19 @@
+blueprint:
+  name: core_router
+  description: One router VM that takes the .1 gateway address on every network it joins. It routes only between range networks and has no path out of the range.
+  params:
+    routed_networks: {type: list, default: []}   # fully qualified, e.g. ["@corp-lan", "@red-net"]
+    template:        {type: str, default: vyos}
+
+networks: []
+
+vms:
+  - name: rtr01
+    template: ${template}
+    role: router
+    cpu: 2
+    memory_gb: 2
+    disk_gb: 10
+    guest_config: tools
+    host: 1
+    nics: ${routed_networks}

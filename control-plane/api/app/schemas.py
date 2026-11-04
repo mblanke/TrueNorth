@@ -405,8 +405,8 @@ class EnrollmentOut(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     final_grade: str | None = None
-    final_score: int
-    max_score: int
+    final_score: int | None
+    max_score: int | None
     created_at: datetime
 
 
@@ -416,8 +416,8 @@ class ModuleProgressOut(BaseModel):
     enrollment_id: uuid.UUID
     module_id: uuid.UUID
     status: str
-    score: int
-    max_score: int
+    score: int | None
+    max_score: int | None
     attempts: int
     last_accessed_at: datetime | None = None
     completed_at: datetime | None = None

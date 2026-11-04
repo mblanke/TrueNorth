@@ -1,0 +1,10 @@
+{
+  "_comment": "Exercise and maintenance blackout windows. During a window, no real (non --check) range build, reset or teardown may run. ISO 8601 with offset.",
+  "windows": [
+    {
+      "start": "2026-01-01T00:00:00-05:00",
+      "end": "2026-01-01T00:00:00-05:00",
+      "reason": "EXAMPLE - replace with real exercise windows"
+    }
+  ]
+}

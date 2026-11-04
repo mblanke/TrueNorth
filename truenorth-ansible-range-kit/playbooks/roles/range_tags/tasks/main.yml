@@ -1,0 +1,21 @@
+---
+# Tag categories and tags. Teardown is driven by these tags.
+- name: Ensure range and instance tag categories exist
+  vmware.vmware.tag_categories:
+    state: present
+    tag_categories:
+      - name: "{{ plan.site.tags.range_category }}"
+        description: "TrueNorth parent range ID. Teardown key."
+        cardinality: MULTIPLE
+        associable_types: [VirtualMachine, DistributedVirtualPortgroup, Folder, ResourcePool]
+      - name: "{{ plan.site.tags.instance_category }}"
+        description: "TrueNorth range instance ID (per student)."
+        cardinality: MULTIPLE
+        associable_types: [VirtualMachine, DistributedVirtualPortgroup, Folder]
+  tags: [tn_vapi]
+
+- name: Ensure the range tag and instance tags exist
+  vmware.vmware.tags:
+    state: present
+    tags: "{{ plan.vsphere_tags }}"
+  tags: [tn_vapi]

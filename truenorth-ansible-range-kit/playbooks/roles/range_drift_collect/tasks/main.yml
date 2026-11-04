@@ -1,0 +1,92 @@
+---
+# Read-only. Collect live state for every tagged VM and planned portgroup, then
+# write build/<ID>/live.json for `tools/range drift` to compare with the plan.
+- name: List VMs in the range folder tree with their tags
+  community.vmware.vmware_vm_info:
+    folder: "{{ tn_vm_folder_prefix }}/{{ plan.site.folder_root }}/{{ range_id }}"
+    show_tag: true
+  register: tn_vm_scan
+  check_mode: false
+
+- name: Start the tagged VM list
+  ansible.builtin.set_fact:
+    tn_tagged: []
+    tn_planned_names: "{{ tn_vms | map(attribute='vm_name') | list }}"
+
+- name: Select VMs tagged with this range
+  ansible.builtin.set_fact:
+    tn_tagged: "{{ tn_tagged + [item] }}"
+  loop: "{{ tn_vm_scan.virtual_machines | default([]) }}"
+  loop_control:
+    label: "{{ item.guest_name }}"
+  when: >-
+    item.tags | default([])
+    | selectattr('category_name', 'equalto', plan.site.tags.range_category)
+    | selectattr('name', 'equalto', range_id) | list | length > 0
+
+- name: Read hardware of tagged VMs
+  community.vmware.vmware_guest_info:
+    datacenter: "{{ plan.site.datacenter }}"
+    moid: "{{ item.moid }}"
+  loop: "{{ tn_tagged }}"
+  loop_control:
+    label: "{{ item.guest_name }}"
+  register: tn_hw
+
+- name: Read portgroups attached to tagged VMs
+  vmware.vmware.vm_portgroup_info:
+    vm_names: "{{ tn_tagged | map(attribute='guest_name') | list }}"
+  register: tn_vm_pgs
+  when: tn_tagged | length > 0
+
+- name: Read portgroups on the range switch
+  community.vmware.vmware_dvs_portgroup_info:
+    datacenter: "{{ plan.site.datacenter }}"
+    dvswitch: "{{ plan.site.dvs }}"
+    show_vlan_info: true
+    show_network_policy: false
+    show_mac_learning: false
+    show_teaming_policy: false
+    show_port_policy: false
+    show_uplinks: false
+  register: tn_pg_info
+
+- name: Build live state
+  ansible.builtin.set_fact:
+    tn_live: "{{ tn_live | default({'instances': {}, 'untracked': []}) | combine(tn_entry, recursive=true, list_merge='append') }}"
+  vars:
+    tn_inst: "{{ (tn_vms | selectattr('vm_name', 'equalto', item.item.guest_name) | map(attribute='instance') | list + [none]) | first }}"
+    tn_entry: >-
+      {{ {'instances': {tn_inst: {'vms': [{
+            'name': item.item.guest_name,
+            'cpu': item.instance.hw_processor_count,
+            'memory_mb': item.instance.hw_memtotal_mb,
+            'portgroups': (tn_vm_pgs.vm_portgroup_info[item.item.guest_name] | default([]) | map(attribute='portgroup_name') | list)
+          }]}}}
+         if tn_inst else {'untracked': [{'type': 'VirtualMachine', 'name': item.item.guest_name}]} }}
+  loop: "{{ tn_hw.results }}"
+  loop_control:
+    label: "{{ item.item.guest_name }}"
+
+- name: Add live portgroups of this range
+  ansible.builtin.set_fact:
+    tn_live: >-
+      {{ tn_live | default({'instances': {}, 'untracked': []})
+         | combine({'instances': {item.instance: {'portgroups': [{'name': tn_pg.portgroup_name,
+                                                                  'vlan': tn_pg.vlan_info.vlan_id | int}]}}},
+                   recursive=true, list_merge='append') }}
+  vars:
+    tn_pg: >-
+      {{ tn_pg_info.dvs_portgroup_info[plan.site.dvs] | default([])
+         | selectattr('portgroup_name', 'equalto', item.portgroup) | first | default(none) }}
+  loop: "{{ tn_networks }}"
+  loop_control:
+    label: "{{ item.portgroup }}"
+  when: tn_pg is not none
+
+- name: Write live.json
+  ansible.builtin.copy:
+    content: "{{ (tn_live | default({'instances': {}, 'untracked': []})) | combine({'collected_at': now(utc=true).isoformat()}) | to_nice_json }}\n"
+    dest: "{{ tn_build_dir }}/live.json"
+    mode: "0640"
+  check_mode: false

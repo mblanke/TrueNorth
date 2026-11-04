@@ -12391,14 +12391,14 @@ export interface components {
             /** Final Grade */
             final_grade?: string | null;
             /** Final Score */
-            final_score: number;
+            final_score: number | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
             /** Max Score */
-            max_score: number;
+            max_score: number | null;
             /** Started At */
             started_at?: string | null;
             /** Status */
@@ -14434,14 +14434,14 @@ export interface components {
             /** Last Accessed At */
             last_accessed_at?: string | null;
             /** Max Score */
-            max_score: number;
+            max_score: number | null;
             /**
              * Module Id
              * Format: uuid
              */
             module_id: string;
             /** Score */
-            score: number;
+            score: number | null;
             /** Status */
             status: string;
         };
@@ -18308,6 +18308,25 @@ export interface components {
             remote_enclave: string;
             /** Retired At */
             retired_at: string | null;
+        };
+        /**
+         * UnclassifiedAttemptResultOut
+         * @description Low-side response: the learner may see the outcome, never a readable grade or answers.
+         */
+        UnclassifiedAttemptResultOut: {
+            /**
+             * Attempt Id
+             * Format: uuid
+             */
+            attempt_id: string;
+            /**
+             * Late
+             * @description submitted after the time limit: answers were not marked
+             * @default false
+             */
+            late?: boolean;
+            /** Passed */
+            passed: boolean;
         };
         /** UrlIngestIn */
         UrlIngestIn: {
@@ -30148,7 +30167,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AttemptResultOut"];
+                    "application/json": components["schemas"]["AttemptResultOut"] | components["schemas"]["UnclassifiedAttemptResultOut"];
                 };
             };
             /** @description Validation Error */

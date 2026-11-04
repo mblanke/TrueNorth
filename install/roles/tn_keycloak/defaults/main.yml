@@ -81,9 +81,11 @@ tn_kc_client_settings:
     redirectUris: []
     webOrigins: []
 
-# What app/routers/ad_sync.py calls, and nothing more:
+# What app/routers/ad_sync.py and the pseudonymous identity adapter call, and nothing more:
 #   GET  /admin/realms/<realm>/components/<id>          -> view-realm
 #   POST /admin/realms/<realm>/user-storage/<id>/sync   -> manage-users
+#   CRUD /admin/realms/<realm>/users[/<id>]             -> manage-users
+#   PUT  /admin/realms/<realm>/users/<id>/reset-password -> manage-users
 # Any other realm-management role found on the service account is removed.
 tn_kc_api_admin_roles: [view-realm, manage-users]
 

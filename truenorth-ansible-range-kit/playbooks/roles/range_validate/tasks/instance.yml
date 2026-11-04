@@ -1,0 +1,120 @@
+---
+# Probes come from the plan (inst.probes). A failed self-test makes every
+# "unreachable" isolation result untrustworthy, so isolation then fails as inconclusive.
+- name: "Resolve the probe VM | {{ inst.id }}"
+  ansible.builtin.set_fact:
+    tn_probe: "{{ inst.vms | selectattr('vm_name', 'equalto', inst.probe_vm) | first }}"
+    tn_checks: []
+
+- name: "Run probes | {{ inst.probe_vm }}"
+  community.vmware.vmware_vm_shell:
+    datacenter: "{{ plan.site.datacenter }}"
+    folder: "{{ tn_vm_folder_prefix }}/{{ tn_probe.folder }}"
+    vm_id: "{{ tn_probe.vm_name }}"
+    vm_id_type: vm_name
+    vm_username: "{{ tn_creds.username }}"
+    vm_password: "{{ tn_creds.password }}"
+    vm_shell: /bin/bash
+    # TCP probe exit codes: 0 connected, 10 refused (target answered), 124 timeout,
+    # 11 other error such as no route. ICMP: ping's own codes (0 reply, 1 none, 2 error).
+    vm_shell_args: >-
+      {%- if probe.port is defined -%}
+      -c 'e=$(timeout {{ tn_probe_timeout }} bash -c "</dev/tcp/{{ probe.host }}/{{ probe.port }}" 2>&1); rc=$?;
+      [ $rc -eq 0 ] && exit 0; [ $rc -eq 124 ] && exit 124; echo "$e" | grep -qi refused && exit 10; exit 11'
+      {%- else -%}
+      -c 'ping -c 1 -W {{ tn_probe_timeout }} {{ probe.host }}'
+      {%- endif -%}
+    wait_for_process: true
+    timeout: 60
+  vars:
+    tn_creds: "{{ lookup('ansible.builtin.vars', tn_probe.guest_user_var) }}"
+  loop: "{{ inst.probes }}"
+  loop_control:
+    loop_var: probe
+    label: "{{ probe.check }} {{ probe.host }}{{ (':' ~ probe.port) if probe.port is defined else '' }}"
+  register: tn_probe_runs
+  failed_when: false
+  changed_when: false
+  no_log: "{{ tn_no_log | default(true) }}"
+
+- name: "Score probes | {{ inst.id }}"
+  # TCP: 0 connected or 10 refused = the target answered = reachable;
+  #   124 timeout or 11 no route/other = unreachable; anything else = inconclusive.
+  # ICMP (ping): 0 = reply; 1 = no reply = unreachable; anything else = inconclusive.
+  # No exit code (guest operation failed) = inconclusive. Inconclusive never passes.
+  ansible.builtin.set_fact:
+    tn_checks: >-
+      {{ tn_checks + [{
+           'check': r.probe.check,
+           'vm': inst.probe_vm,
+           'target': r.probe.host ~ ((':' ~ r.probe.port) if r.probe.port is defined else ''),
+           'expected': 'reachable' if r.probe.expect_reachable else 'unreachable',
+           'result': tn_state,
+           'exit_code': r.exit_code | default(none),
+           'pass': (tn_state == 'reachable') == r.probe.expect_reachable and tn_state != 'inconclusive'
+         }] }}
+  vars:
+    tn_rc: "{{ r.exit_code | default(none) }}"
+    tn_state: >-
+      {%- if tn_rc is none or tn_rc == '' -%}inconclusive
+      {%- elif r.probe.port is defined -%}{{ 'reachable' if (tn_rc | int) in [0, 10] else ('unreachable' if (tn_rc | int) in [11, 124] else 'inconclusive') }}
+      {%- else -%}{{ 'reachable' if (tn_rc | int) == 0 else ('unreachable' if (tn_rc | int) == 1 else 'inconclusive') }}
+      {%- endif -%}
+  loop: "{{ tn_probe_runs.results }}"
+  loop_control:
+    loop_var: r
+    label: "{{ r.probe.check }} {{ r.probe.host }}"
+
+- name: "Mark isolation inconclusive if the probe self-test failed | {{ inst.id }}"
+  ansible.builtin.set_fact:
+    tn_checks: >-
+      {{ (tn_checks | rejectattr('check', 'equalto', 'isolation') | list)
+         + (tn_checks | selectattr('check', 'equalto', 'isolation')
+            | map('combine', {'result': 'inconclusive (probe self-test failed)', 'pass': false}) | list) }}
+  when: tn_checks | selectattr('check', 'equalto', 'selftest') | selectattr('pass') | list | length == 0
+
+- name: "Read guest-reported addresses | {{ inst.id }}"
+  community.vmware.vmware_guest_info:
+    datacenter: "{{ plan.site.datacenter }}"
+    folder: "{{ tn_vm_folder_prefix }}/{{ v.folder }}"
+    name: "{{ v.vm_name }}"
+    schema: vsphere
+    properties: [guest.net]
+  loop: "{{ inst.vms }}"
+  loop_control:
+    loop_var: v
+    label: "{{ v.vm_name }}"
+  register: tn_guest_net
+  when: "'connectivity' in plan.validation.checks"
+
+- name: "Score guest addresses | {{ inst.id }}"
+  ansible.builtin.set_fact:
+    tn_checks: >-
+      {{ tn_checks + [{
+           'check': 'connectivity',
+           'vm': g.v.vm_name,
+           'target': 'planned addresses',
+           'expected': g.v.nics | map(attribute='ip') | sort | join(','),
+           'result': tn_seen | sort | join(','),
+           'pass': (g.v.nics | map(attribute='ip') | list) | difference(tn_seen) | length == 0
+         }] }}
+  vars:
+    tn_seen: >-
+      {{ g.instance.guest.net | default([]) | map(attribute='ipAddress') | flatten
+         | select('match', '^[0-9.]+$') | list }}
+  loop: "{{ tn_guest_net.results | default([]) }}"
+  loop_control:
+    loop_var: g
+    label: "{{ g.v.vm_name | default('') }}"
+  when: g.instance is defined
+
+- name: "Record results | {{ inst.id }}"
+  ansible.builtin.set_fact:
+    tn_results: >-
+      {{ tn_results | combine({'instances': {inst.id: {'validation': tn_checks}}}, recursive=true) }}
+
+- name: "Summary | {{ inst.id }}"
+  ansible.builtin.debug:
+    msg: >-
+      {{ inst.id }}: {{ tn_checks | selectattr('pass') | list | length }}/{{ tn_checks | length }} checks passed;
+      isolation {{ 'PASS' if (tn_checks | selectattr('check', 'equalto', 'isolation') | rejectattr('pass') | list | length == 0) else 'FAIL' }}

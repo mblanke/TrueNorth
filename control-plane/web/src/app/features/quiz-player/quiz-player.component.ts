@@ -107,10 +107,14 @@ import { LottieIconComponent } from '../../shared/components/lottie-icon.compone
           <h1 [class.pass]="res.passed" [class.fail-text]="!res.passed">
             {{ res.passed ? 'Passed!' : 'Not yet' }}
           </h1>
-          <div class="score-line">
-            <span class="score tn-display tn-gradient-text">{{ res.pct }}%</span>
-            <span class="muted">{{ res.score }} / {{ res.max_score }} points</span>
-          </div>
+          @if (res.score !== undefined && res.score !== null) {
+            <div class="score-line">
+              <span class="score tn-display tn-gradient-text">{{ res.pct }}%</span>
+              <span class="muted">{{ res.score }} / {{ res.max_score }} points</span>
+            </div>
+          } @else {
+            <p class="muted outcome-only">This enclave retains pass/fail only. Authoritative grades are available only through the approved classified record process.</p>
+          }
 
           @if (res.key_revealed) {
             <div class="review">
@@ -124,7 +128,7 @@ import { LottieIconComponent } from '../../shared/components/lottie-icon.compone
                 </div>
               }
             </div>
-          } @else {
+          } @else if (res.score !== undefined && res.score !== null) {
             <p class="muted key-withheld">Which answers were right is shown after your final attempt.</p>
           }
 

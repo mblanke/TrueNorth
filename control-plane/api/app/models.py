@@ -787,8 +787,8 @@ class Enrollment(TimestampMixin, Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     final_grade: Mapped[str | None] = mapped_column(String(10), nullable=True)  # A/B/C/D/F
-    final_score: Mapped[int] = mapped_column(Integer, default=0)
-    max_score: Mapped[int] = mapped_column(Integer, default=0)
+    final_score: Mapped[int | None] = mapped_column(Integer, default=0, nullable=True)
+    max_score: Mapped[int | None] = mapped_column(Integer, default=0, nullable=True)
     source: Mapped[str] = mapped_column(String(16), default="assigned", server_default="assigned")  # or "self": enrollment.py
     course: Mapped[Course] = relationship(back_populates="enrollments")
     module_progress: Mapped[list[ModuleProgress]] = relationship(back_populates="enrollment")
@@ -809,8 +809,8 @@ class ModuleProgress(TimestampMixin, Base):
     status: Mapped[ModuleProgressStatus] = mapped_column(
         Enum(ModuleProgressStatus), default=ModuleProgressStatus.not_started
     )
-    score: Mapped[int] = mapped_column(Integer, default=0)
-    max_score: Mapped[int] = mapped_column(Integer, default=100)
+    score: Mapped[int | None] = mapped_column(Integer, default=0, nullable=True)
+    max_score: Mapped[int | None] = mapped_column(Integer, default=100, nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     last_accessed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -1802,8 +1802,8 @@ class QuizAttempt(TimestampMixin, Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     answers: Mapped[str] = mapped_column(Text, default="{}")  # JSON: {question_id: [indices]}
-    score: Mapped[int] = mapped_column(Integer, default=0)
-    max_score: Mapped[int] = mapped_column(Integer, default=0)
+    score: Mapped[int | None] = mapped_column(Integer, default=0, nullable=True)
+    max_score: Mapped[int | None] = mapped_column(Integer, default=0, nullable=True)
     passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     question_order: Mapped[str] = mapped_column(Text, default="[]")  # JSON: shuffled question ids
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=True)

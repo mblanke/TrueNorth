@@ -183,6 +183,19 @@ describe('QuizPlayerComponent', () => {
     expect(el.querySelector('.key-withheld')?.textContent).toContain('after your final attempt');
   });
 
+  it('shows an outcome without inventing a score for an Unclassified result', () => {
+    setup();
+    api.submitQuizAttempt.and.returnValue(of({ attempt_id: 'att-1', passed: true, late: false }));
+    component.start();
+    component.submit();
+    fixture.detectChanges();
+    expect(el.querySelector('.result-card h1')?.textContent).toContain('Passed!');
+    expect(el.querySelector('.score')).toBeNull();
+    expect(el.querySelector('.outcome-only')?.textContent).toContain('retains pass/fail only');
+    expect(el.querySelector('.outcome-only')?.textContent).not.toContain('recorded');
+    expect(el.querySelectorAll('.review-row').length).toBe(0);
+  });
+
   it('shows "Not yet" for a failed result', () => {
     setup();
     api.submitQuizAttempt.and.returnValue(of({

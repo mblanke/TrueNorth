@@ -1,0 +1,9 @@
+---
+# Dispatch guest configuration by each VM's guest_config access model.
+- name: Configure guests
+  ansible.builtin.include_tasks: "{{ vm.guest_config }}.yml"
+  loop: "{{ tn_vms }}"
+  loop_control:
+    loop_var: vm
+    label: "{{ vm.vm_name }} ({{ vm.guest_config }})"
+  when: not ansible_check_mode and vm.vm_name in tn_new | default([])

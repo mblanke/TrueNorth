@@ -9,8 +9,9 @@ from app.course_releases.models import ACCEPTED, CourseRelease, CourseReleaseBlo
 from app.models import Course, CourseModule, Enrollment, ModuleContentType, Quiz, QuizAttempt
 from app.result_transfer.contract import ResultTransferError, generate_recipient_keypair, generate_signing_keypair
 from app.result_transfer.pseudonymous import assign_account
-from app.result_transfer.quiz_producer import QUIZ_SCORER_VERSION, queue_quiz_attempt
+from app.result_transfer.quiz_producer import QUIZ_SCORER_VERSION, queue_live_quiz_attempt, queue_quiz_attempt
 from app.result_transfer.service import import_subject_credential, issue_subject_credential
+from app.result_transfer.trust import enroll_trusted_key
 
 TENANT = uuid.UUID("00000000-0000-0000-0000-000000000001")
 SECRET_USER = TENANT
@@ -147,4 +148,55 @@ def test_quiz_producer_refuses_unsubmitted_or_unpinned_attempt(db_session, monke
             destination_enclave="secret",
             signing_private_key=signing_private,
             recipient_public_key=recipient_public,
+        )
+
+
+def test_live_quiz_producer_resolves_enrolled_recipient_and_owner_only_signing_file(
+    db_session,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    credential, learner, release, attempt = _world(db_session, monkeypatch)
+    signing_private, _ = generate_signing_keypair()
+    _, recipient_public = generate_recipient_keypair()
+    trust, _ = enroll_trusted_key(
+        db_session,
+        purpose="result-recipient",
+        remote_enclave="secret",
+        public_key=recipient_public,
+    )
+    key_file = tmp_path / "result-signing.key"
+    key_file.write_text(signing_private)
+    key_file.chmod(0o600)
+    monkeypatch.setenv("TN_RESULT_TRANSFER_DESTINATION_ENCLAVE", "secret")
+    monkeypatch.setenv("TN_RESULT_TRANSFER_RECIPIENT_KEY_ID", trust.key_id)
+    monkeypatch.setenv("TN_RESULT_TRANSFER_SIGNING_KEY_FILE", str(key_file))
+
+    queued = queue_live_quiz_attempt(
+        db_session,
+        attempt_id=attempt.id,
+        tenant_id=TENANT,
+        user_id=learner.id,
+        raw_score=8,
+        max_score=10,
+        passed=True,
+        occurred_at=attempt.submitted_at,
+    )
+
+    assert queued.projection.opaque_subject_id == credential.opaque_subject_id
+    assert queued.projection.course_release_id == release.id
+    assert queued.row.destination_enclave == "secret"
+    assert "raw_score" not in queued.row.package_json
+
+    key_file.chmod(0o644)
+    with pytest.raises(ResultTransferError, match="owner-only"):
+        queue_live_quiz_attempt(
+            db_session,
+            attempt_id=attempt.id,
+            tenant_id=TENANT,
+            user_id=learner.id,
+            raw_score=8,
+            max_score=10,
+            passed=True,
+            occurred_at=attempt.submitted_at,
         )

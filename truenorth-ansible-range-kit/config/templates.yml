@@ -1,0 +1,55 @@
+# Template catalogue. Ranges reference templates by alias only.
+# A template is buildable only when validated: true AND build_id, build_date and
+# source_sha256 are filled. The preflight role also checks the vCenter tag
+# truenorth-template:validated on the live template.
+templates:
+  ubuntu2404:
+    vcenter_name: TBD
+    os_family: linux
+    os: ubuntu-24.04
+    build_id: TBD           # Packer build / pipeline run id
+    build_date: TBD         # YYYY-MM-DD
+    source_sha256: TBD      # sha256 of the install ISO
+    guest_user_var: guest_creds_linux   # vault variable name, never the value
+    nic_device_type: vmxnet3            # must match the template's existing NIC type
+    validated: false
+  kali:
+    vcenter_name: TBD
+    os_family: linux
+    os: kali-rolling
+    build_id: TBD
+    build_date: TBD
+    source_sha256: TBD
+    guest_user_var: guest_creds_linux
+    nic_device_type: vmxnet3
+    validated: false
+  win2022:
+    vcenter_name: TBD
+    os_family: windows
+    os: windows-server-2022
+    build_id: TBD
+    build_date: TBD
+    source_sha256: TBD
+    guest_user_var: guest_creds_windows
+    nic_device_type: vmxnet3
+    validated: false
+  win11:
+    vcenter_name: TBD
+    os_family: windows
+    os: windows-11
+    build_id: TBD
+    build_date: TBD
+    source_sha256: TBD
+    guest_user_var: guest_creds_windows
+    nic_device_type: vmxnet3
+    validated: false
+  vyos:
+    vcenter_name: TBD
+    os_family: linux
+    os: vyos
+    build_id: TBD
+    build_date: TBD
+    source_sha256: TBD
+    guest_user_var: guest_creds_linux
+    nic_device_type: vmxnet3
+    validated: false

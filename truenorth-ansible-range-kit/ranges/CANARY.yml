@@ -1,0 +1,30 @@
+# Reference range built, validated and torn down every night by ci/canary.sh.
+# If CANARY fails, nothing else should be built until the cause is found.
+range:
+  id: CANARY
+  owner: TBD
+  exercise: nightly-canary
+  expires: 2099-12-31
+  students: 1
+  description: Smallest range that exercises every role, the router, isolation and reset.
+
+use:
+  - blueprint: ad_forest
+    as: corp
+    params: {domain_controllers: 1, workstations: 1}
+  - blueprint: attacker_enclave
+    as: red
+    params: {operators: 1}
+  - blueprint: core_router
+    as: core
+    params:
+      routed_networks: ["@corp-lan", "@red-net"]
+
+validation:
+  probe_vm: red-op01
+  checks: [isolation, connectivity, services]
+  services:
+    - {vm: corp-dc01, port: 389}
+    - {vm: corp-dc01, port: 53}
+
+power_after_build: poweredon

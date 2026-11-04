@@ -1,0 +1,9 @@
+# Maps scenario asset roles to blueprints. Used by `tools/range scenario`.
+# Align role names with the exercise scenario builder output (TBD).
+roles:
+  domain_controller: {blueprint: ad_forest, as: corp, count_param: domain_controllers}
+  workstation:       {blueprint: ad_forest, as: corp, count_param: workstations}
+  file_server:       {blueprint: ad_forest, as: corp, count_param: file_servers}
+  web_server:        {blueprint: dmz, as: dmz, count_param: web_servers}
+  attacker:          {blueprint: attacker_enclave, as: red, count_param: operators}
+  router:            {blueprint: core_router, as: core, count_param: null}

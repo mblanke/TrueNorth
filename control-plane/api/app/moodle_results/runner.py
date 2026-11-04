@@ -46,7 +46,12 @@ def pull_all() -> int:
             try:
                 service.pull(db, platform)
                 pulled += 1
-            except (service.PullBusyError, service.LeaseLostError, MoodleError) as exc:
+            except (
+                service.PullBusyError,
+                service.LeaseLostError,
+                service.UnclassifiedGradeBoundaryError,
+                MoodleError,
+            ) as exc:
                 logger.info("results pull of platform %s skipped: %s", platform.id, exc)
             except Exception:  # noqa: BLE001 — one Moodle must not stop the others
                 logger.exception("results pull of platform %s crashed", platform.id)

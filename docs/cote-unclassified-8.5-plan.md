@@ -1,12 +1,13 @@
 # COTE unclassified-first gap-closure plan
 
 **Status:** Accepted delivery baseline; U1-Slice 1 foundation, enclave-profile gates and
-pseudonymous TN account assignment implemented
+pseudonymous Keycloak/TN account lifecycle implemented; approved credential channel pending
 **Target:** An evidence-backed 8.5/10 COTE fit for the Unclassified IOC, followed by
 repeatable promotion into Secret and higher enclaves
 **Planning source:** COTE PSOR Draft v1.0, especially HLMRs 1–7, IOC/FOC definitions,
 effectiveness requirements and performance measures
-**Code baseline reviewed:** `github/main` at `4c3f2559` (2026-10-23)
+**Code baseline reviewed:** `github/main` at `0e045bc4` (2026-10-26), plus the working slice
+described below
 **Owner decisions incorporated:** Unclassified first; independent TN deployments in each
 enclave; names and authoritative grades retained in Secret; Unclassified retains only an
 opaque learner identity and pass/fail; numeric results move low-to-high through an approved
@@ -21,10 +22,10 @@ Secret-only subject binding and authoritative imported-result ledger, linear cor
 replay receipts and signed grade-free acknowledgements. Production now requires an explicit
 classification and stable enclave ID in API startup, Compose and installer preflight, and the
 configured ID is enforced on transfer routes. The focused suite is green. This is
-a foundation rather than the completed gate: quiz, practical exercise and class close-out
-producers do not yet call it; key custody and source trust enrollment are not installed;
+a foundation rather than the completed gate: practical-exercise and Moodle-originated result
+producers do not yet call it; hardware-backed key custody is not installed;
 quarantine/malware scanning and operator UI are not built; and the present Unclassified
-application still has legacy readable score fields in its existing learning tables.
+application still has legacy readable score fields outside the completed quiz journey.
 
 A schema inventory now ratchets 43 known Unclassified remediation findings across identity,
 registration, roll call, quizzes, progress, exercises, Moodle results, acknowledgements and
@@ -34,9 +35,53 @@ inventory is intentionally evidence of the remaining gap, not a compliance claim
 Secret-issued opaque subject credentials and the Unclassified verified credential inbox are
 also implemented. Credentials are signed, route- and tenant-bound, expire within 90 days and
 contain no person identity or grade. An available credential can now be assigned once to an
-identity-free TN Student using an externally created Keycloak UUID. Keycloak account creation,
-one-time login delivery, revocation and recovery are the next identity slice. Assigned local
-learners can be resolved to exactly one opaque result token without exposing a person mapping.
+identity-free TN Student. The Keycloak adapter and lifecycle described in the 2026-10-26
+update below are now implemented. Assigned local learners resolve to exactly one opaque result
+token without exposing a person mapping.
+
+### Delivery update — 2026-10-26
+
+The pseudonymous identity adapter now creates a disabled, marker-tagged Keycloak account
+without a password or real identity, binds the imported credential to Keycloak's returned
+UUID, and deletes the disabled orphan if TN assignment fails. Temporary-login activation and
+recovery rotate a password in memory, pass it only to an injected delivery callback, and
+enable the account only after successful delivery. Failure leaves it disabled. Revocation
+disables Keycloak, deactivates the TN Student and makes the subject token unusable. Every
+lifecycle operation refuses non-pseudonymous Keycloak accounts and is tenant-scoped in TN.
+
+The implementation intentionally provides no public password-returning endpoint and chooses
+no delivery medium. Selecting, accrediting and wiring the separate one-time-login channel,
+plus operator audit/UI, remains a deployment gate rather than an application assumption.
+
+The first behavior-level DLP ratchet now submits a real quiz as a synthetic pseudonymous
+Student and inventories readable results across persistence, the HTTP response, xAPI and the
+LTI task. The initial 19 findings are now reduced to zero for that journey. On Unclassified,
+the numeric grade is sealed into the encrypted outbox in the same transaction, while attempt
+and module records retain pass/fail state without answers or numeric scores and no competency
+grade row is created. The learner response is pass/fail-only, per-question/numeric xAPI is
+suppressed, and no numeric LTI grade task is queued. Secret behavior is unchanged. This closes
+the quiz application path; key provisioning, cross-installation import evidence and the other
+result-producing journeys remain gates.
+
+Course/class close-out now also retains only completion state on Unclassified:
+`enrollments.final_score`, `max_score` and `final_grade` are null whether completion is local
+or Moodle-driven. Secret continues to calculate and retain the authoritative numeric and
+letter grade. Practical exercises remain the next major result path: their present score is
+shared at exercise level rather than attributable per learner, so participant/release binding
+must be designed before sealing it as an authoritative individual result.
+
+An executable practical-exercise behavior inventory now pins that gap at 10 current paths
+across database state, completion response, xAPI, LTI and competency auto-assessment. The next
+exercise slice must introduce participant-attributed attempts tied to evidence and an accepted
+course release; it must not copy the shared exercise total to every participant as though it
+were an individually proven grade.
+
+Moodle result pulling now fails closed on Unclassified when a signed page contains any
+readable quiz-grade row. The page is inspected before application, its cursor is not consumed,
+no grade ledger/attempt/progress write occurs, and only a grade-free boundary error is stored
+and returned. Completion-only pages remain eligible. Secret retains the existing Moodle grade
+ingestion. This is an interim safety boundary: the remaining Moodle slice must seal each
+attributable grade into the result outbox and retain only its permitted pass/fail projection.
 
 ## 1. Outcome and boundary
 
@@ -537,15 +582,18 @@ Implement and verify the Epic 4 contract before connecting any scoring producer:
 
 The cryptographic, media and persistence foundation is implemented on
 `codex/cote-result-transfer`, together with signed subject credentials, a verified
-Unclassified inbox and single-use identity-free TN account assignment. Remaining work for
-this slice is the Keycloak/one-time-login adapter, producer integration, real key custody and
-trust enrollment, import quarantine, operator workflows and proof that no legacy
-Unclassified learning table, response, log or export retains a readable numeric grade.
+Unclassified inbox, single-use identity-free TN account assignment, Keycloak account adapter,
+activation/recovery and revocation. Remaining work for this slice is the approved one-time
+credential channel and operator workflow, real key custody, import quarantine, the
+cross-installation demonstration, and proof that no legacy Unclassified log, export or
+uncovered result journey retains a readable numeric grade.
 
-The quiz producer seam now builds an encrypted result from a completed pseudonymous attempt
-and its pinned immutable course release, but is not wired to the live route. Route wiring is
-blocked on removing its readable Unclassified answers/scores from persistence, responses,
-progress, competencies, xAPI and LTI while preserving normal Secret behaviour.
+The live quiz route now seals the in-memory grade into the outbox in the same transaction and
+fails closed when it cannot. The local attempt/progress projection, response, xAPI and LTI are
+grade-free on Unclassified; Secret behavior is preserved. The executable quiz ratchet has zero
+accepted findings. Course/class close-out also retains completion without a final grade on
+Unclassified. The practical-exercise ratchet has 10 accepted findings pending the participant-
+attribution slice below.
 
 Purpose- and enclave-bound public-key trust enrollment, overlapping validity windows, exact
 key-ID resolution and retirement are implemented. Subject credential import uses the enrolled
@@ -560,6 +608,32 @@ attendance and close-out; finish individual/collective allocation and teams; del
 Classes and Events calendar journeys; and have close-out emit the result contract. The slice
 passes only when the synthetic 15-person class journey, tenant/role boundaries, generated
 contracts and repository DoD are green.
+
+### U1-Slice 3 — participant-attributed practical results
+
+Replace the current shared-score fan-out with an attributable, evidence-grounded result:
+
+1. Create one immutable exercise-participation attempt per Student/run, sourced from the
+   approved roster, LTI launch or individually assigned lab—not from whoever pressed Complete.
+2. Bind each attempt to tenant, exercise run ID, accepted course release and opaque subject.
+   Refuse grading when the release or participant is ambiguous; never guess a course from a
+   range that was reused by several bookings.
+3. Record objective evidence against the participant/team that produced it. Shared/team
+   evidence may support a team outcome only when the assessment design explicitly says so;
+   missing individual evidence remains unassessed, never an inherited pass.
+4. Produce one deterministic numeric result per attributable attempt in memory, seal it to
+   the Unclassified outbox, then retain only outcome, completion time and evidence digests.
+5. Suppress numeric exercise API fields, xAPI, LTI and competency writes on Unclassified.
+   Secret retains the current full behavior. LTI passback from Unclassified stays disabled.
+6. Make close atomic and fail closed: no completed attributable attempt unless every required
+   result envelope is durable. Retry is idempotent by exercise-run/participant/assessment.
+7. Reduce `unclassified-exercise-behavior-baseline.json` from 10 findings to zero and add
+   negative cases for roster mismatch, wrong tenant, missing evidence, shared-range ambiguity,
+   duplicate close, partial outbox failure and an instructor closing without becoming a learner.
+
+**Acceptance:** two Students in the same exercise can earn different evidence-backed outcomes;
+Unclassified retains neither numeric result; Secret imports both idempotently against the
+correct learners and release; a third Student with no evidence remains unassessed.
 
 ## 9. External references used for the physical-range scope
 

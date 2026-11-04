@@ -5,11 +5,48 @@ import uuid
 import pytest
 from app.models import UserRole
 from app.result_transfer.contract import ResultTransferError, generate_signing_keypair
-from app.result_transfer.pseudonymous import assign_account, subject_token_for_user
+from app.result_transfer.identity_backends import (
+    BasePseudonymousIdentityBackend,
+    OneTimeLogin,
+    PseudonymousIdentity,
+)
+from app.result_transfer.pseudonymous import (
+    assign_account,
+    create_and_assign_account,
+    deliver_one_time_login,
+    revoke_account,
+    subject_token_for_user,
+)
 from app.result_transfer.service import import_subject_credential, issue_subject_credential
 
 TENANT = uuid.UUID("00000000-0000-0000-0000-000000000001")
 USER = TENANT
+
+
+class FakeIdentityBackend(BasePseudonymousIdentityBackend):
+    kind = "fake"
+
+    def __init__(self) -> None:
+        self.subject = str(uuid.uuid4())
+        self.username = "tn-learner-test"
+        self.calls: list[tuple[str, str]] = []
+
+    def create_disabled_account(self) -> PseudonymousIdentity:
+        self.calls.append(("create", self.subject))
+        return PseudonymousIdentity(subject=self.subject, username=self.username)
+
+    def prepare_one_time_login(self, subject: str) -> OneTimeLogin:
+        self.calls.append(("prepare", subject))
+        return OneTimeLogin(subject=subject, username=self.username, password="one-time-secret")
+
+    def enable_account(self, subject: str) -> None:
+        self.calls.append(("enable", subject))
+
+    def disable_account(self, subject: str) -> None:
+        self.calls.append(("disable", subject))
+
+    def delete_account(self, subject: str) -> None:
+        self.calls.append(("delete", subject))
 
 
 def _available(db, monkeypatch):
@@ -115,3 +152,121 @@ def test_assigned_token_resolves_only_for_local_tenant_and_unclassified(db_sessi
     monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "secret")
     with pytest.raises(ResultTransferError, match="only on Unclassified"):
         subject_token_for_user(db_session, tenant_id=TENANT, user_id=user.id)
+
+
+def test_adapter_creates_disabled_identity_before_binding(db_session, monkeypatch) -> None:
+    available = _available(db_session, monkeypatch)
+    backend = FakeIdentityBackend()
+
+    result = create_and_assign_account(
+        db_session,
+        credential_id=available.credential_id,
+        tenant_id=TENANT,
+        identity_backend=backend,
+    )
+
+    assert result.user.keycloak_id == backend.subject
+    assert result.credential.user_id == result.user.id
+    assert backend.calls == [("create", backend.subject)]
+
+
+def test_failed_binding_deletes_the_disabled_identity(db_session, monkeypatch) -> None:
+    available = _available(db_session, monkeypatch)
+    backend = FakeIdentityBackend()
+
+    with pytest.raises(ResultTransferError, match="in this tenant"):
+        create_and_assign_account(
+            db_session,
+            credential_id=available.credential_id,
+            tenant_id=uuid.uuid4(),
+            identity_backend=backend,
+        )
+
+    assert backend.calls == [("create", backend.subject), ("delete", backend.subject)]
+
+
+def test_login_delivery_then_enable_supports_password_recovery(db_session, monkeypatch) -> None:
+    available = _available(db_session, monkeypatch)
+    backend = FakeIdentityBackend()
+    result = create_and_assign_account(
+        db_session,
+        credential_id=available.credential_id,
+        tenant_id=TENANT,
+        identity_backend=backend,
+    )
+    received: list[OneTimeLogin] = []
+
+    username = deliver_one_time_login(
+        db_session,
+        tenant_id=TENANT,
+        user_id=result.user.id,
+        identity_backend=backend,
+        deliver=received.append,
+    )
+
+    assert username == backend.username
+    assert received[0].password == "one-time-secret"
+    assert "one-time-secret" not in repr(received[0])
+    assert backend.calls[-2:] == [("prepare", backend.subject), ("enable", backend.subject)]
+
+
+def test_failed_delivery_leaves_account_disabled_and_hides_secret(db_session, monkeypatch) -> None:
+    available = _available(db_session, monkeypatch)
+    backend = FakeIdentityBackend()
+    result = create_and_assign_account(
+        db_session,
+        credential_id=available.credential_id,
+        tenant_id=TENANT,
+        identity_backend=backend,
+    )
+
+    def refused(_: OneTimeLogin) -> None:
+        raise RuntimeError("channel accidentally included one-time-secret")
+
+    with pytest.raises(ResultTransferError, match="remains disabled") as failure:
+        deliver_one_time_login(
+            db_session,
+            tenant_id=TENANT,
+            user_id=result.user.id,
+            identity_backend=backend,
+            deliver=refused,
+        )
+
+    assert "one-time-secret" not in str(failure.value)
+    assert backend.calls[-2:] == [("prepare", backend.subject), ("disable", backend.subject)]
+
+
+def test_revocation_is_tenant_scoped_and_blocks_recovery(db_session, monkeypatch) -> None:
+    available = _available(db_session, monkeypatch)
+    backend = FakeIdentityBackend()
+    result = create_and_assign_account(
+        db_session,
+        credential_id=available.credential_id,
+        tenant_id=TENANT,
+        identity_backend=backend,
+    )
+    before = list(backend.calls)
+    with pytest.raises(ResultTransferError, match="not found in this tenant"):
+        revoke_account(
+            db_session,
+            tenant_id=uuid.uuid4(),
+            user_id=result.user.id,
+            identity_backend=backend,
+        )
+    assert backend.calls == before
+
+    credential, user = revoke_account(
+        db_session,
+        tenant_id=TENANT,
+        user_id=result.user.id,
+        identity_backend=backend,
+    )
+    assert credential.state == "revoked" and not user.is_active
+    with pytest.raises(ResultTransferError, match="not found in this tenant"):
+        deliver_one_time_login(
+            db_session,
+            tenant_id=TENANT,
+            user_id=user.id,
+            identity_backend=backend,
+            deliver=lambda _: None,
+        )

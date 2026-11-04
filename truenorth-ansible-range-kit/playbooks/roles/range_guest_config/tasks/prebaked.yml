@@ -1,0 +1,12 @@
+---
+# Prebaked guests need no configuration; just power on and confirm Tools is up.
+- name: "Power on | {{ vm.vm_name }}"
+  vmware.vmware.vm_powerstate:
+    datacenter: "{{ plan.site.datacenter }}"
+    moid: "{{ tn_moids[vm.vm_name] }}"
+    state: powered-on
+
+- name: "Wait for VMware Tools | {{ vm.vm_name }}"
+  community.vmware.vmware_guest_tools_wait:
+    moid: "{{ tn_moids[vm.vm_name] }}"
+    timeout: "{{ tn_tools_timeout }}"

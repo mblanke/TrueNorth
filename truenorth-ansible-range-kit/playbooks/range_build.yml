@@ -1,0 +1,30 @@
+---
+# Build a TrueNorth range from its compiled plan
+- name: Build a TrueNorth range from its compiled plan
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - vars/common.yml
+  module_defaults:
+    group/community.vmware.vmware: &vcenter
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      port: "{{ vcenter_port | default(443) }}"
+      validate_certs: "{{ tn_validate_certs | default(true) }}"
+    group/vmware.vmware.vmware: *vcenter
+  vars:
+    tn_action: build
+    tn_changes: true
+    tn_snapshot_action: baseline
+  roles:
+    - range_load
+    - range_preflight
+    - range_tags
+    - range_networks
+    - range_vms
+    - range_guest_config
+    - range_snapshot
+    - range_validate
+    - range_report

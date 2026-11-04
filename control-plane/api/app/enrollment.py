@@ -16,6 +16,7 @@ import json
 import logging
 import uuid
 
+from sqlalchemy import null
 from sqlalchemy.orm import Session
 
 from .models import (
@@ -28,6 +29,7 @@ from .models import (
     User,
     UserRole,
 )
+from .settings import classification_level
 
 logger = logging.getLogger(__name__)
 
@@ -127,9 +129,14 @@ def complete_enrollment(db: Session, enrollment: Enrollment) -> Enrollment:
         grade = next((letter for floor, letter in ((90, "A"), (80, "B"), (70, "C"), (60, "D")) if pct >= floor), "F")
     enrollment.status = EnrollmentStatus.completed
     enrollment.completed_at = datetime.now(UTC)
-    enrollment.final_score = total_score
-    enrollment.max_score = max_score
-    enrollment.final_grade = grade
+    if classification_level() == "unclassified":
+        enrollment.final_score = null()
+        enrollment.max_score = null()
+        enrollment.final_grade = None
+    else:
+        enrollment.final_score = total_score
+        enrollment.max_score = max_score
+        enrollment.final_grade = grade
     db.flush()
     return enrollment
 

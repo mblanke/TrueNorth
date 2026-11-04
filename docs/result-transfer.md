@@ -17,8 +17,10 @@ administrator screen or an accredited cross-domain solution.
 - `app/result_transfer/service.py`: classification guards, outbox creation, immutable subject
   binding, idempotent import, linear correction and receipt application.
 - `app/result_transfer/receipt.py`: signed grade-free Secret acknowledgement or safe rejection.
-- `app/result_transfer/pseudonymous.py`: single-use assignment of a verified credential to
-  an identity-free local Student after an external identity provider creates its account.
+- `app/result_transfer/pseudonymous.py`: single-use assignment of a verified credential,
+  identity-provider orchestration, approved-channel activation/recovery and revocation.
+- `app/result_transfer/identity_backends/`: vendor-neutral pseudonymous identity seam and a
+  Keycloak Admin API implementation using the existing least-privilege service account.
 - `app/result_transfer/trust.py`: purpose- and route-bound public-key enrollment, validity,
   rotation overlap, exact key-ID resolution and retirement; it never stores private keys.
 - Alembic revisions through `8bc4d6fa0532` and focused adversarial tests.
@@ -100,28 +102,60 @@ expected source and local destination, validity window and active local tenant, 
 canonical signed content, its digest and the opaque token in `available` state. It stores no
 person mapping or login secret.
 
-`assign_account` can then consume one available credential and create the TN half of an
-identity-free local Student. The caller supplies the UUID returned after creating the matching
-pseudonymous Keycloak account; TN generates a separate random local ID, synthetic
-`@subjects.invalid` email and learner alias, and refuses real identity attributes. Assignment
-is Unclassified-only, tenant- and destination-scoped, expiry-checked and single-use. It does
-**not** create a Keycloak account or password and therefore is not yet a login workflow.
-Migration `6fa2b4d8e310` links the inbox row to that local user and records assignment time. The
+`create_and_assign_account` now creates a disabled, identity-free Keycloak account through an
+adapter, then consumes one available credential and binds the UUID Keycloak returned. TN
+generates a separate random local ID, synthetic `@subjects.invalid` email and learner alias,
+and refuses real identity attributes. Assignment is Unclassified-only, tenant- and
+destination-scoped, expiry-checked and single-use. A failed TN bind deletes the disabled IdP
+orphan. The Keycloak account is marker-tagged, and lifecycle operations refuse an ordinary or
+AD-backed account even if a wrong UUID is supplied. The original lower-level `assign_account`
+remains available for controlled adapters and tests.
+
+Account creation deliberately sets no password and leaves sign-in disabled. After the TN
+transaction commits, `deliver_one_time_login` rotates a temporary password, passes it only to
+a caller-injected approved delivery callback, and enables the account only after that callback
+returns successfully. The password is excluded from object representations and is never
+persisted by TN. Repeating the operation is password recovery. Delivery failure re-disables
+the account and returns no secret. `revoke_account` disables Keycloak, deactivates the local
+Student and changes the credential to `revoked`, which also prevents future result production
+and recovery. There is intentionally no public API or built-in email/screen/print delivery
+channel yet; the security authority must select and approve that operator channel first.
+
+Migration `6fa2b4d8e310` links the inbox row to the local user and records assignment time. The
 chain has passed fresh upgrade, full downgrade and re-upgrade on SQLite.
 
 After assignment, `subject_token_for_user` resolves the tenant-scoped local learner back to
 the stable opaque token a scoring producer must place in a result package. It is
 Unclassified-only and ignores the credential's provisioning expiry after successful
 assignment. Revision `7ab3c5e9f421` makes the local-user link unique so a producer can never
-select between multiple subject tokens. Revocation remains future work.
+select between multiple subject tokens. Revocation makes that resolver stop returning a token.
 
 `queue_quiz_attempt` is the first producer seam. Given a completed attempt, it requires the
 pseudonymous learner's tenant-scoped enrollment and immutable pinned course release, resolves
 the opaque token, and queues the encrypted numeric result with a grade-free projection in the
-same database transaction. It is deliberately not called by the live quiz route yet: that
-route still persists readable answers and scores in quiz, progress and competency records and
-emits numeric xAPI/LTI data. Wiring only the outbox before replacing those paths would create
-transfer evidence without meeting the Unclassified data rule.
+same database transaction. The live Unclassified route now calls the in-memory producer before
+commit, persists no answers or numeric values in the attempt or module-progress rows, skips the
+numeric competency row, and fails closed with no submitted result if sealing is unavailable.
+It returns only pass/fail, omits per-question/numeric xAPI and does not queue LTI grade
+passback; Secret retains the full response and interoperability behavior.
+
+Course/class close-out uses the same classification rule: Unclassified retains enrollment
+completion and time but no final numeric or letter grade; Secret retains the calculated
+authoritative grade. Component grades are sealed by their producer rather than reconstructed
+from readable low-side enrollment fields.
+
+Moodle-originated quiz grades are currently blocked at the Unclassified ingestion boundary.
+The puller inspects each signed page before applying any row; a page containing a grade is
+refused without advancing its cursor or writing its grade ledger, quiz attempt or progress.
+The retained error contains no grade. Secret keeps the existing Moodle ingestion behavior.
+This is fail-closed containment, not the final producer: Moodle grades still need the same
+in-memory sealing and pass/fail-only projection used by the live TrueNorth quiz route.
+
+The live route resolves the destination and enrolled recipient public key using
+`TN_RESULT_TRANSFER_DESTINATION_ENCLAVE` and `TN_RESULT_TRANSFER_RECIPIENT_KEY_ID`. Its Ed25519
+private key is read from the owner-only regular file named by
+`TN_RESULT_TRANSFER_SIGNING_KEY_FILE`; links and group/world-readable files are refused. This
+file provider is an interim deployable boundary. Hardware-backed signing remains the target.
 
 ## Verification
 
@@ -129,20 +163,19 @@ Focused checks cover public-field leakage, tampering, wrong signer, wrong recipi
 destination, malformed score/evidence, timezone handling, media limits, symlinks, overwrite,
 filename mismatch, replay, subject rebinding, idempotent import, linear correction, receipt
 tampering and migration structure. A fresh SQLite migration, downgrade to the prior head and
-re-upgrade also pass. The full repository DoD passed on 2026-10-24 with 8,786 tests passing and
-164 skipped at commit `ce9b65d2`. A PostgreSQL migration run remains required because this
-host has no configured `TEST_POSTGRES_ADMIN_URL` and the PostgreSQL-only cases were among the
-skips.
+re-upgrade also pass. The full repository DoD passed on the current local, uncommitted tree
+based on `0e045bc401e7`, with 8,807 tests passing and 164 skipped. A PostgreSQL migration run
+remains required because this host has no configured `TEST_POSTGRES_ADMIN_URL` and the
+PostgreSQL-only cases were among the skips.
 
 ## Required next work
 
-1. Add a Keycloak adapter that creates an identity-free account, passes its returned UUID to
-   `assign_account`, and delivers a one-time login through an approved separate channel. Add
-   revocation and recovery without importing a real identity or exposing the subject token.
-2. Replace the live quiz route's readable Unclassified attempt, progress, competency, xAPI,
-   response and LTI score paths with a pass/fail-only projection, then call the implemented
-   `queue_quiz_attempt` seam in the same transaction. Repeat for practical exercises and class
-   close-out.
+1. Select and accredit the separate one-time-login delivery channel, then expose the
+   implemented create/activate/recover/revoke services through a platform-operator workflow
+   with audit events and tenant/role behavior tests. Do not return a password from an API.
+2. Repeat the completed quiz pattern—seal in memory, commit a pass/fail-only projection and
+   fail closed—for participant-attributed practical exercises and Moodle-originated grades.
+   The current Moodle grade-page refusal must remain until that producer is proven.
 3. Put private signing/decryption operations behind hardware-backed key references and add
    the operator screen and formal ceremony for the implemented trust-registry API. Installer-
    managed enclave identity and classification are implemented; set unique values for every

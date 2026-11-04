@@ -1,0 +1,9 @@
+# TrueNorth range kit
+build/
+discovery/
+.claude/approvals/
+vault/*.yml
+!vault/README.md
+*.retry
+__pycache__/
+*.tmp

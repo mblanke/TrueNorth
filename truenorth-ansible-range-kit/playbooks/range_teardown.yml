@@ -1,0 +1,22 @@
+---
+# Tear down a TrueNorth range by tag
+- name: Tear down a TrueNorth range by tag
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - vars/common.yml
+  module_defaults:
+    group/community.vmware.vmware: &vcenter
+      hostname: "{{ vcenter_hostname }}"
+      username: "{{ vcenter_username }}"
+      password: "{{ vcenter_password }}"
+      port: "{{ vcenter_port | default(443) }}"
+      validate_certs: "{{ tn_validate_certs | default(true) }}"
+    group/vmware.vmware.vmware: *vcenter
+  vars:
+    tn_action: teardown
+    tn_changes: true
+  roles:
+    - range_load
+    - range_teardown

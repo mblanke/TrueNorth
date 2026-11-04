@@ -7075,8 +7075,15 @@
             "title": "Final Grade"
           },
           "final_score": {
-            "title": "Final Score",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Score"
           },
           "id": {
             "format": "uuid",
@@ -7084,8 +7091,15 @@
             "type": "string"
           },
           "max_score": {
-            "title": "Max Score",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Score"
           },
           "started_at": {
             "anyOf": [
@@ -11985,8 +11999,15 @@
             "title": "Last Accessed At"
           },
           "max_score": {
-            "title": "Max Score",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Score"
           },
           "module_id": {
             "format": "uuid",
@@ -11994,8 +12015,15 @@
             "type": "string"
           },
           "score": {
-            "title": "Score",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
           },
           "status": {
             "title": "Status",
@@ -21435,6 +21463,32 @@
           "retired_at"
         ],
         "title": "TrustKeyOut",
+        "type": "object"
+      },
+      "UnclassifiedAttemptResultOut": {
+        "description": "Low-side response: the learner may see the outcome, never a readable grade or answers.",
+        "properties": {
+          "attempt_id": {
+            "format": "uuid",
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "late": {
+            "default": false,
+            "description": "submitted after the time limit: answers were not marked",
+            "title": "Late",
+            "type": "boolean"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "attempt_id",
+          "passed"
+        ],
+        "title": "UnclassifiedAttemptResultOut",
         "type": "object"
       },
       "UrlIngestIn": {
@@ -41213,7 +41267,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AttemptResultOut"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AttemptResultOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/UnclassifiedAttemptResultOut"
+                    }
+                  ],
+                  "title": "Response Submit Attempt Quizzes Attempts  Attempt Id  Submit Post"
                 }
               }
             },

@@ -403,6 +403,9 @@ def moodle_results_pull(
     reset = bool(body and body.reset)
     try:
         summary = results_service.pull(db, p, reset=reset)
+    except results_service.UnclassifiedGradeBoundaryError as exc:
+        _audit_pull(db, user, p.id, "refused at the Unclassified grade boundary (409)")
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except results_service.PullBusyError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except results_service.LeaseLostError as exc:

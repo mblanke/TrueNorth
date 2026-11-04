@@ -79,14 +79,13 @@ fi
 # Record WHICH STATE passed, so other controls can ask "was DoD green for this exact
 # state?" rather than "was DoD ever green?". The Stop hook reads this.
 #
-# NOT `git write-tree`: that hashes the INDEX, so an unstaged edit leaves it unchanged.
-# The 2026-08-19 damage was entirely unstaged, so an index hash would have been blind to
-# precisely the case this marker exists for. HEAD + a hash of the full diff against HEAD
-# captures staged and unstaged changes to tracked files alike.
+# NOT `git write-tree`: that hashes the INDEX, so unstaged and untracked edits leave it
+# unchanged. `worktree_fingerprint.py` covers the binary tracked diff plus every non-ignored
+# untracked path, mode, type and content without following symlinks.
 {
   printf '%s:%s\n' \
     "$(git rev-parse HEAD 2>/dev/null || echo nohead)" \
-    "$(git diff HEAD 2>/dev/null | sha256sum | cut -c1-16)"
+    "$("$PY" scripts/worktree_fingerprint.py)"
   date -u +%FT%TZ
 } > "$ROOT/.dod-pass"
 

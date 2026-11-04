@@ -1,0 +1,16 @@
+{
+  "purpose": "Ratchet of known readable participant-result behavior when one live Unclassified exercise is completed. Findings must be removed, not expanded.",
+  "journey": "pseudonymous participant completes an evidence-backed practical exercise",
+  "findings": [
+    "api:exercise-complete.max_score",
+    "api:exercise-complete.total_score",
+    "db:exercises.max_score",
+    "db:exercises.total_score",
+    "db:objectives.achieved",
+    "db:objectives.evidence",
+    "lti:exercise-grade.max_score",
+    "lti:exercise-grade.score",
+    "worker:auto-assess-competency.numeric-persistence",
+    "xapi:completed.result.score"
+  ]
+}

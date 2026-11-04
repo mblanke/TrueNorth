@@ -1,0 +1,169 @@
+---
+# Teardown by tag. Only VMs carrying the range tag are deleted, and only if every one
+# also matches the plan. Portgroups are deleted only if their exact name is in the
+# plan and no VM is still attached. Folders are deleted only when empty.
+- name: Require typed confirmation of the range ID
+  ansible.builtin.assert:
+    that: confirm is defined and confirm == range_id
+    fail_msg: "Teardown needs -e confirm={{ range_id }}"
+    quiet: true
+
+- name: List VMs in the range folder tree with their tags
+  community.vmware.vmware_vm_info:
+    folder: "{{ tn_vm_folder_prefix }}/{{ plan.site.folder_root }}/{{ range_id }}"
+    show_tag: true
+  register: tn_vm_scan
+  check_mode: false
+
+- name: Start the tagged VM list
+  ansible.builtin.set_fact:
+    tn_tagged: []
+    tn_planned_names: "{{ tn_vms | map(attribute='vm_name') | list }}"
+
+- name: Select VMs tagged with this range
+  ansible.builtin.set_fact:
+    tn_tagged: "{{ tn_tagged + [item] }}"
+  loop: "{{ tn_vm_scan.virtual_machines | default([]) }}"
+  loop_control:
+    label: "{{ item.guest_name }}"
+  when: >-
+    item.tags | default([])
+    | selectattr('category_name', 'equalto', plan.site.tags.range_category)
+    | selectattr('name', 'equalto', range_id) | list | length > 0
+
+- name: Find tagged VMs that are not in the plan
+  ansible.builtin.set_fact:
+    tn_unexpected: "{{ tn_tagged | map(attribute='guest_name') | reject('in', tn_planned_names) | list }}"
+
+- name: Refuse if any tagged VM is outside the plan
+  ansible.builtin.assert:
+    that: tn_unexpected | length == 0
+    fail_msg: >-
+      These VMs carry tag {{ plan.site.tags.range_category }}:{{ range_id }} but are not in the plan:
+      {{ tn_unexpected }}. Nothing was deleted. Investigate before tearing down.
+    quiet: true
+
+- name: Assert every object teardown may delete is inside this range's namespace
+  ansible.builtin.assert:
+    that:
+      - tn_networks | map(attribute='portgroup') | reject('match', '^TN-' ~ range_id ~ '(-S[0-9]{2})?-[a-z][a-z0-9-]*$') | list | length == 0
+      - tn_networks | map(attribute='portgroup') | reject('in', tn_expected_pgs) | list | length == 0
+      - plan.folders | selectattr('owned') | map(attribute='path') | reject('match', tn_folder_re) | list | length == 0
+      - plan.instances[0].resource_pool == plan.site.resource_pool_root ~ '-' ~ range_id
+    fail_msg: "The plan names objects outside TrueNorth range {{ range_id }}. Nothing was deleted."
+    quiet: true
+  vars:
+    tn_folder_re: "{{ '^' ~ (plan.site.folder_root | regex_escape) ~ '/' ~ range_id ~ '(/|$)' }}"
+    tn_expected_pgs: >-
+      {{ plan.instances | map(attribute='id') | product(plan.instances[0].networks | map(attribute='name'))
+         | map('join', '-') | map('regex_replace', '^', 'TN-') | list }}
+
+- name: Show exactly what will be removed
+  ansible.builtin.debug:
+    msg:
+      vms: "{{ tn_tagged | map(attribute='guest_name') | list }}"
+      portgroups: "{{ tn_networks | map(attribute='portgroup') | list }}"
+      folders: "{{ plan.instances | map(attribute='folder') | unique | list }}"
+      resource_pool: "{{ plan.instances[0].resource_pool }}"
+
+- name: Power off and delete tagged VMs (by instance UUID, never by name)
+  community.vmware.vmware_guest:
+    datacenter: "{{ plan.site.datacenter }}"
+    uuid: "{{ item.instance_uuid }}"
+    use_instance_uuid: true
+    state: absent
+    force: true
+  loop: "{{ tn_tagged }}"
+  loop_control:
+    label: "{{ item.guest_name }}"
+
+- name: Remove DRS affinity rules
+  community.vmware.vmware_vm_vm_drs_rule:
+    cluster_name: "{{ plan.site.cluster }}"
+    drs_rule_name: "{{ item.drs_rule }}"
+    state: absent
+  loop: "{{ plan.instances }}"
+  loop_control:
+    label: "{{ item.drs_rule }}"
+  when: plan.site.isolation_mode == 'uplink_none'
+
+- name: Read portgroups on the range switch
+  community.vmware.vmware_dvs_portgroup_info:
+    datacenter: "{{ plan.site.datacenter }}"
+    dvswitch: "{{ plan.site.dvs }}"
+    show_network_policy: false
+    show_mac_learning: false
+    show_teaming_policy: false
+    show_port_policy: false
+    show_uplinks: false
+  register: tn_pg_info
+  check_mode: false
+
+- name: Delete planned portgroups that exist
+  community.vmware.vmware_dvs_portgroup:
+    portgroup_name: "{{ item }}"
+    switch_name: "{{ plan.site.dvs }}"
+    vlan_id: 0
+    num_ports: 0
+    port_binding: static
+    state: absent
+  loop: >-
+    {{ tn_networks | map(attribute='portgroup') | list
+       | intersect(tn_pg_info.dvs_portgroup_info[plan.site.dvs] | default([]) | map(attribute='portgroup_name') | list) }}
+
+- name: Confirm range folders are empty
+  community.vmware.vmware_vm_info:
+    folder: "{{ tn_vm_folder_prefix }}/{{ plan.site.folder_root }}/{{ range_id }}"
+  register: tn_vm_left
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Delete empty range folders (deepest first, never VM data)
+  vmware.vmware.folder:
+    absolute_path: "{{ plan.site.datacenter }}/vm/{{ item.path }}"
+    folder_type: vm
+    remove_vm_data: false
+    state: absent
+  loop: "{{ plan.folders | selectattr('owned') | reverse | list }}"
+  loop_control:
+    label: "{{ item.path }}"
+  when: not ansible_check_mode and (tn_vm_left.virtual_machines | default([]) | length == 0)
+
+- name: Delete the range resource pool
+  community.vmware.vmware_resource_pool:
+    datacenter: "{{ plan.site.datacenter }}"
+    parent_resource_pool: "{{ plan.site.resource_pool_root }}"
+    resource_pool: "{{ plan.instances[0].resource_pool }}"
+    state: absent
+
+- name: Delete range and instance tags
+  vmware.vmware.tags:
+    state: absent
+    tags: "{{ plan.vsphere_tags }}"
+
+- name: Verify nothing tagged with the range remains
+  community.vmware.vmware_vm_info:
+    show_tag: true
+  register: tn_post_scan
+  check_mode: false
+  when: not ansible_check_mode
+
+- name: Assert zero tagged VMs remain
+  ansible.builtin.assert:
+    that: >-
+      tn_post_scan.virtual_machines | default([])
+      | selectattr('guest_name', 'in', tn_planned_names) | list | length == 0
+    fail_msg: "Teardown incomplete: planned VMs still exist"
+    quiet: true
+  when: not ansible_check_mode
+
+- name: Record teardown result
+  ansible.builtin.copy:
+    content: >-
+      {{ {'action': 'teardown', 'range_id': range_id, 'plan_sha256': plan.plan_sha256,
+          'started': tn_started, 'finished': now(utc=true).isoformat(),
+          'removed_vms': tn_tagged | map(attribute='guest_name') | list,
+          'removed_portgroups': tn_networks | map(attribute='portgroup') | list} | to_nice_json }}
+    dest: "{{ tn_build_dir }}/teardown.json"
+    mode: "0640"
+  when: not ansible_check_mode
