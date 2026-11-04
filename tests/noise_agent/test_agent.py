@@ -5,6 +5,7 @@ milliseconds; the controller is the real FastAPI app through TestClient.
 """
 
 import http.server
+import shutil
 import socket
 import threading
 import time
@@ -12,11 +13,16 @@ import time
 import pytest
 from tn_noise_agent import VERSION
 from tn_noise_agent.activities import (
+    REGISTRY,
     AgentConfig,
     TargetRefusedError,
     admin_scan,
     dns_lookup,
+    ftp_session,
     guard,
+    icmp_ping,
+    print_status,
+    rdp_connect,
     ssh_admin,
     web_browse,
 )
@@ -236,3 +242,99 @@ def test_runner_refuses_off_range_targets(target):
 def test_guard_refuses_the_management_network():
     with pytest.raises(TargetRefusedError):
         guard("10.255.0.7", AgentConfig(forbidden_nets=("10.255.0.0/24",)))
+
+
+# ── The everyday activities added in 0.2.0: each does the opening of the real exchange ──
+
+
+def test_the_agent_can_do_everything_the_controller_plans():
+    from app.noise import dial
+
+    assert set(REGISTRY) >= dial.ACTIVITY_KINDS, dial.ACTIVITY_KINDS - set(REGISTRY)
+
+
+def _one_shot_server(handler):
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+
+    def serve():
+        conn, _ = srv.accept()
+        try:
+            handler(conn)
+        finally:
+            conn.close()
+            srv.close()
+
+    threading.Thread(target=serve, daemon=True).start()
+    return srv.getsockname()[1]
+
+
+def test_rdp_connect_sends_a_real_negotiation_request():
+    got = []
+
+    def handler(conn):
+        got.append(conn.recv(64))
+        conn.sendall(bytes.fromhex("030000130ed000001234000200080002000000"))  # a Connection Confirm
+
+    port = _one_shot_server(handler)
+    assert rdp_connect({"target": f"127.0.0.1:{port}"}, CFG) == {"port": port, "tpkt": True}
+    request = got[0]
+    assert len(request) == 19 and request[:2] == b"\x03\x00" and request[2:4] == (19).to_bytes(2, "big")
+    assert request[4] == len(request) - 5  # the X.224 length indicator counts what follows it
+    assert request[5] == 0xE0 and request[11:13] == b"\x01\x00"  # connection request; negotiation request
+
+
+def test_ftp_session_logs_in_anonymously_and_asks_where_it_is():
+    seen = []
+
+    def handler(conn):
+        f = conn.makefile("rwb")
+        f.write(b"220 files ready\r\n")
+        f.flush()
+        for line in f:
+            seen.append(line.strip().decode())
+            cmd = seen[-1].split()[0].upper()
+            reply = {"USER": b"331 password please", "PASS": b"230 welcome", "PWD": b'257 "/pub" is current',
+                     "QUIT": b"221 bye"}.get(cmd, b"502 no")
+            f.write(reply + b"\r\n")
+            f.flush()
+            if cmd == "QUIT":
+                break
+
+    port = _one_shot_server(handler)
+    assert ftp_session({"target": f"127.0.0.1:{port}"}, CFG) == {"cwd": "/pub"}
+    assert [c.split()[0] for c in seen] == ["USER", "PASS", "PWD", "QUIT"]
+    assert seen[0] == "USER anonymous"
+
+
+def test_print_status_asks_over_ipp_and_submits_no_job():
+    seen = {}
+
+    class Printer(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            seen["path"], seen["type"] = self.path, self.headers.get("Content-Type")
+            seen["body"] = self.rfile.read(int(self.headers["Content-Length"]))
+            self.send_response(200)
+            self.send_header("Content-Type", "application/ipp")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), Printer)
+    threading.Thread(target=srv.handle_request, daemon=True).start()
+    try:
+        assert print_status({"target": f"127.0.0.1:{srv.server_port}"}, CFG) == {"status": 200}
+    finally:
+        srv.server_close()
+    body = seen["body"]
+    assert seen["type"] == "application/ipp" and seen["path"] == "/ipp/print"
+    assert body[:2] == b"\x01\x01" and body[2:4] == b"\x00\x0b"  # IPP 1.1, Get-Printer-Attributes (not Print-Job 0x0002)
+    assert body.endswith(b"\x03") and b"printer-uri" in body and b"attributes-charset" in body
+
+
+@pytest.mark.skipif(shutil.which("ping") is None, reason="no ping on this host")
+def test_icmp_ping_reaches_loopback():
+    assert icmp_ping({"target": "127.0.0.1"}, CFG) == {"reply": True}

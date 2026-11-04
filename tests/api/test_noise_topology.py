@@ -77,6 +77,21 @@ class TestTargets:
         flat = [v for values in t.values() for v in values]
         assert not any("10.66.0." in v or "10.0.0." in v for v in flat), flat
 
+    def test_rdp_ftp_and_print_come_from_services_and_roles_never_from_agents(self):
+        t = _with_noise()
+        t["nodes"] = list(t["nodes"]) + [
+            {"id": "app01", "role": "application_server", "vlan": "corp", "ip": "10.30.0.50", "services": ["rdp"]},
+            {"id": "drop01", "role": "ftp_server", "vlan": "corp", "ip": "10.30.0.51"},
+            {"id": "print01", "role": "print_server", "vlan": "corp", "ip": "10.30.0.52"},
+            {"id": "mfp01", "role": "network_device", "vlan": "corp", "ip": "10.30.0.53", "services": ["ipp"]},
+            {"id": "wsx", "role": "workstation", "vlan": "corp", "ip": "10.30.0.54", "services": ["rdp", "ftp", "ipp"]},
+        ]
+        derived = topology.derive_targets(t)
+        assert derived["rdp"] == ["10.30.0.50"]
+        assert derived["ftp"] == ["10.30.0.51"]
+        assert derived["print"] == ["10.30.0.52", "10.30.0.53"]
+        assert "10.30.0.54" not in derived["rdp"] + derived["ftp"] + derived["print"]  # an agent is never a target here
+
     def test_every_derived_target_passes_validation(self):
         from app.noise import targets
 
