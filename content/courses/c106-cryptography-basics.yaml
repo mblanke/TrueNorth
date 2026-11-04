@@ -107,11 +107,11 @@ modules:
     - question: Two substitution ciphers encrypt the same English message. One shifts every letter by three
         places; the other maps each letter by a mixed alphabet. What does frequency analysis show?
       options:
-      - A) Both ciphers resist frequency analysis to the same degree
+      - A) Both ciphers keep the plaintext letter-frequency pattern, so frequency analysis works on both
       - B) The mixed alphabet preserves the frequency pattern more plainly
-      - C) The uniform shift keeps the frequency pattern plainly readable
+      - C) Only the uniform shift leaves a readable frequency pattern
       - D) Neither cipher leaves any letter pattern available to analyse
-      answer: C
+      answer: A
 - ordinal: 2
   title: Symmetric Encryption
   content_type: reading
