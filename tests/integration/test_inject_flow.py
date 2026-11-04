@@ -75,7 +75,7 @@ class TestInjectFlow:
         assert resp.status_code in (200, 202), resp.text
         _poll(api_client, f"/ranges/{inject_env['range_id']}", "ready")
 
-    def test_run_exercise_to_completion(self, api_client, inject_env):
+    def test_run_exercise_then_the_instructor_completes_it(self, api_client, inject_env):
         resp = api_client.post(
             "/exercises",
             json={
@@ -88,6 +88,18 @@ class TestInjectFlow:
         assert resp.status_code in (200, 201), resp.text
         inject_env["exercise_id"] = eid = resp.json()["id"]
         assert api_client.post(f"/exercises/{eid}/start").status_code in (200, 202)
+        # The run plays the timeline and leaves the exercise running for the instructor to
+        # judge (ADR 0020); once every event is recorded, the instructor completes it.
+        deadline = time.time() + POLL_TIMEOUT
+        while time.time() < deadline:
+            recs = api_client.get(f"/exercises/{eid}/injects").json()
+            if len([r for r in recs if r["source"] == "timeline"]) >= 3:
+                break
+            time.sleep(POLL_INTERVAL)
+        else:
+            pytest.fail(f"the timeline of exercise {eid} was not recorded within {POLL_TIMEOUT}s")
+        assert _poll(api_client, f"/exercises/{eid}", "running")["state"] == "running"
+        assert api_client.post(f"/exercises/{eid}/complete").status_code in (200, 202)
         _poll(api_client, f"/exercises/{eid}", "completed")
 
     def test_each_inject_outcome_is_recorded(self, api_client, inject_env):

@@ -49,6 +49,7 @@ from ..aar_report import build_report as build_aar_report
 from ..ai_orchestrator_client import orchestrator_headers, raise_if_ai_not_configured
 from ..auth import CurrentUser
 from ..db import get_db
+from ..detections.models import ACHIEVED, CITED, RECORDED, DetectionSubmission
 from ..detections.redaction import redact_evidence, redact_timeline, sees_answer_key
 from ..exercise_judging import JudgementIn
 from ..models import (
@@ -104,7 +105,7 @@ def _dispatch_task(task_name: str, *args: Any) -> str | None:
 def _scenario_definition(db: Session, ex: Exercise, user: CurrentUser) -> dict:
     """Build the scenario_definition dict for run_scenario_v2 from the exercise's scenario + objectives.
 
-    Objectives come from the DB Objective rows (their ref_id is what the mock runner marks achieved),
+    Objectives come from the DB Objective rows (their ref_id is what instructors judge, ADR 0020),
     the timeline is parsed from the Scenario YAML. Robust if the YAML has no timeline.
     """
     definition: dict = {"timeline": [], "objectives": []}
@@ -224,7 +225,7 @@ async def start_exercise(
     db.refresh(ex)
     _audit(db, user, "start", "exercise", str(ex.id))
     db.commit()
-    # Dispatch the scenario runner (mock mode walks the timeline + auto-achieves objectives).
+    # Dispatch the scenario runner (it walks the timeline; instructors judge the objectives, ADR 0020).
     definition = _scenario_definition(db, ex, user)
     _dispatch_task("run_scenario_v2", str(ex.id), definition, lease)
     if background_tasks is not None:
@@ -307,7 +308,13 @@ def run_exercise(
         for obj in db.query(Objective).filter(Objective.exercise_id == ex.id).all():
             obj.achieved = False
             obj.achieved_at = None
-            obj.evidence = None  # the last run's credit; its submissions stay on record
+            obj.evidence = None  # the last run's judgements; its submissions stay on record
+        # ...but no longer credit anyone (class closeout and the live class count citations).
+        db.query(DetectionSubmission).filter(
+            DetectionSubmission.exercise_id == ex.id,
+            DetectionSubmission.tenant_id == ex.tenant_id,
+            DetectionSubmission.verdict.in_((CITED, ACHIEVED)),
+        ).update({"verdict": RECORDED}, synchronize_session=False)
         ex.state = ExerciseState.pending
         ex.total_score = 0
         ex.completed_at = None

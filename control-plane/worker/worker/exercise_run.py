@@ -7,11 +7,10 @@ contracts.py), and ``from worker.tasks import run_scenario_v2`` still works.
 
 Injection goes through one seam, ``inject_dispatch.dispatch_inject``, called once per
 timeline event on every backend; every outcome is recorded in ``inject_records``
-(docs/scenario-inject-execution.md). The worker never scores detections (ADR 0005): a
-Student earns detection credit by submitting a detection to the API. On a real backend the
+(docs/scenario-inject-execution.md). The worker never scores (ADR 0020): instructors
+judge every objective of a team exercise through the API. On any backend, mock included, the
 exercise stays running after its timeline, until an instructor completes it or its duration
-runs out (app/exercise_completion.py); the mock backend, a simulation with no telemetry,
-still auto-achieves every objective and completes. Database access is db_ops.py; the DB
+runs out (app/exercise_completion.py). Database access is db_ops.py; the DB
 session and notifications come from task_plumbing.py.
 """
 

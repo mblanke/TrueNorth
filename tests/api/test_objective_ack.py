@@ -8,7 +8,6 @@ looked up by exercise id alone, so it reached across tenants.
 from __future__ import annotations
 
 import json
-
 import uuid
 from contextlib import contextmanager
 

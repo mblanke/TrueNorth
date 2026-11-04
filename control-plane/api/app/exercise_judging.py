@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from . import exercise_completion as completion
 from .auth import CurrentUser
-from .detections.models import CITED, RECORDED, DetectionSubmission
+from .detections.models import ACHIEVED, CITED, RECORDED, DetectionSubmission
 from .models import Exercise, ExerciseState, Objective
 
 OPEN = (ExerciseState.running, ExerciseState.paused)
@@ -103,7 +103,7 @@ def acknowledge(db: Session, exercise_id: uuid.UUID, ref_id: str, body: Judgemen
     for r in rows:
         r.verdict = CITED
     db.flush()
-    ex.total_score = completion.total(db, ex.id)
+    completion.retotal(db, ex)
     return obj
 
 
@@ -113,20 +113,24 @@ def withdraw(db: Session, exercise_id: uuid.UUID, ref_id: str) -> Objective:
     if not obj.achieved:
         raise HTTPException(409, "Objective is not achieved")
     try:
-        cites = json.loads(obj.evidence or "{}").get("cites") or []
-    except (ValueError, AttributeError):
-        cites = []
+        judged = json.loads(obj.evidence or "{}")
+    except ValueError:
+        judged = {}
+    judged = judged if isinstance(judged, dict) else {}
+    # This judgement's cites, or, for credit given automatically before ADR 0020, the one
+    # submission that earned it: either way it no longer credits anyone.
+    cites = list(judged.get("cites") or []) + ([judged["submission_id"]] if judged.get("submission_id") else [])
     ids = [uuid.UUID(c) for c in cites if isinstance(c, str) and _is_uuid(c)]
     if ids:
         db.query(DetectionSubmission).filter(
             DetectionSubmission.id.in_(ids),
             DetectionSubmission.tenant_id == ex.tenant_id,
             DetectionSubmission.exercise_id == ex.id,
-            DetectionSubmission.verdict == CITED,
+            DetectionSubmission.verdict.in_((CITED, ACHIEVED)),
         ).update({"verdict": RECORDED}, synchronize_session=False)
     obj.achieved, obj.achieved_at, obj.evidence = False, None, None
     db.flush()
-    ex.total_score = completion.total(db, ex.id)
+    completion.retotal(db, ex)
     return obj
 
 

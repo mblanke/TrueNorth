@@ -15,12 +15,42 @@ from __future__ import annotations
 import base64
 import hashlib
 import html
+import json
 import re
 import unicodedata
 from typing import Any
 
 # Characters outside latin-1 that NFKD cannot reduce but that have an obvious ASCII
 # spelling. Keyed by code point so this source stays ASCII.
+def evidence_text(raw: Any) -> str:
+    """An objective's stored evidence as a reader sees it, not as JSON.
+
+    An instructor's judgement (ADR 0020) reads "Judged by X: note (cites N detections)";
+    a detection's evidence from before it, "Detection by X (N events matched)"; any other
+    JSON object, its values; plain text, itself.
+    """
+    if not raw:
+        return ""
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except ValueError:
+        return str(raw)
+    if not isinstance(data, dict):
+        return str(raw)
+    if data.get("source") == "instructor":
+        text = f"Judged by {data.get('by') or 'an instructor'}"
+        if data.get("note"):
+            text += f": {data['note']}"
+        cites = data.get("cites") or []
+        if cites:
+            text += f" (cites {len(cites)} detection{'s' if len(cites) != 1 else ''})"
+        return text
+    if data.get("source") in ("student_detection", "staff_detection"):
+        who = data.get("student") or data.get("user") or "a participant"
+        return f"Detection by {who} ({data.get('events_matched') or 0} events matched)"
+    return "; ".join(f"{k}: {v}" for k, v in data.items() if not str(k).endswith("_id") and v not in (None, "", []))
+
+
 _PDF_SUBSTITUTES = {
     chr(cp): text
     for cp, text in (
@@ -247,7 +277,7 @@ def render_html(report: dict) -> str:
             _e(o.get("type")),
             _e(o.get("description")),
             _e(o.get("points", 0)),
-            _e(o.get("evidence") or ""),
+            _e(evidence_text(o.get("evidence"))),
             _e(o.get("achieved_at") or ""),
         ]
         for o in objectives

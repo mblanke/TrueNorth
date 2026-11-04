@@ -264,7 +264,7 @@ class TestJudging:
             assert _ack(client, ex, ref="write_report").status_code == 200
         assert json.loads(_obj(db_session, ex, "write_report").evidence)["cites"] == []
 
-    def test_the_old_query_param_evidence_still_reaches_the_note(self, client, db_session, store):
+    def test_the_json_body_note_the_web_app_sends_is_kept(self, client, db_session, store):
         # The web app and SDK always sent {"evidence": ...} as JSON; the server read a query
         # parameter and dropped it. Now the JSON body is what counts.
         ex = _exercise(db_session)
@@ -378,3 +378,73 @@ class TestClosing:
         assert db_session.get(Exercise, fresh.id).state == ExerciseState.running
         assert db_session.get(Exercise, untimed.id).state == ExerciseState.running
         assert db_session.get(Exercise, overdue.id).completed_at is not None
+
+
+class TestJudgingReviewFindings:
+    """Adversarial review of ADR 0020's first build (2026-11-04)."""
+
+    def test_the_lock_rereads_the_exercise_so_a_close_in_between_refuses_the_ack(self, db_session):
+        # M1: get_owned had loaded the exercise (running); another session closed it; the
+        # lock must see "completed", not the stale copy, or the ack lands after results went out.
+        from app import exercise_judging
+        from app.exercise_judging import JudgementIn
+        from fastapi import HTTPException
+
+        ex = _exercise(db_session)
+        stale = db_session.get(Exercise, ex.id)
+        assert stale.state == ExerciseState.running
+        db_session.execute(Exercise.__table__.update().where(Exercise.id == ex.id).values(state="completed"))
+        with acting_as(UserRole.instructor) as who, pytest.raises(HTTPException) as refused:
+            exercise_judging.acknowledge(db_session, ex.id, "detect_c2", JudgementIn(), who)
+        assert refused.value.status_code == 409
+        assert _obj(db_session, ex).achieved is False
+
+    def test_max_score_follows_the_objectives_when_the_exercise_was_made_without_one(self, client, db_session, store):
+        # M2: QSP-path exercises start with max_score 0; the worker used to set it at completion.
+        ex = _exercise(db_session)
+        db_session.get(Exercise, ex.id).max_score = 0
+        db_session.commit()
+        with acting_as(UserRole.instructor):
+            _ack(client, ex)
+            assert client.post(f"/exercises/{ex.id}/complete").status_code == 200
+        db_session.expire_all()
+        e = db_session.get(Exercise, ex.id)
+        assert (e.total_score, e.max_score) == (40, 60)
+
+    def test_a_maximum_someone_set_is_never_rewritten(self, client, db_session, store):
+        ex = _exercise(db_session)  # max_score 60 set at creation; objectives sum 60 here too
+        db_session.get(Exercise, ex.id).max_score = 100
+        db_session.commit()
+        with acting_as(UserRole.instructor):
+            _ack(client, ex)
+            client.post(f"/exercises/{ex.id}/complete")
+        db_session.expire_all()
+        assert db_session.get(Exercise, ex.id).max_score == 100
+
+    def test_withdrawing_pre_adr_0020_credit_uncredits_its_submission(self, client, db_session, store):
+        # m1: an exercise open at deploy time may hold automatic credit pointing at one submission.
+        ex = _exercise(db_session)
+        with acting_as(UserRole.student) as who:
+            sid = uuid.uuid4()
+            db_session.add(DetectionSubmission(id=sid, tenant_id=ex.tenant_id, exercise_id=ex.id,
+                                               objective_ref="detect_c2", user_id=uuid.UUID(who.id), query="q",
+                                               verdict="achieved", window_start=STARTED))
+        obj = _obj(db_session, ex)
+        obj.achieved = True
+        obj.evidence = json.dumps({"source": "student_detection", "submission_id": str(sid)})
+        db_session.commit()
+        with acting_as(UserRole.instructor):
+            assert client.delete(f"/exercises/{ex.id}/objectives/detect_c2/ack").status_code == 200
+        assert db_session.get(DetectionSubmission, sid).verdict == "recorded"
+
+    def test_a_replay_uncites_the_last_runs_submissions(self, client, db_session, store):
+        # m4: replay wipes the judgements; their citations must not keep crediting anyone.
+        ex = _exercise(db_session)
+        with acting_as(UserRole.student):
+            cited = _submit(client, ex, "a:b").json()["id"]
+        with acting_as(UserRole.instructor):
+            _ack(client, ex, cites=[cited])
+            client.post(f"/exercises/{ex.id}/complete")
+            client.post(f"/exercises/{ex.id}/run", params={"reset": "true"})
+        db_session.expire_all()
+        assert db_session.get(DetectionSubmission, uuid.UUID(cited)).verdict == "recorded"
