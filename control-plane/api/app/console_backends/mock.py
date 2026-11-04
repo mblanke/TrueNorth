@@ -3,9 +3,11 @@
 ``dial`` starts (once per process) a WebSocket server on 127.0.0.1 and hands the relay its
 URL, so the relay's pump, close codes and single-socket rule run for real in tests and
 offline development. The stub is not a VNC server: on connect it sends the RFB protocol
-version greeting, ``b"RFB 003.008\\n"``, then echoes every message back. It offers the
-``binary`` subprotocol, as WebMKS does. Tests steer it with ``dial_error`` (the hypervisor
-refuses a ticket) and ``dial_unreachable`` (the ticket names a host that does not answer).
+version greeting, ``b"RFB 003.008\\n"``, then echoes every message back. For a view-only grant
+(path ``/ticket/mock-rfb``) it speaks a minimal real handshake after the greeting (security
+types [None], SecurityResult 0, ServerInit) before it echoes, so the relay's observation of the
+server's side runs for real. It offers the ``binary`` subprotocol, as WebMKS does. Tests steer
+it with ``dial_error`` (the hypervisor refuses a ticket) and ``dial_unreachable`` (the ticket names a host that does not answer).
 """
 
 from __future__ import annotations
@@ -18,6 +20,13 @@ from typing import Any, ClassVar
 from .base import BaseConsoleBackend, ConsoleError, ConsoleReader, ConsoleTarget, DialGrant, DialTarget, relay_access
 
 RFB_GREETING = b"RFB 003.008\n"
+#: The server's side of a minimal handshake, answering the client's version line, security choice
+#: and ClientInit in turn: one security type (None), SecurityResult 0, a 640x480 desktop "mock".
+RFB_SECURITY_TYPES = b"\x01\x01"
+RFB_SECURITY_OK = bytes(4)
+RFB_SERVER_INIT = (b"\x02\x80\x01\xe0" + bytes([32, 24, 0, 1, 0, 255, 0, 255, 0, 255, 16, 8, 0, 0, 0, 0])
+                   + (4).to_bytes(4, "big") + b"mock")
+_HANDSHAKE_STEPS = ((12, RFB_SECURITY_TYPES), (1, RFB_SECURITY_OK), (1, RFB_SERVER_INIT))
 _STUB_LOCK = threading.Lock()
 _STUB_PORT: int | None = None
 
@@ -33,10 +42,22 @@ def _stub_port() -> int:
         async def handler(conn) -> None:
             from websockets.exceptions import ConnectionClosed
 
+            handshake = conn.request.path.endswith("/mock-rfb")
+            steps, pending = list(_HANDSHAKE_STEPS) if handshake else [], b""
             try:
                 await conn.send(RFB_GREETING)
                 async for message in conn:
-                    await conn.send(message)
+                    if not steps:
+                        await conn.send(message)
+                        continue
+                    pending += message if isinstance(message, bytes) else message.encode()
+                    while steps and len(pending) >= steps[0][0]:
+                        size, answer = steps.pop(0)
+                        pending = pending[size:]
+                        await conn.send(answer)
+                    if not steps and pending:
+                        await conn.send(pending)  # whatever followed ClientInit
+                        pending = b""
             except ConnectionClosed:  # the relay hung up, with or without a close frame
                 pass
 
@@ -96,4 +117,5 @@ class MockConsole(BaseConsoleBackend):
             raise ConsoleError(type(self).dial_error)
         if type(self).dial_unreachable:
             return DialTarget(url="ws://127.0.0.1:1/ticket/none")
-        return DialTarget(url=f"ws://127.0.0.1:{_stub_port()}/ticket/mock")
+        path = "mock-rfb" if grant.view_only else "mock"
+        return DialTarget(url=f"ws://127.0.0.1:{_stub_port()}/ticket/{path}")

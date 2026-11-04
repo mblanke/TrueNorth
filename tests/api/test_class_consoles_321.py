@@ -836,7 +836,7 @@ def test_a_real_observer_session_cannot_type_into_a_students_machine(client, wor
     view, opens the socket as themself under the real policy, and everything but view
     messages is dropped by the relay before it reaches the (echoing) hypervisor stub."""
     from app import auth
-    from app.console_backends.mock import RFB_GREETING
+    from app.console_backends.mock import RFB_GREETING, RFB_SECURITY_OK, RFB_SECURITY_TYPES, RFB_SERVER_INIT
     from app.console_relay import service
     from fastapi import HTTPException
 
@@ -858,8 +858,9 @@ def test_a_real_observer_session_cannot_type_into_a_students_machine(client, wor
     with client.websocket_connect(f"/ws/console/{token}",
                                   subprotocols=["bearer", f"good-{world['observer'].keycloak_id}"]) as ws:
         assert ws.receive_bytes() == RFB_GREETING
-        for step, echoed in ((version, version), (b"\x01", b"\x01"), (b"\x00", b"\x01")):
+        # The stub's server side answers each step: security types, SecurityResult 0, ServerInit.
+        for step, answered in ((version, RFB_SECURITY_TYPES), (b"\x01", RFB_SECURITY_OK), (b"\x00", RFB_SERVER_INIT)):
             ws.send_bytes(step)
-            assert ws.receive_bytes() == echoed
+            assert ws.receive_bytes() == answered
         ws.send_bytes(key + pointer + bytes([6, 0, 0, 0, 0, 0, 0, 3]) + b"abc" + fbur)
         assert ws.receive_bytes() == fbur

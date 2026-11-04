@@ -6,7 +6,8 @@ belongs to that user and tenant and is unexpired and not already in use, asks th
 console adapter where to connect (``dial``: for vSphere a WebMKS ticket taken now), connects
 with the site's TLS trust and pumps bytes both ways. The stream is RFB; the relay does not
 parse it, except for a view-only grant (an observer's): its input is filtered by an allowlist of RFB
-messages (``rfb_filter``, S4 #369). Bytes are never logged; neither are tickets,
+messages and the hypervisor's handshake is observed, so the browser cannot get ahead of it
+(``rfb_filter``, S4 #369). Bytes are never logged; neither are tickets,
 URLs or a whole grant id.
 
 Close codes (the reason is safe to show the Student):
@@ -22,8 +23,9 @@ Close codes (the reason is safe to show the Student):
 1009  The browser sent a message larger than ``MAX_CLIENT_MESSAGE`` (RFB input is tiny); on a
       view-only console also: more encodings or clipboard text than ``rfb_filter`` allows.
 1008  Also, on a view-only console: input that is not on the allowlist and cannot be skipped
-      (an unknown message type, a bad handshake). Key, pointer and clipboard input is dropped
-      and the console stays open.
+      (an unknown message type, a bad handshake, input ahead of the hypervisor's handshake),
+      or a hypervisor handshake that is not RFB 3.7/3.8 or is refused. Key, pointer and
+      clipboard input is dropped and the console stays open.
 1003  A text frame on a view-only console (RFB is binary).
 4404  The machine is gone: the range was deleted or is not running, or the grant was withdrawn.
 1011  The database failed under a renewal (not the Student's doing); reconnect.
@@ -380,6 +382,16 @@ async def _pump(ws: WebSocket, upstream: Any, app: Any, facts: Any, holder: str,
             async for message in upstream:
                 last_bytes = time.monotonic()
                 if isinstance(message, bytes):
+                    if view_filter is not None:
+                        # The filter only observes the hypervisor's handshake (the client may not
+                        # get ahead of it); the bytes still go to the browser as they are. A
+                        # handshake it cannot vouch for ends the console before they are shown.
+                        try:
+                            view_filter.feed_server(message)
+                        except rfb_filter.Violation as exc:
+                            logger.info("console %s: the hypervisor's handshake was refused on a view-only console",
+                                        service.short(grant_id))
+                            return exc.code, exc.reason
                     await ws.send_bytes(message)
                 else:
                     await ws.send_text(message)

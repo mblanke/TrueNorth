@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from app import auth
 from app.console_backends import GRANT_SECONDS, MockConsole
-from app.console_backends.mock import RFB_GREETING
+from app.console_backends.mock import RFB_GREETING, RFB_SECURITY_OK, RFB_SECURITY_TYPES, RFB_SERVER_INIT
 from app.console_relay import policy, service
 from app.console_relay import router as relay_router
 from app.console_relay.models import ConsoleGrant
@@ -910,13 +910,16 @@ def _cut(text: bytes) -> bytes:
 
 
 def _handshake(ws, shared: int = 1) -> None:
+    """The client side of a real handshake against the mock stub's server side (version, one
+    security type None, SecurityResult 0, ServerInit); the stub answers each step as it arrives,
+    so each reply shows the step got through the filter."""
     assert ws.receive_bytes() == RFB_GREETING
     ws.send_bytes(_VERSION)
-    assert ws.receive_bytes() == _VERSION
+    assert ws.receive_bytes() == RFB_SECURITY_TYPES
     ws.send_bytes(b"\x01")
-    assert ws.receive_bytes() == b"\x01"
-    ws.send_bytes(bytes([shared]))
-    assert ws.receive_bytes() == b"\x01"  # ClientInit is forced to shared
+    assert ws.receive_bytes() == RFB_SECURITY_OK
+    ws.send_bytes(bytes([shared]))  # forced to shared by the filter; the stub does not echo it
+    assert ws.receive_bytes() == RFB_SERVER_INIT
 
 
 def test_a_view_only_console_passes_view_messages_and_drops_input(client, world, db_session):
@@ -970,6 +973,27 @@ def test_a_bad_handshake_closes_a_view_only_console_1008(client, world):
         ws.send_bytes(_KEY + _KEY)  # input where the protocol version goes
         ws.receive_bytes()
     assert e.value.code == 1008
+
+
+@pytest.mark.parametrize("greeting", [b"RFB 003.003\n", b"RFB 004.000\n"])
+def test_a_hypervisor_that_is_not_rfb_3_7_or_3_8_closes_a_view_only_console_1008(client, world, monkeypatch, greeting):
+    monkeypatch.setattr("app.console_backends.mock.RFB_GREETING", greeting)
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann, view_only=True)) as ws:
+        ws.receive_bytes()  # never shown: the filter refused the handshake first
+    assert e.value.code == 1008
+
+
+def test_a_view_only_client_that_runs_ahead_of_the_hypervisor_handshake_closes_1008(client, world):
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, world.grant(world.ann, view_only=True)) as ws:
+        assert ws.receive_bytes() == RFB_GREETING
+        ws.send_bytes(_VERSION + b"\x02" + _KEY + _KEY + b"\x00" + _FBUR)  # the pipelined VNC-auth attack
+        ws.receive_bytes()
+    assert e.value.code == 1008
+
+
+def test_the_hypervisors_handshake_reaches_the_browser_unchanged_on_a_view_only_console(client, world):
+    with _open(client, world.grant(world.ann, view_only=True)) as ws:
+        _handshake(ws)  # each reply is the stub's own bytes, as it sent them
 
 
 def test_a_text_frame_closes_a_view_only_console_1003(client, world):

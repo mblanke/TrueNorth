@@ -129,7 +129,10 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
     a console only where the adapter's stream can be held view-only**; for vSphere that is the
     relay's own allowlist (S4, #369, `console_relay/rfb_filter.py`): on a view-only grant the
     relay frames the RFB byte stream and forwards only SetPixelFormat, SetEncodings and
-    FramebufferUpdateRequest (after a checked handshake whose ClientInit is forced to shared);
+    FramebufferUpdateRequest (after a handshake it checks on both sides: it watches the
+    hypervisor's RFB 3.7/3.8 greeting and refuses any client step that runs ahead of it or
+    that the hypervisor did not offer; ClientInit is forced to shared; pseudo-encodings that
+    switch on refused client messages are stripped from SetEncodings);
     key, pointer and clipboard messages are dropped, anything unknown closes the socket.
     `CLASS_OBSERVER_CONSOLES` still defaults to off; it is the owner's to switch on. **Certificates:** with `verify_ssl` on,
     the API verifies each ESXi host's certificate against the trust store of the API container,
