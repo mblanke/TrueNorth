@@ -116,8 +116,19 @@ def mark_all_read(
     return NotificationUnreadCountOut(unread=0)
 
 
+def _pref(db: Session, user: CurrentUser) -> NotificationPreference | None:
+    """The caller's own row (user and tenant both in the query)."""
+    return (
+        db.query(NotificationPreference)
+        .filter(
+            NotificationPreference.user_id == uuid.UUID(user.id), NotificationPreference.tenant_id == tenant_uuid(user)
+        )
+        .first()
+    )
+
+
 def _settings(db: Session, user: CurrentUser) -> NotificationSettingsOut:
-    row = db.get(NotificationPreference, uuid.UUID(user.id))
+    row = _pref(db, user)
     return NotificationSettingsOut(
         email_tickets=True if row is None else row.email_tickets,
         email_available=smtp_settings().configured,
@@ -140,9 +151,10 @@ def put_settings(
 ) -> NotificationSettingsOut:
     """Your own switch only: the row is keyed by the caller, never by anything in the request."""
     uid = uuid.UUID(user.id)
-    if db.get(User, uid) is None:  # a token with no account row (development sign-in off)
+    account = db.query(User.id).filter(User.id == uid, User.tenant_id == tenant_uuid(user)).first()
+    if account is None:  # a token with no account row (development sign-in off)
         raise HTTPException(404, "User not found")
-    row = db.get(NotificationPreference, uid)
+    row = _pref(db, user)
     if row is None:
         db.add(NotificationPreference(user_id=uid, tenant_id=tenant_uuid(user), email_tickets=body.email_tickets))
     else:
