@@ -730,11 +730,11 @@ def search(
     escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     pattern = f"%{escaped}%"
     base = _search_base(db, user)
-    ranked_ids = wiki_search.ranked_ids(q, tenant_uuid(user), limit) or []
+    ranked_ids = wiki_search.ranked_ids(q, tenant_uuid(user), limit * 4) or []  # over-fetch: some may be hidden from this user
     ranked: list = []
     if ranked_ids:
         by_id = {r[0].id: r for r in base.filter(WikiPage.id.in_(ranked_ids)).all()}
-        ranked = [by_id[i] for i in ranked_ids if i in by_id]
+        ranked = [by_id[i] for i in ranked_ids if i in by_id][:limit]
     seen = {r[0].id for r in ranked}
     plain = (
         base.filter(

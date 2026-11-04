@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 import uuid
 from typing import Any
 
@@ -135,27 +136,31 @@ def ranked_ids(q: str, tenant_id: uuid.UUID, size: int) -> list[uuid.UUID] | Non
 
 
 # ── Keeping the index in step with the database ─────────────────────────
-async def apply(ops: dict[uuid.UUID, dict | None]) -> None:
-    """`ops` maps page id to its document, or None to remove it from the index."""
+async def apply(ops: dict[uuid.UUID, tuple[dict | None, int]]) -> None:
+    """`ops` maps page id to (its document or None to remove it, a version that only goes up).
+
+    The version is the time of the change, so when two workers' writes for one page arrive out of
+    order the older one is ignored by the store instead of replacing the newer."""
     backend = _backend()
     if backend is None or not ops:
         return
-    docs = {str(i): d for i, d in ops.items() if d is not None}
-    gone = [str(i) for i, d in ops.items() if d is None]
+    docs = {str(i): d for i, (d, _v) in ops.items() if d is not None}
+    gone = [str(i) for i, (d, _v) in ops.items() if d is None]
+    versions = {str(i): v for i, (_d, v) in ops.items()}
     if docs:
-        await backend.upsert_documents(INDEX, docs, settings=INDEX_BODY)
+        await backend.upsert_documents(INDEX, docs, settings=INDEX_BODY, versions=versions)
     if gone:
-        await backend.delete_documents(INDEX, gone)
+        await backend.delete_documents(INDEX, gone, settings=INDEX_BODY, versions=versions)
 
 
-async def _apply_logged(ops: dict[uuid.UUID, dict | None]) -> None:
+async def _apply_logged(ops: dict[uuid.UUID, tuple[dict | None, int]]) -> None:
     try:
         await asyncio.wait_for(apply(ops), 10.0)
     except Exception as exc:  # noqa: BLE001 — the index is a convenience; search falls back
         logger.warning("Could not update the wiki search index: %s", exc)
 
 
-def _spawn(ops: dict[uuid.UUID, dict | None]) -> None:
+def _spawn(ops: dict[uuid.UUID, tuple[dict | None, int]]) -> None:
     def start() -> None:
         task = asyncio.get_running_loop().create_task(_apply_logged(ops))
         _tasks.add(task)
@@ -173,17 +178,25 @@ def _spawn(ops: dict[uuid.UUID, dict | None]) -> None:
 
         from_thread.run_sync(start)
     except Exception:  # noqa: BLE001 — a script or a Celery task: no event loop; reindex catches up
-        logger.debug("No event loop to update the wiki search index on")
+        logger.warning("No event loop to update the wiki search index on; run POST /wiki/search/reindex to catch up")
 
 
 @event.listens_for(Session, "after_flush")
 def _collect(session: Session, _ctx: Any) -> None:
-    if not enabled():
-        return
     for obj in (*session.new, *session.dirty):
-        if isinstance(obj, WikiPage) and obj.id is not None:
-            gone = obj.deleted_at is not None
-            session.info.setdefault(PENDING_KEY, {})[obj.id] = (obj, None if gone else document(obj))
+        if isinstance(obj, WikiPage):
+            record(session, obj)
+
+
+def record(session: Session, page: WikiPage) -> None:
+    """Note that `page` changed in this transaction, to be indexed when it commits.
+
+    The ORM hook calls this for every flushed page; code that changes a page with a Core
+    ``UPDATE`` (which the ORM cannot see) calls it itself."""
+    if page.id is None or not enabled():
+        return
+    gone = page.deleted_at is not None
+    session.info.setdefault(PENDING_KEY, {})[page.id] = (page, None if gone else document(page), time.time_ns() // 1000)
 
 
 @event.listens_for(Session, "after_soft_rollback")
@@ -197,11 +210,11 @@ def _after_commit(session: Session) -> None:
     pending = session.info.pop(PENDING_KEY, None)
     if not pending:
         return
-    ops: dict[uuid.UUID, dict | None] = {}
-    for page_id, (obj, doc) in pending.items():
+    ops: dict[uuid.UUID, tuple[dict | None, int]] = {}
+    for page_id, (obj, doc, version) in pending.items():
         try:
             if inspect(obj).persistent:  # a savepoint that rolled back leaves it transient
-                ops[page_id] = doc
+                ops[page_id] = (doc, version)
         except Exception:  # noqa: BLE001
             continue
     if ops:
@@ -209,6 +222,10 @@ def _after_commit(session: Session) -> None:
             _spawn(ops)
         except Exception:  # noqa: BLE001 — never turn a successful commit into an error
             logger.warning("Wiki search indexing failed", exc_info=True)
+
+
+async def _apply_bounded(ops: dict[uuid.UUID, tuple[dict | None, int]]) -> None:
+    await asyncio.wait_for(apply(ops), 30.0)
 
 
 def reindex(db: Session, tenant_id: uuid.UUID, batch: int = 200) -> int:
@@ -226,7 +243,8 @@ def reindex(db: Session, tenant_id: uuid.UUID, batch: int = 200) -> int:
         pages = q.offset(start).limit(batch).all()
         if not pages:
             return total
-        ops = {p.id: (None if p.deleted_at else document(p)) for p in pages}
-        from_thread.run(apply, ops)
-        total += sum(1 for d in ops.values() if d is not None)
+        version = time.time_ns() // 1000
+        ops = {p.id: (None if p.deleted_at else document(p), version) for p in pages}
+        from_thread.run(_apply_bounded, ops)
+        total += sum(1 for d, _v in ops.values() if d is not None)
         start += batch

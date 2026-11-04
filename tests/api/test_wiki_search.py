@@ -60,6 +60,7 @@ class FakeBackend(BaseSearchBackend):
 
     def __init__(self):
         self.docs: dict[str, dict] = {}
+        self.versions: dict[str, int] = {}
         self.queries: list[dict] = []
         self.forced: list[str] | None = None
         self.fail = False
@@ -89,14 +90,21 @@ class FakeBackend(BaseSearchBackend):
     async def health_check(self):
         return True
 
-    async def upsert_documents(self, index, docs, *, settings=None):
+    async def upsert_documents(self, index, docs, *, settings=None, versions=None):
         if self.fail:
             raise SearchBackendError("down")
-        self.docs.update(docs)
+        for i, d in docs.items():
+            if versions and versions.get(i, 0) <= self.versions.get(i, -1):
+                continue  # a newer one is stored
+            self.versions[i] = (versions or {}).get(i, 0)
+            self.docs[i] = d
         return len(docs)
 
-    async def delete_documents(self, index, ids):
+    async def delete_documents(self, index, ids, *, settings=None, versions=None):
         for i in ids:
+            if versions and versions.get(i, 0) <= self.versions.get(i, -1):
+                continue
+            self.versions[i] = (versions or {}).get(i, 0)
             self.docs.pop(i, None)
         return len(ids)
 
@@ -117,6 +125,18 @@ def who(db_session):
         "student": _person(db_session, UserRole.student),
         "foreign": _person(db_session, UserRole.admin, OTHER_TENANT),
     }
+
+
+def in_request_context(fn):
+    """Run `fn` on a worker thread under a running event loop, as a route does, then let the
+    background indexing tasks it spawned finish. (A bare session has no loop: indexing is skipped.)"""
+    import anyio
+
+    async def main():
+        await anyio.to_thread.run_sync(fn)
+        await anyio.sleep(0.3)
+
+    anyio.run(main)
 
 
 def _wait(cond, seconds=3.0):
@@ -277,52 +297,124 @@ class TestIndexingFollowsTheDatabase:
             r = client.post("/wiki/spaces/help/pages", json={"title": "Lab guide", "body": "alpha"})
         assert r.status_code == 201
 
-    def test_a_rolled_back_save_indexes_nothing(self, db_session, who, backend):
-        space = WikiSpace(tenant_id=uuid.UUID(DEV_TENANT), name="S", slug="s")
+    def test_a_committed_save_from_a_bare_session_is_indexed_when_there_is_a_loop(self, db_session, backend):
+        space = WikiSpace(tenant_id=uuid.UUID(DEV_TENANT), name="S", slug="s0")
         db_session.add(space)
         db_session.commit()
-        page = WikiPage(
+        page = self._page(space, "control")
+
+        def work():
+            db_session.add(page)
+            db_session.commit()
+
+        in_request_context(work)
+        assert str(page.id) in backend.docs  # the positive control for the two tests below
+
+    @staticmethod
+    def _page(space, slug):
+        return WikiPage(
             tenant_id=uuid.UUID(DEV_TENANT),
             space_id=space.id,
-            title="Ghost",
-            slug="ghost",
+            title=slug,
+            slug=slug,
             body="x",
             author_id=uuid.uuid4(),
             last_editor_id=uuid.uuid4(),
         )
-        db_session.add(page)
-        db_session.flush()
-        db_session.rollback()
+
+    def test_a_rolled_back_save_indexes_nothing(self, db_session, backend):
+        space = WikiSpace(tenant_id=uuid.UUID(DEV_TENANT), name="S", slug="s")
+        db_session.add(space)
         db_session.commit()
-        time.sleep(0.2)
+        page = self._page(space, "ghost")
+
+        def work():
+            db_session.add(page)
+            db_session.flush()
+            db_session.rollback()
+            db_session.commit()
+
+        in_request_context(work)
         assert str(page.id) not in backend.docs
 
     def test_a_savepoint_that_rolled_back_indexes_nothing_but_the_outer_work_is(self, db_session, backend):
         space = WikiSpace(tenant_id=uuid.UUID(DEV_TENANT), name="S", slug="s2")
         db_session.add(space)
-        db_session.flush()
-
-        def new(slug):
-            return WikiPage(
-                tenant_id=uuid.UUID(DEV_TENANT),
-                space_id=space.id,
-                title=slug,
-                slug=slug,
-                body="x",
-                author_id=uuid.uuid4(),
-                last_editor_id=uuid.uuid4(),
-            )
-
-        kept, dropped = new("kept"), new("dropped")
-        db_session.add(kept)
-        db_session.flush()
-        nested = db_session.begin_nested()
-        db_session.add(dropped)
-        db_session.flush()
-        nested.rollback()
         db_session.commit()
-        time.sleep(0.2)
-        assert str(dropped.id) not in backend.docs
+        kept, dropped = self._page(space, "kept"), self._page(space, "dropped")
+
+        def work():
+            db_session.add(kept)
+            db_session.flush()
+            nested = db_session.begin_nested()
+            db_session.add(dropped)
+            db_session.flush()
+            nested.rollback()
+            db_session.commit()
+
+        in_request_context(work)
+        assert str(kept.id) in backend.docs and str(dropped.id) not in backend.docs
+
+
+class TestReviewFindings:
+    """The adversarial review of #380: each of these was a real gap."""
+
+    def test_an_older_write_arriving_late_cannot_replace_a_newer_one(self, backend):
+        import asyncio
+
+        pid = uuid.uuid4()
+        new = {"tenant_id": DEV_TENANT, "title": "Bar", "tags": "", "body": ""}
+        old = {"tenant_id": DEV_TENANT, "title": "Foo", "tags": "", "body": ""}
+        asyncio.run(wiki_search.apply({pid: (new, 200)}))
+        asyncio.run(wiki_search.apply({pid: (old, 100)}))  # the slower, earlier save lands last
+        assert backend.docs[str(pid)]["title"] == "Bar"
+        asyncio.run(wiki_search.apply({pid: (None, 100)}))  # nor can a stale delete remove it
+        assert str(pid) in backend.docs
+
+    def test_a_page_changed_by_a_core_update_is_recorded_for_indexing(self, db_session, backend):
+        from sqlalchemy import update
+
+        space = WikiSpace(tenant_id=uuid.UUID(DEV_TENANT), name="S", slug="gen")
+        db_session.add(space)
+        db_session.commit()
+        page = TestIndexingFollowsTheDatabase._page(space, "old")
+
+        def create():
+            db_session.add(page)
+            db_session.commit()
+
+        in_request_context(create)
+        assert backend.docs[str(page.id)]["title"] == "old"
+
+        def core_update():
+            db_session.execute(
+                update(WikiPage)
+                .where(WikiPage.id == page.id)
+                .values(title="New")
+                .execution_options(synchronize_session=False)
+            )
+            db_session.refresh(page)
+            wiki_search.record(db_session, page)  # what range_credentials/wiki_doc.py now does after its UPDATE
+            db_session.commit()
+
+        in_request_context(core_update)
+        assert backend.docs[str(page.id)]["title"] == "New"
+
+    def test_hidden_pages_do_not_use_up_the_ranking_for_students(self, client, who, pages, backend):
+        asked = []
+        real = wiki_search.ranked_ids
+        import pytest as _pt  # noqa: F401
+
+        def spy(q, tid, size):
+            asked.append(size)
+            return real(q, tid, size)
+
+        wiki_search.ranked_ids = spy
+        try:
+            _search(client, who["student"], limit=5)
+        finally:
+            wiki_search.ranked_ids = real
+        assert asked == [20]  # asked for more than it will show, because some may be hidden
 
 
 class TestReindex:
@@ -405,6 +497,50 @@ class TestOpenSearchRequests:
         _, state = server
         state["bulk_status"] = 404
         assert asyncio.run(self._be().delete_documents("wiki", ["a"])) == 1
+
+    def test_a_404_on_an_index_operation_is_a_failure_not_success(self, server):
+        import asyncio
+
+        _, state = server
+        state["bulk_status"] = 404
+        with pytest.raises(SearchBackendError):
+            asyncio.run(self._be().upsert_documents("wiki", {"a": {}}))
+
+    def test_a_delete_as_the_first_write_still_creates_the_index_with_the_mapping(self, server):
+        import asyncio
+
+        seen, _ = server
+        asyncio.run(self._be().delete_documents("wiki", ["a"], settings={"mappings": {"properties": {}}}))
+        assert [r.method for r in seen][:2] == ["HEAD", "PUT"]
+
+    def test_versions_are_sent_as_external_versions_and_a_conflict_is_not_an_error(self, server):
+        import asyncio
+        import json
+
+        seen, state = server
+        state["bulk_status"] = 409  # "a newer version is stored"
+        n = asyncio.run(self._be().upsert_documents("wiki", {"a": {"t": 1}}, versions={"a": 123}))
+        assert n == 1
+        bulk = [r for r in seen if r.url.path == "/_bulk"][0]
+        assert json.loads(bulk.content.decode().splitlines()[0]) == {
+            "index": {"_index": "wiki", "_id": "a", "version": 123, "version_type": "external"}
+        }
+
+    def test_a_failure_makes_the_next_write_check_the_index_again(self, server, monkeypatch):
+        import asyncio
+
+        _, state = server
+        be = self._be()
+        asyncio.run(be.upsert_documents("wiki", {"a": {}}, settings={"mappings": {}}))
+        assert "wiki" in opensearch._ensured
+
+        def boom(**kw):
+            raise httpx.ConnectError("refused")
+
+        monkeypatch.setattr(opensearch.httpx, "AsyncClient", boom)
+        with pytest.raises(SearchBackendError):
+            asyncio.run(be.upsert_documents("wiki", {"a": {}}, settings={"mappings": {}}))
+        assert "wiki" not in opensearch._ensured
 
     def test_a_rejected_document_or_an_unreachable_store_is_a_backend_error(self, server, monkeypatch):
         import asyncio

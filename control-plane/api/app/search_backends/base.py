@@ -67,14 +67,20 @@ class BaseSearchBackend(ABC):
     # back to the database.
     supports_documents: bool = False
 
-    async def upsert_documents(self, index: str, docs: dict[str, dict], *, settings: dict | None = None) -> int:
+    async def upsert_documents(
+        self, index: str, docs: dict[str, dict], *, settings: dict | None = None, versions: dict[str, int] | None = None
+    ) -> int:
         """Create or replace the document with each id in *docs*; returns how many were accepted.
 
         *settings* is an index body (``settings`` / ``mappings``) used if the index does not exist
-        yet. Raises ``SearchBackendError`` when the store cannot answer."""
+        yet. *versions* maps an id to an increasing number: a write whose number is not higher than
+        the stored one is ignored (not an error), so a slow older write cannot replace a newer one.
+        Raises ``SearchBackendError`` when the store cannot answer."""
         raise SearchBackendError("this search backend does not store documents")
 
-    async def delete_documents(self, index: str, ids: list[str]) -> int:
+    async def delete_documents(
+        self, index: str, ids: list[str], *, settings: dict | None = None, versions: dict[str, int] | None = None
+    ) -> int:
         """Remove the documents with these ids (absent ones are fine); returns how many were removed."""
         raise SearchBackendError("this search backend does not store documents")
 

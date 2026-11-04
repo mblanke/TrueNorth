@@ -198,38 +198,54 @@ class OpenSearchBackend(BaseSearchBackend):
             headers={"Content-Type": "application/x-ndjson"},
         )
         resp.raise_for_status()
-        items = resp.json().get("items", [])
-        failed = [i for i in items if next(iter(i.values())).get("status", 500) >= 300 and next(iter(i.values())).get("status") != 404]
+        failed = 0
+        for item in resp.json().get("items", []):
+            action, result = next(iter(item.items()))
+            status = result.get("status", 500)
+            if status < 300 or status == 409:  # 409: a newer version is already stored; ours is stale
+                continue
+            if action == "delete" and status == 404:  # already gone
+                continue
+            failed += 1
         if failed:
-            raise SearchBackendError(f"OpenSearch rejected {len(failed)} of {count} documents")
-        return len(items) - len(failed)
+            raise SearchBackendError(f"OpenSearch rejected {failed} of {count} documents")
+        return count
 
-    async def upsert_documents(self, index: str, docs: dict[str, dict], *, settings: dict | None = None) -> int:
+    async def _write(self, index: str, lines: list[dict], count: int, settings: dict | None) -> int:
+        try:
+            async with httpx.AsyncClient(**self._client_kwargs()) as client:
+                await self._ensure_index(client, index, settings)
+                return await self._bulk(client, lines, count)
+        except SearchBackendError:
+            raise
+        except Exception as exc:
+            _ensured.discard(index)  # the index may have been deleted or recreated; check again next time
+            raise SearchBackendError(f"OpenSearch error: {exc}") from exc
+
+    @staticmethod
+    def _action(kind: str, index: str, doc_id: str, versions: dict[str, int] | None) -> dict:
+        meta: dict = {"_index": index, "_id": doc_id}
+        if versions and doc_id in versions:
+            meta.update(version=versions[doc_id], version_type="external")
+        return {kind: meta}
+
+    async def upsert_documents(
+        self, index: str, docs: dict[str, dict], *, settings: dict | None = None, versions: dict[str, int] | None = None
+    ) -> int:
         if not docs:
             return 0
         lines: list[dict] = []
         for doc_id, doc in docs.items():
-            lines += [{"index": {"_index": index, "_id": doc_id}}, doc]
-        try:
-            async with httpx.AsyncClient(**self._client_kwargs()) as client:
-                await self._ensure_index(client, index, settings)
-                return await self._bulk(client, lines, len(docs))
-        except SearchBackendError:
-            raise
-        except Exception as exc:
-            raise SearchBackendError(f"OpenSearch error: {exc}") from exc
+            lines += [self._action("index", index, doc_id, versions), doc]
+        return await self._write(index, lines, len(docs), settings)
 
-    async def delete_documents(self, index: str, ids: list[str]) -> int:
+    async def delete_documents(
+        self, index: str, ids: list[str], *, settings: dict | None = None, versions: dict[str, int] | None = None
+    ) -> int:
         if not ids:
             return 0
-        lines = [{"delete": {"_index": index, "_id": i}} for i in ids]
-        try:
-            async with httpx.AsyncClient(**self._client_kwargs()) as client:
-                return await self._bulk(client, lines, len(ids))
-        except SearchBackendError:
-            raise
-        except Exception as exc:
-            raise SearchBackendError(f"OpenSearch error: {exc}") from exc
+        lines = [self._action("delete", index, i, versions) for i in ids]
+        return await self._write(index, lines, len(ids), settings)
 
     async def match(self, index: str, query: dict, size: int = 0) -> SearchMatch:
         # The server gives up (timed_out) before the client does, so a slow query is reported
