@@ -32,10 +32,25 @@ export function isSameOrigin(url: string): boolean {
   }
 }
 
+/** A wiki image in a page: `/api/wiki/images/<id>`. It needs the user's token, so it is fetched, not linked. */
+const WIKI_IMAGE = /^(?:https?:\/\/[^/]+)?\/api(?:\/v1)?\/wiki\/images\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+/** Attribute that marks an <img> to be filled in with the fetched image (MarkdownViewComponent). */
+export const WIKI_IMAGE_ATTR = 'data-wiki-image';
+
 function ensureHooks(): void {
   if (hooked) return;
   hooked = true;
   DOMPurify.addHook('afterSanitizeAttributes', node => {
+    node.removeAttribute(WIKI_IMAGE_ATTR); // only this hook may set it, never the page's own HTML
+    if (node.tagName === 'IMG') {
+      const id = WIKI_IMAGE.exec((node.getAttribute('src') ?? '').trim())?.[1];
+      if (id) {
+        node.setAttribute(WIKI_IMAGE_ATTR, id.toLowerCase());
+        node.removeAttribute('src'); // no unauthenticated request; the viewer fetches it
+        node.setAttribute('loading', 'lazy');
+      }
+    }
     if (node.hasAttribute('src') && !isSameOrigin(node.getAttribute('src') ?? '')) {
       node.removeAttribute('src');
     }

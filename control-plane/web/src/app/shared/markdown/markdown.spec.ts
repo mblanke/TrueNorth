@@ -1,4 +1,4 @@
-import { isAppPath, isSameOrigin, renderMarkdown } from './markdown';
+import { WIKI_IMAGE_ATTR, isAppPath, isSameOrigin, renderMarkdown } from './markdown';
 
 /** Wiki pages and ticket text are written by users and read by everyone in the tenant. */
 describe('renderMarkdown', () => {
@@ -78,5 +78,32 @@ describe('renderMarkdown', () => {
   it('tolerates empty input', () => {
     expect(renderMarkdown(null)).toBe('');
     expect(renderMarkdown(undefined)).toBe('');
+  });
+});
+
+describe('renderMarkdown wiki images (#379)', () => {
+  const ID = '3f2b8c1e-5a47-4d0e-9c1a-0b6f2d7e8a91';
+
+  it('marks a wiki image to be fetched with the token, and gives it no src to load unauthenticated', () => {
+    const html = renderMarkdown(`![shot](/api/wiki/images/${ID})`);
+    expect(html).toContain(`${WIKI_IMAGE_ATTR}="${ID}"`);
+    expect(html).not.toContain('src=');
+  });
+
+  it('does not let a page set the marker itself or point it at something else', () => {
+    const html = renderMarkdown(`<img ${WIKI_IMAGE_ATTR}="x" src="https://evil.example/a.png">`);
+    expect(html).not.toContain(WIKI_IMAGE_ATTR);
+    expect(html).not.toContain('evil.example');
+  });
+
+  it('leaves other images alone: same-origin stays, remote still goes', () => {
+    expect(renderMarkdown('![a](/assets/logo.png)')).toContain('src="/assets/logo.png"');
+    expect(renderMarkdown('![a](https://evil.example/p.png)')).not.toContain('evil.example');
+  });
+
+  it('does not treat lookalike paths as wiki images', () => {
+    for (const src of ['/api/wiki/images/not-a-uuid', `/api/wiki/images/${ID}/../x`, `/other/wiki/images/${ID}`]) {
+      expect(renderMarkdown(`![a](${src})`)).not.toContain(WIKI_IMAGE_ATTR);
+    }
   });
 });

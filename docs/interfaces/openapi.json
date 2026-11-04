@@ -2978,6 +2978,20 @@
         "title": "Body_upload_feed_threat_intel_feeds__feed_id__upload_post",
         "type": "object"
       },
+      "Body_upload_image_wiki_pages__page_id__images_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_image_wiki_pages__page_id__images_post",
+        "type": "object"
+      },
       "Body_upload_range_documents_ranges__range_id__documents_post": {
         "properties": {
           "files": {
@@ -26398,6 +26412,56 @@
           "supported"
         ],
         "title": "VmInventoryOut",
+        "type": "object"
+      },
+      "WikiImageOut": {
+        "properties": {
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "page_id": {
+            "format": "uuid",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "url": {
+            "default": "",
+            "title": "Url",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "page_id",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "width",
+          "height"
+        ],
+        "title": "WikiImageOut",
         "type": "object"
       },
       "WikiPageIn": {
@@ -57130,6 +57194,91 @@
         ]
       }
     },
+    "/wiki/images/{image_id}": {
+      "delete": {
+        "operationId": "delete_image_wiki_images__image_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Image Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Image",
+        "tags": [
+          "wiki"
+        ]
+      },
+      "get": {
+        "operationId": "get_image_wiki_images__image_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Image Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Image",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
     "/wiki/pages/{page_id}": {
       "delete": {
         "description": "Soft-delete the page and everything under it; revisions are kept.",
@@ -57270,6 +57419,64 @@
           }
         ],
         "summary": "Update Page",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/wiki/pages/{page_id}/images": {
+      "post": {
+        "operationId": "upload_image_wiki_pages__page_id__images_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_image_wiki_pages__page_id__images_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiImageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Image",
         "tags": [
           "wiki"
         ]

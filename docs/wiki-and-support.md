@@ -83,6 +83,29 @@ a reporter's reply to a ticket nobody owns yet, stay in the bell only.
   at the same moment on different workers can each send one.
 - **Internal notes** go to the assignee only while they are still staff.
 
+### Images in wiki pages
+
+Editors add an image with the **Image** button, by pasting a screenshot, or by dropping a file on
+the editor (a new page must be saved once first: an image belongs to a page). The editor inserts
+`![name](/api/wiki/images/<id>)`. Only PNG, JPEG, GIF and WebP up to 5 MB and 40 megapixels
+are accepted, up to 100 per page.
+
+- **The type comes from the file's bytes**, never its name or the browser's `Content-Type`. SVG
+  and HTML are refused (an SVG is a script when it is served from this site). A canvas far bigger
+  than the file suggests is refused.
+- **Metadata is removed**: JPEG Exif/XMP/IPTC/comment segments (camera, GPS, editing software) and
+  PNG `eXIf`/text/time chunks. Pixels are never re-encoded. GIF and WebP are kept as received.
+- **Whoever can see the page can see its image; the id grants nothing.** A staff-only space, an
+  unpublished page (for students), an archived space, a deleted page or another tenant is a 404.
+  An image embedded in a second page stays governed by the page it was uploaded to.
+- **Served so it cannot run**: its checked type, `nosniff`, `Content-Security-Policy: default-src
+  'none'; sandbox`, `Cache-Control: private`. The page viewer fetches it with the user's token and
+  shows it from a blob URL; the `<img>` never makes an unauthenticated request. Remote images are
+  still not loaded (they would tell their author who read the page).
+- Generated range pages (system-owned spaces) take no uploads. Deleting a page hides its images;
+  their files stay in the `wiki` bucket until removed with the image (an editor can delete one).
+  Revisions that mention an image keep pointing at it.
+
 ## Behaviour worth knowing
 
 - **Edit conflicts.** A page save carries the revision it started from and is a
@@ -133,5 +156,4 @@ app-wide NaN/Infinity 422-turned-500 found along the way is fixed in
 
 - Live push for the bell (it polls once a minute).
 - AI triage ("ask AI", "run diagnostics") from the March design.
-- Images inside wiki pages, and full-text search through OpenSearch (search is
-  title/body/tags matching in the database today).
+- Full-text search through OpenSearch (search is title/body/tags matching in the database today).

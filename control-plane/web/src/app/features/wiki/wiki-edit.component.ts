@@ -5,7 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { HttpErrorResponse } from '@angular/common/http';
 import { NotificationService } from '@core/services/notification.service';
 import { apiErrorMessage } from '@shared/kb-errors';
-import { MarkdownEditorComponent } from '@shared/markdown/markdown-editor.component';
+import { ImageUploader, MarkdownEditorComponent } from '@shared/markdown/markdown-editor.component';
 import { WikiPage, WikiApiService, WikiTreeNode } from '@core/services/wiki-api.service';
 
 interface ParentOption { id: string; label: string }
@@ -55,7 +55,8 @@ interface ParentOption { id: string; label: string }
         <input id="wp-title" class="tn-kb-input" name="title" required maxlength="500" [(ngModel)]="title">
 
         <span class="tn-kb-field">Content (Markdown)</span>
-        <tn-markdown-editor label="Page content" [(value)]="body" />
+        <tn-markdown-editor label="Page content" [(value)]="body" [imageUpload]="uploader"
+          imageHint="Save the page once to add images." />
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div>
@@ -98,6 +99,12 @@ export class WikiEditComponent implements OnInit {
   published = true;
   parentId: string | null = null;
   private originalParent: string | null = null;
+
+  /** Images belong to a saved page, so there is none to offer on a new one. */
+  get uploader(): ImageUploader | null {
+    const id = this.pageId;
+    return id ? file => this.wiki.uploadImage(id, file) : null;
+  }
 
   readonly base = signal(0);
   readonly saving = signal(false);

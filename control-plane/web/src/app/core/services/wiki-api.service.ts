@@ -17,6 +17,7 @@ export type WikiPageCreate = S['WikiPageIn'];
 export type WikiPageUpdate = S['WikiPageUpdate'];
 export type WikiRevision = Required<S['WikiRevisionListOut']> & { body?: string };
 export type WikiSearchHit = S['WikiSearchHit'];
+export type WikiImage = Required<S['WikiImageOut']>;
 
 /** Client for `/wiki` (control-plane/api/app/routers/wiki.py). */
 @Injectable({ providedIn: 'root' })
@@ -73,5 +74,15 @@ export class WikiApiService {
   }
   search(q: string): Observable<WikiSearchHit[]> {
     return this.http.get<WikiSearchHit[]>(`${this.base}/search`, { params: new HttpParams().set('q', q) });
+  }
+  /** Upload an image to a page; `url` in the answer is what the markdown should point at. */
+  uploadImage(pageId: string, file: File): Observable<WikiImage> {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return this.http.post<WikiImage>(`${this.base}/pages/${pageId}/images`, form);
+  }
+  /** The image bytes, fetched with the user's token (an <img> tag cannot send one). */
+  imageBlob(id: string): Observable<Blob> {
+    return this.http.get(`${this.base}/images/${id}`, { responseType: 'blob' });
   }
 }

@@ -49,6 +49,7 @@ from .templates import router as templates_router
 from .threat_intel import router as threat_intel_router
 from .tickets import router as tickets_router
 from .wiki import router as wiki_router
+from .wiki_images import router as wiki_images_router
 
 __all__ = [
     "registration_router",
@@ -99,6 +100,7 @@ __all__ = [
     "greyspace_router",
     "scenario_executions_router",
     "wiki_router",
+    "wiki_images_router",
     "tickets_router",
     "notifications_router",
 ]
