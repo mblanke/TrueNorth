@@ -2,7 +2,7 @@ import { Component, OnInit, computed, inject, input, signal } from '@angular/cor
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { interval } from 'rxjs';
+import { Observable, interval } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -12,6 +12,7 @@ import type { components } from '@core/api/schema';
 type LiveMachine = components['schemas']['ConsoleMachineOut'];
 import { NotificationService } from '@core/services/notification.service';
 import { apiError } from '../ranges/range-capabilities';
+import { TnVmConsoleComponent } from '../../shared/components/vm-console/tn-vm-console.component';
 
 /** How often the live view asks again while open. */
 export const LIVE_REFRESH_MS = 30_000;
@@ -34,7 +35,7 @@ export function observedNote(live: ClassLive): string {
  */
 @Component({
   selector: 'tn-class-live',
-  imports: [DatePipe, RouterLink, MatButtonModule, MatCardModule, MatIconModule],
+  imports: [DatePipe, RouterLink, MatButtonModule, MatCardModule, MatIconModule, TnVmConsoleComponent],
   template: `
     <div class="page-container class-live">
       <a mat-button routerLink="/classes" [queryParams]="{ class: classId() }"><mat-icon>arrow_back</mat-icon> Class</a>
@@ -59,7 +60,7 @@ export function observedNote(live: ClassLive): string {
             <mat-card-content>
               <div class="machines">
                 @for (m of r.machines; track m.name) {
-                  <button mat-stroked-button [disabled]="!can(l, m) || busy()" (click)="open(r, m.name)">
+                  <button mat-stroked-button [disabled]="!can(l, m)" (click)="open(r, m.name)">
                     <mat-icon>desktop_windows</mat-icon> {{ m.name }}
                   </button>
                 }
@@ -68,13 +69,8 @@ export function observedNote(live: ClassLive): string {
           </mat-card>
         }
 
-        @if (ticket(); as t) {
-          <p class="ticket" role="status">
-            Console ticket for <b>{{ t.vm }}</b> (valid {{ t.expires_in }}s)
-            @if (t.observed) { <span class="tag">observed</span> }
-            @if (t.view_only) { <span class="tag">view only</span> }:
-            <code>{{ t.url }}</code>
-          </p>
+        @if (active(); as a) {
+          <tn-vm-console [machine]="a.vm" [open]="a.open" />
         }
 
         <table class="grid" aria-label="Students">
@@ -89,7 +85,7 @@ export function observedNote(live: ClassLive): string {
                 <td class="machines">
                   @if (s.range; as r) {
                     @for (m of r.machines; track m.name) {
-                      <button mat-stroked-button [disabled]="!can(l, m) || busy()" (click)="open(r, m.name)"
+                      <button mat-stroked-button [disabled]="!can(l, m)" (click)="open(r, m.name)"
                               [attr.aria-label]="'Console on ' + m.name">
                         {{ m.machine }}
                       </button>
@@ -117,9 +113,6 @@ export function observedNote(live: ClassLive): string {
     .machines { display: flex; flex-wrap: wrap; gap: 6px; }
     .grid { width: 100%; border-collapse: collapse; }
     .grid th, .grid td { text-align: left; padding: 6px 8px; border-top: 1px solid var(--mat-sys-outline-variant); }
-    .ticket code { display: block; word-break: break-all; font-size: 0.8rem; margin-top: 4px; }
-    .tag { margin-left: 6px; padding: 0 8px; border-radius: 10px; font-size: 12px;
-      background: var(--mat-sys-tertiary-container); color: var(--mat-sys-on-tertiary-container); }
     .error { color: var(--mat-sys-error); }
   `],
 })
@@ -132,9 +125,8 @@ export class ClassLiveComponent implements OnInit {
   readonly eventId = input.required<string>();
 
   readonly live = signal<ClassLive | null>(null);
-  readonly ticket = signal<ClassConsole | null>(null);
+  readonly active = signal<{ vm: string; open: () => Observable<ClassConsole> } | null>(null);
   readonly problem = signal('');
-  readonly busy = signal(false);
   readonly note = computed(() => {
     const l = this.live();
     return l ? observedNote(l) : '';
@@ -153,13 +145,11 @@ export class ClassLiveComponent implements OnInit {
     return l.consoles_open && (l.role !== 'observer' || !!m.student_machine);
   }
 
-  /** A one-time console on one VM; the API audits it as observer or staff. */
+  /** Shows a console on one VM. `tn-vm-console` asks for a one-time grant when it opens and on
+   *  every Reconnect; the API audits each as observer or staff. */
   open(range: LiveRange, vm: string): void {
-    this.busy.set(true);
-    this.api.openSessionConsole(this.classId(), this.eventId(), range.range_id, vm).subscribe({
-      next: t => { this.ticket.set(t); this.busy.set(false); },
-      error: err => { this.busy.set(false); this.notify.error(apiError(err)); },
-    });
+    const { classId, eventId } = { classId: this.classId(), eventId: this.eventId() };
+    this.active.set({ vm, open: () => this.api.openSessionConsole(classId, eventId, range.range_id, vm) });
   }
 
   private load(quiet = false): void {

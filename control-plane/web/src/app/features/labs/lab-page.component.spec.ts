@@ -1,4 +1,4 @@
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed, discardPeriodicTasks, fakeAsync, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { of, throwError } from 'rxjs';
@@ -8,6 +8,7 @@ import { CourseStudioApiService, LabSession } from '@core/services/course-studio
 import { AuthService } from '@core/services/auth.service';
 import { NotificationService } from '@core/services/notification.service';
 import { RangeCredentialsApiService } from '@core/services/range-credentials-api.service';
+import { FakeRfbClient, provideFakeRfb } from '../../shared/components/vm-console/fake-rfb-client';
 
 function lab(state: string): LabSession {
   return {
@@ -22,6 +23,7 @@ describe('LabPageComponent', () => {
   let api: jasmine.SpyObj<CourseStudioApiService>;
   let router: jasmine.SpyObj<Router>;
   let creds: jasmine.SpyObj<RangeCredentialsApiService>;
+  let viewers: FakeRfbClient[];
 
   function setUp(fragment: string | null, authenticated: boolean, state = 'provisioning'): void {
     try { sessionStorage.removeItem('tn-lab-token:s1'); } catch { /* storage may be unavailable */ }
@@ -29,7 +31,8 @@ describe('LabPageComponent', () => {
     api.lab.and.returnValue(of(lab(state)));
     api.labAction.and.returnValue(of(lab('active')));
     api.labHeartbeat.and.returnValue(of(lab('active')));
-    api.labConsole.and.returnValue(of({ node: 'host', kind: 'mock', url: 'mock://console/vm', expires_in: 60 }));
+    api.labConsole.and.returnValue(of({ node: 'host', kind: 'rfb-ws', url: 'wss://tn.example/ws/console/g1', expires_in: 60 }));
+    viewers = [];
     router = jasmine.createSpyObj('Router', ['navigate']);
     router.navigate.and.returnValue(Promise.resolve(true));
     creds = jasmine.createSpyObj('RangeCredentialsApiService', ['list', 'reveal']);
@@ -39,9 +42,10 @@ describe('LabPageComponent', () => {
       providers: [
         { provide: CourseStudioApiService, useValue: api },
         { provide: RangeCredentialsApiService, useValue: creds },
+        provideFakeRfb(viewers),
         { provide: Router, useValue: router },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['error']) },
-        { provide: AuthService, useValue: { bootstrap: () => Promise.resolve(null), isAuthenticated: () => authenticated } },
+        { provide: AuthService, useValue: { bootstrap: () => Promise.resolve(null), isAuthenticated: () => authenticated, getToken: () => Promise.resolve('tok') } },
         { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({ id: 's1' }), fragment } } },
       ],
     });
@@ -80,13 +84,42 @@ describe('LabPageComponent', () => {
     expect(api.lab).not.toHaveBeenCalled();
   }));
 
-  it('opens a console on a ready lab', () => {
+  it('opens a console on a ready lab in tn-vm-console, not as ticket text', fakeAsync(() => {
     setUp('token=abc', false, 'ready');
     fixture.componentInstance.openConsole();
     fixture.detectChanges();
+    tick();
+    fixture.detectChanges();
     expect(api.labConsole).toHaveBeenCalledWith('s1', 'abc');
-    expect(fixture.nativeElement.textContent).toContain('mock://console/vm');
-  });
+    expect(fixture.nativeElement.querySelector('tn-vm-console')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('wss://');
+    expect(viewers[0].options?.url).toBe('wss://tn.example/ws/console/g1');
+    discardPeriodicTasks();
+  }));
+
+  it('a connected console counts as lab activity for the next heartbeat', fakeAsync(() => {
+    setUp('token=abc', false, 'ready');
+    fixture.componentInstance.openConsole();
+    fixture.detectChanges();
+    tick();
+    spyOn(fixture.componentInstance, 'markActive').and.callThrough();
+    viewers[0].up();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.markActive).toHaveBeenCalled();
+    discardPeriodicTasks();
+  }));
+
+  it('ending the lab removes the console', fakeAsync(() => {
+    setUp('token=abc', false, 'ready');
+    fixture.componentInstance.openConsole();
+    fixture.detectChanges();
+    tick();
+    spyOn(window, 'confirm').and.returnValue(true);
+    fixture.componentInstance.act('end');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('tn-vm-console')).toBeNull();
+    discardPeriodicTasks();
+  }));
 
   it("offers the Student this lab's own accounts, through the lab token, once it is ready", () => {
     setUp('token=abc', false, 'ready');
