@@ -37,8 +37,10 @@ class BaseAIEngine(ABC):
         api_key: str | None = None,
         timeout: float = 30.0,
         model: str = "",
+        max_tokens: int = 256,
     ) -> dict:
-        """Run one completion. Returns ``{"response": str, "model": str}``.
+        """Run one completion of at most ``max_tokens`` tokens (engines that cannot cap it ignore the number).
+        Returns ``{"response": str, "model": str}``.
 
         Raises ``httpx.HTTPError`` when the engine is unreachable or refuses.
         """

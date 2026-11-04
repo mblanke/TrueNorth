@@ -9543,6 +9543,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tickets/ai-triage/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Triage Status */
+        get: operations["triage_status_tickets_ai_triage_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tickets/assignees": {
         parameters: {
             query?: never;
@@ -9757,6 +9774,26 @@ export interface paths {
          * @description Drag-and-drop on the board: change column and/or position within it.
          */
         post: operations["move_ticket_tickets__ticket_id__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticket_id}/triage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Triage Ticket
+         * @description A suggested category, priority, labels, summary and reply hint. Changes nothing.
+         */
+        post: operations["triage_ticket_tickets__ticket_id__triage_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -21128,6 +21165,60 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+        };
+        /** TriageOut */
+        TriageOut: {
+            /**
+             * Backend
+             * @default
+             */
+            backend?: string;
+            /** Category */
+            category?: string | null;
+            /**
+             * Labels
+             * @default []
+             */
+            labels?: string[];
+            /**
+             * Model
+             * @default
+             */
+            model?: string;
+            /** Priority */
+            priority?: string | null;
+            /**
+             * Related Pages
+             * @default []
+             */
+            related_pages?: components["schemas"]["TriageRelatedPage"][];
+            /**
+             * Reply Hint
+             * @default
+             */
+            reply_hint?: string;
+            /**
+             * Summary
+             * @default
+             */
+            summary?: string;
+        };
+        /** TriageRelatedPage */
+        TriageRelatedPage: {
+            /**
+             * Page Id
+             * Format: uuid
+             */
+            page_id: string;
+            /** Space Slug */
+            space_slug: string;
+            /** Title */
+            title: string;
+        };
+        /** TriageStatusOut */
+        TriageStatusOut: {
+            /** Available */
+            available: boolean;
         };
         /** TrustKeyCreate */
         TrustKeyCreate: {
@@ -39311,6 +39402,26 @@ export interface operations {
             };
         };
     };
+    triage_status_tickets_ai_triage_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriageStatusOut"];
+                };
+            };
+        };
+    };
     list_assignees_tickets_assignees_get: {
         parameters: {
             query?: never;
@@ -39861,6 +39972,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TicketListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    triage_ticket_tickets__ticket_id__triage_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriageOut"];
                 };
             };
             /** @description Validation Error */
