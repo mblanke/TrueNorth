@@ -2,7 +2,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { interval } from 'rxjs';
+import { Observable, interval } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
@@ -13,6 +13,7 @@ import {
 import { NotificationService } from '@core/services/notification.service';
 import { EmptyStateComponent } from '../../shared/components/empty-state/empty-state.component';
 import { RangeCredentialsComponent } from '../../shared/components/range-credentials/range-credentials.component';
+import { TnVmConsoleComponent } from '../../shared/components/vm-console/tn-vm-console.component';
 import { CalendarView, addDays, heading, shift, startOfWeek } from '../calendar/content-calendar.util';
 import { apiError } from '../ranges/range-capabilities';
 
@@ -75,7 +76,7 @@ export function forfeitMessage(c: MyClass): string {
   selector: 'tn-my-classes',
   imports: [
     DatePipe, RouterLink, MatButtonModule, MatButtonToggleModule, MatCardModule, MatIconModule,
-    EmptyStateComponent, RangeCredentialsComponent,
+    EmptyStateComponent, RangeCredentialsComponent, TnVmConsoleComponent,
   ],
   template: `
     <div class="page-container my-classes">
@@ -171,15 +172,15 @@ export function forfeitMessage(c: MyClass): string {
                   }
                   <div class="machines">
                     @for (m of k.data.machines; track m.name) {
-                      <button mat-stroked-button [disabled]="!k.data.open || opening()" (click)="openConsole(c, m.name)"
-                              [attr.aria-label]="'Console on ' + m.name">
+                      <button mat-stroked-button [disabled]="!k.data.open" (click)="openConsole(c, m.name)"
+                              [attr.aria-label]="'Console on ' + m.name"
+                              [class.active]="active()?.vm === m.name">
                         <mat-icon>desktop_windows</mat-icon> {{ m.name }}
                       </button>
                     } @empty { <p class="hint">No machines of yours have a console on this range.</p> }
                   </div>
-                  @if (ticket(); as t) {
-                    <p class="ticket">Console ticket for <b>{{ t.vm }}</b> (valid {{ t.expires_in }}s):
-                      <code>{{ t.url }}</code></p>
+                  @if (active(); as a) {
+                    <tn-vm-console [machine]="a.vm" [open]="a.open" />
                   }
                   <p class="muted">Opening a console is recorded, and counts for your attendance like your accounts.</p>
                 </section>
@@ -228,7 +229,7 @@ export function forfeitMessage(c: MyClass): string {
     .my-range h3, .my-consoles h3 { font-size: 15px; margin: 8px 0 4px; }
     .my-consoles { padding: 0 16px 16px; }
     .machines { display: flex; flex-wrap: wrap; gap: 8px; }
-    .ticket code { display: block; word-break: break-all; font-size: 0.8rem; margin-top: 4px; }
+    tn-vm-console { margin-top: 12px; }
     .error { color: var(--mat-sys-error); }
   `],
 })
@@ -247,8 +248,7 @@ export class MyClassesComponent implements OnInit {
   private presses = 0;
   /** The machines of the class whose Console was pressed, and the last ticket opened. */
   readonly consoles = signal<{ classId: string; data: MyRangeConsoles } | null>(null);
-  readonly ticket = signal<ClassConsole | null>(null);
-  readonly opening = signal(false);
+  readonly active = signal<{ vm: string; open: () => Observable<ClassConsole> } | null>(null);
   readonly title = computed(() => heading(this.anchor(), this.view()));
 
   readonly range = rangeLabel;
@@ -291,22 +291,19 @@ export class MyClassesComponent implements OnInit {
   showConsoles(c: MyClass): void {
     const rangeId = c.join_range_id;
     if (!rangeId) return;
-    this.ticket.set(null);
+    this.active.set(null);
     this.api.myRangeConsoles(rangeId).subscribe({
       next: data => this.consoles.set({ classId: c.id, data }),
       error: err => this.notify.error(apiError(err)),
     });
   }
 
-  /** A one-time console ticket; the API audits it and counts it as attendance. */
+  /** Shows the machine's console. `tn-vm-console` asks for a one-time grant when it opens and
+   *  on every Reconnect; the API audits each and counts it as attendance. */
   openConsole(c: MyClass, vm: string): void {
     const rangeId = c.join_range_id;
     if (!rangeId) return;
-    this.opening.set(true);
-    this.api.openMyRangeConsole(rangeId, vm).subscribe({
-      next: t => { this.ticket.set(t); this.opening.set(false); },
-      error: err => { this.opening.set(false); this.notify.error(apiError(err)); },
-    });
+    this.active.set({ vm, open: () => this.api.openMyRangeConsole(rangeId, vm) });
   }
 
   joinKey(c: MyClass): string | null {
