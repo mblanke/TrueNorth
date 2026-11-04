@@ -26743,6 +26743,19 @@
         "title": "WikiPageUpdate",
         "type": "object"
       },
+      "WikiReindexOut": {
+        "properties": {
+          "indexed": {
+            "title": "Indexed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "indexed"
+        ],
+        "title": "WikiReindexOut",
+        "type": "object"
+      },
       "WikiRestoreRequest": {
         "properties": {
           "base_revision": {
@@ -57717,6 +57730,7 @@
     },
     "/wiki/search": {
       "get": {
+        "description": "Ranked by the search backend when there is one (pages it names come first, best first),\nthen the plain substring matches. Visibility is always decided here, from the database.",
         "operationId": "search_wiki_search_get",
         "parameters": [
           {
@@ -57775,6 +57789,33 @@
           }
         ],
         "summary": "Search",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/wiki/search/reindex": {
+      "post": {
+        "description": "Index every page of this tenant in the search backend (for pages that predate it). Safe to repeat.",
+        "operationId": "reindex_search_wiki_search_reindex_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiReindexOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reindex Search",
         "tags": [
           "wiki"
         ]

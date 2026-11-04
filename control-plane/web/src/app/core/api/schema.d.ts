@@ -10008,10 +10008,34 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Search */
+        /**
+         * Search
+         * @description Ranked by the search backend when there is one (pages it names come first, best first),
+         *     then the plain substring matches. Visibility is always decided here, from the database.
+         */
         get: operations["search_wiki_search_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/search/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reindex Search
+         * @description Index every page of this tenant in the search backend (for pages that predate it). Safe to repeat.
+         */
+        post: operations["reindex_search_wiki_search_reindex_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -21653,6 +21677,11 @@ export interface components {
             tags?: string | null;
             /** Title */
             title?: string | null;
+        };
+        /** WikiReindexOut */
+        WikiReindexOut: {
+            /** Indexed */
+            indexed: number;
         };
         /** WikiRestoreRequest */
         WikiRestoreRequest: {
@@ -40509,6 +40538,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reindex_search_wiki_search_reindex_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiReindexOut"];
                 };
             };
         };
