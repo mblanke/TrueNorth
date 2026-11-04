@@ -9875,6 +9875,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/wiki/images/{image_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Image */
+        get: operations["get_image_wiki_images__image_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Image */
+        delete: operations["delete_image_wiki_images__image_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/wiki/pages/{page_id}": {
         parameters: {
             query?: never;
@@ -9896,6 +9914,30 @@ export interface paths {
          * @description Soft-delete the page and everything under it; revisions are kept.
          */
         delete: operations["delete_page_wiki_pages__page_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/pages/{page_id}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Images
+         * @description Every image uploaded to the page, so an editor can see and remove what it holds.
+         *
+         *     Removing the markdown that shows an image does not remove the image (older revisions still
+         *     point at it); removing it here does.
+         */
+        get: operations["list_images_wiki_pages__page_id__images_get"];
+        put?: never;
+        /** Upload Image */
+        post: operations["upload_image_wiki_pages__page_id__images_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -11423,6 +11465,11 @@ export interface components {
              * File
              * @description The feed's content, e.g. a CSV
              */
+            file: string;
+        };
+        /** Body_upload_image_wiki_pages__page_id__images_post */
+        Body_upload_image_wiki_pages__page_id__images_post: {
+            /** File */
             file: string;
         };
         /** Body_upload_range_documents_ranges__range_id__documents_post */
@@ -21445,6 +21492,34 @@ export interface components {
             total?: number;
             /** Vms */
             vms?: components["schemas"]["InventoryVmOut"][];
+        };
+        /** WikiImageOut */
+        WikiImageOut: {
+            /** Content Type */
+            content_type: string;
+            /** Filename */
+            filename: string;
+            /** Height */
+            height: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Page Id
+             * Format: uuid
+             */
+            page_id: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Url
+             * @default
+             */
+            url?: string;
+            /** Width */
+            width: number;
         };
         /** WikiPageIn */
         WikiPageIn: {
@@ -40079,6 +40154,66 @@ export interface operations {
             };
         };
     };
+    get_image_wiki_images__image_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_image_wiki_images__image_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_page_wiki_pages__page_id__get: {
         parameters: {
             query?: never;
@@ -40162,6 +40297,72 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_images_wiki_pages__page_id__images_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiImageOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_image_wiki_pages__page_id__images_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_image_wiki_pages__page_id__images_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiImageOut"];
+                };
             };
             /** @description Validation Error */
             422: {
