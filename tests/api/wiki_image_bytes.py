@@ -58,3 +58,64 @@ def webp_lossless(w=5, h=7) -> bytes:
 
 
 SVG = b'<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><script>alert(1)</script></svg>'
+
+
+def seg(marker: int, body: bytes) -> bytes:
+    return b"\xff" + bytes([marker]) + struct.pack(">H", len(body) + 2) + body
+
+
+def exif_with_orientation(value: int) -> bytes:
+    tiff = b"MM\x00*\x00\x00\x00\x08" + struct.pack(">H", 2)
+    tiff += struct.pack(">HHIHH", 0x0112, 3, 1, value, 0)
+    tiff += struct.pack(">HHI", 0x8825, 4, 1) + struct.pack(">I", 0x2000)  # a GPS IFD pointer
+    return seg(0xE1, b"Exif\x00\x00" + tiff + b"\x00\x00\x00\x00" + GPS)
+
+
+def jpeg_hostile() -> bytes:
+    """Exif before and between scans, an MPF second picture, ICC, and a payload after EOI."""
+    sof = seg(0xC0, struct.pack(">BHHB", 8, 2, 3, 1) + b"\x01\x11\x00")
+    sos = seg(0xDA, b"\x01\x01\x00\x00\x3f\x00")
+    return (
+        b"\xff\xd8"
+        + seg(0xE0, b"JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00")
+        + exif_with_orientation(6)
+        + seg(0xE2, b"MPF\x00" + GPS)
+        + seg(0xE2, b"ICC_PROFILE\x00\x01\x01profile")
+        + sof
+        + sos
+        + b"\x12\x34\xff\x00\x56"
+        + seg(0xE1, b"Exif\x00\x00AFTER-SCAN " + GPS)
+        + seg(0xFE, GPS)
+        + sos
+        + b"\x78\x9a"
+        + b"\xff\xd9"
+        + b"<script>alert(1)</script>"
+        + GPS
+    )
+
+
+def gif_hostile() -> bytes:
+    comment = b"\x21\xfe" + bytes([len(GPS)]) + GPS + b"\x00"
+    xmp = b"\x21\xff\x0bXMP DataXMP" + b"\x03abc\x00"
+    loop = b"\x21\xff\x0bNETSCAPE2.0\x03\x01\x00\x00\x00"
+    frame = b"\x2c" + struct.pack("<HHHH", 0, 0, 2, 2) + b"\x00" + b"\x02" + b"\x02\x44\x01\x00"
+    return (
+        b"GIF89a"
+        + struct.pack("<HH", 2, 2)
+        + b"\x00\x00\x00"
+        + loop
+        + comment
+        + xmp
+        + frame
+        + b"\x3b"
+        + b"<script>alert(1)</script>"
+    )
+
+
+def webp_hostile() -> bytes:
+    def chunk(tag, body):
+        return tag + struct.pack("<I", len(body)) + body + (b"\x00" if len(body) % 2 else b"")
+
+    vp8x = chunk(b"VP8X", bytes([0x0C]) + b"\x00\x00\x00" + (3).to_bytes(3, "little") + (2).to_bytes(3, "little"))
+    body = b"WEBP" + vp8x + chunk(b"EXIF", GPS) + chunk(b"XMP ", GPS) + chunk(b"ICCP", b"profile!")
+    return b"RIFF" + struct.pack("<I", len(body)) + body + b"<script>alert(1)</script>"

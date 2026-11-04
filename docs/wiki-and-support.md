@@ -93,18 +93,25 @@ are accepted, up to 100 per page.
 - **The type comes from the file's bytes**, never its name or the browser's `Content-Type`. SVG
   and HTML are refused (an SVG is a script when it is served from this site). A canvas far bigger
   than the file suggests is refused.
-- **Metadata is removed**: JPEG Exif/XMP/IPTC/comment segments (camera, GPS, editing software) and
-  PNG `eXIf`/text/time chunks. Pixels are never re-encoded. GIF and WebP are kept as received.
+- **Metadata and trailing data are removed**, without re-encoding (pixels never change). JPEG: Exif,
+  XMP, IPTC, comments and the multi-picture block, through every scan, and anything after the end of
+  the picture (a hidden second image or video); the Exif **orientation** is kept in a minimal segment
+  so phone photos are not shown sideways. PNG: `eXIf`, text and time chunks, anything after IEND.
+  GIF: comments and non-loop extensions, anything after the trailer, at most 500 frames. WebP:
+  `EXIF` / `XMP ` chunks (and their flags) and anything after the RIFF payload. A file that cannot be
+  walked cleanly is refused.
 - **Whoever can see the page can see its image; the id grants nothing.** A staff-only space, an
   unpublished page (for students), an archived space, a deleted page or another tenant is a 404.
   An image embedded in a second page stays governed by the page it was uploaded to.
 - **Served so it cannot run**: its checked type, `nosniff`, `Content-Security-Policy: default-src
-  'none'; sandbox`, `Cache-Control: private`. The page viewer fetches it with the user's token and
+  'none'; sandbox`, `Cache-Control: private, max-age=300` with `Vary: Authorization`. The page viewer fetches it with the user's token and
   shows it from a blob URL; the `<img>` never makes an unauthenticated request. Remote images are
   still not loaded (they would tell their author who read the page).
 - Generated range pages (system-owned spaces) take no uploads. Deleting a page hides its images;
-  their files stay in the `wiki` bucket until removed with the image (an editor can delete one).
-  Revisions that mention an image keep pointing at it.
+  their files stay in the `wiki` bucket until each is removed. Taking `![](…)` out of the text does
+  **not** delete the image, because older revisions still point at it: the editor's *Images on this
+  page* list (`GET /wiki/pages/{id}/images`) shows what the page holds and **Remove** deletes one for
+  good (`DELETE /wiki/images/{id}`). Remove a sensitive screenshot there, not just from the text.
 
 ## Behaviour worth knowing
 

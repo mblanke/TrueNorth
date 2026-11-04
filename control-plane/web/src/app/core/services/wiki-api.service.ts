@@ -81,6 +81,12 @@ export class WikiApiService {
     form.append('file', file, file.name);
     return this.http.post<WikiImage>(`${this.base}/pages/${pageId}/images`, form);
   }
+  imagesOf(pageId: string): Observable<WikiImage[]> {
+    return this.http.get<WikiImage[]>(`${this.base}/pages/${pageId}/images`);
+  }
+  deleteImage(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.base}/images/${id}`);
+  }
   /** The image bytes, fetched with the user's token (an <img> tag cannot send one). */
   imageBlob(id: string): Observable<Blob> {
     return this.http.get(`${this.base}/images/${id}`, { responseType: 'blob' });

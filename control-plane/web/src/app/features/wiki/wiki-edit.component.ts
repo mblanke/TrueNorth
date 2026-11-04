@@ -1,12 +1,14 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit, inject, signal } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { HttpErrorResponse } from '@angular/common/http';
+import { tap } from 'rxjs';
 import { NotificationService } from '@core/services/notification.service';
 import { apiErrorMessage } from '@shared/kb-errors';
 import { ImageUploader, MarkdownEditorComponent } from '@shared/markdown/markdown-editor.component';
-import { WikiPage, WikiApiService, WikiTreeNode } from '@core/services/wiki-api.service';
+import { WikiImage, WikiPage, WikiApiService, WikiTreeNode } from '@core/services/wiki-api.service';
 
 interface ParentOption { id: string; label: string }
 
@@ -20,7 +22,7 @@ interface ParentOption { id: string; label: string }
 @Component({
   selector: 'tn-wiki-edit',
   standalone: true,
-  imports: [FormsModule, RouterLink, MatButtonModule, MarkdownEditorComponent],
+  imports: [DecimalPipe, FormsModule, RouterLink, MatButtonModule, MarkdownEditorComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <form (ngSubmit)="save()">
@@ -57,6 +59,22 @@ interface ParentOption { id: string; label: string }
         <span class="tn-kb-field">Content (Markdown)</span>
         <tn-markdown-editor label="Page content" [(value)]="body" [imageUpload]="uploader"
           imageHint="Save the page once to add images." />
+
+        @if (pageId && images().length) {
+          <details class="tn-kb-small" style="margin-top:12px">
+            <summary>Images on this page ({{ images().length }})</summary>
+            <p class="tn-kb-muted">Taking an image out of the text does not delete it: older revisions may still show it.
+              Remove it here to delete it for good.</p>
+            <ul style="list-style:none;padding:0;margin:0">
+              @for (i of images(); track i.id) {
+                <li style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:4px 0">
+                  <span>{{ i.filename }} <span class="tn-kb-muted">({{ i.width }}×{{ i.height }}, {{ i.size_bytes / 1024 | number: '1.0-0' }} KB)</span></span>
+                  <button type="button" mat-button (click)="removeImage(i)" [attr.aria-label]="'Remove ' + i.filename">Remove</button>
+                </li>
+              }
+            </ul>
+          </details>
+        }
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div>
@@ -103,7 +121,16 @@ export class WikiEditComponent implements OnInit {
   /** Images belong to a saved page, so there is none to offer on a new one. */
   get uploader(): ImageUploader | null {
     const id = this.pageId;
-    return id ? file => this.wiki.uploadImage(id, file) : null;
+    return id ? file => this.wiki.uploadImage(id, file).pipe(tap(i => this.images.update(l => [...l, i]))) : null;
+  }
+
+  readonly images = signal<WikiImage[]>([]);
+
+  removeImage(i: WikiImage): void {
+    this.wiki.deleteImage(i.id).subscribe({
+      next: () => this.images.update(l => l.filter(x => x.id !== i.id)),
+      error: () => this.notify.error('Could not remove the image'),
+    });
   }
 
   readonly base = signal(0);
@@ -116,6 +143,7 @@ export class WikiEditComponent implements OnInit {
     this.pageId = this.route.snapshot.paramMap.get('pageId');
     this.parentId = this.route.snapshot.queryParamMap.get('parent');
     if (this.pageId) {
+      this.wiki.imagesOf(this.pageId).subscribe({ next: l => this.images.set(l), error: () => undefined });
       this.wiki.getPage(this.pageId).subscribe({
         next: p => this.fill(p),
         error: () => this.notify.error('Could not load the page'),

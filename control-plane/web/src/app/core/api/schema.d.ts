@@ -9926,7 +9926,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Images
+         * @description Every image uploaded to the page, so an editor can see and remove what it holds.
+         *
+         *     Removing the markdown that shows an image does not remove the image (older revisions still
+         *     point at it); removing it here does.
+         */
+        get: operations["list_images_wiki_pages__page_id__images_get"];
         put?: never;
         /** Upload Image */
         post: operations["upload_image_wiki_pages__page_id__images_post"];
@@ -40290,6 +40297,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_images_wiki_pages__page_id__images_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiImageOut"][];
+                };
             };
             /** @description Validation Error */
             422: {

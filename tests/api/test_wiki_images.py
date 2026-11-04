@@ -249,6 +249,45 @@ class TestRead:
             assert client.get(f"/wiki/images/{uploaded['id']}").status_code == 404
 
 
+class TestList:
+    def test_an_editor_sees_the_pages_images_and_a_student_does_not(self, client, who, page, store):
+        with acting_as(who["ops"]):
+            a = _up(client, page["id"], img.png()).json()
+            b = _up(client, page["id"], img.gif()).json()
+            r = client.get(f"/wiki/pages/{page['id']}/images")
+            assert {i["id"] for i in r.json()} == {a["id"], b["id"]}
+            assert client.delete(f"/wiki/images/{a['id']}").status_code == 204
+            assert [i["id"] for i in client.get(f"/wiki/pages/{page['id']}/images").json()] == [b["id"]]
+        with acting_as(who["student"]):
+            assert client.get(f"/wiki/pages/{page['id']}/images").status_code == 403
+
+    def test_another_tenant_gets_a_404(self, client, who, page, store):
+        with acting_as(who["foreign"]):
+            assert client.get(f"/wiki/pages/{page['id']}/images").status_code == 404
+
+
+class TestCaching:
+    def test_the_cache_is_short_private_and_varies_by_credentials(self, client, who, page, store):
+        with acting_as(who["ops"]):
+            up = _up(client, page["id"], img.png()).json()
+            h = client.get(f"/wiki/images/{up['id']}").headers
+        assert h["cache-control"] == "private, max-age=300" and "Authorization" in h["vary"]
+
+    def test_a_failed_commit_removes_the_stored_object(self, client, db_session, monkeypatch, who, page, store):
+        from sqlalchemy.orm import Session
+
+        real = Session.commit
+
+        def boom(self):
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(Session, "commit", boom)
+        with acting_as(who["ops"]), pytest.raises(RuntimeError):
+            _up(client, page["id"], img.png())
+        monkeypatch.setattr(Session, "commit", real)
+        assert store == {}
+
+
 class TestDelete:
     def test_an_editor_removes_it_and_it_is_gone(self, client, who, page, store):
         with acting_as(who["ops"]):

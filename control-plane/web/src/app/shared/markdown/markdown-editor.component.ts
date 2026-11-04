@@ -142,9 +142,9 @@ export class MarkdownEditorComponent {
     this.uploadError.set('');
     this.uploading.set(true);
     const el = this.area.nativeElement;
-    const at = el.selectionStart;
     this.imageUpload(file).subscribe({
       next: up => {
+        const at = el.selectionStart; // where the caret is now, not where it was when the upload began
         const alt = (up.filename ?? file.name).replace(/\.[^.]+$/, '').replace(/[[\]()]/g, ' ').trim() || 'image';
         const lead = at > 0 && el.value[at - 1] !== '\n' ? '\n' : '';
         const next = `${el.value.slice(0, at)}${lead}![${alt}](${up.url})\n${el.value.slice(at)}`;
