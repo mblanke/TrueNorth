@@ -43,7 +43,7 @@ describe('OpsCenterComponent', () => {
     mockApi.getExercise.and.returnValue(of({ id: exerciseId, name: 'VIGILANT MAPLE', state: 'running' } as any));
     mockApi.getExerciseClass.and.returnValue(of({
       exercise_id: exerciseId, exercise_name: 'VIGILANT MAPLE', state: 'running', started_at: '2026-04-17T09:00:00Z',
-      objectives: [], students: [], learning_signal_misses: 3, not_seen_minutes: 15, generated_at: '2026-04-17T10:12:00Z',
+      objectives: [], students: [], not_seen_minutes: 15, generated_at: '2026-04-17T10:12:00Z',
     } as any));
     mockApi.listInjects.and.returnValue(of([]));
     mockNotify = jasmine.createSpyObj('NotificationService', ['success', 'error']);

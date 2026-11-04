@@ -210,18 +210,18 @@ describe('ApiService', () => {
     req.flush({ hits: { hits: [] } });
   });
 
-  // ── Detections (ADR 0005) ──────────────────────────────────────────
+  // ── Detections (ADR 0005, ADR 0020) ────────────────────────────────
   it('submitDetection() POSTs the query to the objective detections endpoint', () => {
     service.submitDetection('ex1', 'OBJ-1', 'process.name:cmd.exe').subscribe(d => {
-      expect(d.verdict).toBe('missed');
-      expect(d.attempts_left).toBe(4);
+      expect(d.verdict).toBe('recorded');
+      expect(d.submissions_left).toBe(19);
     });
     const req = httpMock.expectOne(`${base}/exercises/ex1/objectives/OBJ-1/detections`);
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({ query: 'process.name:cmd.exe' });
     req.flush({
       id: 'd1', objective_ref: 'OBJ-1', user_id: 'u1', query: 'process.name:cmd.exe',
-      submitted_at: '2026-10-06T10:00:00Z', verdict: 'missed', events_matched: 3, attempts_left: 4,
+      submitted_at: '2026-10-06T10:00:00Z', verdict: 'recorded', events_matched: 3, submissions_left: 19,
     });
   });
 
@@ -232,11 +232,26 @@ describe('ApiService', () => {
     req.flush({});
   });
 
-  it('listDetections() GETs the exercise attempts', () => {
+  it('listDetections() GETs the exercise submissions', () => {
     service.listDetections('ex1').subscribe(rows => expect(rows.length).toBe(1));
     const req = httpMock.expectOne(`${base}/exercises/ex1/detections`);
     expect(req.request.method).toBe('GET');
-    req.flush([{ id: 'd1', objective_ref: 'OBJ-1', user_id: 'u1', query: 'q', submitted_at: null, verdict: 'missed', events_matched: 0 }]);
+    req.flush([{ id: 'd1', objective_ref: 'OBJ-1', user_id: 'u1', query: 'q', submitted_at: null, verdict: 'recorded', events_matched: 0 }]);
+  });
+
+  it('ackObjective() POSTs the note and the cited submissions', () => {
+    service.ackObjective('ex1', 'a/b', { evidence: 'Team found the beacon', cites: ['d1'] }).subscribe();
+    const req = httpMock.expectOne(`${base}/exercises/ex1/objectives/a%2Fb/ack`);
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ evidence: 'Team found the beacon', cites: ['d1'] });
+    req.flush({});
+  });
+
+  it('withdrawAck() DELETEs the judgement', () => {
+    service.withdrawAck('ex1', 'OBJ-1').subscribe();
+    const req = httpMock.expectOne(`${base}/exercises/ex1/objectives/OBJ-1/ack`);
+    expect(req.request.method).toBe('DELETE');
+    req.flush({});
   });
   // PATCH /users/{id} reads its fields from the query string (UserUpdateIn as a dependency):
   // a JSON body was ignored, so an edit said "User updated" and changed nothing (#318).

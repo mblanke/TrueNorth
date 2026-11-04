@@ -17,7 +17,7 @@ function student(over: Record<string, unknown>) {
   return {
     user_id: 'u-x', display_name: 'X', team: null, labs: [], attempts_total: 0, attempts_credited: 0,
     credited_refs: [], score: 0, current_objective: 'detect_c2', last_detection_at: null, last_activity_at: null,
-    objectives: [{ ref_id: 'detect_c2', state: 'not_attempted', misses: 0 }], attempts: [], attention: [],
+    objectives: [{ ref_id: 'detect_c2', state: 'not_attempted', submissions: 0 }], attempts: [], attention: [],
     ...over,
   };
 }
@@ -26,20 +26,19 @@ const CLASS = {
   exercise_id: 'ex-1', exercise_name: 'VIGILANT MAPLE', state: 'running', started_at: STARTED, completed_at: null,
   range: { id: 'r-1', name: 'r', state: 'ready', error: null }, max_score: 50,
   objectives: [{ ref_id: 'detect_c2', description: '', objective_type: 'detection', validator: 'opensearch_query', points: 40 }],
-  learning_signal_misses: 3, not_seen_minutes: 15, generated_at: NOW,
+  not_seen_minutes: 15, generated_at: NOW,
   students: [
     student({
       user_id: 'u-okafor', display_name: 'Okafor', team: { id: 't1', name: 'Blue Cell 1', color_hex: '#1E5AA8' },
       attempts_total: 3, last_activity_at: '2026-10-20T10:05:00Z',
-      objectives: [{ ref_id: 'detect_c2', state: 'missed', misses: 3 }],
-      attempts: [1, 2, 3].map(n => ({ id: `a${n}`, objective_ref: 'detect_c2', verdict: 'missed', submitted_at: `2026-10-20T09:4${n}:00Z`, events_matched: 4, query: `process.name:x${n}`, precision: 0.25 })),
-      attention: [{ kind: 'learning', detail: '3 judged misses on detect_c2 and no credit on it yet', objective_ref: 'detect_c2', since: '2026-10-20T09:41:00Z' }],
+      objectives: [{ ref_id: 'detect_c2', state: 'submitted', submissions: 3 }],
+      attempts: [1, 2, 3].map(n => ({ id: `a${n}`, objective_ref: 'detect_c2', verdict: 'recorded', submitted_at: `2026-10-20T09:4${n}:00Z`, events_matched: 4, query: `process.name:x${n}` })),
     }),
     student({
       user_id: 'u-lee', display_name: 'Lee', attempts_total: 1, attempts_credited: 1, credited_refs: ['detect_c2'], score: 40,
       current_objective: null, last_activity_at: '2026-10-20T10:10:00Z',
       labs: [{ session_id: 'lab-lee', activity_id: 'mod_003', state: 'active', error: '', attempt: 1, last_seen_at: '2026-10-20T10:10:00Z' }],
-      objectives: [{ ref_id: 'detect_c2', state: 'credited', misses: 0, credited_at: '2026-10-20T09:50:00Z' }],
+      objectives: [{ ref_id: 'detect_c2', state: 'credited', submissions: 1, credited_at: '2026-10-20T09:50:00Z' }],
     }),
     student({
       user_id: 'u-ng', display_name: 'Ng',
@@ -60,15 +59,16 @@ describe('live class helpers', () => {
     const lanes = lanesOf(students);
     expect(lanes.help).toEqual([]);
     expect(lanes.lab.map(i => i.student.display_name)).toEqual(['Ng']);
-    expect(lanes.learning.map(i => i.student.display_name)).toEqual(['Okafor']);
+    expect(Object.keys(lanes)).toEqual(['help', 'lab', 'quiet']);  // no learning-signal lane (ADR 0020)
     expect(lanes.quiet.map(i => i.student.display_name)).toEqual(['Ito']);
   });
 
-  it('ranks a lab fault above a learning signal above not seen, and "ok" when nothing is flagged', () => {
+  it('ranks a lab fault above not seen, and "ok" when nothing is flagged', () => {
     expect(statusesOf(students[2])).toEqual(['lab_fault']);
     expect(statusesOf(students[1])).toEqual(['ok']);
+    expect(statusesOf(students[0])).toEqual(['ok']);  // submitting detections is never a flag
     const sorted = sortStudents(students, 'status', 'asc').map(s => s.display_name);
-    expect(sorted).toEqual(['Ng', 'Okafor', 'Ito', 'Lee']);
+    expect(sorted).toEqual(['Ng', 'Ito', 'Lee', 'Okafor']);
   });
 
   it('sorts by detections credited and by least recent activity', () => {
@@ -118,15 +118,12 @@ describe('LiveClassComponent', () => {
 
   afterEach(() => fixture?.destroy());
 
-  it('renders the four lanes, the help lane as F2-future with no fake requests', async () => {
+  it('renders the three lanes, the help lane as F2-future with no fake requests', async () => {
     await make();
     const help = el().querySelector('[data-testid="lane-help"]')!;
     expect(help.textContent).toContain('Help requests arrive with the intervention console (R1 F2)');
     expect(help.querySelectorAll('.qcard').length).toBe(0);
-    const learning = el().querySelector('[data-testid="lane-learning"]')!.textContent!;
-    expect(learning).toContain('Okafor');
-    expect(learning).toContain('3 judged misses on Detect C2');  // the objective's name, not its ref
-    expect(learning).not.toContain('detect_c2');
+    expect(el().querySelector('[data-testid="lane-learning"]')).toBeNull();
     expect(el().querySelector('[data-testid="lane-lab"]')!.textContent).toContain('clone timed out');
     expect(el().querySelector('[data-testid="lane-quiet"]')!.textContent).toContain('Ito');
     expect(el().textContent!.toLowerCase()).not.toContain('struggl');
@@ -138,7 +135,7 @@ describe('LiveClassComponent', () => {
     expect(rows.length).toBe(4);
     const okafor = rows.find(r => r.textContent!.includes('Okafor'))!;
     expect(okafor.textContent).toContain('Blue Cell 1');
-    expect(okafor.textContent).toContain('Learning signal');
+    expect(okafor.textContent).toContain('No flags');
     expect(okafor.textContent).toContain('0 / 3');
     expect(okafor.textContent).toContain('7 min ago');
     expect(el().querySelector('[data-testid="class-meta"]')!.textContent).toContain('4 Students');
@@ -154,7 +151,7 @@ describe('LiveClassComponent', () => {
     expect(first.textContent).toContain('Ito');
   });
 
-  it('opens the Student drawer from the keyboard with attempts and objectives; F2 actions are not live', async () => {
+  it('opens the Student drawer from the keyboard with submissions and objectives; F2 actions are not live', async () => {
     await make();
     const row = Array.from(el().querySelectorAll<HTMLTableRowElement>('table.dense tbody tr')).find(r => r.textContent!.includes('Okafor'))!;
     row.focus();
@@ -164,9 +161,11 @@ describe('LiveClassComponent', () => {
     expect(document.activeElement?.getAttribute('aria-label')).toBe('Close Okafor');
     const drawer = document.querySelector('[data-testid="student-drawer"]')!;
     expect(drawer.getAttribute('role')).toBe('dialog');
-    expect(drawer.textContent).toContain('Detection attempts');
+    expect(drawer.textContent).toContain('Detection submissions');
     expect(drawer.textContent).toContain('process.name:x3');
-    expect(drawer.textContent).toContain('3 missed');
+    expect(drawer.textContent).toContain('Submitted, awaiting judgement · 3 submissions');
+    expect(drawer.textContent).toContain('Recorded');
+    expect(drawer.textContent).not.toContain('missed');
     const message = Array.from(drawer.querySelectorAll('button')).find(b => b.textContent!.includes('Message'))!;
     expect(message.getAttribute('aria-disabled')).toBe('true');
     expect(message.getAttribute('aria-label')).toContain('Coming in R1 F2');
