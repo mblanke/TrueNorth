@@ -59,7 +59,7 @@ modules:
     - hosts: [ws01]
       action: Log on to ws01 with the account your instructor assigned, open a terminal and note the start time.
     - hosts: [fw01]
-      action: Open the firewall configuration interface and record the name of each network interface and
+      action: Open the configuration interface on fw01 and record the name of each network interface and
         the zone it serves.
     - hosts: [fw01]
       action: List the rules on fw01 in order and record, for each, the source zone, the destination zone
@@ -334,7 +334,7 @@ modules:
     - hosts: [siem01]
       action: Search the SIEM for records of that connection and record whether the search finds it, with
         the time you noted.
-    - hosts: [siem01, fw01]
+    - hosts: [siem01]
       action: Judge each recorded traffic path "observed in the SIEM" or "not observed", state which
         observation point or log source the unobserved path lacks, and propose one sensor placement
         or log source that would close the largest gap.

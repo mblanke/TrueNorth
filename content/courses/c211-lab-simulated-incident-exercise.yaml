@@ -60,8 +60,9 @@ modules:
     - hosts: [jump-box]
       action: Log on to jump-box over SSH, open a terminal and record the exercise design start time.
     - hosts: [jump-box, fw-01, dc-01, ws-01, ws-02, ws-03]
-      action: From jump-box, confirm which nodes answer on the management, server and user networks and
-        record each address with its observed role, matched to its node id in the range template.
+      action: From jump-box, confirm that jump-box, fw-01, dc-01, ws-01, ws-02 and ws-03 each answer on
+        their management, server or user network and record each address with its observed role, matched
+        to its node id in the range template.
     - hosts: [jump-box, fw-01]
       action: From jump-box, open the rule set on fw-01 and record each rule that allows traffic between two
         range networks, with its source and destination.

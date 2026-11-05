@@ -322,8 +322,8 @@ modules:
       action: Record the fw01 rule the capstone ranks highest and the output recorded against it in the
         report.
     - hosts: [siem01]
-      action: Record the two alternatives the capstone considered for the ranking and the reason each was
-        rejected.
+      action: On siem01, record the two alternatives the capstone considered for the ranking and the reason
+        each was rejected.
     - hosts: [fw01]
       action: Re-read the live rule table on fw01 and record whether the evidence behind the ranking still
         holds.
@@ -412,8 +412,8 @@ modules:
     template: medium-enterprise
     steps:
     - hosts: [siem01]
-      action: Choose one finding in the peer's draft and record the host, command and output the draft cites
-        for it.
+      action: On siem01, choose one finding in the peer's draft and record the host, command and output the
+        draft cites for it.
     - hosts: [ws01, dc01]
       action: From ws01, re-run the cited lookup against dc01 and record the output beside the version in the
         draft.
@@ -421,10 +421,11 @@ modules:
       action: Re-read the fw01 rules the draft's finding depends on and record whether they match the rule
         table the draft quotes.
     - hosts: [siem01]
-      action: Record each mismatch between the re-run output and the draft, with the line that differs.
+      action: On siem01, record each mismatch between the re-run output and the draft, with the line that
+        differs.
     - hosts: [siem01]
-      action: Mark each point of the received critique substantive or stylistic with a one-sentence reason,
-        and record the change made for each accepted substantive point.
+      action: On siem01, mark each point of the received critique substantive or stylistic with a
+        one-sentence reason, and record the change made for each accepted substantive point.
   refs:
   - nist-sp-800-115
   quiz:
@@ -499,8 +500,8 @@ modules:
     template: medium-enterprise
     steps:
     - hosts: [siem01]
-      action: List the recorded evidence from the earlier labs and record which host and command produced
-        each item.
+      action: On siem01, list the recorded evidence from the earlier labs and record which host and command
+        produced each item.
     - hosts: [fw01]
       action: Re-read the fw01 rule table and record one point where the first attempt to read it failed or
         misled.
@@ -511,8 +512,8 @@ modules:
       action: Record the one domain setting that the assessment assumed but never confirmed on dc01, and
         its value.
     - hosts: [siem01]
-      action: Write three changes for the next assessment, each tied to a recorded event, and the development
-        plan entry each one feeds.
+      action: On siem01, write three changes for the next assessment, each tied to a recorded event, and the
+        development plan entry each one feeds.
   refs:
   - nist-cswp-29
   quiz:
