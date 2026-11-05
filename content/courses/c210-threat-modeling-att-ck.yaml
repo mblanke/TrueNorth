@@ -58,7 +58,8 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 over SSH and write the start time in your lab notes.
     - hosts: [jump01, web01, web02, mx01, rproxy01, vpn01]
-      action: From jump01, enumerate the hosts in the DMZ and record each host id with the service it exposes.
+      action: From jump01, enumerate the DMZ hosts web01, web02, mx01, rproxy01 and vpn01 and record each
+        host id with the service it exposes.
     - hosts: [blue01]
       action: Connect to the blue analyst workstation blue01, open the router ruleset your instructor placed
         there and record what each rule allows from the red team network to the DMZ.
@@ -142,7 +143,8 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 over SSH and write the start time in your lab notes.
     - hosts: [jump01, web01, web02, mx01, rproxy01, vpn01]
-      action: From jump01, reach each DMZ host and record its id and the service it exposes to outside traffic.
+      action: From jump01, reach each DMZ host (web01, web02, mx01, rproxy01 and vpn01) and record its id and
+        the service it exposes to outside traffic.
     - hosts: [blue01, dc01, db01, fs01]
       action: Connect to blue01, open the router ruleset your instructor placed there and record each rule
         that carries traffic into the server network with the ports it allows toward dc01, db01 and fs01.
