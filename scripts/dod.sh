@@ -26,8 +26,9 @@ PY="${PY:-$ROOT/.venv/bin/python}"
 "$PY" -m ruff --version >/dev/null 2>&1 || fail "ruff not installed in $PY"
 "$PY" -m pytest --version >/dev/null 2>&1 || fail "pytest not installed in $PY (pip install -r requirements-test.txt)"
 
-# Ruff ratchet (breakage rules always fail; other debt may not exceed
-# .dod-ruff-baseline). Lives in its own script so CI runs the identical check.
+# Ruff ratchets (breakage rules always fail; other debt may not exceed
+# .dod-ruff-baseline; only files in .dod-format-baseline may be unformatted). Lives
+# in its own script so CI runs the identical check.
 PY="$PY" "$ROOT/scripts/ruff-gate.sh"
 
 # MOSA: modularity debt (raw SQL in the worker, vendor SDKs outside adapters, hardcoded
