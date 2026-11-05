@@ -413,8 +413,9 @@ async def complete_exercise(
 ) -> Exercise:
     """Complete an exercise and tally scores.  **Permission: exercise:complete**
 
-    Competency assessment, the LTI grade and the xAPI statement go to whoever completed it
-    and to every Student who submitted a detection in this run (app/exercise_completion).
+    Competency assessment, the LTI grade and the xAPI statement go to the exercise's Students
+    (its seat or its teams) and every Student who submitted a detection in this run, not to an
+    instructor who completes it (app/exercise_completion, #375).
     """
     from ..exercise_completion import Participant, close
 
@@ -514,10 +515,13 @@ async def acknowledge_objective(
     db.commit()
     db.refresh(obj)
     if background_tasks is not None:
-        # The Students whose detections the judgement cites passed it; with none cited, the
-        # statement records the instructor's judgement (an exercise has no Student owner).
-        students = json.loads(obj.evidence).get("students") or [user.id]
-        for actor in students:
+        # The exercise's Students (its seat or its teams) and any Student whose detection the
+        # judgement cites passed it; never the instructor, who is ``judged_by`` (#375).
+        # No Students: no statement.
+        from ..classes.credit import exercise_students
+
+        cited = json.loads(obj.evidence).get("students") or []
+        for actor in dict.fromkeys([s.id for s in exercise_students(db, ex)] + [str(s) for s in cited]):
             emit_lifecycle(
                 background_tasks,
                 verb_key="passed",

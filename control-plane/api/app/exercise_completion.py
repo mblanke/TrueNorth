@@ -4,8 +4,10 @@ Both totals the score under a lock on the exercise row (so a detection credited 
 moment is either in the total or refused, never lost), then for every participant queues
 competency auto-assessment, the LTI grade pass-back and the xAPI ``completed`` statement.
 
-Exercises have no Student owner, so the participants are whoever closed it (if anyone) and
-every user who submitted a detection in this run (ADR 0005).
+The participants are the exercise's Students (its seat or its teams, ``classes.credit``).
+Submitting a detection does not add anyone: it is evidence, not credit (ADR 0020). Whoever
+closed it counts only if they are a Student: an instructor completing a class's exercise is
+not credited with it (#375).
 
 The clock (``sweep_overdue``) runs in the API next to the lab sweep: a real-backend exercise
 stays running after its timeline, and ends when an instructor completes it or its scenario's
@@ -28,8 +30,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import safe_yaml
-from .detections.models import DetectionSubmission
-from .models import Exercise, ExerciseState, Objective, Scenario, User
+from .models import Exercise, ExerciseState, Objective, Scenario, User, UserRole
 
 logger = logging.getLogger("truenorth.api.exercise_completion")
 SWEEP_SECONDS = float(os.getenv("EXERCISE_CLOCK_SECONDS", "60"))
@@ -93,20 +94,26 @@ def _run_time(ex: Exercise) -> timedelta | None:
 
 
 def participants(db: Session, ex: Exercise, closer: Participant | None = None) -> list[Participant]:
-    """Whoever closed it, plus every user who submitted a detection in this run."""
-    rows = (
-        db.query(User.id, User.email, User.display_name)
-        .join(DetectionSubmission, DetectionSubmission.user_id == User.id)
-        .filter(DetectionSubmission.exercise_id == ex.id, DetectionSubmission.window_start >= ex.started_at)
-        .distinct()
-        .all()
-        if ex.started_at
-        else []
-    )
-    out = {p.user_id: p for p in (Participant(r[0], r[1] or "", r[2] or "") for r in rows)}
-    if closer is not None:
+    """The exercise's Students, and the closer if (and only if) the closer is a Student.
+
+    Submitting a detection is evidence, not credit (ADR 0020), so it does not make a user a
+    participant here."""
+    from .classes.credit import exercise_students
+
+    out = {u.id: Participant(u.id, u.email or "", u.display_name or "") for u in exercise_students(db, ex)}
+    if closer is not None and _is_student(db, ex, closer.user_id):
         out.setdefault(closer.user_id, closer)
     return list(out.values())
+
+
+def _is_student(db: Session, ex: Exercise, user_id: uuid.UUID) -> bool:
+    """True if *user_id* is a Student of the exercise's tenant."""
+    return (
+        db.query(User.id)
+        .filter(User.id == user_id, User.tenant_id == ex.tenant_id, User.role == UserRole.student)
+        .first()
+        is not None
+    )
 
 
 def close(db: Session, exercise_id: uuid.UUID, background_tasks: Any, closer: Participant | None = None) -> Exercise | None:
