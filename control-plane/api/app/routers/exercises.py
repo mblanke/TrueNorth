@@ -39,6 +39,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Qu
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
+from .. import exercise_judging as judging
 from .. import safe_yaml, scenario_objectives
 from ..aar_access import may_read_aar
 from ..aar_html import RESPONSE_HEADERS as AAR_PAGE_HEADERS
@@ -48,7 +49,9 @@ from ..aar_report import build_report as build_aar_report
 from ..ai_orchestrator_client import orchestrator_headers, raise_if_ai_not_configured
 from ..auth import CurrentUser
 from ..db import get_db
+from ..detections.models import ACHIEVED, CITED, RECORDED, DetectionSubmission
 from ..detections.redaction import redact_evidence, redact_timeline, sees_answer_key
+from ..exercise_judging import JudgementIn
 from ..models import (
     AfterActionReport,
     AuditLog,
@@ -69,7 +72,6 @@ from ..schemas import (
     ExerciseListOut,
     ExerciseOut,
     ExerciseUpdate,
-    ObjectiveAck,
     ObjectiveOut,
 )
 from ..tenancy import get_owned
@@ -103,7 +105,7 @@ def _dispatch_task(task_name: str, *args: Any) -> str | None:
 def _scenario_definition(db: Session, ex: Exercise, user: CurrentUser) -> dict:
     """Build the scenario_definition dict for run_scenario_v2 from the exercise's scenario + objectives.
 
-    Objectives come from the DB Objective rows (their ref_id is what the mock runner marks achieved),
+    Objectives come from the DB Objective rows (their ref_id is what instructors judge, ADR 0020),
     the timeline is parsed from the Scenario YAML. Robust if the YAML has no timeline.
     """
     definition: dict = {"timeline": [], "objectives": []}
@@ -223,7 +225,7 @@ async def start_exercise(
     db.refresh(ex)
     _audit(db, user, "start", "exercise", str(ex.id))
     db.commit()
-    # Dispatch the scenario runner (mock mode walks the timeline + auto-achieves objectives).
+    # Dispatch the scenario runner (it walks the timeline; instructors judge the objectives, ADR 0020).
     definition = _scenario_definition(db, ex, user)
     _dispatch_task("run_scenario_v2", str(ex.id), definition, lease)
     if background_tasks is not None:
@@ -306,7 +308,13 @@ def run_exercise(
         for obj in db.query(Objective).filter(Objective.exercise_id == ex.id).all():
             obj.achieved = False
             obj.achieved_at = None
-            obj.evidence = None  # the last run's credit; its submissions stay on record
+            obj.evidence = None  # the last run's judgements; its submissions stay on record
+        # ...but no longer credit anyone (class closeout and the live class count citations).
+        db.query(DetectionSubmission).filter(
+            DetectionSubmission.exercise_id == ex.id,
+            DetectionSubmission.tenant_id == ex.tenant_id,
+            DetectionSubmission.verdict.in_((CITED, ACHIEVED)),
+        ).update({"verdict": RECORDED}, synchronize_session=False)
         ex.state = ExerciseState.pending
         ex.total_score = 0
         ex.completed_at = None
@@ -487,49 +495,61 @@ def list_injects(
 async def acknowledge_objective(
     exercise_id: uuid.UUID = Path(...),
     ref_id: str = Path(...),
-    body: ObjectiveAck = Depends(),
+    body: JudgementIn | None = None,
     background_tasks: BackgroundTasks = None,  # type: ignore[assignment]
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.OBJECTIVE_ACK)),
 ) -> Objective:
-    """Acknowledge (achieve) an objective on a running or paused exercise in the caller's
-    tenant, recording who acknowledged it, and re-total the exercise score.
+    """Judge an objective achieved (ADR 0020: instructors judge team exercises), with a note
+    and optionally the Student detections relied on (``cites``), and re-total the score.
 
     **Permission: objective:ack** (instructors and admins; never Students).
     404 if the exercise is not in the caller's tenant or the objective does not exist;
-    409 if the exercise is not running/paused or the objective is already achieved.
+    409 if the exercise is not running/paused or the objective is already achieved;
+    422 if a cited submission is not a recorded detection on this objective in this run.
     """
     ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
-    if ex.state not in (ExerciseState.running, ExerciseState.paused):
-        raise HTTPException(409, f"Exercise is {ex.state.value}, expected running or paused")
-    obj = db.query(Objective).filter(Objective.exercise_id == ex.id, Objective.ref_id == ref_id).first()
-    if not obj:
-        raise HTTPException(404, "Objective not found")
-    if obj.achieved:
-        raise HTTPException(409, "Objective already achieved")
-    who = user.display_name or user.email or user.id
-    obj.achieved = True
-    obj.evidence = f"Acknowledged by {who}: {body.evidence}" if body.evidence else f"Acknowledged by {who}"
-    obj.achieved_at = datetime.now(UTC)
-    db.flush()
-    # Same tally as complete_exercise, so the live score is right before completion.
-    objectives = db.query(Objective).filter(Objective.exercise_id == ex.id).all()
-    ex.total_score = sum(o.points for o in objectives if o.achieved)
+    obj = judging.acknowledge(db, ex.id, ref_id, body or JudgementIn(), user)
     _audit(db, user, "ack_objective", "exercise", str(ex.id), detail=obj.ref_id)
     db.commit()
     db.refresh(obj)
     if background_tasks is not None:
-        emit_lifecycle(
-            background_tasks,
-            verb_key="passed",
-            user_id=user.id,
-            activity_type="objective",
-            activity_id=str(obj.id),
-            activity_name=obj.description or obj.ref_id,
-            result=objective_result(obj.points),
-            context_extensions={"exercise_id": str(exercise_id), "ref_id": obj.ref_id},
-            registration=exercise_id,
-        )
+        # The Students whose detections the judgement cites passed it; with none cited, the
+        # statement records the instructor's judgement (an exercise has no Student owner).
+        students = json.loads(obj.evidence).get("students") or [user.id]
+        for actor in students:
+            emit_lifecycle(
+                background_tasks,
+                verb_key="passed",
+                user_id=actor,
+                activity_type="objective",
+                activity_id=str(obj.id),
+                activity_name=obj.description or obj.ref_id,
+                result=objective_result(obj.points),
+                context_extensions={"exercise_id": str(exercise_id), "ref_id": obj.ref_id, "judged_by": user.id},
+                registration=exercise_id,
+            )
+    return obj
+
+
+@router.delete("/{exercise_id}/objectives/{ref_id}/ack", response_model=ObjectiveOut)
+def withdraw_objective_ack(
+    exercise_id: uuid.UUID = Path(...),
+    ref_id: str = Path(...),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.OBJECTIVE_ACK)),
+) -> Objective:
+    """Withdraw a judgement while the exercise is running or paused; the submissions it cited
+    are recorded again, and the score is re-totalled (ADR 0020).
+
+    **Permission: objective:ack**. 404 as for acknowledge; 409 if the exercise is closed or
+    the objective is not achieved.
+    """
+    ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    obj = judging.withdraw(db, ex.id, ref_id)
+    _audit(db, user, "withdraw_objective_ack", "exercise", str(ex.id), detail=obj.ref_id)
+    db.commit()
+    db.refresh(obj)
     return obj
 
 

@@ -1,8 +1,10 @@
-"""Every detection a Student submits, kept whether it found the attack or not (ADR 0005).
+"""Every detection a Student submits to a team exercise, kept as evidence (ADR 0005, 0020).
 
 Rows are written only by the API, from the authenticated request plus the server's own
-evaluation of it: the Student supplies the query and nothing else. An achieved
-objective's evidence points here, so a grade can always be traced to what the Student did.
+run of the query: the Student supplies the query and nothing else. Since ADR 0020 a
+submission is evidence for the instructor, never a grade: it is ``recorded`` with what it
+matched, and becomes ``cited`` when an instructor's acknowledgement of the objective relies
+on it. Rows from before ADR 0020 keep their old verdicts as history.
 """
 
 from __future__ import annotations
@@ -16,14 +18,18 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ..db import Base
 from ..models import GUID
 
-PENDING = "pending"  # attempt reserved, being judged
-ACHIEVED = "achieved"  # found enough of the attack, precisely enough, and credited
-MISSED = "missed"  # judged, and it did not
-UNSCORED = "unscored"  # the event store could not answer; not counted as an attempt
-INVALID = "invalid"  # the query does not parse; not counted as an attempt
-CLOSED = "closed"  # the exercise closed while it was being judged; nothing credited
-ATTEMPTS = (PENDING, ACHIEVED, MISSED, CLOSED)  # what uses one of the Student's attempts
-VERDICTS = (PENDING, ACHIEVED, MISSED, UNSCORED, INVALID, CLOSED)
+PENDING = "pending"  # reserved while its query runs
+RECORDED = "recorded"  # the query ran; what it matched is kept for the instructor
+CITED = "cited"  # an instructor's acknowledgement of the objective relies on it
+SUBMISSIONS = (PENDING, RECORDED, CITED)  # what counts toward a Student's submission bound
+
+# Before ADR 0020 (automatic credit against an answer key): history only, never written now.
+ACHIEVED = "achieved"
+MISSED = "missed"
+UNSCORED = "unscored"
+INVALID = "invalid"
+CLOSED = "closed"
+VERDICTS = (PENDING, RECORDED, CITED, ACHIEVED, MISSED, UNSCORED, INVALID, CLOSED)
 
 
 class DetectionSubmission(Base):
@@ -40,11 +46,12 @@ class DetectionSubmission(Base):
     query: Mapped[str] = mapped_column(Text, nullable=False)
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     verdict: Mapped[str] = mapped_column(String(16), nullable=False)
-    events_matched: Mapped[int] = mapped_column(Integer, default=0)  # what the Student's query matched
-    on_target: Mapped[int] = mapped_column(Integer, default=0)  # of those, events of the attack
-    threshold: Mapped[int] = mapped_column(Integer, default=1)
-    min_precision: Mapped[float] = mapped_column(Float, default=0.5)
+    events_matched: Mapped[int | None] = mapped_column(Integer, nullable=True)  # what the Student's query matched
+    # Before ADR 0020 only (answer-key judging); empty on new rows.
+    on_target: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    threshold: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    min_precision: Mapped[float | None] = mapped_column(Float, nullable=True)
     window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    matched_ids: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list of on-target event ids
+    matched_ids: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list of matched event ids
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)

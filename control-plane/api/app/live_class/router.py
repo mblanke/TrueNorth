@@ -5,8 +5,8 @@ Ops Center's own rule (web ``pageGuard('opsCenter')``): ``exercise:read`` and
 ``telemetry:read`` and get 403. Another tenant's exercise is 404 (``get_owned``), and so is a
 class session's exercise to an observer who is not on that class's staff (ADR 0014 §19,
 ``classes.access.observer_may_watch``; #321). Detection
-queries and precision are shown only to staff who may see the answer key
-(``scenario:update``), as ``GET /exercises/{id}/detections`` does.
+queries are shown only to staff (``scenario:update``), as ``GET /exercises/{id}/detections``
+does.
 """
 
 from __future__ import annotations

@@ -345,3 +345,20 @@ class TestHelpers:
         page = render_html({})
         assert "Unknown exercise" in page
         assert "No objectives were recorded" in page and "No participants were recorded" in page
+
+
+def test_a_judgement_reads_as_text_not_json_in_the_aar():
+    # ADR 0020: objective evidence is now a JSON judgement; the AAR shows what it says.
+    import json
+
+    from app.aar_html import evidence_text
+
+    judged = json.dumps({"source": "instructor", "by": "Sgt Rivera", "by_id": "u1", "note": "Beacon found",
+                         "cites": ["a", "b"], "students": ["s1"]})
+    assert evidence_text(judged) == "Judged by Sgt Rivera: Beacon found (cites 2 detections)"
+    assert evidence_text(json.dumps({"source": "instructor", "by": "X", "note": "", "cites": []})) == "Judged by X"
+    assert evidence_text('{"source": "student_detection", "student": "Sam", "events_matched": 3}') == (
+        "Detection by Sam (3 events matched)"
+    )
+    assert evidence_text("Acknowledged by Sgt Rivera: seen") == "Acknowledged by Sgt Rivera: seen"
+    assert evidence_text(None) == ""

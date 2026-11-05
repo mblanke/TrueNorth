@@ -84,7 +84,7 @@ def _attempt(db, w, who, ref, verdict, minutes_ago, query="url.domain:*x*"):
     db.add(DetectionSubmission(
         tenant_id=w["a"].id, exercise_id=w["ex"].id, objective_ref=ref, user_id=uuid.UUID(w[who].id), query=query,
         verdict=verdict, submitted_at=datetime.now(UTC) - timedelta(minutes=minutes_ago), events_matched=4,
-        on_target=1 if verdict == "missed" else 4, window_start=w["started"],
+        window_start=w["started"],
     ))
     db.flush()
 
@@ -148,12 +148,12 @@ def test_a_submitter_in_this_run_is_on_it_and_a_past_runs_is_not(client, db_sess
     assert other.id not in {s["user_id"] for s in _get(client, world["ex"]).json()["students"]}
 
 
-# ── credit, attempts and the learning signal ──────────────────────────────────────────────
+# ── credit and submissions (ADR 0020: an instructor's judgement credits; it cites detections) ──
 
 
-def test_credit_and_score_come_from_the_students_own_attempts(client, db_session, world):
-    _attempt(db_session, world, "sam", "detect_c2", "missed", 20)
-    _attempt(db_session, world, "sam", "detect_c2", "achieved", 10)
+def test_credit_and_score_come_from_the_detections_the_instructor_cited(client, db_session, world):
+    _attempt(db_session, world, "sam", "detect_c2", "recorded", 20)
+    _attempt(db_session, world, "sam", "detect_c2", "cited", 10)
     act_as(world["instructor"])
     body = _get(client, world["ex"]).json()
     sam, bo = _by_id(body, world["sam"]), _by_id(body, world["bo"])
@@ -166,39 +166,36 @@ def test_credit_and_score_come_from_the_students_own_attempts(client, db_session
     assert bo["score"] == 0 and bo["credited_refs"] == []  # the exercise's credit is not Bo's
 
 
-def test_three_judged_misses_on_one_objective_is_a_learning_signal(client, db_session, world):
+def test_a_pre_adr_0020_automatic_credit_still_reads_as_credited(client, db_session, world):
+    _attempt(db_session, world, "sam", "detect_c2", "missed", 20)
+    _attempt(db_session, world, "sam", "detect_c2", "achieved", 10)
+    act_as(world["instructor"])
+    sam = _by_id(_get(client, world["ex"]).json(), world["sam"])
+    assert sam["credited_refs"] == ["detect_c2"] and sam["attempts_credited"] == 1
+
+
+def test_uncited_detections_are_submitted_and_raise_no_learning_signal(client, db_session, world):
+    # There are no judged misses any more: a detection the instructor has not cited is just submitted.
     for m in (30, 20, 10):
-        _attempt(db_session, world, "bo", "detect_c2", "missed", m)
-    _attempt(db_session, world, "sam", "detect_c2", "missed", 12)
-    _attempt(db_session, world, "sam", "detect_c2", "missed", 11)
+        _attempt(db_session, world, "bo", "detect_c2", "recorded", m)
     act_as(world["instructor"])
     body = _get(client, world["ex"]).json()
     bo = _by_id(body, world["bo"])
-    learning = [a for a in bo["attention"] if a["kind"] == "learning"]
-    assert len(learning) == 1 and learning[0]["objective_ref"] == "detect_c2"
-    assert "3 judged misses" in learning[0]["detail"]
-    assert not [a for a in _by_id(body, world["sam"])["attention"] if a["kind"] == "learning"]  # 2 is not 3
-    assert body["learning_signal_misses"] == 3
+    [state] = [o for o in bo["objectives"] if o["ref_id"] == "detect_c2"]
+    assert (state["state"], state["submissions"]) == ("submitted", 3)
+    assert not [a for a in bo["attention"] if a["kind"] not in ("lab_fault", "lab_wait", "not_seen")]
+    assert "learning_signal_misses" not in body
 
 
-def test_credit_after_misses_clears_the_learning_signal(client, db_session, world):
-    for m in (30, 20, 10):
-        _attempt(db_session, world, "bo", "detect_c2", "missed", m)
-    _attempt(db_session, world, "bo", "detect_c2", "achieved", 5)
-    act_as(world["instructor"])
-    bo = _by_id(_get(client, world["ex"]).json(), world["bo"])
-    assert not [a for a in bo["attention"] if a["kind"] == "learning"]
-
-
-def test_queries_only_for_staff_who_see_the_answer_key(client, db_session, world):
-    _attempt(db_session, world, "sam", "detect_c2", "missed", 5, query="process.name:evil.exe")
+def test_queries_only_for_staff(client, db_session, world):
+    _attempt(db_session, world, "sam", "detect_c2", "recorded", 5, query="process.name:evil.exe")
     act_as(world["instructor"])
     att = _by_id(_get(client, world["ex"]).json(), world["sam"])["attempts"][0]
-    assert att["query"] == "process.name:evil.exe" and att["precision"] == 0.25
+    assert att["query"] == "process.name:evil.exe" and "precision" not in att
     for role in ("observer", "range_ops"):
         act_as(world[role])
         att = _by_id(_get(client, world["ex"]).json(), world["sam"])["attempts"][0]
-        assert att["query"] is None and att["precision"] is None and att["verdict"] == "missed"
+        assert att["query"] is None and att["verdict"] == "recorded"
 
 
 # ── lab faults and not seen recently ──────────────────────────────────────────────────────

@@ -2,6 +2,11 @@
 
 - **Status:** proposed 2026-10-28 (design only; the owner decisions in "Owner decisions" are settled, the open questions are not).
 - **Date:** 2026-10-28
+- **Amended 2026-11-03 by ADR 0020:** instructors judge team exercises. Stage 5 writes a
+  judging guide per objective (measure of effectiveness, evidence to look for, look-for
+  query, points), not validators; the dry run proves the look-for evidence appears for the
+  exemplary player and not the silent one, and credits nothing. Where this ADR says
+  "validators", "scorable" or "credited", read ADR 0020.
 - **Code:** none. This ADR, the glossary terms and `docs/exercise-studio.md` are the whole change. The build is the tickets in "Delivery".
 - **Builds on:** ARC² (`docs/arc2-course-studio.md`), ADR 0012 (golden templates), ADR 0013 (range certification), ADR 0014 (classes, content clock), ADR 0005 (detection credit), the content port (#324, `docs/content-port.md`) and the exercise template record (branch `claude/exercise-template-record`, see "The exercise template record").
 

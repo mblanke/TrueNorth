@@ -7,6 +7,7 @@ looked up by exercise id alone, so it reached across tenants.
 
 from __future__ import annotations
 
+import json
 import uuid
 from contextlib import contextmanager
 
@@ -65,8 +66,9 @@ def _exercise(db, *, tenant: str = DEV_TENANT, state: ExerciseState = ExerciseSt
 
 
 def _ack(client, ex_id, ref="obj-a", evidence: str | None = None):
-    params = {"evidence": evidence} if evidence is not None else None
-    return client.post(f"/exercises/{ex_id}/objectives/{ref}/ack", params=params)
+    # A JSON body, as the web app and SDK send it (ADR 0020; a query parameter was dropped).
+    body = {"evidence": evidence} if evidence is not None else None
+    return client.post(f"/exercises/{ex_id}/objectives/{ref}/ack", json=body)
 
 
 def _objective(db, ex_id, ref="obj-a") -> Objective:
@@ -116,7 +118,8 @@ class TestAcknowledgeObjective:
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body["achieved"] is True
-        assert body["evidence"] == "Acknowledged by Sgt Rivera: Saw the beacon in Zeek"
+        judged = json.loads(body["evidence"])
+        assert (judged["source"], judged["by"], judged["note"]) == ("instructor", "Sgt Rivera", "Saw the beacon in Zeek")
         assert body["achieved_at"]
         db_session.expire_all()
         assert db_session.get(Exercise, ex.id).total_score == 85  # 60 just acked + 25 already achieved
@@ -126,7 +129,8 @@ class TestAcknowledgeObjective:
         with acting_as(UserRole.instructor, name="Sgt Rivera"):
             resp = _ack(client, ex.id)
         assert resp.status_code == 200, resp.text
-        assert resp.json()["evidence"] == "Acknowledged by Sgt Rivera"
+        judged = json.loads(resp.json()["evidence"])
+        assert (judged["by"], judged["note"], judged["cites"]) == ("Sgt Rivera", "", [])
 
     @pytest.mark.parametrize("state", [ExerciseState.completed, ExerciseState.pending])
     def test_exercise_not_running_or_paused_is_409(self, client, db_session, state):

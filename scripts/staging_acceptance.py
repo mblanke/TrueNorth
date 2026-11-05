@@ -1622,9 +1622,9 @@ def scenario_lifecycle(ctx: Ctx) -> str:
     recs = ctx.poll(injected, "worker-scenario to record the timeline's inject", timeout=120)
     expect(recs[0]["status"] == "fired", f"inject {recs[0]['action']}: {recs[0]['status']} {recs[0].get('detail')}")
     state = ok(ctx.admin.get(f"/exercises/{eid}"), what="GET exercise")["state"]
-    if ex["backend"] == "mock":
-        skip(f"range backend is mock: the run completes on its own (state {state}); pause/resume need a real backend")
-    expect(state == "running", f"after its timeline a real-backend exercise stays running; it is {state}")
+    # ADR 0020: on every backend, mock included, the run leaves the exercise running for the
+    # instructor to judge; only an instructor (or the duration clock) completes it.
+    expect(state == "running", f"after its timeline the exercise stays running; it is {state}")
     paused = ok(ctx.admin.post(f"/exercises/{eid}/pause"), what="pause")
     expect(paused["state"] == "paused", f"pause: {paused['state']}")
     expect(ctx.admin.post(f"/exercises/{eid}/pause")[0] == 409, "pausing a paused exercise was not refused")
@@ -1691,14 +1691,14 @@ def detection_refused(ctx: Ctx) -> str:
     return "403: not a participant (no active enrolment in the booked course)"
 
 
-@check("detection", "participant's detection scored")
-def detection_scored(ctx: Ctx) -> str:
+@check("detection", "participant's detection judged")
+def detection_judged(ctx: Ctx) -> str:
+    """ADR 0020: a participant's detection is recorded as evidence and credits nothing; the
+    instructor judges the objective, citing it, and that is what moves the score."""
     ex, course = fx_exercise(ctx), fx_course(ctx)
     fx_roster(ctx)
     state = ok(ctx.admin.get(f"/exercises/{ex['id']}"), what="GET exercise")["state"]
     if state != "running":
-        if ex["backend"] == "mock":
-            skip("range backend is mock: the run completed on its own, and detections need a running exercise")
         raise FailedCheckError(f"the exercise is {state}; detections are accepted while it runs")
     marker = f"dt{ctx.tag.replace('-', '')}"
     ingest(
@@ -1708,7 +1708,7 @@ def detection_scored(ctx: Ctx) -> str:
         marker,
     )
     student = ctx.persona("student")
-    expect(ok(student.get(f"/exercises/{ex['id']}/detections"), what="own attempts") == [], "attempts before any")
+    expect(ok(student.get(f"/exercises/{ex['id']}/detections"), what="own submissions") == [], "submissions before any")
     sub = ok(
         student.post(
             f"/exercises/{ex['id']}/objectives/detect_beacon/detections", json={"query": "event_type:acceptance_beacon"}
@@ -1716,26 +1716,38 @@ def detection_scored(ctx: Ctx) -> str:
         201,
         what="submit as participant",
     )
-    if sub.get("verdict") != "achieved" and not sub.get("events_matched"):
+    expect(sub.get("verdict") == "recorded", f"submission: {short(sub)}")
+    if not sub.get("events_matched"):
         if "telemetry-pipeline" in ctx.absent:
-            skip(f"verdict {sub.get('verdict')}: no events in the window without the ingested-at pipeline")
+            skip("0 events in the window without the ingested-at pipeline")
         raise FailedCheckError(
-            f"verdict {sub.get('verdict')}, 0 events matched: is OpenSearch's ingested-at pipeline "
-            "installed (python -m telemetry.pipelines.bootstrap)? " + short(sub)
+            "0 events matched: is OpenSearch's ingested-at pipeline installed "
+            "(python -m telemetry.pipelines.bootstrap)? " + short(sub)
         )
-    expect(sub.get("verdict") == "achieved", f"submission: {short(sub)}")
-    expect(sub.get("on_target") is None, "the Student was shown on_target (answer key)")
+    expect("on_target" not in sub and "precision" not in sub, "the submission carried answer-key numbers")
+    before = ok(ctx.admin.get(f"/exercises/{ex['id']}"), what="GET exercise")
+    expect(before.get("total_score") == 0, f"a detection alone moved the score to {before.get('total_score')}")
+    judged = ok(
+        ctx.admin.post(
+            f"/exercises/{ex['id']}/objectives/detect_beacon/ack",
+            json={"evidence": "acceptance: beacon found", "cites": [sub["id"]]},
+        ),
+        what="instructor judges, citing the detection",
+    )
+    expect(judged.get("achieved") is True, f"judgement: {short(judged)}")
     scored = ok(ctx.admin.get(f"/exercises/{ex['id']}"), what="GET exercise")
     expect(scored.get("total_score") == 40, f"total_score {scored.get('total_score')}, expected 40")
     obj = {o["ref_id"]: o for o in ok(ctx.admin.get(f"/exercises/{ex['id']}/objectives"), what="objectives")}
     expect(obj["detect_beacon"]["achieved"] and not obj["write_report"]["achieved"], "objective credit wrong")
+    mine = ok(student.get(f"/exercises/{ex['id']}/detections"), what="own submissions")
+    expect([m.get("verdict") for m in mine] == ["cited"], f"the cited submission: {short(mine)}")
     st, body = student.post(
         f"/exercises/{ex['id']}/objectives/detect_beacon/detections", json={"query": "event_type:acceptance_beacon"}
     )
-    expect(st == 409, f"a second submission on an achieved objective => {st} {short(body)}")
+    expect(st == 409, f"a submission on a judged objective => {st} {short(body)}")
     return (
-        f"participant (enrolled on {course['code']}) credited: {sub.get('events_matched')} events, "
-        "score 40/50; repeat refused 409"
+        f"participant (enrolled on {course['code']}) recorded {sub.get('events_matched')} events (score 0); "
+        "instructor judged it citing the detection: score 40/50; repeat refused 409"
     )
 
 

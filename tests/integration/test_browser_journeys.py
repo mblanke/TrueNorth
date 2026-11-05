@@ -757,7 +757,7 @@ def range_index(event_store):
     event_store.delete(f"/_ingest/pipeline/{pipeline}")
 
 
-def test_student_detection_is_recorded_and_credited(world, visit, event_store, range_index):
+def test_student_detection_is_recorded_and_the_instructor_judges_it(world, visit, event_store, range_index):
     from playwright.sync_api import expect
 
     name = f"journey-detect-{uuid.uuid4().hex[:4]}"
@@ -777,27 +777,35 @@ def test_student_detection_is_recorded_and_credited(world, visit, event_store, r
     sam.get_by_role("button", name="Submit detection").click()
     sam.get_by_label("Detection query").fill(f"url.domain:*{C2_DOMAIN}")
     sam.get_by_role("button", name="Submit", exact=True).click()
-    expect(sam.get_by_role("status").filter(has_text="Achieved: your query found the attack.")).to_be_visible()
+    # ADR 0020: the detection is evidence; it credits nothing until the instructor judges.
+    expect(sam.get_by_role("status").filter(
+        has_text="Recorded: your query matched 3 events. Your instructor judges the objective.")).to_be_visible()
+    attempts = ok(Api(world, world.sam).get(f"/exercises/{ex['id']}/detections"))
+    assert [(a["verdict"], a["user_id"], a["events_matched"]) for a in attempts] == [
+        ("recorded", str(world.sam.id), 3)], attempts
+    assert ok(staff.get(f"/exercises/{ex['id']}"))["total_score"] == 0
+
+    # The instructor judges the objective on Scoring, citing Sam's detection.
+    ins = visit(world.instructor, f"/scoring?exercise={ex['id']}")
+    card = ins.locator("mat-card").filter(has=ins.locator('mat-card-title[title="detect_c2"]'))
+    card.get_by_role("button", name="Acknowledge").click()
+    card.get_by_label("Note: what the team did").fill("Beacon found in Zeek")
+    card.get_by_role("checkbox").check()
+    card.get_by_role("button", name="Acknowledge").click()
+    expect(card.get_by_text("Judged by")).to_contain_text("Beacon found in Zeek · cites 1 detection")
+    expect(ins.get_by_text('"source"')).to_have_count(0)  # read as text, not the stored JSON (#201)
+
+    objectives = {o["ref_id"]: o for o in ok(staff.get(f"/exercises/{ex['id']}/objectives"))}
+    assert objectives["detect_c2"]["achieved"] is True
+    assert '"source": "instructor"' in (objectives["detect_c2"]["evidence"] or "")
+    assert ok(staff.get(f"/exercises/{ex['id']}"))["total_score"] == 40
 
     sam.reload()
     expect(sam.get_by_role("heading", name=name)).to_be_visible()
     expect(sam.get_by_text("40 / 50")).to_be_visible()
-    sam.get_by_role("button", name="Attempts (1)").click()
-    expect(sam.locator("table td.v")).to_have_text(["achieved"])
-    expect(sam.get_by_role("button", name="Submit detection")).to_have_count(0)  # achieved: closed
-
-    attempts = ok(Api(world, world.sam).get(f"/exercises/{ex['id']}/detections"))
-    assert [(a["verdict"], a["user_id"], a["events_matched"]) for a in attempts] == [
-        ("achieved", str(world.sam.id), 3)], attempts
-    objectives = {o["ref_id"]: o for o in ok(staff.get(f"/exercises/{ex['id']}/objectives"))}
-    assert objectives["detect_c2"]["achieved"] is True
-    assert '"source": "student_detection"' in (objectives["detect_c2"]["evidence"] or "")
-    assert ok(staff.get(f"/exercises/{ex['id']}"))["total_score"] == 40
-
-    # The instructor reads that credit on Scoring as who detected what, not the stored JSON (#201).
-    ins = visit(world.instructor, f"/scoring?exercise={ex['id']}")
-    expect(ins.get_by_text("Detected by Sam Student: 3 events matched")).to_be_visible()
-    expect(ins.get_by_text("student_detection")).to_have_count(0)
+    sam.get_by_role("button", name="Submissions (1)").click()
+    expect(sam.get_by_text("Cited by your instructor")).to_be_visible()
+    expect(sam.get_by_role("button", name="Submit detection")).to_have_count(0)  # judged: closed
 
     # A Student of the tenant who does not take part in this run: refused, nothing recorded,
     # and they do not see Sam's attempt.
@@ -811,7 +819,7 @@ def test_student_detection_is_recorded_and_credited(world, visit, event_store, r
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # (6) Issue #199: the instructor's live class in the Ops Center. The exercise by name, the
-#     roster with a learning signal seeded from judged misses, the Student drawer, the
+#     roster with submissions awaiting the instructor's judgement (ADR 0020), the Student drawer, the
 #     WebSocket count not passed off as attendance; a Student is refused, in the SPA and API.
 # ══════════════════════════════════════════════════════════════════════════════════════════
 def test_instructor_sees_the_live_class_and_a_student_is_refused(world, visit):
@@ -828,8 +836,8 @@ def test_instructor_sees_the_live_class_and_a_student_is_refused(world, visit):
     if started_at.tzinfo is None:
         started_at = started_at.replace(tzinfo=UTC)
 
-    # Bo is on a team of the exercise; Sam has three judged misses on one objective (the
-    # judging is ADR 0005's, exercised by the detection journey; here the rows are the input).
+    # Bo is on a team of the exercise; Sam has three detections on one objective, recorded and
+    # not yet judged (ADR 0020; the judging is exercised by the detection journey).
     db = world.db
     team = Team(id=uuid.uuid4(), name="Blue Cell 1", tenant_id=world.tenant, exercise_id=uuid.UUID(ex["id"]),
                 color_hex="#1E5AA8")
@@ -839,17 +847,20 @@ def test_instructor_sees_the_live_class_and_a_student_is_refused(world, visit):
     for n in range(3):
         db.add(DetectionSubmission(
             tenant_id=world.tenant, exercise_id=uuid.UUID(ex["id"]), objective_ref="detect_c2", user_id=world.sam.id,
-            query=f"url.domain:*guess{n}*", verdict="missed", events_matched=2, on_target=0,
+            query=f"url.domain:*guess{n}*", verdict="recorded", events_matched=2,
             submitted_at=started_at + timedelta(seconds=5 + n), window_start=started_at,
         ))
     db.commit()
 
-    # The API: staff read the roster; the learning signal is there for Sam, not for Bo.
+    # The API: staff read the roster; Sam's detections await judgement; no "learning signal"
+    # (there are no automatic misses to raise one).
     roster = ok(staff.get(f"/ops/exercises/{ex['id']}/class"))
     assert roster["exercise_name"] == name
     by_name = {s["display_name"]: s for s in roster["students"]}
     assert set(by_name) == {"Sam Student", "Bo Student"}, by_name.keys()
-    assert [a["kind"] for a in by_name["Sam Student"]["attention"]] == ["learning"]
+    assert [a["kind"] for a in by_name["Sam Student"]["attention"]] == []
+    [c2] = [o for o in by_name["Sam Student"]["objectives"] if o["ref_id"] == "detect_c2"]
+    assert (c2["state"], c2["submissions"]) == ("submitted", 3)
     assert by_name["Bo Student"]["team"]["name"] == "Blue Cell 1"
 
     ins = visit(world.instructor, f"/ops-center/{ex['id']}")
@@ -858,17 +869,14 @@ def test_instructor_sees_the_live_class_and_a_student_is_refused(world, visit):
     expect(ins.get_by_text("Active Analysts")).to_have_count(0)
     expect(ins.get_by_test_id("ops-viewers")).to_contain_text("Live viewers")
     expect(ins.get_by_test_id("lane-help")).to_contain_text("Help requests arrive with the intervention console (R1 F2)")
-    learning = ins.get_by_test_id("lane-learning")
-    expect(learning).to_contain_text("Sam Student")
-    expect(learning).to_contain_text("3 judged misses on Detect C2")
+    expect(ins.get_by_test_id("lane-learning")).to_have_count(0)
     rows = ins.locator("table.dense tbody tr")
     expect(rows).to_have_count(2)
     expect(rows.filter(has_text="Bo Student")).to_contain_text("Blue Cell 1")
-    expect(rows.filter(has_text="Sam Student")).to_contain_text("Learning signal")
     expect(rows.filter(has_text="Sam Student")).to_contain_text("0 / 3")
     expect(ins.get_by_text("struggling")).to_have_count(0)
 
-    # The drawer, from the keyboard: Sam's attempts and the not-yet-live F2 actions.
+    # The drawer, from the keyboard: Sam's submissions and the not-yet-live F2 actions.
     rows.filter(has_text="Sam Student").press("Enter")
     drawer = ins.get_by_role("dialog", name="Sam Student")
     expect(drawer).to_be_visible()
@@ -881,15 +889,11 @@ def test_instructor_sees_the_live_class_and_a_student_is_refused(world, visit):
     ins.keyboard.press("Escape")
     expect(drawer).to_have_count(0)
     expect(rows.filter(has_text="Sam Student")).to_be_focused()  # focus goes back
-    learning.get_by_role("button", name="Open Sam Student").press("Enter")  # from the queue, too
-    expect(drawer).to_be_visible()
-    ins.keyboard.press("Escape")
-    expect(drawer).to_have_count(0)
     if ARTIFACTS:
         ins.screenshot(path=str(pathlib.Path(ARTIFACTS) / "live-class.png"), full_page=True)
         ins.evaluate("localStorage.setItem('tn-theme-v2', 'maple-steel')")
         ins.reload()
-        expect(ins.get_by_test_id("lane-learning")).to_contain_text("Sam Student")
+        expect(rows.filter(has_text="Sam Student")).to_be_visible()
         ins.screenshot(path=str(pathlib.Path(ARTIFACTS) / "live-class-dark.png"), full_page=True)
         ins.set_viewport_size({"width": 820, "height": 1100})
         ins.screenshot(path=str(pathlib.Path(ARTIFACTS) / "live-class-tablet.png"), full_page=True)

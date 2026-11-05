@@ -47,8 +47,17 @@ class Participant:
 def lock(db: Session, exercise_id: uuid.UUID) -> Exercise | None:
     """The exercise row, locked for this transaction (a no-op on SQLite). Callers pass an
     exercise they already hold (get_owned, or the clock's own sweep)."""
-    # tenant-safe: re-reads an exercise the caller already fetched, to lock it.
-    return db.query(Exercise).filter(Exercise.id == exercise_id).with_for_update().one_or_none()
+    # populate_existing: the caller's get_owned already loaded this row into the session;
+    # without it the lock would hand back that stale copy (its old state), and an ack, a
+    # withdraw or a second /complete overlapping a close would be accepted after it.
+    return (
+        # tenant-safe: re-reads an exercise the caller already fetched, to lock it.
+        db.query(Exercise)
+        .filter(Exercise.id == exercise_id)
+        .populate_existing()
+        .with_for_update()
+        .one_or_none()
+    )
 
 
 def total(db: Session, exercise_id: uuid.UUID) -> int:
@@ -57,6 +66,22 @@ def total(db: Session, exercise_id: uuid.UUID) -> int:
         .filter(Objective.exercise_id == exercise_id, Objective.achieved.is_(True))
         .scalar()
     )
+
+
+def possible(db: Session, exercise_id: uuid.UUID) -> int:
+    return (
+        db.query(func.coalesce(func.sum(Objective.points), 0)).filter(Objective.exercise_id == exercise_id).scalar()
+    )
+
+
+def retotal(db: Session, ex: Exercise) -> None:
+    """``total_score`` from the achieved objectives; ``max_score``, when the exercise was made
+    without one (0, the column's "unset"), from all of their points. The worker's mock
+    completion used to fill it; since ADR 0020 the worker closes nothing, so an exercise made
+    without one would read 80/0. A maximum someone set is never rewritten."""
+    ex.total_score = total(db, ex.id)
+    if not ex.max_score:
+        ex.max_score = possible(db, ex.id)
 
 
 def _run_time(ex: Exercise) -> timedelta | None:
@@ -96,7 +121,7 @@ def close(db: Session, exercise_id: uuid.UUID, background_tasks: Any, closer: Pa
         return None
     ex.state = ExerciseState.completed
     ex.completed_at = datetime.now(UTC)
-    ex.total_score = total(db, ex.id)
+    retotal(db, ex)
     people = participants(db, ex, closer)
     db.commit()
     db.refresh(ex)

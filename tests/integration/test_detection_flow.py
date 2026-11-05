@@ -1,12 +1,13 @@
-"""Integration: the detection flow end to end, against a real OpenSearch (ADR 0005).
+"""Integration: the detection flow end to end, against a real OpenSearch (ADR 0005, 0020).
 
 An instructor writes a detection rule and loads a threat intel feed (the upload variant
 of the CSV backend); a range carries attack and benign telemetry; a Student, in a running
-exercise, submits a detection; the credit shows on the exercise's score and objectives.
+exercise, submits a detection, which is recorded as evidence and credits nothing; the
+instructor judges the objective citing it, and that shows on the score and objectives.
 
 The API runs in-process (as the Moodle and vSphere lab integration tests do) so the
 Student can be a Student: the live stack's dev login is an admin, whose detections are
-recorded as staff attempts, not Student credit. The event store is real: bootstrap's
+recorded as staff detections, not a Student's. The event store is real: bootstrap's
 ingested-at pipeline and range template (on a scratch name) and the API's OpenSearch
 backend, so mapping, analysis and the ingest-time window are OpenSearch's, not a fake's.
 
@@ -179,7 +180,7 @@ class TestDetectionFlow:
         _ok(client.post(f"/telemetry/{rng['id']}/events", json=events), 202)
         event_store.post(f"/{index}/_refresh").raise_for_status()
 
-        # -- the Student: nothing is credited for being idle; a precise detection is -------
+        # -- the Student: nothing is credited, idle or not; a detection is recorded ---------
         with acting_as(UserRole.student) as who:
             # A real users row: the submission references it, and db_session enforces keys.
             db_session.add(User(id=uuid.UUID(who.id), email=who.email, display_name=who.display_name,
@@ -194,16 +195,19 @@ class TestDetectionFlow:
                 f"/exercises/{ex['id']}/objectives/detect_c2/detections",
                 json={"query": f"url.domain:*{C2_DOMAIN}"},
             ), 201)
-            assert sub["verdict"] == "achieved", sub
+            assert sub["verdict"] == "recorded", sub
             assert sub["events_matched"] == 3
+        assert _ok(client.get(f"/exercises/{ex['id']}"))["total_score"] == 0
 
-        # -- the credit is visible where the score is read ---------------------------------
+        # -- the instructor judges it, citing the Student's detection ----------------------
+        _ok(client.post(f"/exercises/{ex['id']}/objectives/detect_c2/ack",
+                        json={"evidence": "Beacon found by the blue cell", "cites": [sub["id"]]}))
         scored = _ok(client.get(f"/exercises/{ex['id']}"))
         assert scored["total_score"] == 40
         objectives = {o["ref_id"]: o for o in _ok(client.get(f"/exercises/{ex['id']}/objectives"))}
         assert objectives["detect_c2"]["achieved"] is True and objectives["write_report"]["achieved"] is False
-        assert '"source": "student_detection"' in (objectives["detect_c2"]["evidence"] or "")
+        assert '"source": "instructor"' in (objectives["detect_c2"]["evidence"] or "")
         attempts = _ok(client.get(f"/exercises/{ex['id']}/detections"))
-        assert [a["verdict"] for a in attempts] == ["achieved"]
+        assert [a["verdict"] for a in attempts] == ["cited"]
 
         _ok(client.post(f"/exercises/{ex['id']}/complete"), 200, 202)

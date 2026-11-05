@@ -270,13 +270,13 @@ def _complete_and_capture(client, db_session, monkeypatch, *, max_score, points)
     return completed[0]
 
 
-def test_complete_route_with_zero_max_score(client, db_session, monkeypatch):
-    # exercises.max_score is NOT NULL, so 0 is the only "no maximum" the route can see;
-    # None is covered at the builder level above.
+def test_complete_route_with_zero_max_score_takes_the_objectives_total(client, db_session, monkeypatch):
+    # exercises.max_score is NOT NULL, so 0 means "made without one" (QSP paths, forge). Closing
+    # fills it from the objectives' points, as the worker's mock completion did before ADR 0020;
+    # a missing maximum (None) is covered at the builder level above.
     stmt = _complete_and_capture(client, db_session, monkeypatch, max_score=0, points=[30, 20])
     _assert_conformant(stmt)
-    assert stmt["result"]["score"] == {"raw": 50, "min": 0}
-    assert "success" not in stmt["result"]
+    assert stmt["result"]["score"] == {"raw": 50, "min": 0, "max": 50, "scaled": 1.0}
 
 
 def test_complete_route_total_above_max_score(client, db_session, monkeypatch):

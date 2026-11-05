@@ -1,5 +1,5 @@
 import { Component, computed, inject, input, output, signal } from '@angular/core';
-import { DatePipe, PercentPipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
@@ -17,33 +17,45 @@ export function canonicalValidator(name: string | null | undefined): string {
   return raw.replace(/\./g, '_');
 }
 
-/** Detection objectives are credited by a submitted query (ADR 0005). */
+/** Detection objectives are worked by a submitted query; an instructor judges them (ADR 0020). */
 export function isDetectionObjective(validator: string | null | undefined): boolean {
   return canonicalValidator(validator) === 'opensearch_query';
 }
 
 type Tone = 'ok' | 'warn' | 'err';
 
+/** Below this many submissions left, the panel says how many remain. */
+export const LOW_SUBMISSIONS = 5;
+
+/** How a submission's stored verdict reads. Older rows keep their ADR 0005 verdicts as history. */
+export function verdictWord(verdict: string, staff: boolean): string {
+  if (verdict === 'recorded') return 'Recorded';
+  if (verdict === 'cited') return staff ? 'Cited' : 'Cited by your instructor';
+  const v = (verdict ?? '').trim();
+  return v ? v.charAt(0).toUpperCase() + v.slice(1) : '—';
+}
+
 /**
- * Submit a detection for one objective and list the attempts on it.
- * Credit comes only from the server's verdict; the parent reloads the
- * objective and score when `changed` fires.
+ * Submit a detection for one objective and list the submissions on it.
+ * A submission is evidence, not a grade (ADR 0020): the server records it and an
+ * instructor judges the objective. The parent reloads the objective, score and
+ * submissions when `changed` fires.
  */
 @Component({
   selector: 'tn-detection-panel',
-  imports: [DatePipe, PercentPipe, FormsModule, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule],
+  imports: [DatePipe, FormsModule, MatButtonModule, MatFormFieldModule, MatIconModule, MatInputModule],
   template: `
     <div class="det-actions">
       @if (canSubmitNow()) {
         <button mat-button type="button" (click)="open.set(!open())" [attr.aria-expanded]="open()"
-          [disabled]="attemptsLeft() === 0">
+          [disabled]="submissionsLeft() === 0">
           <mat-icon>manage_search</mat-icon> Submit detection
         </button>
       }
       @if (attempts().length) {
         <button mat-button type="button" class="attempts-toggle" (click)="showAttempts.set(!showAttempts())"
           [attr.aria-expanded]="showAttempts()">
-          <mat-icon>history</mat-icon> Attempts ({{ attempts().length }})
+          <mat-icon>history</mat-icon> Submissions ({{ attempts().length }})
         </button>
       }
     </div>
@@ -57,8 +69,8 @@ type Tone = 'ok' | 'warn' | 'err';
           <mat-hint>field:value terms with AND / OR / NOT, * wildcards, field:&gt;N, field:(a OR b)</mat-hint>
         </mat-form-field>
         <button mat-flat-button color="primary" type="submit"
-          [disabled]="busy() || !query.trim() || attemptsLeft() === 0">
-          {{ busy() ? 'Checking…' : 'Submit' }}
+          [disabled]="busy() || !query.trim() || submissionsLeft() === 0">
+          {{ busy() ? 'Recording…' : 'Submit' }}
         </button>
       </form>
     }
@@ -74,9 +86,8 @@ type Tone = 'ok' | 'warn' | 'err';
             <th scope="col">Time</th>
             @if (staff()) { <th scope="col">Student</th> }
             <th scope="col">Query</th>
-            <th scope="col">Verdict</th>
+            <th scope="col">Status</th>
             <th scope="col">Events</th>
-            @if (staff()) { <th scope="col">On target</th><th scope="col">Precision</th> }
           </tr>
         </thead>
         <tbody>
@@ -85,12 +96,8 @@ type Tone = 'ok' | 'warn' | 'err';
               <td>{{ a.submitted_at | date:'shortTime' }}</td>
               @if (staff()) { <td class="mono" [title]="a.user_id">{{ a.user_id.slice(0, 8) }}</td> }
               <td class="mono q">{{ a.query }}</td>
-              <td class="v" [class]="a.verdict">{{ a.verdict }}</td>
+              <td [class]="'v ' + a.verdict">{{ word(a.verdict) }}</td>
               <td>{{ a.events_matched ?? '—' }}</td>
-              @if (staff()) {
-                <td>{{ a.on_target ?? '—' }}</td>
-                <td class="precision">{{ a.precision === null || a.precision === undefined ? '—' : (a.precision | percent:'1.0-1') }}</td>
-              }
             </tr>
           }
         </tbody>
@@ -111,8 +118,8 @@ type Tone = 'ok' | 'warn' | 'err';
     .det-table th, .det-table td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
     .det-table th { color: var(--text-muted); font-weight: 600; }
     .det-table .q { word-break: break-all; }
-    .v.achieved { color: var(--success); }
-    .v.missed { color: var(--text-muted); }
+    .v.cited { color: var(--success); }
+    .v.recorded { color: var(--text-secondary); }
   `],
 })
 export class DetectionPanelComponent {
@@ -124,7 +131,7 @@ export class DetectionPanelComponent {
   readonly running = input(false);
   /** Role may submit (detection:submit). */
   readonly canSubmit = input(false);
-  /** Instructor/admin: attempts carry the Student, on_target and precision. */
+  /** Instructor/admin: the list holds every Student's submissions, so it names the Student. */
   readonly staff = input(false);
   readonly attempts = input<Detection[]>([]);
   /** Fired after any outcome that may change the objective, score or attempts. */
@@ -133,9 +140,11 @@ export class DetectionPanelComponent {
   readonly open = signal(false);
   readonly showAttempts = signal(false);
   readonly busy = signal(false);
-  readonly attemptsLeft = signal<number | null>(null);
+  readonly submissionsLeft = signal<number | null>(null);
   readonly message = signal<{ text: string; tone: Tone } | null>(null);
   query = '';
+
+  word(verdict: string): string { return verdictWord(verdict, this.staff()); }
 
   readonly canSubmitNow = computed(() => this.canSubmit() && this.running() && !this.achieved());
 
@@ -147,36 +156,37 @@ export class DetectionPanelComponent {
     this.api.submitDetection(this.exerciseId(), this.refId(), query).subscribe({
       next: d => {
         this.busy.set(false);
-        this.attemptsLeft.set(d.attempts_left ?? null);
-        if (d.verdict === 'achieved') {
-          this.message.set({ text: 'Achieved: your query found the attack.', tone: 'ok' });
-          this.open.set(false);
-        } else if (d.verdict === 'closed') {
-          this.message.set({ text: 'The exercise closed before your detection was judged; nothing was credited.', tone: 'err' });
-        } else {
-          const left = d.attempts_left ?? null;
-          const tail = left == null ? '' : ` ${left} attempt${left === 1 ? '' : 's'} left.`;
-          this.message.set({
-            text: `Your query matched ${d.events_matched ?? 0} events but did not find enough of the attack.${tail}`,
-            tone: 'warn',
-          });
-        }
+        const left = d.submissions_left ?? null;
+        this.submissionsLeft.set(left);
+        const tail = left != null && left <= LOW_SUBMISSIONS
+          ? ` ${left} submission${left === 1 ? '' : 's'} left.` : '';
+        const n = d.events_matched ?? 0;
+        this.message.set({
+          text: `Recorded: your query matched ${n} event${n === 1 ? '' : 's'}. Your instructor judges the objective.${tail}`,
+          tone: 'ok',
+        });
         this.changed.emit();
       },
       error: (err: HttpErrorResponse) => {
         this.busy.set(false);
         const detail = typeof err.error?.detail === 'string' ? err.error.detail : '';
         if (err.status === 503) {
-          this.message.set({ text: 'The event store could not check this detection. Try again; no attempt was used.', tone: 'err' });
+          this.message.set({ text: 'The event store could not run this query. Try again; nothing was recorded.', tone: 'err' });
+          return;
+        }
+        if (err.status === 422) {
+          // Outside the detection language or unparseable: the server says why.
+          const why = detail || 'The query could not be read.';
+          this.message.set({ text: /nothing (was )?recorded/i.test(why) ? why : `${why} Nothing was recorded.`, tone: 'warn' });
           return;
         }
         if (err.status === 429) {
-          this.attemptsLeft.set(0);
-          this.message.set({ text: detail || 'No attempts left for this objective.', tone: 'err' });
+          this.submissionsLeft.set(0);
+          this.message.set({ text: detail || 'You have reached the submission limit for this objective in this run.', tone: 'err' });
           return;
         }
         if (err.status === 409) {
-          // Exercise no longer running or objective already achieved: the page is stale.
+          // Exercise no longer running, or objective already achieved: the page is stale.
           this.message.set({ text: detail || 'This objective is not accepting detections.', tone: 'err' });
           this.changed.emit();
           return;
