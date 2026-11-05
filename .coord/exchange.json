@@ -1,0 +1,10 @@
+{
+  "max_in_flight": 5,
+  "max_review_queue": 3,
+  "default_review_policy": "dual",
+  "quality_policy": {
+    "taz_candidates_require_claude_review": true,
+    "taz_candidates_require_codex_review": true,
+    "ci_evidence_required_before_merge": true
+  }
+}

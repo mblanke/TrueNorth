@@ -102,3 +102,13 @@ truenorth-content-pack/truenorth-content/qsp_source/approval_letters/
 
 # Packer: staged offline packages for the pfSense template (scripts/lab/stage_pfsense_pkgs.py)
 infra/vsphere/packer/stage/
+
+# Agent exchange: mutable broker state, work packages, and returned evidence.
+.coord/state.sqlite
+.coord/state.sqlite-*
+.coord/dashboard.html
+.coord/dashboard.tmp
+.coord/inbox/
+.coord/outbox/
+.coord/results/
+.coord/transport.local.json

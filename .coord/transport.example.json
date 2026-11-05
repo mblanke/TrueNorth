@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "transport": "ssh",
+  "ssh_target": "taz-exchange@taz-vpn-host",
+  "remote_root": "/srv/truenorth-agent-exchange",
+  "connect_timeout_seconds": 10
+}

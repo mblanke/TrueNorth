@@ -12,11 +12,17 @@ card, fork isolation, write-time hooks, self-check, CI guard, review and track r
 | `hooks/dod_stop_gate.py` | Stop hook: no "done" without a green `dod.sh` on this exact state | 4, self-check |
 | `hooks/policy.json` | default policy for both hooks and for `taz-guard` | 3 and 5 |
 | `../../scripts/taz_guard.py` + `../../.github/workflows/taz-guard.yml` | CI check of a TAZ PR against its card | 5, CI |
+| `exchange_result.py` | supervisor-side result-v2 tests, guard, evidence and archive | 4, return |
 | `bakeoff/` | model bakeoff replay kit (P2) | |
 | `courses/` | course run kit: TAZ drafts the 37 unheld courses, Claude validates each | |
 
 Tests: `tests/tools/test_taz_hooks.py`, `tests/tools/test_taz_guard.py` and
 `tests/tools/test_check_course.py`.
+
+For multi-agent delivery, the card and candidate result travel through the tracked
+contract in `docs/agents/agent-exchange.md`. TAZ still never pushes. Its runner returns a
+`result-v2` evidence bundle to the VPN mailbox; the coordinator enforces scope, exact
+oracles, Claude and Codex review, and CI before the owner can record a merge.
 
 ## Courses
 

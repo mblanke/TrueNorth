@@ -88,3 +88,11 @@ because that failure mode is not exclusive to weak models.
 Python (FastAPI, Celery, SQLAlchemy) + Angular 21 (Material M3) + Terraform.
 Tests: `.venv/bin/python -m pytest`. Lint: `.venv/bin/python -m ruff`.
 The API is on `:4200` via nginx (`/api/`), not `:8000`.
+
+## Parallel sessions and agent exchange
+
+Read `@.coord/CLAUDE.coord.md` before using the coordinator. Taz output is always a
+candidate: ingest its `result-v2` bundle, require Claude and Codex review, and attach
+real CI evidence before representing a card as complete.
+
+@.coord/CLAUDE.coord.md
