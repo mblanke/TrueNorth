@@ -57,7 +57,7 @@ Weekly:
 - [ ] Disk: `df -h / /srv/truenorth` below 80 %.
 - [ ] Certificate expiry: `openssl x509 -enddate -noout -in /srv/truenorth/tls/truenorth.crt`.
 - [ ] **Users → AD Sync**: last night's run and what it found (§9).
-- [ ] Calendar → Content view → **Feeds**: each source's last pull or import, no error (§7).
+- [ ] Calendar → **Content** → **Feeds**: each source's last pull or import, no error (§7).
 
 Containers restart on their own after a VM reboot (`restart: always`). After any reboot,
 still check `dc ps` and System Health.
@@ -75,7 +75,9 @@ to go **backwards** (an older release, or a database newer than the code) unless
 ### 2.1 Before (the day before)
 
 1. Read the release notes (`docs/release-notes/<vX.Y.Z>.md` in the new release) and
-   `CHANGELOG.md`: new migrations, new required settings, known limitations.
+   `CHANGELOG.md`: new migrations, new required settings, known limitations. A release
+   candidate ships no notes file of its own: read its target release's (`v1.2.0.md` for
+   `v1.2.0-rc17`), plus `CHANGELOG.md`.
 2. **[DECISION]** The window. In-flight range builds either finish (the default, `drain`:
    up to an hour for a large range) or are abandoned (`-e tn_upgrade_inflight=abandon`;
    interrupted ranges must be rebuilt). Tell instructors (`docs/runbooks/on-call.md`
@@ -131,6 +133,10 @@ template kit checkout used in §4 to the same release:
 git -C /srv/truenorth/template-kit fetch --tags origin
 git -C /srv/truenorth/template-kit checkout <vX.Y.Z>
 ```
+
+This fetches from `~/truenorth`, not from GitHub: §4.2 clones the template kit out of the
+`~/truenorth` checkout, so its `origin` is that local directory and it finds only the tag
+§2.2 fetched into it.
 
 Keep the pre-upgrade backup until the next release is stable.
 
@@ -192,16 +198,37 @@ Full detail: `docs/runbooks/backup-restore.md`.
 
 There is no shared storage, so the copy goes to a small **backup target VM** on management
 host 2 (guide 01 §1.2), whose data disk lives on that host's datastore. Build it as guide 02
-§1.1 (Ubuntu Server 24.04, OpenSSH, no snaps; hostname `<backup-vm-name>`, address
-`<backup-vm-ip>`), with its data disk mounted at `/srv/tn-backup` as in guide 02 §1.2 (use
-volume group `bk-data` and label `tn-bkp` in place of `tn-data` and `tn-srv`).
+§1.1 (Ubuntu Server 24.04, OpenSSH, no snaps; hostname `<backup-vm-name>`), and give it a
+**fixed address `<backup-vm-ip>`** on the management network: choose it once, record it with
+the site's values in guide 01 §1.2, and never change it — the copy script, the DR rebuild
+(§3.5) and the restore drill (§3.6) all reach this VM by that address.
 **[DECISION]** Whether that VM's disks must also be encrypted at rest (vSphere VM
 encryption): the database dumps in it are not.
+
+Mount its data disk at `/srv/tn-backup` — the same steps as guide 02 §1.2, with this VM's
+own names (the data disk is at least 2× `tn_backup_max_total_gb`, guide 01 §1.2; default
+200 GB, so expect `df` to show roughly that disk's size):
+
+```bash
+lsblk -o NAME,SIZE,TYPE,MOUNTPOINTS      # find the data disk; it has no partitions
+DATA_DISK=/dev/sdb                       # check the name first: the next block erases it
+sudo pvcreate "$DATA_DISK"
+sudo vgcreate bk-data "$DATA_DISK"
+sudo lvcreate -n bkp -l 100%FREE bk-data
+sudo mkfs.ext4 -L tn-bkp /dev/bk-data/bkp
+sudo mkdir -p /srv/tn-backup
+echo 'LABEL=tn-bkp /srv/tn-backup ext4 defaults,noatime 0 2' | sudo tee -a /etc/fstab
+sudo systemctl daemon-reload
+sudo mount /srv/tn-backup
+df -h /srv/tn-backup
+```
 
 On the **backup target VM**:
 
 ```bash
 sudo apt-get install -y rsync
+test -x /usr/bin/rrsync && echo ok        # if this prints nothing, find it:
+dpkg -L rsync | grep rrsync               # ...and use that path in the key line below
 sudo adduser --disabled-password --gecos "" tnbackup
 sudo install -d -o tnbackup -g tnbackup -m 0700 /srv/tn-backup
 sudo install -d -o tnbackup -g tnbackup -m 0700 /home/tnbackup/.ssh
@@ -211,6 +238,7 @@ On the **TrueNorth VM**, a key for root (the snapshot repository is not readable
 `tnadmin`) and the backup target's host key:
 
 ```bash
+sudo install -d -m 0700 /root/.ssh
 sudo ssh-keygen -t ed25519 -N "" -f /root/.ssh/tn-backup -C "truenorth off-host copy"
 sudo cat /root/.ssh/tn-backup.pub
 sudo ssh-keyscan -t ed25519 <backup-vm-ip> | sudo tee -a /root/.ssh/known_hosts
@@ -226,6 +254,14 @@ echo 'restrict,command="/usr/bin/rrsync /srv/tn-backup" <public-key>' \
   | sudo tee /home/tnbackup/.ssh/authorized_keys
 sudo chown tnbackup:tnbackup /home/tnbackup/.ssh/authorized_keys
 sudo chmod 0600 /home/tnbackup/.ssh/authorized_keys
+```
+
+Test the key from the **TrueNorth VM** before scheduling anything (`--dry-run` writes
+nothing); an error here names the problem — key refused, wrong `rrsync` path, wrong address:
+
+```bash
+rsync --dry-run -a -e "ssh -i /root/.ssh/tn-backup -o BatchMode=yes" \
+  /etc/hostname tnbackup@<backup-vm-ip>:probe-test/
 ```
 
 On the **TrueNorth VM**, the copy script and its schedule (05:30, after the 02:17 backup has
@@ -294,6 +330,12 @@ RPO **24 hours** (nightly backups; anything written after the last good one is l
 When management host 1 or the TrueNorth VM is lost. The rebuilt VM takes the **same name,
 address and certificate**, so DNS, the TLS certificate and users' bookmarks stay valid.
 
+You need, before you start: the **vault password** (steps 7 and 9 ask for it; it is in no
+backup, so it survives only with the site's custodians — see the quarterly checklist), the
+**escrow private key** (step 6, from its custodians), **tnadmin's sudo password** (`-K`
+throughout), and guide 02 §1–§2 done on the new VM (step 2 covers it). Guide 02 §3.1 (govc)
+is needed only if you will port templates from here (step 4).
+
 1. **Declare it and note the time** (T0). Make sure the old VM is powered off, if its host
    still runs: two TrueNorth VMs must never run at once on one address and one vCenter.
 2. **Build the VM** on management host 2, exactly as guide 02 §1–§2 (same `<tn-ip>`, same
@@ -339,7 +381,8 @@ address and certificate**, so DNS, the TLS certificate and users' bookmarks stay
    **[DECISION]** For data corruption (not host loss), pick the last backup taken
    **before** the corruption instead of the newest.
 6. **Secrets first.** Bring the escrow **private** key in for this step only (removable
-   media, from its custodians):
+   media, from its custodians; `<escrow-media>` below is where that media mounts on this
+   VM — there is no site-wide value for it):
 
    ```bash
    ~/truenorth/scripts/backup/restore-secrets.sh "$B" /media/<escrow-media>/backup-escrow.key \
@@ -347,8 +390,10 @@ address and certificate**, so DNS, the TLS certificate and users' bookmarks stay
    ```
 
    Take the private key away again.
-7. **Run the installer** (guide 02 §6.1–§6.2). It finds the restored secrets, renders the
-   env file from them and brings up an empty stack:
+7. **Run the installer** (guide 02 §6.1–§6.2). Guide 02 §6.1's `--check` dry run is not
+   repeated in this block; if you want preflight to run without changing anything first,
+   add `--check` to the last command below. The installer finds the restored secrets,
+   renders the env file from them and brings up an empty stack:
 
    ```bash
    cd ~/truenorth/install
@@ -392,8 +437,9 @@ identity.
 
 1. **[DECISION]** The window (half a day) and who approves it. No Students on the platform.
 2. Shut the production VM down cleanly: `sudo poweroff` on it.
-3. Do §3.5 steps 2–9 on management host 2, with the newest backup. **Skip step 10**: the
-   drill VM must not copy its backups over the real ones.
+3. Do §3.5 steps 2–9 on management host 2, with the newest backup — including its
+   you-need list: vault password, escrow private key, tnadmin's sudo password. **Skip
+   step 10**: the drill VM must not copy its backups over the real ones.
 4. Record the measured time against the 4-hour RTO.
 5. **Fail back:** power the drill VM off (`sudo poweroff`) and power the original VM on.
    Anything done on the drill VM is discarded; that is why the window has no users. Remove
@@ -474,11 +520,20 @@ with open("/srcapp/content/catalogue/vm_iso_catalogue.csv", "rb") as f:
 ' '<admin-email>'
 ```
 
-It prints `(200, {... "imported": true ...})`. Infrastructure → Golden images then lists the
-catalogue, every image `planned`.
+It prints `(200, {... "imported": true ...})`. If it prints `administrator <admin-email>
+not found` instead, that address is not a TrueNorth user yet: finish 02 §7.2 (the first
+administrator registers and is approved), then run it again. Any status other than `200`
+in the tuple means the import was refused; the response names the reason. Infrastructure →
+Golden images then lists the catalogue, every image `planned`.
 
 Then, **per template**, on the TrueNorth VM with govc pointed at this site's vCenter
-(02 §3.1):
+(02 §3.1). The host names in the block: `<range-host-N>` is a range host's short name as
+vCenter knows it — the last element of a line from
+`govc find '/<datacenter>/host' -type h` (for example `…/Range/rh01` → `rh01`). The same
+short names go into `RANGE_HOSTS` and, through `RANGE_DATASTORE_FMT` (`%s-local`), into the
+`<range-host-N>-local` datastores guide 01 §2.2 has you name. `-host=` wants the name
+vCenter lists that host under — the same `govc find` line shows it; it may be the short
+name or a longer one, so copy it from there rather than assuming:
 
 ```bash
 ID=<catalogue-id>
@@ -559,9 +614,10 @@ built from it reached Certified as it is now, it was used with passing evidence,
 content clock does not call it stale). The chip on each item says **Proven** or **Not proven:
 <reasons>**. The steps, with the full rules in [content-port.md](../content-port.md):
 
-1. At the test site, the platform administrator who also holds `content_review:admin` opens
-   Calendar → Content → **Port content** → **Choose content to export**, ticks the items and
-   presses **Export proven content**. Anything unproven, or needed by something selected, is
+1. At the test site, the platform administrator (the admin role already holds
+   `content_review:admin`; no separate grant is needed) opens Calendar → Content →
+   **Port content** → **Choose content to export**, ticks the items and presses
+   **Export proven content**. Anything unproven, or needed by something selected, is
    refused and listed.
 2. At this site, set `tn_content_port_trusted_keys` to the test site's public key (**This
    site's key → Show** on its panel) and re-run the installer. **With no key set, every
@@ -571,7 +627,9 @@ content clock does not call it stale). The chip on each item says **Proven** or 
 4. **Preview a bundle**, tick **Replace what is here** only on conflicts you accept, then
    **Import**. A bundle imports once. Everything lands **not yet proven** here (courses land
    unpublished), and every account password in a range template was removed, so set the
-   scenario passwords again before building a range from it.
+   scenario passwords again before building a range from it. The panel's **Land as shared
+   content** box (unticked by default) lands the import as content every tenant can read;
+   leave it unticked unless this site means to share it that way.
 
 Air-gapped sites can do the same from the command line (`scripts/content_port_inprocess.py`:
 `key`, `list`, `export`, `verify`, `preview`, `import`; see content-port.md).
@@ -599,7 +657,7 @@ How instructors and authors then use them: [04 — Instructor guide](04-instruct
 | Everyone is stuck on the Rules of use page | A text nobody can agree to | `docs/runbooks/break-glass.md` "Rules of use" |
 | Readiness degraded: OpenSearch `yellow` | An index asks for a replica on a one-node cluster | Re-run `playbooks/70-telemetry.yml`; by hand: `install/README.md` "OpenSearch" |
 | Every range build fails with 403 | The vCenter role is missing a privilege, or is not assigned | The error names the privilege: 02 §3.2; then `playbooks/90-vsphere.yml` |
-| "MAC … is already used by VM …" | Another install, or a stray VM, uses this install's MAC slice | Give each install on a vCenter its own `tn_vsphere_mac_pool` (02 §5.3) |
+| "MAC … is already used by …" | Another install, or a stray VM, uses this install's MAC slice | Give each install on a vCenter its own `tn_vsphere_mac_pool` (02 §5.3) |
 | "built but not ready: … not reported by VMware Tools" | The guest never showed its planned address (Tools or cloud-init broken in the template) | Check the template; destroy the range; a new build of the template |
 | A VM's `template_login` is `accepted` (Not safe) | The template's build password still logs in | Rebuild that range; if it repeats, the template is wrong: report it to the test site |
 | A range refuses to build: image has no promoted build | The template was registered but not promoted | §4.2 step 5 |
@@ -636,7 +694,31 @@ It stays `warn` until the **network team signs off** the isolation model (guide 
 1. Build each range template the site will use. On each range's Certification card, every
    zone shows a probed row and "Isolated". A zone with no VM that has VMware Tools and a
    declared account shows "No probe VM": add a small, single-homed `probe: true` VM to that
-   zone of the template.
+   zone of the template. Range Designer has no control for this: open the template's YAML
+   in **Authoring Studio → Content** → the template → **Edit Template**, and add
+   `probe: true` to that zone's node entry. Press the dialog's **Validate** button to check
+   the YAML against the template schema — `probe` passes it — before pressing **Save
+   Changes**. The save itself does not schema-check: it refuses YAML aliases, oversize
+   documents, `port_group` pinning, `credentials`, and a few other structural problems,
+   but it stores YAML it cannot parse and never checks node keys against the schema, so
+   **Validate** is the check that catches them:
+
+   ```yaml
+       - id: probe-1
+         name: probe
+         role: server
+         os: ubuntu-24.04
+         vlan: <that zone's vlan name>
+         specs: {cores: 1, memory_mb: 512, disk_gb: 8}
+         probe: true
+   ```
+
+   Single-homed: exactly one NIC, on that zone's VLAN. `probe` is read from the template's
+   node list, so the key must sit on the node itself, not the zone. Range Designer works
+   the same key in — **Export YAML**, edit the node, **Import YAML**, then **Save
+   topology** (it saves a range's diagram, so the range must have no VMs yet; unknown node
+   keys ride in the diagram's `template_extra` and are written back) — but the direct YAML
+   edit above is simpler.
 2. **[DECISION]** With owner approval only, prove the check can fail: plant a route out on
    a range's edge firewall, press **Probe again**, see the verdict turn *Not safe*, remove the
    route, probe again.
@@ -661,7 +743,7 @@ from a `probe: true` VM using a staff-only account. More detail:
 Release, end-of-life and vulnerability data make content due for review: a feed entry that
 names something a golden template is built from (for example "Ubuntu 20.04 reached end of
 life") flags that template, and the flag flows to the range templates, scenarios, modules and
-courses that use it. Flags appear on **Calendar → Content view**; **Mark reviewed** clears
+courses that use it. Flags appear on **Calendar → Content**; **Mark reviewed** clears
 one. Off on a fresh install unless `site.yml` sets `tn_feeds_mode`.
 
 ### 7.1 Online: a daily pull
@@ -699,8 +781,10 @@ cd ~/truenorth
 ```
 
 (`--proxy http://<proxy>:<port>` if the machine needs one; an NVD key, if any, is read from
-`TN_FEEDS_NVD_API_KEY`.) At the site, a platform administrator imports it on the Content
-view's **Feeds** panel. TrueNorth refuses, and records, an unsigned bundle, one signed by
+`TN_FEEDS_NVD_API_KEY`.) At the site, a platform administrator imports it on Calendar →
+**Content**'s **Feeds** panel: the **Import bundle** button appears there once
+`tn_feeds_mode: bundle` is set and `site.yml` has re-run. TrueNorth refuses, and records,
+an unsigned bundle, one signed by
 another key, one changed after signing, one dated more than a day ahead, and one older than
 the last import. Each bundle replaces the last: to undo a bad one, import a newer, correct one.
 
