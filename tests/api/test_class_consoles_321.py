@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -745,6 +746,9 @@ def relay_auth(monkeypatch):
         async def validate_token(self, token):
             if token.startswith("good-"):
                 return {"sub": token[5:], "email": "x@example.test", "amr": ["pwd", "otp"]}
+            if token.startswith("exp"):  # 'exp<seconds>-<kc>': valid for that long, then its exp has passed
+                secs, kc = token[3:].split("-", 1)
+                return {"sub": kc, "email": "x@example.test", "amr": ["pwd", "otp"], "exp": int(time.time()) + int(secs)}
             raise HTTPException(401, "bad token")
 
     monkeypatch.setattr(auth, "AUTH_DISABLED", False)
@@ -817,6 +821,25 @@ def test_a_revocation_cuts_the_socket_through_the_real_policy_on_production_styl
         db_session.commit()
         ws.receive_bytes()
     assert e.value.code == code, e.value.reason
+
+
+def test_a_revocation_still_cuts_a_console_after_its_sign_in_token_expired(client, world, db_session, relay_auth):
+    """The token is checked at connect only; the real policy re-reads the account at every
+    renewal, so a disabled user is cut off even though the token's exp is long past."""
+    from app.console_backends.mock import RFB_GREETING
+    from starlette.websockets import WebSocketDisconnect
+
+    evt, ann, _ = _individual(db_session, world)
+    url = _console(client, world["ann"], ann.range_id).json()["url"]
+    token = url.rsplit("/", 1)[1]
+    with pytest.raises(WebSocketDisconnect) as e, client.websocket_connect(
+            f"/ws/console/{token}", subprotocols=["bearer", f"exp1-{world['ann'].keycloak_id}"]) as ws:
+        assert ws.receive_bytes() == RFB_GREETING
+        time.sleep(1.5)  # past the token's exp: the console is still open (a pre-fix relay closed 1001 here)
+        db_session.get(User, uuid.UUID(world["ann"].id)).is_active = False
+        db_session.commit()
+        ws.receive_bytes()
+    assert e.value.code == 1008, e.value.reason
 
 
 def test_a_grant_is_bound_to_the_session_it_was_issued_for(client, world, db_session):

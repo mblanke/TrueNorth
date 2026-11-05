@@ -16,7 +16,9 @@ Close codes (the reason is safe to show the Student):
 1008  Not allowed: no valid sign-in, or a grant that is unknown, another user's or
       another tenant's. Sent before the handshake completes (HTTP 403), as ``/ws/{channel}``.
 1000  The console was closed by the machine's side, cleanly.
-1001  The sign-in (token) expired while the console was open; reconnect with a fresh token.
+1001  The console has been open for ``MAX_OPEN_SECONDS``; reopen it. The sign-in token is checked
+      at connect only: it lasts minutes (Keycloak, 300 s) and a console a class session, so the
+      user's account (active, not deleted, its role) is re-read at every renewal instead.
 1008  Also: the user may no longer open this console (``policy.py``: the session window closed,
       the Student left the roll call, observer consoles were switched off, the role or the
       lab changed). Asked at connect and every ``service.RENEW_SECONDS`` while open.
@@ -40,7 +42,10 @@ Close codes (the reason is safe to show the Student):
 4504  The hypervisor did not answer in time.
 ====  ================================================================================
 
-The socket never outlives the session window or lab it was opened in, nor the sign-in.
+The socket never outlives the session window or lab it was opened in, nor ``MAX_OPEN_SECONDS``.
+The sign-in token is checked at connect only (it lasts 300 s); a sign-out or disable made at the
+identity provider alone reaches an open console through the AD status sync or the ceiling, not
+within minutes. Revoke in TrueNorth (disable the user, take the seat) to cut a console off now.
 """
 
 from __future__ import annotations
@@ -73,7 +78,7 @@ _upstream_logger.setLevel(logging.WARNING)
 
 router = APIRouter()
 
-CLOSE_FORBIDDEN, CLOSE_NORMAL, CLOSE_TOKEN_EXPIRED = 1008, 1000, 1001
+CLOSE_FORBIDDEN, CLOSE_NORMAL, CLOSE_MAX_OPEN = 1008, 1000, 1001
 CLOSE_TOO_BIG, CLOSE_SERVICE, CLOSE_IDLE, CLOSE_RATE = 1009, 1011, 4408, 4429
 CLOSE_GONE, CLOSE_BUSY, CLOSE_EXPIRED = 4404, 4409, 4410
 CLOSE_UNSUPPORTED = 1003
@@ -98,6 +103,10 @@ IDLE_SECONDS = 600
 #: Consecutive failed renewals (an exception, never a policy "no") the socket survives: it
 #: closes on this many. The tick is ``service.RENEW_SECONDS`` and the claim lasts three ticks.
 MAX_RENEW_FAILURES = 3
+#: The longest one socket stays open, whatever the window: a class day, below Keycloak's 10 h
+#: session limit. A backstop for a sign-out at the identity provider, which the relay does not
+#: see (it re-reads the account, not the token).
+MAX_OPEN_SECONDS = 8 * 3600
 
 
 _dial_pool = concurrent.futures.ThreadPoolExecutor(max_workers=DIAL_WORKERS, thread_name_prefix="tn-dial")
@@ -407,22 +416,24 @@ async def _pump(ws: WebSocket, upstream: Any, app: Any, facts: Any, holder: str,
         return CLOSE_IDLE, "The console was idle for too long"
 
     async def keep_claim() -> tuple[int, str]:
-        """Every few seconds: renew the claim and ask ``policy`` again, each on a session that
-        is gone again before the sleep. Ends the socket at the session window's end and at the
-        sign-in's."""
+        """Every few seconds: renew the claim and ask ``policy`` again (which re-reads the
+        account), each on a session that is gone again before the sleep. Ends the socket at the
+        session window's end and after ``MAX_OPEN_SECONDS``; not at the sign-in token's expiry,
+        which comes every few minutes (#432 audit)."""
         window = until
+        ceiling = time.time() + MAX_OPEN_SECONDS
         failures = 0  # consecutive failed renew/check steps (the database, not a denial)
         last_ok = time.monotonic()
         lease = service.LIVE_LEASE.total_seconds()
         while True:
-            ends = [e for e in (who.expires_at, window) if e is not None]
+            ends = [e for e in (ceiling, window) if e is not None]
             wait = float(service.RENEW_SECONDS)
             if ends:
                 wait = min(wait, max(min(ends) - time.time(), 0.0))
             await asyncio.sleep(wait)
             now = time.time()
-            if who.expires_at is not None and now >= who.expires_at:
-                return CLOSE_TOKEN_EXPIRED, "Your sign-in expired; reopen the console"
+            if now >= ceiling:
+                return CLOSE_MAX_OPEN, "This console has been open a long time; reopen it"
             if window is not None and now >= window:
                 return CLOSE_FORBIDDEN, "Your session has ended"
             try:

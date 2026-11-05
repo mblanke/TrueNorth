@@ -33,7 +33,7 @@
   TestClient has cancelled the app; under `isolated_db` its savepoint and the next socket's
   share one SQLite connection and release each other ("no such savepoint" →
   PendingRollbackError, then the next test's setup fails on `tenants.slug`).
-- Fix in tests/api/test_console_relay.py: `isolated_db` steps take turns (`_STEP_LOCK`);
-  test-side reads take the same lock. New test holds the clean-up's savepoint open and
-  fails without the lock.
+- The serialization itself landed first in #430 (`_ONE_STATEMENT_AT_A_TIME`); PR #431,
+  merged onto it, adds a deterministic regression test (holds the clean-up's savepoint open;
+  fails without the lock) and puts the 4409 test's post-socket read under the lock.
 - Next: merge the PR once CI is green.

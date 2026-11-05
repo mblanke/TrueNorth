@@ -29,6 +29,9 @@ from starlette.websockets import WebSocketDisconnect
 TENANT_A = uuid.UUID("00000000-0000-0000-0000-0000000000a1")
 TENANT_B = uuid.UUID("00000000-0000-0000-0000-0000000000b1")
 BASE = "wss://tn.test"
+# The tests' one SQLite connection serves every relay step and the test's own polling. Steps run on
+# pool threads; two at once release each other's savepoints. One at a time, as one connection can.
+_ONE_STATEMENT_AT_A_TIME = threading.RLock()
 
 
 def _tenant(db, tid):
@@ -120,54 +123,43 @@ def _closed_with(client, token, who="kc-ann", bearer=None) -> tuple[int, str]:
 def _wait_for(condition, seconds=3.0):
     """Poll until ``condition()`` holds, up to a deadline: the relay finishes (releases the
     grant, closes the hypervisor side) a moment after the browser has gone."""
+    def holds():
+        with _ONE_STATEMENT_AT_A_TIME:
+            return condition()
+
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
-        if condition():
+        if holds():
             return True
         time.sleep(0.02)
-    return condition()
+    return holds()
 
 
 def _released(db):
     def check():
-        with _STEP_LOCK:  # see isolated_db: the test's session must not begin inside a step's savepoint
-            db.expire_all()
-            return all(g.live_by is None and g.live_until is None for g in db.query(ConsoleGrant).all())
+        db.expire_all()
+        return all(g.live_by is None and g.live_until is None for g in db.query(ConsoleGrant).all())
 
     return check
-
-
-#: One relay step at a time on the test's one connection (``isolated_db``).
-_STEP_LOCK = threading.Lock()
 
 
 @pytest.fixture
 def isolated_db(client, db_session):
     """Each relay step on a session of its own that rolls back to a savepoint, so a step that
     raises (as it does in production, where the session is its own transaction) does not undo
-    the test's rows.
-
-    The steps share one SQLite connection, and its savepoints are a stack: two steps open at
-    once (the clean-up a closed socket's ``finally`` still runs on a worker thread after the
-    client has moved on, and the next socket's sign-in) release each other's savepoints, and
-    the connection's transaction is left unusable ("no such savepoint", PendingRollbackError)
-    for the rest of the test and the next one's setup. In production each step has a
-    connection of its own, so here they take turns (``_STEP_LOCK``); the test's own session
-    begins its reads under the same lock (``_released``)."""
+    the test's rows."""
     from app.db import get_db
     from app.main import app as fastapi_app
     from sqlalchemy.orm import sessionmaker
 
     def factory():
-        if not _STEP_LOCK.acquire(timeout=10):
-            raise RuntimeError("a relay step held the test database for 10 s")
         s = sessionmaker(bind=db_session.get_bind(), join_transaction_mode="create_savepoint", autoflush=False,
                          expire_on_commit=False)()
-        try:
-            yield s
-        finally:
-            s.close()
-            _STEP_LOCK.release()
+        with _ONE_STATEMENT_AT_A_TIME:  # held from the step's start to its close, on the step's own thread
+            try:
+                yield s
+            finally:
+                s.close()
 
     fastapi_app.dependency_overrides[get_db] = factory
 
@@ -338,12 +330,28 @@ def test_a_claim_whose_relay_died_lapses_and_the_grant_opens_again(client, world
         assert ws.receive_bytes() == RFB_GREETING
 
 
-def test_the_socket_closes_1001_when_the_sign_in_expires(client, world):
+def test_the_console_outlives_the_sign_in_token_it_was_opened_with(client, world):
+    """An access token lasts 300 s; a console a class session. The account is re-read at every
+    renewal (policy.check: active, not deleted, its role; tested with the real policy in
+    test_class_consoles_321.py), so the token's expiry no longer cuts every console off."""
     token = world.grant(world.ann)
-    with pytest.raises(WebSocketDisconnect) as e, _open(client, token, bearer="exp1-kc-ann") as ws:
+    with _open(client, token, bearer="exp1-kc-ann") as ws:
+        assert ws.receive_bytes() == RFB_GREETING
+        time.sleep(1.6)  # past the token's exp, over several renewals (RENEW_SECONDS = 0.1 here)
+        ws.send_bytes(b"still here")
+        assert ws.receive_bytes() == b"still here"
+
+
+@pytest.mark.parametrize("until", [None, 3600.0])
+def test_a_console_open_past_the_ceiling_closes_1001(client, world, monkeypatch, until):
+    """With no window end, and with a window that ends much later: the sooner of the two wins."""
+    monkeypatch.setattr(relay_router, "MAX_OPEN_SECONDS", 0.5)
+    world_verdict[0] = policy.Verdict(True, until=None if until is None else time.time() + until)
+    token = world.grant(world.ann)
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, token) as ws:
         ws.receive_bytes()  # the greeting
-        ws.receive_bytes()  # nothing more is sent: the close comes with the token's expiry
-    assert e.value.code == 1001
+        ws.receive_bytes()  # nothing more is sent: the close comes at the ceiling
+    assert e.value.code == 1001 and "open a long time" in e.value.reason
 
 
 # ── The machine and the hypervisor ───────────────────────────────────────────
@@ -777,7 +785,7 @@ def test_a_dial_whose_claim_lapsed_meanwhile_closes_4409(client, world, db_sessi
     monkeypatch.setattr(service, "record_dial", taken)
     code, reason = _closed_with(client, world.grant(world.ann))
     assert code == 4409 and "another window" in reason
-    with _STEP_LOCK:  # the closed socket's clean-up may still be running
+    with _ONE_STATEMENT_AT_A_TIME:  # the closed socket's clean-up may still be running
         db_session.expire_all()
         assert db_session.query(ConsoleGrant).one().dials == 0  # nothing was counted
 
@@ -1067,4 +1075,3 @@ def test_the_vsphere_adapter_can_be_held_view_only_by_the_relay():
 
     assert VsphereWebMKSConsole.supports_view_only is True
     assert VsphereWebMKSConsole.open_view_only is not MockConsole.open_view_only  # its own, not the base refusal
-
