@@ -5,12 +5,29 @@ installer has finished ([02-install-guide.md](02-install-guide.md)) and ends whe
 can run classes. Day-to-day upkeep (backups, upgrades, porting golden images, alerts) is in
 [06-operations-runbook.md](06-operations-runbook.md).
 
-Checked against `main` at `fd4f79a6` (2026-10-27, v1.2.0); reconciled with `main` at `353339c2`
-(2026-11-02) for site setup, the platform tenant, time zone, classes, roll-call domains,
-users, email help, unit readiness and content port. Sections 5 to 8 and 11 were not re-read
-end to end. Words follow
+Checked against tag `v1.2.0-rc17` (`dd98ace1`, the release under test, 2026-11-05): every
+UI label, route and installer variable named below was verified in that tree. Earlier reads:
+checked against `main` at `fd4f79a6` (2026-10-27, v1.2.0); reconciled with `main` at
+`353339c2` (2026-11-02) for site setup, the platform tenant, time zone, classes, roll-call
+domains, users, email help, unit readiness and content port. Sections 5 to 8 and 11 still
+owe a full end-to-end re-read against the tag; their named labels were spot-checked only.
+Words follow
 [GLOSSARY.md](../GLOSSARY.md). UI paths are written as **sidebar section → item → tab or
 card → button**.
+
+> **"Re-run the installer"** in this guide means the [02-install-guide.md](02-install-guide.md)
+> §6 command, run from `~/truenorth/install`, with the setting you want changed in
+> `inventory/site.yml` (the site inventory the installer created; always run with
+> `-i inventory/site.yml`):
+>
+> ```bash
+> cd ~/truenorth/install
+> ansible-playbook -i inventory/site.yml site.yml -K --ask-vault-pass
+> ```
+>
+> `-K` asks for the `tnadmin` sudo password and `--ask-vault-pass` for the vault password.
+> Add `--check` first for a dry run. The re-run re-renders the API's environment file and
+> brings the stack back up, so the change is live when it finishes.
 
 > **Things on this page that still have no screen** are marked **API only**. You do them with
 > a bearer token (see [Using the API](#using-the-api-for-the-api-only-steps)). They are
@@ -51,11 +68,17 @@ The installer created one account, the **bootstrap administrator**, from
 `tn_bootstrap_admin_upn`. It won't install without one. There is no `admin@truenorth.local`
 in production.
 
-- **With AD** (`tn_ldap_enabled: true`), you are that AD account and sign in with your
-  domain password. With `tn_keycloak_local_admin: true` the installer also keeps a local
-  **break-glass** account of the same name in Keycloak, for when AD is down.
-- **Without AD**, it is a local Keycloak account. Its first password is the generated
-  secret `bootstrap_admin_password` under `/srv/truenorth/config/secrets/` on TN-MGMT01.
+- **With AD** (`tn_ldap_enabled: true`) and `tn_keycloak_local_admin: true` — the setup the
+  [02-install-guide.md](02-install-guide.md) example inventory uses — the bootstrap
+  administrator is a **local** Keycloak account, never an AD account: preflight refuses a
+  `tn_bootstrap_admin_upn` inside `tn_domain`, so the name can never match a directory
+  account. You sign in with the generated secret `bootstrap_admin_password` under
+  `/srv/truenorth/config/secrets/` on TN-MGMT01, **not** a domain password. This is the
+  **break-glass** account: it still signs in when AD, the bind account or LDAPS is down.
+- **With AD and `tn_keycloak_local_admin: false`**, the installer disables the local account
+  and `tn_bootstrap_admin_upn` names an AD account instead: you sign in with that account's
+  domain password, and there is then no sign-in that works without the directory.
+- **Without AD**, it is a local Keycloak account too; same `bootstrap_admin_password`.
 
 Steps:
 
@@ -68,8 +91,12 @@ Steps:
 4. You land on the **Dashboard**. On a fresh install, nobody is asked to sign the Rules of
    use until you publish them (step 2).
 
-If you get no admin menu, you are not the bootstrap account: check the UPN in the installer
-variables.
+**No admin menu?** Two usual causes, in order. If you are the first **AD** administrator
+(not the break-glass account), your registration has probably not been approved with the
+role **Admin** yet, or you have not signed out and back in since the approval —
+[02-install-guide.md](02-install-guide.md) §7.2 walks through it. If you signed in as the
+bootstrap administrator itself and still see no admin menu, check the UPN you signed in with
+against `tn_bootstrap_admin_upn` in the installer variables.
 
 ---
 
@@ -176,7 +203,10 @@ A range clones golden templates. A build of a golden template is used only after
 platform administrator **promotes** it.
 
 1. Build and replicate the template with the template kit
-   (`infra/vsphere/packer/README.md`). Register-back records the build in TrueNorth.
+   (`infra/vsphere/packer/README.md`). Building it and registering the build in TrueNorth
+   (the kit's **register-back** step) is the test site's job and is walked through in
+   [06-operations-runbook.md](06-operations-runbook.md) §4; on a fresh site the templates
+   usually arrive already ported (06 §4.2).
 2. **Admin → Infrastructure → Golden images** tab. The table shows **Image**, **Status**,
    **Promoted build** and **Checksum**.
 3. Open the image. It lists its builds and the hosts that have no copy of each one.
@@ -234,7 +264,9 @@ curl -X POST https://<site>/api/result-transfer/trust-keys/<id>/retire -H "Autho
 
 The feeds flag golden templates **stale** when a new release, an end-of-life date or a
 known-exploited vulnerability affects them. They are set by `tn_feeds_mode`, and are **off**
-on a fresh install.
+on a fresh install — but the [02-install-guide.md](02-install-guide.md) example inventory
+sets `tn_feeds_mode: online`, so check which value your site's `inventory/site.yml` has
+before assuming either.
 
 | `tn_feeds_mode` | What happens |
 |---|---|
@@ -242,7 +274,7 @@ on a fresh install.
 | `online` | The worker with internet egress pulls endoflife.date, CISA KEV and the NVD daily at 04:10 UTC. Optional settings: `tn_feeds_http_proxy`, `tn_feeds_nvd_api_key`, `tn_feeds_nvd_min_cvss` (default 9.0). |
 | `bundle` | Air-gapped: the platform administrator imports a signed feed bundle. Set its public key in `tn_feeds_bundle_public_key`. |
 
-Change the mode in the installer variables and re-run the installer.
+Change the mode in `inventory/site.yml` and re-run the installer (top of this page).
 
 Check it at **Prepare & Operate → Calendar → Content → Feeds**. It shows **Off**, **Online**
 or **Signed bundles**, the last pull or import, and any errors. In bundle mode, the platform
@@ -305,14 +337,19 @@ Email is **optional**. Without it, TrueNorth still works, but sends nothing:
 
 The relay is set by `tn_smtp_host`, `tn_smtp_port` (587), `tn_smtp_security` (`starttls`,
 `tls` or `none`), `tn_smtp_username`, `tn_smtp_from_address` and `vault_smtp_password`. An
-empty host means email is off. **On v1.2.0 sites SMTP is parked:** no relay is set.
+empty host means email is off. **On a site installed by [02-install-guide.md](02-install-guide.md)
+SMTP is parked:** §6.4 deliberately leaves `tn_smtp_host` unset.
 
 **The banner.** While email is off, every admin sees a red banner on every page:
 
 > Email is not configured: onboarding emails, reminders and calendar invites are not being
 > sent.
 
-It can't be dismissed. It goes away once the relay is set and the API is restarted. Its
+It can't be dismissed, and it stays until a relay is set: put the `tn_smtp_*` variables in
+`inventory/site.yml` and re-run the installer (top of this page) — it re-renders the API's
+environment and brings the API back up with the relay configured, and the banner is gone
+([02-install-guide.md](02-install-guide.md) §6.4; prove delivery with
+`ansible-playbook -i inventory/site.yml playbooks/alert-test.yml --ask-vault-pass`). Its
 **Set up email** link opens a help page bundled in the app (**Set up email**, at
 `/admin/help/email`), so an air-gapped site can read it; it summarises `install/README.md`,
 "Email (SMTP)". Instructors see a matching warning on the roll call.
@@ -478,11 +515,34 @@ decision.
 
 ## Using the API for the API-only steps
 
-1. Get a token from a terminal with the device grant (`truenorth-cli` client), as described
-   in [api.md](../api.md), "Keycloak OIDC JWT Flow". Approve the device code in a browser
-   signed in as yourself.
-2. Call `https://<site>/api/<path>` with `-H "Authorization: Bearer $TOKEN"`. Tokens last 5
-   minutes.
+1. Get a token from a terminal with the device grant (`truenorth-cli` client, a browser
+   signed in as yourself approves it). `<issuer>` is `KEYCLOAK_ISSUER`, which the installer
+   renders as `https://<site>/auth/realms/truenorth`. Copy-paste, one step at a time:
+
+   ```bash
+   ISSUER=https://<site>/auth/realms/truenorth
+
+   # 1. Ask for a device code. Open verification_uri_complete from the reply in a browser
+   #    signed in as yourself and approve.
+   curl -s -X POST "$ISSUER/protocol/openid-connect/auth/device" \
+     -d "client_id=truenorth-cli"
+
+   # 2. Poll with the device_code from that reply (it answers authorization_pending until
+   #    you approve). Copy the access_token it prints:
+   curl -s -X POST "$ISSUER/protocol/openid-connect/token" \
+     -d "grant_type=urn:ietf:params:oauth:grant-type:device_code" \
+     -d "client_id=truenorth-cli" \
+     -d "device_code=<device_code>" | jq -r .access_token
+
+   export TOKEN=<the printed token>
+   ```
+
+   The last step needs `jq` or a similar JSON tool. Tokens last **5 minutes**
+   (`expires_in: 300`); when calls start answering 401, run the flow again — start from
+   step 1, a new device code each time.
+2. Call `https://<site>/api/<path>` with `-H "Authorization: Bearer $TOKEN"`. Both
+   `https://<site>/api/<path>` and `https://<site>/api/v1/<path>` reach the same route
+   (nginx strips `/api/` before forwarding; `/api/v1/...` is the versioned alias, ADR 0002).
 
 Every change is audited under your name.
 
@@ -493,8 +553,9 @@ Every change is audited under your name.
 - **"I sign in and land back on the login page."** The API is unreachable: check
   `https://<site>/api/health`.
 - **"Everyone's access request shows no suggested role."** The token carries no `groups`
-  claim. Fix Keycloak, then re-run `playbooks/60-keycloak.yml` ([identity.md](../identity.md),
-  "The claim contract").
+  claim. Fix Keycloak, then, from `~/truenorth/install`, re-run
+  `ansible-playbook -i inventory/site.yml playbooks/60-keycloak.yml -K --ask-vault-pass`
+  ([identity.md](../identity.md), "The claim contract").
 - **"An approval failed: a user with email … already exists from source ad."** Two identity
   subjects share one address. A person must sort it out; TrueNorth won't re-point an
   account.
