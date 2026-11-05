@@ -42,7 +42,10 @@ Close codes (the reason is safe to show the Student):
 4504  The hypervisor did not answer in time.
 ====  ================================================================================
 
-The socket never outlives the session window or lab it was opened in, nor the sign-in.
+The socket never outlives the session window or lab it was opened in, nor ``MAX_OPEN_SECONDS``.
+The sign-in token is checked at connect only (it lasts 300 s); a sign-out or disable made at the
+identity provider alone reaches an open console through the AD status sync or the ceiling, not
+within minutes. Revoke in TrueNorth (disable the user, take the seat) to cut a console off now.
 """
 
 from __future__ import annotations
@@ -75,7 +78,7 @@ _upstream_logger.setLevel(logging.WARNING)
 
 router = APIRouter()
 
-CLOSE_FORBIDDEN, CLOSE_NORMAL, CLOSE_TOKEN_EXPIRED = 1008, 1000, 1001
+CLOSE_FORBIDDEN, CLOSE_NORMAL, CLOSE_MAX_OPEN = 1008, 1000, 1001
 CLOSE_TOO_BIG, CLOSE_SERVICE, CLOSE_IDLE, CLOSE_RATE = 1009, 1011, 4408, 4429
 CLOSE_GONE, CLOSE_BUSY, CLOSE_EXPIRED = 4404, 4409, 4410
 CLOSE_UNSUPPORTED = 1003
@@ -100,9 +103,10 @@ IDLE_SECONDS = 600
 #: Consecutive failed renewals (an exception, never a policy "no") the socket survives: it
 #: closes on this many. The tick is ``service.RENEW_SECONDS`` and the claim lasts three ticks.
 MAX_RENEW_FAILURES = 3
-#: The longest one socket stays open, whatever the window: a backstop for a sign-out at the
-#: identity provider, which the relay does not see (it re-reads the account, not the token).
-MAX_OPEN_SECONDS = 12 * 3600
+#: The longest one socket stays open, whatever the window: a class day, below Keycloak's 10 h
+#: session limit. A backstop for a sign-out at the identity provider, which the relay does not
+#: see (it re-reads the account, not the token).
+MAX_OPEN_SECONDS = 8 * 3600
 
 
 _dial_pool = concurrent.futures.ThreadPoolExecutor(max_workers=DIAL_WORKERS, thread_name_prefix="tn-dial")
@@ -429,7 +433,7 @@ async def _pump(ws: WebSocket, upstream: Any, app: Any, facts: Any, holder: str,
             await asyncio.sleep(wait)
             now = time.time()
             if now >= ceiling:
-                return CLOSE_TOKEN_EXPIRED, "This console has been open a long time; reopen it"
+                return CLOSE_MAX_OPEN, "This console has been open a long time; reopen it"
             if window is not None and now >= window:
                 return CLOSE_FORBIDDEN, "Your session has ended"
             try:

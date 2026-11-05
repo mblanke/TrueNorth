@@ -342,8 +342,11 @@ def test_the_console_outlives_the_sign_in_token_it_was_opened_with(client, world
         assert ws.receive_bytes() == b"still here"
 
 
-def test_a_console_open_past_the_ceiling_closes_1001(client, world, monkeypatch):
+@pytest.mark.parametrize("until", [None, 3600.0])
+def test_a_console_open_past_the_ceiling_closes_1001(client, world, monkeypatch, until):
+    """With no window end, and with a window that ends much later: the sooner of the two wins."""
     monkeypatch.setattr(relay_router, "MAX_OPEN_SECONDS", 0.5)
+    world_verdict[0] = policy.Verdict(True, until=None if until is None else time.time() + until)
     token = world.grant(world.ann)
     with pytest.raises(WebSocketDisconnect) as e, _open(client, token) as ws:
         ws.receive_bytes()  # the greeting
