@@ -330,12 +330,25 @@ def test_a_claim_whose_relay_died_lapses_and_the_grant_opens_again(client, world
         assert ws.receive_bytes() == RFB_GREETING
 
 
-def test_the_socket_closes_1001_when_the_sign_in_expires(client, world):
+def test_the_console_outlives_the_sign_in_token_it_was_opened_with(client, world):
+    """An access token lasts 300 s; a console a class session. The account is re-read at every
+    renewal (policy.check: active, not deleted, its role; tested with the real policy in
+    test_class_consoles_321.py), so the token's expiry no longer cuts every console off."""
     token = world.grant(world.ann)
-    with pytest.raises(WebSocketDisconnect) as e, _open(client, token, bearer="exp1-kc-ann") as ws:
+    with _open(client, token, bearer="exp1-kc-ann") as ws:
+        assert ws.receive_bytes() == RFB_GREETING
+        time.sleep(1.6)  # past the token's exp, over several renewals (RENEW_SECONDS = 0.1 here)
+        ws.send_bytes(b"still here")
+        assert ws.receive_bytes() == b"still here"
+
+
+def test_a_console_open_past_the_ceiling_closes_1001(client, world, monkeypatch):
+    monkeypatch.setattr(relay_router, "MAX_OPEN_SECONDS", 0.5)
+    token = world.grant(world.ann)
+    with pytest.raises(WebSocketDisconnect) as e, _open(client, token) as ws:
         ws.receive_bytes()  # the greeting
-        ws.receive_bytes()  # nothing more is sent: the close comes with the token's expiry
-    assert e.value.code == 1001
+        ws.receive_bytes()  # nothing more is sent: the close comes at the ceiling
+    assert e.value.code == 1001 and "open a long time" in e.value.reason
 
 
 # ── The machine and the hypervisor ───────────────────────────────────────────

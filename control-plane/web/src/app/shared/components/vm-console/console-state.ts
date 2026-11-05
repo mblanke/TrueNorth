@@ -25,7 +25,7 @@ const CLOSED = (text: string): [ConsoleNotice['status'], string] => ['closed', t
 /** WebSocket close codes of `/ws/console/{grant}` (console_relay/router.py) in the Student's words. */
 const CLOSE_TEXT: Record<number, [ConsoleNotice['status'], string]> = {
   1000: ENDED('The console was closed.'),
-  1001: ENDED('Your sign-in expired. Press Reconnect to carry on.'),
+  1001: ENDED('This console has been open a long time. Press Reconnect to carry on.'),
   1006: CLOSED('TrueNorth could not open the console, or the connection was lost. Press Reconnect.'),
   1008: CLOSED('You cannot open this console now: your session window may have closed or your access changed.'),
   1009: CLOSED('The console was closed because your browser sent a message that was too large.'),

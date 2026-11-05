@@ -4,7 +4,7 @@ import { relayProtocols } from './rfb-client';
 describe('closeNotice', () => {
   const cases: [number, 'ended' | 'closed', string][] = [
     [1000, 'ended', 'closed'],
-    [1001, 'ended', 'sign-in expired'],
+    [1001, 'ended', 'open a long time'],
     [1006, 'closed', 'could not open the console'],
     [1008, 'closed', 'session window'],
     [1009, 'closed', 'too large'],
