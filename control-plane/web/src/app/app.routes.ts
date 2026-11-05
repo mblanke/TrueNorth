@@ -304,22 +304,6 @@ export const routes: Routes = [
     title: 'Exercise template - TrueNorth Range',
   },
   {
-    // Exercise templates (ADR 0017): staff who create exercises. Before exercises/:id.
-    path: 'exercises/templates',
-    canActivate: [authGuard, onboardingGuard, pageGuard('authoringExercises')],
-    loadComponent: () =>
-      import('./features/exercise-templates/exercise-templates.component').then(m => m.ExerciseTemplatesComponent),
-    title: 'Exercise templates - TrueNorth Range',
-  },
-  {
-    path: 'exercises/templates/:id',
-    canActivate: [authGuard, onboardingGuard, pageGuard('authoringExercises')],
-    loadComponent: () =>
-      import('./features/exercise-templates/exercise-template-editor.component').then(
-        m => m.ExerciseTemplateEditorComponent),
-    title: 'Exercise template - TrueNorth Range',
-  },
-  {
     path: 'exercises',
     canActivate: [authGuard, onboardingGuard],
     loadComponent: () =>
