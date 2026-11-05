@@ -5,10 +5,20 @@ from creation to close-out. The site must already be set up by an administrator
 ([03-admin-first-day.md](03-admin-first-day.md)). Your Students' side is in
 [05-student-quick-start.md](05-student-quick-start.md).
 
+**Before you start.** You sign in the same way the administrator does in
+[03-admin-first-day.md](03-admin-first-day.md) §1: press **Sign in with SSO**, and on the
+first sign-in Keycloak asks you to enrol a second factor (**Mobile Authenticator Setup** —
+instructors need one by default, like admins, range ops and observers) and to sign the
+Rules of use. Guide 03 §1 walks through it; this guide picks up after that.
+
 Checked against `main` at `fd4f79a6` (2026-10-27, v1.2.0); sections 1 to 9 and the exercise
 templates part of section 12 were reconciled with `main` at `353339c2` (2026-11-02), and
 section 7's console parts with the source at `eec53906` (2026-11-05); sections 10, 11 and the
-rest of 12 were not re-read end to end. Words follow
+rest of 12 were not re-read end to end. The release under test is `v1.2.0-rc17`: apart from
+section 7's console parts and the reconciliation edits of 2026-11-05 made to this guide, its
+text is rc17's verbatim, and those console parts describe the source after rc17 — on rc17
+itself a console opens as a one-time ticket from the hypervisor, not relayed through
+TrueNorth. Words follow
 [GLOSSARY.md](../GLOSSARY.md). UI paths are written as **sidebar section → item → card →
 button**.
 
@@ -86,7 +96,11 @@ still override it (section 5).
 
 ## 2. Roll call
 
-**Classes → <class> → Roll call**.
+**Classes → <class> → Roll call**. Classes is one page: a class has no page of its own to
+click through to. Press **Roll call** on the class's card, and the class's **Roll call**,
+**Attendance**, **Sessions and ranges** and **Close-out** cards all appear below the list —
+they are hidden until a class is selected. (The calendar's **Roll call** link on a session
+opens the same page with the class already selected.)
 
 1. Paste the Students' email addresses into **Paste Students' email addresses** (one per line,
    or separated by commas), then press **Add**. Or use **upload a CSV** with an `email`
@@ -102,8 +116,9 @@ enrolled on the course. There is no Request access and no waiting.
 roll call for <class>" when you add them. If they still haven't signed in, they get one
 reminder the day before the class starts: "Reminder: <class> starts tomorrow".
 
-- "The day before" is the day on the site's calendar (the site time zone the administrator
-  set at install; UTC if none). It can still look a day off if you are in another zone.
+- "The day before" is the day on the site's calendar (the site time zone: the
+  `tn_site_timezone` the administrator set at install, else the host's own zone, else UTC).
+  It can still look a day off if you are in another zone.
 - You may send at most 100 such emails a day. Anything over that is listed as "not
   emailed".
 - A Student you **remove and add again** is treated as new: emailed again, and only a
@@ -162,7 +177,11 @@ invites.
 **Prepare & Operate → Schedule → Book a session** (or **Calendar → Events → Book a
 session**):
 
-1. **Name**, **Range template**, **Day**, **From**, **To**. **Scenario** is optional.
+1. **Name**, **Range template**, **Day**, **From**, **To**. **Scenario** is optional: pick
+   one when the session is to have a Live Class — choosing a Scenario here is what creates
+   the exercise on the range when it is built (section 7). Without it the session has no
+   exercise of its own; an exercise made by hand under **Exercises → New Exercise**
+   (section 12) is made on a range you choose there, not on the class session's.
 2. **Session of a class** → pick your class. Only the lead (or an admin) sees it. The course
    is filled in and locked, and the form says it needs approval.
 3. **Ranges**:
@@ -231,6 +250,11 @@ They are torn down after the class's last day, or earlier:
 
 **Classes → <class> → Sessions and ranges** shows each session's mode and each range's state:
 **Not built yet**, **Building**, **Ready**, **Failed**, **Tearing down** or **Torn down**.
+Each range row also names its owner: the Student's name for their own range, "Shared (the
+whole class)" for a collective one. A seat range's own name is "<class> seat <8 characters>"
+where the 8 characters are the roll-call entry's id, not the Student's — so match a seat to
+its Student by the row's owner here, and find the range in
+**Create → Authoring Studio → Ranges** by that name.
 **Retry** rebuilds a failed range; a failed seat holds up nobody else.
 
 **Teams (collective sessions):**
@@ -297,7 +321,11 @@ range's, only while a collective session is under way).
   Student machines, the same as every other Student there; teams have no machines of their
   own.
 - A Student's range shows **paused** on My classes while its machines are stopped, stopping
-  or starting. Staff pages still say **ready**. Join waits until it is running again.
+  or starting. Staff pages still say **ready**. Join waits until it is running again. The
+  machines are powered back on from **Create → Authoring Studio → Ranges** → the **Start**
+  icon on the range's row (it appears once the machines are stopped; the row then says
+  **starting** until they run, and the Student can Join). **Stop** and **Start** there are
+  the API's `POST /ranges/{id}/stop` and `/start`, which instructors may call.
 
 **Your view of a range.** Open it from **Create → Authoring Studio → Ranges** (click the range
 name). **Credentials → Show accounts** lists every account; each password stays masked until
@@ -305,7 +333,9 @@ you reveal it, and every reveal is audited. The same page has the range's operat
 recovery and snapshots. Observers never see passwords.
 
 **Live Class.** **Prepare & Operate → Ops Center**, or **Calendar → Events → <session> → Live
-Class**. It works per **exercise**, so you get it for collective sessions that run one.
+Class**. It works per **exercise**, so you get it for collective sessions that run one. On
+the Calendar the **Live Class** button appears on every class session's details; on a session
+with no exercise it opens an Ops Center page asking you to select an exercise instead.
 
 - It shows **Needs attention**, the **Roster** and a Student drawer with **Reset lab…**.
 - **Message** and **Extend lab time** are not available yet.
@@ -329,10 +359,15 @@ not screenshots.
   same grid. **By default they get the live status only**: the page says "Observers see the
   live status only: consoles are off for observers on this site". The owner has not yet
   decided to allow observers to watch Students' screens. (The console relay now drops an
-  observer's keyboard, mouse and clipboard input itself, so the setting is safe to turn on.) The setting is `CLASS_OBSERVER_CONSOLES` on the API, off by default, and the
-  installer has no variable for it, so on an installer-built site it stays off. Where a
-  site's administrator has turned it on, an observer may open consoles on the **Students'
-  machines only**; their console is view-only: keys, mouse and clipboard are not passed on.
+  observer's keyboard, mouse and clipboard input itself, so the setting is safe to turn on.)
+  The setting is the environment variable `CLASS_OBSERVER_CONSOLES` on the API container, off
+  by default. On an installer-built site it **cannot be turned on** in v1.2.0: the installer
+  has no variable for it, and the compose file gives the API an explicit environment list
+  that does not include it — setting it in the site's `.env` does not reach the container.
+  Turning it on means editing the compose file's api environment by hand, which is a local
+  change outside what the installer sets or supports. Where it has been turned on that way,
+  an observer may open consoles on the **Students' machines only**; their console is
+  view-only: keys, mouse and clipboard are not passed on.
 - Observers never see range passwords.
 
 Observers also see the calendar, roll call, sessions and ranges, attendance, close-out and
@@ -366,7 +401,8 @@ session."*):
 seat, has a row:
 
 - **Student**, **Attended**, **Course work**;
-- **Detections** (not shown on Unclassified sites);
+- **Detections** (not shown on **Unclassified** sites — whether scores appear at all depends
+  on the site's classification level, `tn_classification_level`, set at install: guide 02 §5);
 - **Suggested**, **Result**, **Comment** (up to 1000 characters).
 
 **Suggested** is pre-filled:
@@ -440,8 +476,15 @@ link is shown once. A staff feed holds the whole tenant's approved bookings, not
 ## 11. Self-serve labs, and "Labs are busy, next free at HH:MM"
 
 Self-serve modules have labs that a Student starts on demand, without a booking. On v1.2.0,
-they start from the course's Moodle activity **Start lab: <module>**. There is no Start lab
+they start from the course's activity on the site's Moodle: one **Start lab: <module title>**
+activity per lab module, created when the course is published to Moodle. There is no Start lab
 button in TrueNorth itself.
+
+> **Moodle is optional.** It is installed only when the installer's `tn_moodle_enabled` is
+> true (false by default), and a course reaches it only when the course's accepted release is
+> published to the site's Moodle. Until both, the course page has no **Open in Moodle**
+> button and the Student has no Start lab to press. Ask your administrator whether the site
+> has Moodle and whether the course has been published to it.
 
 Self-serve labs only use the **capacity left over** after approved classes, your class's
 whole span included, plus everything running now. When a lab doesn't fit, the Student sees:
@@ -460,8 +503,31 @@ before.
 
 **Labs inside your class.** A lab of your course can draw on a session's capacity instead of
 the leftover, and then ends with your class. This needs a **collective session with no range
-template and no range**. The Schedule form can't create one on v1.2.0 (it requires a
-template), so ask an administrator to book it through the API.
+template and no range** for the class's course. The Schedule form can't create one on v1.2.0
+(it requires a template). The API can, and the class's **lead** may send it themselves (an
+administrator can too) — it is the same booking the form makes, so it waits for approval like
+any class session:
+
+    POST /api/schedule/events
+    {
+      "name": "C201-26-03 lab window",
+      "start_time": "2026-11-10T13:00:00Z",
+      "end_time": "2026-11-10T17:00:00Z",
+      "class_id": "<the class's id — GET /api/classes lists yours>",
+      "range_mode": "collective",
+      "vcpu_total": 32,
+      "ram_mb_total": 131072,
+      "disk_gb_total": 500
+    }
+
+No `template_id`, `range_id`, `exercise_id` or `scenario_id`: a collective session needs none
+of them (only an individual session needs a template). The typed totals are the capacity the
+session holds for the course's labs. The session holds that capacity from when it is approved
+(scheduled), but a lab can draw on it only from shortly before the session's window starts —
+within the scheduler's provisioning lead (the `SCHEDULER_PROVISION_LEAD_MIN` setting on the
+API container, 30 minutes by default) — until the window ends, only within what the session
+sized, and only for the class's own course. The endpoint is in the published contract
+(`docs/interfaces/openapi.json`).
 
 **Idle labs** close after **4 hours** without use, with an in-app warning 15 minutes before.
 Students who only use Moodle don't see that warning. No lab lasts more than 7 days.
@@ -586,10 +652,12 @@ this guide cannot point you to one. Do not promise Students these routes yet.
 
 ## Known gaps (tell your administrator if they bite)
 
-- Observer consoles are off unless an administrator turns on `CLASS_OBSERVER_CONSOLES` on
-  the API, which the installer cannot yet do. Observers get the live status grid only.
+- Observer consoles cannot be turned on at an installer-built site in v1.2.0: the installer
+  has no variable for `CLASS_OBSERVER_CONSOLES` and the compose file does not pass it to the
+  API container (section 7 has the detail). Observers get the live status grid only.
 - Teams are split by hand, not automatically.
-- A lab-drawing class session can't be booked from the Schedule form.
+- A lab-drawing class session can't be booked from the Schedule form — it takes the API call
+  shown in section 11.
 - With email off, a Student who nobody could notify keeps their seat, so a Student who never
   signs in stays on the roll call until you **Remove** them.
 
