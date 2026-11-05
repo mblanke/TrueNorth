@@ -1,4 +1,4 @@
-# Resume — 2026-10-27 (product section; the box section is older, as marked)
+# Resume — 2026-11-05 (product section; the box section is older, as marked)
 
 Read this first after a restart. It describes the current state. History is in
 `git log` and `docs/hardening/`. Product state, module by module: `docs/current-state.md`.
@@ -11,8 +11,13 @@ Releasing: `docs/release.md`.
   diverged before, so check `git rev-list --left-right --count main...github/main` before
   branching "from main". `feat/aar-pdf-designer-xapi` is an old line, not the base.
 - **Release status:** `v1.2.0` is not tagged yet (`v1.1.0` was released 2026-10-09). The
-  newest candidate is `v1.2.0-rc15` (2026-10-22). It **predates ADR 0014**: the classes,
-  approval and calendar work (#277, #291–#312) is on main but in no release candidate yet.
+  newest candidate is `v1.2.0-rc19` (tagged 2026-11-05 UTC, commit `d96f8074`). Verify with
+  `git for-each-ref --sort=-v:refname refs/tags | head`; do not copy a "newest" tag into
+  prose without re-running it. The classes, approval and calendar work (ADR 0014, #277,
+  #291–#312) are in `v1.2.0-rc18` and later candidates (`git merge-base --is-ancestor
+  35c4cece v1.2.0-rc18`), as is the console relay proper (#366, #427/#428, #384); its
+  follow-ups #430 and #442 first appear in `v1.2.0-rc19` (`git merge-base --is-ancestor
+  d96f8074 v1.2.0-rc19`).
   - Changes: `CHANGELOG.md`.
   - Known limitations, simulator-only evidence and the staging record:
     `docs/release-notes/v1.2.0.md`.
@@ -27,12 +32,17 @@ Releasing: `docs/release.md`.
   - course releases and publishing, LMS, cmi5, result transfer;
   - wiki, support tickets, notifications.
 
-  Everything up to #314 is merged, except #315 (unit readiness), which is in review.
+  #315 (unit readiness) is merged (`176a2336`); what is on main since is
+  `git log --oneline main` (use `github/main` where a remote is configured) — check
+  rather than trust a list written here.
 - **H6 is fixed** (#131): every vSphere operation uses the range's own tenant's vCenter
   credentials. Like Greyspace on vSphere (#133) and the VyOS/OPNsense configs, it is proven
   on vcsim and fakes only: **no real vCenter run yet**.
-- **Open PRs** (2026-10-27): #315 (unit readiness, ADR 0014 item 12), #92 (session
-  coordinator), #51 (codereview1 rev 3). Check each against main before acting on it.
+- **Open PRs** — not verified at eec5390 (CI/staging artifact; this clone has no
+  network to GitHub): on
+  2026-10-27 the open ones were #92 (session coordinator) and #51 (codereview1 rev 3).
+  #315 (unit readiness, ADR 0014 item 12) has merged since (`176a2336`). Check each
+  against main before acting on it.
 - **Open issues to know about:**
   - #273: the installer does not pass `PLATFORM_TENANT_ID`, so after a second tenant
     nobody is platform administrator.
