@@ -2,7 +2,9 @@
 
 **For:** the person installing TrueNorth (the owner or another team).
 **Before you start:** every item on the [01 — Site prerequisites](01-site-prerequisites.md)
-checklist is ticked.
+checklist is ticked, **and** you have the golden templates' build passwords from the
+custodians of the test site's build record (06 §4) — §5.2 needs them, and preflight
+refuses to pass without them.
 **After this guide:** [03 — Admin first day](03-admin-first-day.md).
 
 This guide takes you from a signed TrueNorth release to a running platform:
@@ -24,6 +26,34 @@ through it for one site.
 
 Conventions: `<placeholders>`, **[DECISION]** and the glossary terms are as in guide 01.
 `$` lines run as `tnadmin` on the TrueNorth VM unless a step says otherwise.
+
+## Site values this guide needs
+
+Guide 01 collects many site values; these are not among them, and nothing else asks for
+them. Write them down before §1 and have the sheet at hand in §5.3. Each row says where
+the value comes from — none is invented here:
+
+| Placeholder | Where it comes from | Format and notes |
+|---|---|---|
+| `<ad-domain>` | The site's AD domain | DNS name, e.g. `corp.example.com` |
+| `<dc-ip>` | The domain controller's address | IPv4 |
+| `<dns1>`, `<dns2>` | The site's DNS servers, normally the DCs | IPv4, comma-separated on the installer's Network screen |
+| `<ntp-server>` | The site's time source, normally the DCs (**[DECISION]** in §1.3) | Host name or IP |
+| `<proxy-host>`, `<port>` | The site's egress proxy, if internet access goes through one | `http://<proxy-host>:<port>`; see the proxy note in §1.3 |
+| `<datacenter>` | vCenter inventory | Exactly as vCenter shows it; §3.3's `govc find` lists it |
+| `<range-cluster>` | vCenter inventory: the cluster holding the range hosts | Exactly as vCenter shows it |
+| `<management-port-group>` | vCenter networking: the port group the management VLAN (`<vlan-mgmt>`, guide 01) sits on | Port-group name exactly as vCenter shows it |
+| `<management-host-1-name-in-vcenter>`, `<management-host-2-name-in-vcenter>` | §3.3's `govc find '/<datacenter>/host' -type h` | Host names exactly as vCenter shows them |
+| `<one-range-host>` | The range hosts (guide 01's host table) | Its `<one-range-host>-local` datastore must exist |
+| `<a-range-host-mgmt-ip>` | One range host's management address | IPv4 |
+| `<vcenter-ip>` | `dig +short <vcenter-fqdn>` (§1.3), or the site's vCenter record | IPv4 |
+| `<enclave-id>` | Your choice (**[DECISION]** in §5.3) | 1-63 characters: lowercase letters, digits and hyphens, starting and ending with a letter or digit (preflight enforces this) |
+| `<organisation name>` | Your choice (**[DECISION]**); the site's name for this deployment | Becomes the tenant's display name |
+| `<smoke-account-password>` | Whoever created `<smoke-upn>` (guide 01 §7) holds it | The AD account's password; §5.2 puts it in `smoke.yml` |
+
+The appendices add their own values (the depot, AI node, DC build); each appendix says
+where its placeholders come from. `tn_classification_level` (§5.3) must be `unclassified`,
+`secret` or `top_secret` — preflight refuses anything else.
 
 ---
 
@@ -141,6 +171,28 @@ dig +short <dc-fqdn>
 
 Each must answer. A missing answer is a DNS record to add (guide 01 §5.1) before going on.
 
+**If internet access goes through the site proxy:** the Proxy screen you filled in §1.1
+configures apt only. The tools this guide uses from §2 on — pip, curl, git clone, cosign,
+`ansible-galaxy` — read the shell environment instead, and the Docker daemon pulls images
+on its own, outside any shell. Export the proxy in every shell you install from:
+
+```bash
+export https_proxy=http://<proxy-host>:<port> http_proxy=http://<proxy-host>:<port>
+export no_proxy=localhost,127.0.0.1
+```
+
+None of the installer's proxy settings covers these pulls: `tn_feeds_http_proxy`
+(`inventory/group_vars/all/main.yml:321`) covers only the content feeds' daily pull after the
+install (`install/README.md:1126`, "Content feeds"), and `tn_depot_apt_proxy` (§5.3)
+(`inventory/group_vars/all/main.yml:422`) points the range machines at the depot's apt cache —
+neither is read for the installer's own downloads. For the Docker daemon's own pulls, give it the
+proxy with a systemd drop-in for `docker.service` (`/etc/systemd/system/docker.service.d/proxy.conf`,
+setting `HTTP_PROXY`/`HTTPS_PROXY` in its `[Service]` section, then `sudo systemctl daemon-reload
+&& sudo systemctl restart docker`) — Docker's documented mechanism. That covers the image
+pulls; the containers' own outbound download after the install is the content feeds' daily
+pull, which `tn_feeds_http_proxy` covers. If the site will not
+grant a proxy path, use the air-gapped install instead (Appendix A).
+
 Reboot once, so the upgraded kernel is the one running:
 
 ```bash
@@ -234,10 +286,14 @@ govc permissions.set -principal '<svc-truenorth>' -role TrueNorth-Provision -pro
 govc permissions.ls '/<datacenter>' | grep TrueNorth-Provision
 ```
 
-This list is derived from what the provisioner calls. The reference lab's role was made by
-a PowerCLI script in the separate deployment repository and holds more privileges; if a
-range build later fails with a 403, the error names the missing privilege: add it with
-`govc role.update -a TrueNorth-Provision <privilege>`. Add `Cryptographer.*` privileges
+This list is hand-derived from what the provisioner calls — it is **not** verified
+privilege-by-privilege against vCenter, and nothing in this repository tests it. Where the
+deployment repo's script is available, prefer it as the source of truth: the reference
+lab's role was made by `scripts/create-vcenter-provision-role.ps1` (TrueNorth-Demo, see
+the site runbook §4.2) and holds more privileges than this list. Expect the first range
+build to be where a missing privilege shows up: the api returns a 403 that names it — add
+it with `govc role.update -a TrueNorth-Provision <privilege>` and record the addition in
+the site record. Add `Cryptographer.*` privileges
 only if you build Windows 11 templates with a vTPM.
 
 ### 3.3 Folders and the range cluster
@@ -318,17 +374,18 @@ If any check fails, **stop**: do not install that release. Report it to the owne
 
 ## 5. Configure the installer
 
-All site configuration lives in four places under `~/truenorth/install/`, none of them
+All site configuration lives in five places under `~/truenorth/install/`, none of them
 tracked by git:
 
 | File | Holds |
 |---|---|
 | `inventory/site.yml` | This site's settings (§5.3) |
 | `inventory/group_vars/all/vault.yml` | Secrets, encrypted with ansible-vault (§5.2) |
+| `smoke.yml` | The smoke-test sign-in, vaulted (§5.2) |
 | `files/corp-root-ca.cer`, `files/tls/truenorth.crt`, `files/tls/truenorth.key` | The site CA and TrueNorth's certificate (§5.4) |
 | `files/backup-escrow.pub` | The backup escrow public key (§5.1) |
 
-Keep a copy of all four off the VM (06 §3.1): rebuilding after a host loss needs them.
+Keep a copy of all five off the VM (06 §3.1): rebuilding after a host loss needs them.
 
 ### 5.1 The backup escrow key
 
@@ -354,8 +411,20 @@ cp inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
 nano inventory/group_vars/all/vault.yml
 ```
 
-Set these, and leave every other value empty (empty values are generated on the VM, once,
-and kept):
+The two template build passwords are not yours to invent: they come from the custodians
+of the test site's build record (06 §4), and preflight refuses to pass without them.
+The Windows one must obey the installer's password rules — 8 to 128 characters with an
+upper-case letter, a lower-case letter, a digit and a symbol (Sysprep sets it). Neither
+password may contain a single quote or a newline (the Linux user name too — all go into
+a single-quoted env line); preflight refuses such values. If you want the install to
+proceed before the
+passwords are confirmed, `tn_range_template_login_check: warn` (set it in `site.yml`)
+downgrades the installer's template-login check to a warning — but a wrong password still
+fails the first range build.
+
+Set these, and leave every other line as shipped (the shipped example has working
+defaults such as `vault_postgres_user: forge`; empty values are generated on the VM,
+once, and kept):
 
 | Key | Value |
 |---|---|
@@ -383,6 +452,9 @@ cd ~/truenorth/install
 ansible-vault create smoke.yml
 ```
 
+Use the **same** vault password for `smoke.yml` as for `vault.yml`: the installer is
+invoked once with `--ask-vault-pass` and decrypts both files with that one password.
+
 In the editor that opens, write the two lines below, save and quit:
 
 ```yaml
@@ -392,7 +464,9 @@ tn_smoke_password: <smoke-account-password>
 
 ### 5.3 The site inventory
 
-Create `~/truenorth/install/inventory/site.yml`. The block below is the reference kit's
+Create `~/truenorth/install/inventory/site.yml`. Every `<placeholder>` below is a site
+value collected in "Site values this guide needs" (see the table before §1) — fill it
+from your copy of that sheet. The block below is the reference kit's
 shape; replace every placeholder, and read each **[DECISION]**. The installer's defaults
 (`inventory/group_vars/all/main.yml`) are commented and cover everything not listed here.
 Anything you set here, under the host, overrides them.
@@ -523,9 +597,19 @@ Notes on a few of these:
 
 - `tn_vsphere_exclude_hosts` and the cluster: range VMs must never land on a management
   host. Use the host names exactly as vCenter shows them (`govc find '/<datacenter>/host' -type h`).
-- `tn_vsphere_verify_ssl: true` needs vCenter's certificate to chain to a CA this VM
-  trusts (the site CA in `corp-root-ca.cer`, or VMCA's root added to the trust store). If
-  it does not yet, set `false` for now and record it as an open item.
+- `tn_vsphere_verify_ssl: true` needs vCenter's certificate to chain to a CA trusted in
+  **three places that do not share one trust store**: this VM (the govc calls in §3.1 and
+  the installer's own vCenter calls), and the api and worker containers (§7.3's
+  Infrastructure → Range vCenter connection test runs from there). The installer stages
+  `corp-root-ca.cer` into this VM's and Keycloak's trust stores, but mounts **no** site CA
+  into the api/worker containers — they use whatever their image trusts, and
+  `tn_vsphere_verify_ssl` is a boolean, not a CA-bundle path. Until an installer mechanism
+  exists for that third place, set `false` for now and record it as an open item; §7.3's
+  connection test is the check that would catch it.
+- This guide runs Ansible with `ansible_connection: local` (§5.3's host block), i.e. on
+  the TrueNorth VM itself. The repo's own inventories and CI drive the installer over SSH
+  instead, which is where its docker-group handling (§6.1) is designed for; on this VM
+  the one wrinkle is the group membership in §6.1.
 - `tn_range_isolation_probe_targets`: site addresses no range may reach, as `host:port`
   (TCP and ICMP are both tested). List the management gateway, a DC, vCenter, the
   TrueNorth VM and one ESXi management address at least.
@@ -539,19 +623,37 @@ mkdir -p files/tls
 cp /path/to/truenorth.crt files/tls/truenorth.crt
 cp /path/to/truenorth.key files/tls/truenorth.key
 chmod 600 files/tls/truenorth.key
+# Site CAs arrive as PEM (text, `-----BEGIN CERTIFICATE-----`) or DER (binary);
+# the installer accepts either and normalises, but openssl below wants PEM. Make
+# a PEM copy either way (`grep -c BEGIN` prints 1 for PEM, 0 for DER):
+grep -c BEGIN files/corp-root-ca.cer
+openssl x509 -inform DER -in files/corp-root-ca.cer -out /tmp/corp-root-ca.pem 2>/dev/null \
+  || cp files/corp-root-ca.cer /tmp/corp-root-ca.pem
 openssl x509 -in files/tls/truenorth.crt -noout -subject -ext subjectAltName -enddate
-openssl x509 -in files/tls/truenorth.crt -noout -modulus | sha256sum
-openssl rsa -in files/tls/truenorth.key -noout -modulus | sha256sum
+openssl x509 -in files/tls/truenorth.crt -pubkey -noout | openssl pkey -pubin -outform DER | sha256sum
+openssl pkey -in files/tls/truenorth.key -pubout -outform DER | sha256sum
 ```
 
 The subject alternative name must include `DNS:<tn-fqdn>`, and the last two lines must print
 the same hash (the key belongs to the certificate). Remove the copies from wherever you
 brought them in.
 
+Check that the whole chain is present, not just the leaf: nginx serves `truenorth.crt`
+exactly as you copied it, so if the site issued only the leaf, the server cannot offer its
+intermediates and browsers will fail. Verify against the site CA:
+
+```bash
+openssl verify -CAfile /tmp/corp-root-ca.pem -untrusted files/tls/truenorth.crt files/tls/truenorth.crt
+```
+
+Expected: `files/tls/truenorth.crt: OK`. If it fails for missing intermediates, ask the CA
+custodians for the full chain and re-copy `truenorth.crt` with leaf first, then each
+intermediate.
+
 Check that LDAPS to the DC works with that CA before the installer tries it:
 
 ```bash
-openssl s_client -connect <dc-fqdn>:636 -CAfile files/corp-root-ca.cer </dev/null 2>/dev/null | grep 'Verify return code'
+openssl s_client -connect <dc-fqdn>:636 -CAfile /tmp/corp-root-ca.pem </dev/null 2>/dev/null | grep 'Verify return code'
 ```
 
 Expected: `Verify return code: 0 (ok)`.
@@ -570,7 +672,15 @@ ansible-playbook -i inventory/site.yml playbooks/00-docker.yml -K --ask-vault-pa
 
 `-K` asks for `tnadmin`'s sudo password, `--ask-vault-pass` for the vault password.
 `00-docker` installs Docker Engine from Docker's own repository at pinned versions, holds
-them, and adds `tnadmin` to the `docker` group. Then a dry run of everything, which changes
+them, and adds `tnadmin` to the `docker` group. Group membership applies only to **new**
+logins, so sign out and back in — or run `exec sudo -iu tnadmin` — before going on:
+
+```bash
+id -nG | grep -qw docker && echo "docker group is active in this session"
+```
+
+Skip this and preflight fails at "current user can reach the docker socket" even though
+the group was added. Then a dry run of everything, which changes
 nothing:
 
 ```bash
@@ -579,9 +689,13 @@ ansible-playbook -i inventory/site.yml site.yml -K --ask-vault-pass --check
 
 `--check` stops at the first stage that needs an earlier stage's real work (for example a
 missing directory). What matters is that **preflight** (`00-preflight`) passes: it checks
-the vault, the OS, Docker, disk, time, DNS forward and reverse through AD, LDAPS, vCenter,
-the release and the escrow, and names the fix for anything wrong. Fix each failure and
-re-run until preflight is clean.
+the vault, the OS, Docker, disk, time, DNS forward and reverse through AD, the ports and
+the escrow, and names the fix for anything wrong. Its LDAPS and vCenter checks are
+**port checks only** — the LDAPS *bind* is first exercised in the install's 40-tls
+stage, and the vCenter *login* and privileges in its 90-vsphere stage. If the install
+fails there, the fix
+is in the values §5.3 collected (bind account, `<svc-truenorth>` password or its role
+assignment), not in preflight. Fix each failure and re-run until preflight is clean.
 
 ### 6.2 The install
 
@@ -607,9 +721,22 @@ and refuses platform actions). An explicit `tn_platform_tenant_id` is recorded t
 clearing it later keeps that tenant.
 
 **Upgrading a site that already has more than one tenant:** before the first upgrade onto this
-release, check which tenant owns the bootstrap slug (`SELECT id, slug FROM tenants`, compare
-with `tn_tenant_slug`). The first run records whichever tenant holds it, and it never
-changes after that. If it is not the operator's tenant, set `tn_platform_tenant_id` first.
+release, check which tenant owns the bootstrap slug: run the query below (no database
+password needed — it uses the same in-container psql mechanism as the installer's seed step,
+`roles/tn_seed` tasks/main.yml:125-135, which runs a slug lookup the same way), compare the
+slugs with `tn_tenant_slug`, and set `tn_platform_tenant_id`
+first if the bootstrap slug is not the operator's tenant. The first run records whichever
+tenant holds it, and it never changes after that.
+
+```bash
+cd /srv/truenorth/app/infra/platform/docker
+docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.production \
+  exec -T postgres psql -U forge -d forge -tAc "SELECT id, slug FROM tenants"
+```
+
+(`forge` is `vault_postgres_user`/`vault_postgres_db` as shipped; the compose file and env
+paths are the installer's defaults — `tn_app_dir`, `tn_env_file`, `tn_compose_file` in
+`inventory/group_vars/all/main.yml`.)
 
 **Site time zone.** `tn_site_timezone` (an IANA name such as `America/Toronto`) renders
 `SITE_TIMEZONE`, which the api uses for times it says in words ("Labs are busy, next free at
