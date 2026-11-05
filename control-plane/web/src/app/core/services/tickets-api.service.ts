@@ -47,6 +47,13 @@ export type TicketAttachment = S['TicketAttachmentOut'];
 export type TicketActivity = Required<S['TicketActivityOut']>;
 export type SupportQueue = S['SupportQueueOut'];
 export type Assignee = S['TicketAssigneeOut'];
+export type TicketCategory = S['TicketCategoryOut'];
+export type TicketLabelCount = S['TicketLabelCountOut'];
+
+/** The labels on a ticket as a list (the API stores them comma-separated; staff only). */
+export function labelList(labels: string | null | undefined): string[] {
+  return (labels ?? '').split(',').map(l => l.trim()).filter(Boolean);
+}
 export interface BoardColumn {
   status: TicketStatus;
   tickets: TicketSummary[];
@@ -59,6 +66,8 @@ export interface TicketFilters {
   type?: TicketType;
   queue_id?: string;
   range_id?: string;
+  category?: string;
+  label?: string;
   q?: string;
 }
 
@@ -134,5 +143,12 @@ export class TicketsApiService {
   }
   assignees(): Observable<Assignee[]> {
     return this.http.get<Assignee[]>(`${this.base}/assignees`);
+  }
+  categories(): Observable<TicketCategory[]> {
+    return this.http.get<TicketCategory[]>(`${this.base}/categories`);
+  }
+  /** Labels in use, most used first. Staff only. */
+  labels(): Observable<TicketLabelCount[]> {
+    return this.http.get<TicketLabelCount[]>(`${this.base}/labels`);
   }
 }
