@@ -778,7 +778,7 @@ def _edges(quals: list[Qualification], stages: list[dict]) -> list[dict]:
     )
     edges = [
         {"from": a.qsp_code, "to": b.qsp_code, "kind": "progression"}
-        for a, b in zip(ladder, ladder[1:])
+        for a, b in zip(ladder, ladder[1:], strict=False)
         if a.dp_order != b.dp_order
     ]
 
@@ -862,7 +862,7 @@ def curriculum_map(
         objectives = ctx.serialise(qual_pos, qual)
 
         po_states: list[tuple[str, str]] = []
-        for po, out in zip(qual_pos, objectives):
+        for po, out in zip(qual_pos, objectives, strict=True):
             state = progress_by_po.get(str(po.id), qsp_progress.NOT_STARTED)
             out.progress_state = state
             po_states.append((po.po_code, state))

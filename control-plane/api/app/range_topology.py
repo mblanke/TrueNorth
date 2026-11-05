@@ -146,7 +146,6 @@ def _plan(po) -> tuple[str, list[dict]]:
     """Return (base_octet, zones). Each zone: {name, cidr, dmz, nodes:[(label,type,os)]}."""
     title = (po.title or "").lower()
     role = (po.target_role or "").lower()
-    env = po.environment.value if po.environment else "COTE"
     # deterministic base octet from po_code digits
     digits = "".join(c for c in po.po_code if c.isdigit()) or "60"
     base = 50 + (int(digits[:2]) % 40)  # 10.<base>.*

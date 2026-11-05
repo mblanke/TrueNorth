@@ -681,10 +681,7 @@ def _to_moodle_xml(quiz: Quiz) -> str:
     for i, q in enumerate(quiz.questions, 1):
         options: list[str] = json.loads(q.options)
         correct: set[int] = set(json.loads(q.correct))
-        if q.question_type == QuizQuestionType.truefalse:
-            qtype = "truefalse"
-        else:
-            qtype = "multichoice"
+        qtype = "truefalse" if q.question_type == QuizQuestionType.truefalse else "multichoice"
         parts.append(f'  <question type="{qtype}">')
         parts.append(f"    <name><text>Q{i}</text></name>")
         parts.append(
