@@ -44,10 +44,10 @@ from .base import (
 )
 
 try:  # pyVmomi is optional outside vSphere deployments
-    from pyVim.connect import Connect, Disconnect, SmartConnect
+    from pyVim.connect import Connect, Disconnect
     from pyVmomi import vim, vmodl
 except ImportError:  # pragma: no cover - exercised only without pyvmomi installed
-    Connect = SmartConnect = Disconnect = vim = vmodl = None
+    Connect = Disconnect = vim = vmodl = None
 
 logger = logging.getLogger(__name__)
 # A vCenter that does not answer must not hold up the lab sweep (#311 rounds 3 and 4).
@@ -78,9 +78,10 @@ def vcenter_seconds() -> float:
 class VsphereWebMKSConsole(BaseConsoleBackend):
     kind: ClassVar[str] = "vsphere_api"
     hypervisor_type: ClassVar[str] = "vsphere"  # hypervisor_connections.hypervisor_type
-    # A WebMKS ticket has no read-only mode: whoever holds it can type. An observer's console
-    # is a normal one, marked observed (app/classes/consoles.py).
-    supports_view_only: ClassVar[bool] = False
+    # A WebMKS ticket has no read-only mode: whoever holds it can type. View-only is enforced
+    # by the relay (console_relay/rfb_filter.py, S4 #369), which passes only an allowlist of
+    # RFB client messages on a view-only grant; the ticket is the same as for a normal console.
+    supports_view_only: ClassVar[bool] = True
 
     def console_reader(self, db, targets: list[ConsoleTarget]) -> ConsoleReader:
         """Open WebMKS/VMRC connections (``runtime.numMksConnections``) on every target's VMs:
@@ -136,13 +137,18 @@ class VsphereWebMKSConsole(BaseConsoleBackend):
     def open(self, vm: dict[str, Any], *, db=None, rng=None, relay_url: str | None = None) -> dict[str, Any]:
         """The relay's address for a grant; the vCenter is asked only when the socket opens
         (``dial``). Refuses early what dial could not serve at all."""
-        if SmartConnect is None:
+        if Connect is None:
             raise ConsoleError("the vSphere console needs pyvmomi on the API")
         if not str(vm.get("vm_id") or ""):
             raise ConsoleError("this VM has no hypervisor id yet")
         if db is None or rng is None:
             raise ConsoleError("the console needs the VM's range to find its vCenter")
         return relay_access(relay_url)
+
+    def open_view_only(self, vm: dict[str, Any], *, db=None, rng=None,
+                       relay_url: str | None = None) -> dict[str, Any]:
+        """The same grant address: the relay filters the grant's input (``grant.view_only``)."""
+        return self.open(vm, db=db, rng=rng, relay_url=relay_url)
 
     def dial(self, grant: DialGrant, *, db=None, rng=None) -> DialTarget:
         """``AcquireTicket("webmks")`` now, on the range's own vCenter, and the ESXi URL it
@@ -157,7 +163,7 @@ class VsphereWebMKSConsole(BaseConsoleBackend):
 
     def _acquire(self, vm: dict[str, Any], db, rng) -> tuple[str, int, str, bool]:
         """(host, port, ticket, verify_ssl) of a WebMKS ticket for the range's own VM."""
-        if SmartConnect is None:
+        if Connect is None:
             raise ConsoleError("the vSphere console needs pyvmomi on the API")
         vm_id = str(vm.get("vm_id") or "")
         if not vm_id:
@@ -177,12 +183,18 @@ class VsphereWebMKSConsole(BaseConsoleBackend):
         if not url.hostname:
             raise ConsoleError("no vCenter is configured for this range")
         try:
-            si = SmartConnect(
+            # Connect, not SmartConnect: SmartConnect probes the API version with no timeout, and
+            # this runs on one of the relay's few dial threads (app/console_relay/router.py). With
+            # the version given and ``httpConnectionTimeout`` set, a vCenter that does not answer
+            # frees the thread after CONNECT_TIMEOUT per socket operation, as the lab sweep's login does.
+            si = Connect(
                 host=url.hostname,
                 port=url.port or 443,
                 user=target["username"],
                 pwd=target["password"],
+                version=API_VERSION,
                 disableSslCertValidation=not target["verify_ssl"],
+                httpConnectionTimeout=CONNECT_TIMEOUT,
             )
         except Exception as exc:  # noqa: BLE001 — any login failure is a console failure
             # Fixed text for the Student; the log has the exception class and VM id only (the

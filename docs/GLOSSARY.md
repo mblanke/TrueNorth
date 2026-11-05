@@ -310,12 +310,18 @@ The check that decides whether an objective is achieved: `opensearch_query`,
 (`scenario-engine/scenario_engine/validators/`; `Objective.validator` in `models.py`).
 _Not to be confused with_: the gate, or `arc2.check` validation of course content.
 
-**Detection credit**:
-Credit for a detection objective, earned only when a Student's submitted query finds the
-attack's ground-truth events inside the exercise window with enough precision
-(`control-plane/api/app/detections/credit.py`). ADR 0005.
-_Not to be confused with_: the scenario query, which is the answer key and never a grade on
-its own.
+**Judgement** (of an objective):
+An instructor's decision that a team exercise's objective is achieved, with a note and the
+Student detections it relied on (`cites`). The only way an exercise objective is achieved
+(`control-plane/api/app/exercise_judging.py`). ADR 0020.
+_Avoid_: detection credit (ADR 0005's automatic credit, superseded for exercises).
+
+**Detection submission**:
+A Student's detection query in a team exercise, run inside the exercise window and recorded
+with what it matched: evidence for the instructor, never a grade. `recorded`, or `cited` once
+a judgement relies on it (`control-plane/api/app/detections/evidence.py`). ADR 0005, 0020.
+_Not to be confused with_: the scenario objective's query, the instructor's **look-for**
+guidance, which is never compared with anything.
 
 **AAR** (After Action Report):
 The report of one completed exercise (`AfterActionReport` in `models.py`;

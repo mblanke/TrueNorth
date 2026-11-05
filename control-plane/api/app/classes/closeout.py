@@ -7,8 +7,9 @@
   (``routers/quizzes.py`` writes them into ``module_progress``), over every graded module of
   the course (required quiz, scenario or LTI modules), one not attempted counting as 0.
   Passed when every graded module reached its own ``pass_threshold`` (``_course``);
-- *the exercises*: detections credited to them in the exercises of the class's sessions
-  (ADR 0005: Students earn exercise credit only by submitting detections);
+- *the exercises*: their detections an instructor cited when judging an objective, in the
+  exercises of the class's sessions (ADR 0020: instructors judge team exercises; a cited
+  detection is the Student's part in the team's result);
 - a *suggested* outcome: ``incomplete`` when no session was held, below ``ATTENDANCE_MIN``
   of the sessions held (present or excused), or when the course has graded modules and the
   Student has no graded result yet; else ``fail`` when the graded work fell short; else
@@ -221,10 +222,11 @@ def _course(db: Session, cls: Class, user_ids: set[uuid.UUID]) -> dict[uuid.UUID
 
 
 def _detections(db: Session, cls: Class, user_ids: set[uuid.UUID]) -> dict[uuid.UUID, int]:
-    """Detections credited to each Student in the exercises of the class's sessions."""
+    """Each Student's detections an instructor cited in judging an objective, in the exercises
+    of the class's sessions (before ADR 0020: the ones credited automatically)."""
     from sqlalchemy import func
 
-    from ..detections.models import ACHIEVED, DetectionSubmission
+    from ..detections.models import ACHIEVED, CITED, DetectionSubmission
 
     exercise_ids = {evt.exercise_id for _, evt in attendance.held_sessions(db, cls) if evt.exercise_id}
     if not exercise_ids or not user_ids:
@@ -235,7 +237,7 @@ def _detections(db: Session, cls: Class, user_ids: set[uuid.UUID]) -> dict[uuid.
             DetectionSubmission.exercise_id.in_(exercise_ids),
             DetectionSubmission.tenant_id == cls.tenant_id,
             DetectionSubmission.user_id.in_(user_ids),
-            DetectionSubmission.verdict == ACHIEVED,
+            DetectionSubmission.verdict.in_((CITED, ACHIEVED)),
         )
         .group_by(DetectionSubmission.user_id)
         .all()

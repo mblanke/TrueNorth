@@ -418,11 +418,12 @@ _SLOW_THRESHOLD_MS: float = 1000.0
 
 # Paths that carry a bearer secret. They are logged with the secret replaced, here and in
 # uvicorn's access log (RedactSecretPaths). nginx skips logging them (access_log off).
-_SECRET_PATH = re.compile(r"(/schedule/feed/|/cmi5/fetch/)[^/?\s\"]+")  # + cmi5 fetch secrets
+_SECRET_PATH = re.compile(r"(/schedule/feed/|/cmi5/fetch/|/ws/console/)[^/?\s\"]+")  # + cmi5 fetch secrets, console grants
 
 
 def redact_path(path: str) -> str:
-    """Hide the calendar-feed token (ADR 0004) and cmi5 fetch secrets in anything logged."""
+    """Hide the calendar-feed token (ADR 0004), cmi5 fetch secrets and console grant tokens
+    (``/ws/console/<grant>``) in anything logged."""
     return _SECRET_PATH.sub(r"\1<redacted>", path)
 
 

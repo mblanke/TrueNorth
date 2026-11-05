@@ -112,12 +112,12 @@ class TestPauseResumeRun:
         assert second[2] != first[2]  # a new lease
 
         out = worker(second)
-        assert out["status"] == "completed"
+        assert out["status"] == "running"  # ADR 0020: it stays live for the instructor to judge
         assert worker.fired == [0, 1, 2]  # each event exactly once, in order
         records = _timeline_records(db_session, ex)
         assert [seq for seq, _ in records] == [0, 1, 2]
         assert len({run for _, run in records}) == 1  # one run, continued
-        assert _state(db_session, ex) == ExerciseState.completed
+        assert _state(db_session, ex) == ExerciseState.running
 
     def test_a_pre_pause_task_still_alive_cannot_fire_after_the_resume(self, client, db_session, no_real_broker, worker):
         """Pause and resume land while the first task is mid-event: it has claimed event 1
@@ -137,7 +137,7 @@ class TestPauseResumeRun:
 
         [_, second] = _run_sends(no_real_broker)
         out = worker(second)
-        assert out["status"] == "completed"
+        assert out["status"] == "running"
         assert worker.fired == [0, 1, 2]
         assert [seq for seq, _ in _timeline_records(db_session, ex)] == [0, 1, 2]
 
@@ -159,7 +159,7 @@ class TestPauseResumeRun:
         client.post(f"/exercises/{ex.id}/resume")
         [first, second] = _run_sends(no_real_broker)
         assert worker(first)["status"] == "skipped"  # superseded before it ran
-        assert worker(second)["status"] == "completed"
+        assert worker(second)["status"] == "running"
         assert worker.fired == [0, 1, 2]
 
     def test_resume_records_the_lease_swap_and_cursor(self, client, db_session, no_real_broker, worker):
@@ -180,7 +180,8 @@ class TestPauseResumeRun:
         ex = _exercise(db_session)
         client.post(f"/exercises/{ex.id}/start")
         worker(_run_sends(no_real_broker)[0])
-        assert _state(db_session, ex) == ExerciseState.completed
+        assert _state(db_session, ex) == ExerciseState.running  # the run does not close it (ADR 0020)
+        assert client.post(f"/exercises/{ex.id}/complete").status_code == 200  # the instructor does
         assert client.post(f"/exercises/{ex.id}/run").status_code == 409  # replay needs reset=true (sweep M3)
         assert client.post(f"/exercises/{ex.id}/run", params={"reset": "true"}).status_code == 200
         worker(_run_sends(no_real_broker)[1])

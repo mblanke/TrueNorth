@@ -459,58 +459,9 @@ def start_exercise(db, exercise_id: str) -> int:
     ).rowcount
 
 
-LIVE_EXERCISE = ("running", "paused")
-
-
-def _exercise_is_live(exercise_id: str):
-    """True while the exercise is running or paused. Once an instructor has completed or
-    cancelled it, results (LTI, xAPI, the AAR) may already have gone out, so a worker still
-    running must not move its objectives or score."""
-    # CAST: `state` is a native enum on Postgres and plain text on SQLite.
-    return sa.exists().where(
-        exercises.c.id == exercise_id, sa.cast(exercises.c.state, sa.Text).in_(LIVE_EXERCISE)
-    )
-
-
-def achieve_objective(db, exercise_id: str, ref_id: str, evidence: str | None = None) -> None:
-    """Mark an objective achieved, once, while the exercise is live: an already-achieved row
-    keeps its time and evidence."""
-    values: dict[str, Any] = {"achieved": True, "achieved_at": _now(), "updated_at": _now()}
-    if evidence is not None:
-        values["evidence"] = evidence
-    db.execute(
-        sa.update(objectives)
-        .where(
-            objectives.c.exercise_id == exercise_id,
-            objectives.c.ref_id == ref_id,
-            objectives.c.achieved == sa.false(),
-            _exercise_is_live(exercise_id),
-        )
-        .values(**values)
-    )
-
-
-def _score_values(exercise_id: str) -> dict[str, Any]:
-    """total_score / max_score from the exercise's objectives (achieved points / all points)."""
-    o = objectives
-
-    def _points(*extra):
-        return sa.func.coalesce(
-            sa.select(sa.func.sum(o.c.points)).where(o.c.exercise_id == exercise_id, *extra).scalar_subquery(), 0
-        )
-
-    return {"total_score": _points(o.c.achieved == sa.true()), "max_score": _points()}
-
-
-def complete_exercise(db, exercise_id: str) -> int:
-    """running -> completed, with the score totalled from its objectives; returns the
-    rowcount. Any other state is left alone, so a late retry cannot overwrite an
-    instructor's completion or cancellation."""
-    return db.execute(
-        sa.update(exercises)
-        .where(exercises.c.id == exercise_id, _exercise_state_in(("running",)))
-        .values(state="completed", completed_at=_now(), updated_at=_now(), **_score_values(exercise_id))
-    ).rowcount
+# No function here marks an objective achieved or completes an exercise: instructors judge
+# team exercises and the API closes them (ADR 0020, app/exercise_judging.py and
+# app/exercise_completion.py). The worker runs the timeline and nothing else.
 
 
 def cancel_exercise(db, exercise_id: str) -> int:

@@ -35,8 +35,10 @@ export type LtiToolConfig = components['schemas']['LtiToolConfigOut'];
 /** POST /lti/links/preview and /lti/links/confirm (staff deep linking). */
 export type LtiLinkPreview = components['schemas']['LtiLinkPreviewOut'];
 export type LtiLink = components['schemas']['LtiLinkOut'];
-/** One detection attempt (POST/GET .../detections). */
+/** One recorded detection submission (POST/GET .../detections; evidence, not a grade: ADR 0020). */
 export type Detection = components['schemas']['DetectionOut'];
+/** POST /exercises/{id}/objectives/{ref}/ack: the instructor's note and the submissions it cites. */
+export type Judgement = components['schemas']['JudgementIn'];
 /** GET /ops/exercises/{id}/class: the live class in the Ops Center (issue #199). */
 export type ExerciseClass = components['schemas']['ExerciseClassOut'];
 export type ClassStudent = components['schemas']['ClassStudentOut'];
@@ -393,22 +395,28 @@ export class ApiService {
   listInjects(exerciseId: string): Observable<InjectRecord[]> {
     return this.http.get<InjectRecord[]>(`${this.base}/exercises/${exerciseId}/injects`);
   }
-  ackObjective(exerciseId: string, refId: string, evidence = ''): Observable<Objective> {
+  /** An instructor judges an objective achieved (ADR 0020), with a note and the detections it relies on. */
+  ackObjective(exerciseId: string, refId: string, body: Judgement = {}): Observable<Objective> {
     return this.http.post<Objective>(
-      `${this.base}/exercises/${exerciseId}/objectives/${refId}/ack`,
-      { evidence }
+      `${this.base}/exercises/${exerciseId}/objectives/${encodeURIComponent(refId)}/ack`, body,
+    );
+  }
+  /** Withdraw a judgement while the exercise is running or paused (409 otherwise); the score re-totals. */
+  withdrawAck(exerciseId: string, refId: string): Observable<Objective> {
+    return this.http.delete<Objective>(
+      `${this.base}/exercises/${exerciseId}/objectives/${encodeURIComponent(refId)}/ack`,
     );
   }
 
-  // ── Detections (ADR 0005) ────────────────────────────────
-  /** Submit a detection (the server's closed detection grammar) for an objective; credited only if it finds the attack. */
+  // ── Detections (ADR 0005, ADR 0020) ──────────────────────
+  /** Record a detection (the server's closed detection grammar) as evidence; an instructor judges the objective. */
   submitDetection(exerciseId: string, refId: string, query: string): Observable<Detection> {
     const body: components['schemas']['DetectionIn'] = { query };
     return this.http.post<Detection>(
       `${this.base}/exercises/${exerciseId}/objectives/${encodeURIComponent(refId)}/detections`, body,
     );
   }
-  /** A Student's own attempts; every attempt (with on_target/precision) for staff. */
+  /** A Student's own submissions; every Student's for staff. */
   listDetections(exerciseId: string): Observable<Detection[]> {
     return this.http.get<Detection[]>(`${this.base}/exercises/${exerciseId}/detections`);
   }

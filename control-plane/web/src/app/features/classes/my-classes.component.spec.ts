@@ -7,6 +7,7 @@ import { AuthService } from '@core/services/auth.service';
 import { ClassesApiService, MyClass, MyClasses, localIso } from '@core/services/classes-api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { RangeCredentialsApiService } from '@core/services/range-credentials-api.service';
+import { FakeRfbClient, provideFakeRfb } from '../../shared/components/vm-console/fake-rfb-client';
 import { addDays } from '../calendar/content-calendar.util';
 import { MyClassesComponent, REFRESH_MS, forfeitMessage, joinHint, rangeLabel, windowOf } from './my-classes.component';
 
@@ -85,22 +86,25 @@ describe('MyClassesComponent', () => {
   let fixture: ComponentFixture<MyClassesComponent>;
   let api: jasmine.SpyObj<ClassesApiService>;
   let creds: jasmine.SpyObj<RangeCredentialsApiService>;
+  let viewers: FakeRfbClient[];
 
   function make(data: MyClasses): void {
+    viewers = [];
     api = jasmine.createSpyObj<ClassesApiService>('ClassesApiService',
       ['attending', 'myRangeConsoles', 'openMyRangeConsole']);
     api.attending.and.returnValue(of(data));
     api.myRangeConsoles.and.returnValue(of({ range_id: 'rng-1', open: true, session_id: 'ev1',
       machines: [{ machine: 'ws1', name: 'abc-ws1', power: 'running', student_machine: true }] }));
     api.openMyRangeConsole.and.returnValue(of({ range_id: 'rng-1', machine: 'ws1', kind: 'webmks',
-      url: 'wss://esx/ticket/t', expires_in: 60, view_only: false, observed: false, vm: 'abc-ws1' }));
+      url: 'wss://tn.example/ws/console/g1', expires_in: 60, view_only: false, observed: false, vm: 'abc-ws1' }));
     creds = jasmine.createSpyObj<RangeCredentialsApiService>('RangeCredentialsApiService', ['list', 'reveal']);
     creds.list.and.returnValue(of({ range_id: 'rng-1', scope: 'student', accounts: [] }));
     TestBed.configureTestingModule({
       imports: [MyClassesComponent, NoopAnimationsModule],
       providers: [
         provideRouter([]),
-        { provide: AuthService, useValue: fakeAuth('student') },
+        provideFakeRfb(viewers),
+        { provide: AuthService, useValue: Object.assign(fakeAuth('student'), { getToken: () => Promise.resolve('tok') }) },
         { provide: ClassesApiService, useValue: api },
         { provide: RangeCredentialsApiService, useValue: creds },
         { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['error', 'success']) },
@@ -174,7 +178,7 @@ describe('MyClassesComponent', () => {
     discardPeriodicTasks();
   }));
 
-  it('Console lists the Student\'s machines and opens a one-time ticket on one', () => {
+  it('Console lists the Student\'s machines and opens a console on one in tn-vm-console', fakeAsync(() => {
     make(page([BASE]));
     const button = card('c1').querySelector('button.console') as HTMLButtonElement;
     expect(button.disabled).toBeFalse();
@@ -186,8 +190,29 @@ describe('MyClassesComponent', () => {
     machine.click();
     fixture.detectChanges();
     expect(api.openMyRangeConsole).toHaveBeenCalledWith('rng-1', 'abc-ws1');
-    expect(card('c1').querySelector('.ticket')?.textContent).toContain('wss://esx/ticket/t');
-  });
+    tick();
+    fixture.detectChanges();
+    expect(card('c1').querySelector('tn-vm-console')).not.toBeNull();
+    expect(card('c1').textContent).not.toContain('wss://');
+    expect(viewers[0].options?.url).toBe('wss://tn.example/ws/console/g1');
+    fixture.destroy();
+    discardPeriodicTasks();
+  }));
+
+  it('Reconnect in the console asks the API for a fresh grant', fakeAsync(() => {
+    make(page([BASE]));
+    (card('c1').querySelector('button.console') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    (card('c1').querySelector('.my-consoles .machines button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    tick();
+    (card('c1').querySelector('button.reconnect') as HTMLButtonElement).click();
+    tick();
+    expect(api.openMyRangeConsole).toHaveBeenCalledTimes(2);
+    expect(viewers.length).toBe(2);
+    fixture.destroy();
+    discardPeriodicTasks();
+  }));
 
   it('Console waits for the session: machines are listed but cannot be opened', () => {
     make(page([BASE]));

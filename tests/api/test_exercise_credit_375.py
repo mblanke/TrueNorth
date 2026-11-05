@@ -5,9 +5,10 @@ An exercise has no owner column; its Students come from what the class records:
 - a team exercise: every member of the **teams** whose ``exercise_id`` is the exercise (owner
   decision 2026-11-03: credit every participant).
 
-Objective sign-off then emits ``passed`` for those Students with the instructor as
-``assessed_by`` (and nothing when there are none); completion's participants are those
-Students and the detection submitters; an instructor who closes it is not a participant.
+Objective sign-off then emits ``passed`` for those Students (and any Student it cites) with
+the instructor as ``judged_by``, and nothing when there are none; completion's participants
+are those Students only: a detection is evidence, not credit (ADR 0020), and an instructor
+who closes it is not a participant.
 """
 
 from __future__ import annotations
@@ -113,7 +114,7 @@ class TestSignOff:
         assert client.post(f"/exercises/{ex.id}/objectives/OBJ-1/ack").status_code == 200
         passed = _passed(recorded)
         assert {str(s["user_id"]) for s in passed} == _ids(world, 0)
-        assert passed[0]["context_extensions"]["assessed_by"] == world["instructor"].id
+        assert passed[0]["context_extensions"]["judged_by"] == world["instructor"].id
 
     def test_a_team_exercise_credits_every_participant(self, client, db_session, world, recorded):
         ex = _exercise(db_session, world)

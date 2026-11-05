@@ -79,7 +79,7 @@ Plans are deterministic for a given seed, node and time window. Overlapping fetc
 therefore agree, an agent never repeats an action, and an AAR can reconstruct exactly
 what the background was meant to be.
 
-## Activities (v1, Linux)
+## Activities (Linux)
 
 | Kind | What it does |
 |---|---|
@@ -91,6 +91,16 @@ what the background was meant to be.
 | `ad_logon` | Connects to Kerberos/88 |
 | `ssh_admin` | Connects to SSH and reads the banner |
 | `ntp_sync` | Makes an SNTP query |
+| `icmp_ping` | Sends one echo request through the system `ping` (pool `hosts`) |
+| `rdp_connect` | Sends a real RDP negotiation request to 3389 and reads the reply; no session, no login (pool `rdp`) |
+| `ftp_session` | Anonymous FTP login and a directory query; no file is read or written (pool `ftp`) |
+| `print_status` | An IPP Get-Printer-Attributes query to 631; no job is submitted (pool `print`) |
+
+The last four arrived in agent 0.2.0 (the idea of a wider everyday catalogue is borrowed from
+CMU SEI's GHOSTS; none of its code is used). An agent older than the controller reports them as
+"unsupported on this agent". Targets for `rdp`, `ftp` and `print` are taken from a template node's
+`services:` (`rdp`, `ftp`, `ipp` or `print`) or its role (`ftp_server`, `print_server`), never from
+an agent node. A target may carry a port (`10.0.0.5:3390`).
 
 There are also four lookalikes, done only by personas flagged for them (IT admins) and
 only above dial level 20:

@@ -1092,32 +1092,41 @@ List objectives for an exercise. **Permission: `exercise:read`**
 
 ### `POST /exercises/{exercise_id}/objectives/{ref_id}/ack`
 
-Acknowledge (achieve) an objective. Sets `achieved=true`, records who acknowledged it with
-the evidence, timestamps it, and re-totals the exercise's `total_score`. An instructor
-action: a Student cannot award themselves an objective (ADR 0005 §4). The exercise must be
-in the caller's tenant.
+Judge an objective achieved (ADR 0020: instructors judge team exercises; nothing else
+achieves an exercise objective). Records who judged it, the instructor's note and the
+Student detections the judgement relied on, timestamps it, and re-totals the exercise's
+score. The exercise must be in the caller's tenant and running or paused.
 
 **Permission: `objective:ack`** (instructor, admin)
 
-**Request:** `evidence` is an optional **query parameter** (not a JSON body).
-
-```
-POST /exercises/{exercise_id}/objectives/obj-1/ack?evidence=Alert%20in%20SIEM%20dashboard
-```
-
-**Response `200 OK`:**
+**Request (JSON body, optional):**
 ```json
 {
-  "id": "b8c9d0e1-f2a3-4567-1234-678901234567",
+  "evidence": "Blue cell found the beacon at 12:05",
+  "cites": ["5b2f0a8e-1c3d-4e5f-8a9b-0c1d2e3f4a5b"]
+}
+```
+`cites` are detection submissions (`POST .../detections`) on this objective in this run;
+any other id is `422`. A cited submission becomes `verdict: "cited"`.
+
+**Response `200 OK`:** the objective, with `evidence` the judgement as JSON:
+```json
+{
   "ref_id": "obj-1",
   "achieved": true,
-  "evidence": "Acknowledged by Sgt Rivera: Alert in SIEM dashboard",
+  "evidence": "{\"source\": \"instructor\", \"by\": \"Sgt Rivera\", \"by_id\": \"...\", \"note\": \"Blue cell found the beacon at 12:05\", \"cites\": [\"5b2f...\"], \"students\": [\"...\"]}",
   "achieved_at": "2026-01-15T10:45:00Z",
   "points": 25
 }
 ```
 
-Without `evidence`, the stored evidence is `"Acknowledged by <name>"`.
+`409` if the exercise is not running/paused or the objective is already achieved.
+
+### `DELETE /exercises/{exercise_id}/objectives/{ref_id}/ack`
+
+Withdraw a judgement while the exercise is running or paused. Its cited submissions go back
+to `recorded`, and the score is re-totalled. **Permission: `objective:ack`**. `409` if the
+exercise is closed or the objective is not achieved.
 
 | Status | Condition |
 |--------|-----------|

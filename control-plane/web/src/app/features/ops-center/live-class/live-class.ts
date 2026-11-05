@@ -2,14 +2,14 @@
  * How the live class reads (issue #199, layout B). Display only: every fact here comes from
  * GET /ops/exercises/{id}/class; nothing is scored, flagged or changed on the client.
  *
- * The four attention lanes follow R1 F2 and are never merged. Help requests are the F2 model
- * and do not exist yet, so that lane is always empty and says so. Idle is never a learning
- * signal, and the word for it is neutral.
+ * The attention lanes follow R1 F2 and are never merged. Help requests are the F2 model
+ * and do not exist yet, so that lane is always empty and says so. Idle is neutral. There is
+ * no learning-signal lane: a detection is evidence an instructor judges, not a miss (ADR 0020).
  */
 import type { ClassAttention, ClassStudent } from '@core/services/api.service';
 
-export type LaneKey = 'help' | 'lab' | 'learning' | 'quiet';
-export type StatusKey = 'lab_fault' | 'lab_wait' | 'learning' | 'not_seen' | 'ok';
+export type LaneKey = 'help' | 'lab' | 'quiet';
+export type StatusKey = 'lab_fault' | 'lab_wait' | 'not_seen' | 'ok';
 
 export interface LaneMeta {
   key: LaneKey;
@@ -20,19 +20,18 @@ export interface LaneMeta {
 export const LANES: readonly LaneMeta[] = [
   { key: 'help', title: 'Asked for help', hint: 'Help requests arrive with the intervention console (R1 F2).' },
   { key: 'lab', title: 'Lab or infrastructure', hint: "Not the Student's doing. Not counted against them." },
-  { key: 'learning', title: 'Learning signals', hint: 'From judged detections only: 3 or more misses on one objective.' },
-  { key: 'quiet', title: 'Not seen recently', hint: 'No detection or lab heartbeat lately. Idle is not a learning signal.' },
+  { key: 'quiet', title: 'Not seen recently', hint: 'No detection or lab heartbeat lately. Idle is not counted against anyone.' },
 ];
 
 const LANE_OF: Record<ClassAttention['kind'], LaneKey> = {
-  lab_fault: 'lab', lab_wait: 'lab', learning: 'learning', not_seen: 'quiet',
+  lab_fault: 'lab', lab_wait: 'lab', not_seen: 'quiet',
 };
 
 /** Priority of a Student's headline status (help would come first once it exists). */
-export const STATUS_RANK: Record<StatusKey, number> = { lab_fault: 1, lab_wait: 2, learning: 3, not_seen: 4, ok: 5 };
+export const STATUS_RANK: Record<StatusKey, number> = { lab_fault: 1, lab_wait: 2, not_seen: 3, ok: 4 };
 
 export const STATUS_WORD: Record<StatusKey, string> = {
-  lab_fault: 'Lab fault', lab_wait: 'Lab not ready', learning: 'Learning signal', not_seen: 'Not seen recently',
+  lab_fault: 'Lab fault', lab_wait: 'Lab not ready', not_seen: 'Not seen recently',
   ok: 'No flags',
 };
 
@@ -43,9 +42,12 @@ export interface LaneItem {
 
 /** Every attention item of every Student, into its lane. A Student may sit in several. */
 export function lanesOf(students: readonly ClassStudent[]): Record<LaneKey, LaneItem[]> {
-  const out: Record<LaneKey, LaneItem[]> = { help: [], lab: [], learning: [], quiet: [] };
+  const out: Record<LaneKey, LaneItem[]> = { help: [], lab: [], quiet: [] };
   for (const student of students) {
-    for (const item of student.attention ?? []) out[LANE_OF[item.kind]].push({ student, item });
+    for (const item of student.attention ?? []) {
+      const lane = LANE_OF[item.kind];
+      if (lane) out[lane].push({ student, item });  // an unknown kind from a newer API is not dropped into a wrong lane
+    }
   }
   // Oldest first: whoever has waited longest is at the top.
   for (const k of Object.keys(out) as LaneKey[]) {
@@ -56,7 +58,7 @@ export function lanesOf(students: readonly ClassStudent[]): Record<LaneKey, Lane
 
 /** The Student's flags in priority order; "ok" when there are none. */
 export function statusesOf(s: ClassStudent): StatusKey[] {
-  const keys = (s.attention ?? []).map(a => a.kind as StatusKey);
+  const keys = (s.attention ?? []).map(a => a.kind as StatusKey).filter(k => k in STATUS_RANK);
   const uniq = [...new Set(keys)].sort((a, b) => STATUS_RANK[a] - STATUS_RANK[b]);
   return uniq.length ? uniq : ['ok'];
 }
@@ -104,12 +106,14 @@ export function tplus(iso: string | null | undefined, started: string | null | u
   return `T+${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}`;
 }
 
+/** ADR 0020: `recorded` and `cited`; older rows keep their ADR 0005 verdicts as history. */
 export const VERDICT_WORD: Record<string, string> = {
-  achieved: 'Credited', missed: 'Missed', pending: 'Verdict pending', closed: 'Closed (exercise ended)',
+  recorded: 'Recorded', cited: 'Cited by the judgement',
+  achieved: 'Credited (auto)', missed: 'Missed', pending: 'Pending', closed: 'Closed (exercise ended)',
 };
 
 export const OBJECTIVE_STATE_WORD: Record<string, string> = {
-  credited: 'Credited', pending: 'Verdict pending', missed: 'Missed', not_attempted: 'Not attempted',
+  credited: 'Credited', pending: 'Pending', submitted: 'Submitted, awaiting judgement', not_attempted: 'Not attempted',
 };
 
 /** Labs that POST /lab-sessions/{id}/reset accepts (lab_sessions/service.py `reset`). */

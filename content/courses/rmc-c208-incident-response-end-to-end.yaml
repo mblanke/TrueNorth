@@ -384,12 +384,12 @@ modules:
       - D) Business criticality and dependency order
       answer: D
     - question: A rebuilt server is declared clean on the strength of a single antivirus scan run against its old
-        image. Why is trust in it not established?
+        image. What actually establishes trust in a rebuilt server?
       options:
-      - A) Trust comes from verified sources and validated configuration
-      - B) Antivirus scans are unreliable as the sole evidence on a rebuilt server
-      - C) The server should have been renamed first
-      - D) A scan proves the image is current
+      - A) Verified sources, new credentials and validated configuration
+      - B) A clean antivirus result on the old image
+      - C) Renaming the server before it returns to service
+      - D) A scan showing the old image is current
       answer: A
     - question: The environment is recovered and the response lead keeps heightened monitoring in place. What is
         that monitoring watching for?

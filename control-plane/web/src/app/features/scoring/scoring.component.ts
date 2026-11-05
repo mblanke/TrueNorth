@@ -12,21 +12,24 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { ActivatedRoute } from '@angular/router';
-import { ApiService } from '@core/services/api.service';
+import { ApiService, Detection } from '@core/services/api.service';
 import { NotificationService } from '@core/services/notification.service';
 import { AuthService } from '@core/services/auth.service';
 import { Exercise, ExerciseSummary, Objective, AAR } from '@core/models';
 import { evidenceText, objectiveKind, objectiveName } from '@shared/objective-display';
+import { JudgeObjectiveComponent } from './judge-objective.component';
 
 /** Exercise states with a report to read (ExerciseState in models.py). */
 const ENDED_STATES: string[] = ['completed', 'cancelled'];
+/** States in which an instructor judges or withdraws (ADR 0020; the API answers 409 otherwise). */
+const OPEN_STATES: string[] = ['running', 'paused'];
 
 @Component({
   selector: 'tn-scoring',
   imports: [
     CommonModule, FormsModule, MatCardModule, MatButtonModule, MatIconModule,
     MatSelectModule, MatFormFieldModule, MatInputModule, MatTableModule,
-    MatProgressBarModule, MatCheckboxModule,
+    MatProgressBarModule, MatCheckboxModule, JudgeObjectiveComponent,
   ],
   template: `
     <div class="page-container">
@@ -85,10 +88,11 @@ const ENDED_STATES: string[] = ['completed', 'cancelled'];
                 }
               </mat-card-content>
               <mat-card-actions>
-                @if (!obj.achieved && canAck()) {
-                  <button mat-button color="primary" (click)="ackObjective(obj.ref_id)">
-                    <mat-icon>check</mat-icon> Acknowledge
-                  </button>
+                <!-- ADR 0020: an instructor judges every exercise objective, while the exercise is open. -->
+                @if (canJudge()) {
+                  <tn-judge-objective [exerciseId]="selectedExerciseId" [objective]="obj"
+                    [submissions]="submissionsFor(obj.ref_id)" [submissionsError]="submissionsError()"
+                    (changed)="loadExercise()" />
                 }
               </mat-card-actions>
             </mat-card>
@@ -153,6 +157,12 @@ export class ScoringComponent implements OnInit {
 
   /** Students see objectives but cannot award them (objective:ack). */
   readonly canAck = this.auth.canAcknowledgeObjectives;
+  /** objective:ack and the exercise is running or paused. */
+  readonly canJudge = () => this.canAck() && OPEN_STATES.includes(this.selectedExercise()?.state ?? '');
+  /** Every Student's submissions on this run, by objective, for the judging form to cite. */
+  readonly submissionsByRef = signal<ReadonlyMap<string, Detection[]>>(new Map());
+  readonly submissionsError = signal(false);
+  private readonly noSubmissions: Detection[] = [];
   /** aar:generate (rbac.py): not observers, not Students. */
   readonly canGenerate = () => this.auth.can('aar:generate');
   readonly isStudent = () => this.auth.user()?.role === 'student';
@@ -168,6 +178,9 @@ export class ScoringComponent implements OnInit {
   }
   evidenceOf(o: Objective): string {
     return evidenceText(o.evidence);
+  }
+  submissionsFor(refId: string): Detection[] {
+    return this.submissionsByRef().get(refId) ?? this.noSubmissions;
   }
 
   private route = inject(ActivatedRoute);
@@ -209,6 +222,7 @@ export class ScoringComponent implements OnInit {
         // The AAR reports an ended exercise; asking for one mid-run only earns a 404 (#201).
         if (ENDED_STATES.includes(e.state)) this.loadAAR(id);
         else this.aarState.set('pending');
+        if (this.canAck() && OPEN_STATES.includes(e.state)) this.loadSubmissions(id);
       },
       error: () => this.aarState.set('error'),
     });
@@ -222,10 +236,16 @@ export class ScoringComponent implements OnInit {
     });
   }
 
-  ackObjective(refId: string): void {
-    this.api.ackObjective(this.selectedExerciseId, refId, 'Manual acknowledgement').subscribe({
-      next: () => { this.notify.success('Objective acknowledged'); this.loadExercise(); },
-      error: () => this.notify.error('Failed to acknowledge'),
+  private loadSubmissions(id: string): void {
+    this.api.listDetections(id).subscribe({
+      next: rows => {
+        const byRef = new Map<string, Detection[]>();
+        for (const r of rows) byRef.set(r.objective_ref, [...(byRef.get(r.objective_ref) ?? []), r]);
+        this.submissionsByRef.set(byRef);
+        this.submissionsError.set(false);
+      },
+      // Never "no submissions" on a failure: the form says they could not be loaded.
+      error: () => { this.submissionsByRef.set(new Map()); this.submissionsError.set(true); },
     });
   }
 

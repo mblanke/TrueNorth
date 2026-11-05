@@ -155,7 +155,7 @@ def evaluate_objectives(scenario: dict, range_ctx: dict, event_store=None, windo
     from scenario_engine.scoring import ScoringEngine, validation_method
     from scenario_engine.variables import render
 
-    # The range's events as the API reads them (detections/credit.py range_index): worker and
+    # The range's events as the API reads them (detections/evidence.py range_index): worker and
     # API ingest in range-<id>, the range's own Filebeat/Logstash in range-<id>-<date>.
     index = f"range-{range_ctx['range_id']},range-{range_ctx['range_id']}-*"
     objectives = []

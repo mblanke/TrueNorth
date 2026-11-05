@@ -7,11 +7,10 @@ contracts.py), and ``from worker.tasks import run_scenario_v2`` still works.
 
 Injection goes through one seam, ``inject_dispatch.dispatch_inject``, called once per
 timeline event on every backend; every outcome is recorded in ``inject_records``
-(docs/scenario-inject-execution.md). The worker never scores detections (ADR 0005): a
-Student earns detection credit by submitting a detection to the API. On a real backend the
+(docs/scenario-inject-execution.md). The worker never scores (ADR 0020): instructors
+judge every objective of a team exercise through the API. On any backend, mock included, the
 exercise stays running after its timeline, until an instructor completes it or its duration
-runs out (app/exercise_completion.py); the mock backend, a simulation with no telemetry,
-still auto-achieves every objective and completes. Database access is db_ops.py; the DB
+runs out (app/exercise_completion.py). Database access is db_ops.py; the DB
 session and notifications come from task_plumbing.py.
 """
 
@@ -144,10 +143,10 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict, lease: st
     handed on stops at its next event (``superseded``). Without a lease (a message from
     before exercise_runs) the run is the Celery task id, as before.
 
-    After the timeline (ADR 0005 §6): on a real backend the exercise stays running, for
-    Students to submit detections, and nothing is achieved here; on the mock backend every
-    objective is achieved and the exercise completed. The backend is the range's own, as for
-    inject dispatch, not the worker's environment.
+    After the timeline (ADR 0005 §6, ADR 0020): the exercise stays running, on any backend,
+    while Students submit detections and instructors judge its objectives; nothing is
+    achieved or completed here. The backend (the range's own, as for inject dispatch, not
+    the worker's environment) only decides how injects are dispatched.
     """
     logger.info(f"[scenario_v2] Starting exercise {exercise_id}")
     run_id = _run_id(self)
@@ -208,54 +207,25 @@ def run_scenario_v2(self, exercise_id: str, scenario_definition: dict, lease: st
             logger.info(f"[scenario_v2] Exercise {exercise_id} is {halted_state}; stopped after {executed} events")
             return _halted(exercise_id, halted_state, executed, fired)
 
-        if backend != "mock":
-            # A real exercise stays live after its timeline: Students earn detection credit by
-            # submitting detections (API, ADR 0005) until an instructor completes it or its
-            # duration runs out (app/exercise_completion.py).
-            _notify_api("exercise", {"id": exercise_id, "state": "running", "phase": "timeline_complete"})
-            logger.info(f"[scenario_v2] Exercise {exercise_id} timeline done ({executed} events); still running")
-            return {
-                "status": "running",
-                "exercise_id": exercise_id,
-                "events_executed": executed,
-                "injects_fired": fired,
-            }
-
-        # Mock: a simulation with no telemetry, so every objective is achieved (ADR 0005).
+        # The exercise stays live after its timeline, mock or real: instructors judge its
+        # objectives (ADR 0020) until one completes it or its duration runs out
+        # (app/exercise_completion.py). The run achieves nothing; nothing here may. An
+        # instructor may have closed or paused it during the last event: say so, never "running".
         with _db_session() as db:
-            for obj in objectives:
-                ref_id = obj.get("ref_id") if isinstance(obj, dict) else None
-                if ref_id:
-                    db_ops.achieve_objective(db, exercise_id, str(ref_id))
-        completed_objectives = len(objectives)
-
-        with _db_session() as db:
-            completed = db_ops.complete_exercise(db, exercise_id)
             final_state = db_ops.exercise_state(db, exercise_id)
-        if not completed:
+        if final_state != "running":
             logger.info(f"[scenario_v2] Exercise {exercise_id} became {final_state} during the run; left as is")
             return _halted(exercise_id, final_state, executed, fired)
-
-        _notify_api(
-            "exercise",
-            {
-                "id": exercise_id,
-                "state": "completed",
-                "events_executed": executed,
-                "injects_fired": fired,
-                "objectives_completed": completed_objectives,
-            },
-        )
+        _notify_api("exercise", {"id": exercise_id, "state": "running", "phase": "timeline_complete"})
         logger.info(
-            f"[scenario_v2] Exercise {exercise_id} completed ({executed} events, {fired} fired, "
-            f"{completed_objectives} objectives)"
+            f"[scenario_v2] Exercise {exercise_id} timeline done ({executed} events, {len(objectives)} "
+            f"objectives for the instructor to judge, backend {backend}); still running"
         )
         return {
-            "status": "completed",
+            "status": "running",
             "exercise_id": exercise_id,
             "events_executed": executed,
             "injects_fired": fired,
-            "objectives_completed": completed_objectives,
         }
 
     except Exception as e:

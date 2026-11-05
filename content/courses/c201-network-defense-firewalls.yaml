@@ -447,7 +447,7 @@ modules:
       - D) Dynamic address inspection on the router at the edge
       answer: B
     - question: A zero trust access request is evaluated and refused before any traffic is forwarded. Which
-        component refused it?
+        component evaluated the request and decided to refuse it?
       options:
       - A) The policy enforcement point
       - B) The resource itself

@@ -102,7 +102,9 @@ class StandingOut(BaseModel):
         "Every graded module at or above its own pass threshold, unattempted ones failing; "
         "None: no graded result yet, or the course has no graded module"))
     course_percent: float | None = Field(None, description="Never on an Unclassified deployment")
-    detections_credited: int | None = Field(None, description="Never on an Unclassified deployment")
+    detections_credited: int | None = Field(
+        None, description="Detections an instructor cited in judging (ADR 0020); never on an Unclassified deployment"
+    )
     suggested: ResultOutcomeOut
     outcome: ResultOutcomeOut | None = Field(None, description="The result set at the last close-out")
     comment: str | None = None

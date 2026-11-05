@@ -274,15 +274,15 @@ TIMELINE = [
 
 
 class TestRunScenarioV2:
-    def test_mock_run_fires_safe_injects_records_every_event_and_completes(self, wdb, monkeypatch, no_real_broker):
+    def test_mock_run_fires_safe_injects_records_every_event_and_stays_running(self, wdb, monkeypatch, no_real_broker):
         monkeypatch.setenv("PROVISIONER_BACKEND", "mock")
         eid = _exercise(wdb, _range(wdb), state="pending", objectives=[("obj-1", 10), ("obj-2", 5)])
         definition = {"timeline": TIMELINE, "objectives": [{"ref_id": "obj-1"}, {"ref_id": "obj-2"}]}
 
         result = exercise_run.run_scenario_v2(exercise_id=eid, scenario_definition=definition)
 
-        assert result["status"] == "completed"
-        assert (result["events_executed"], result["injects_fired"], result["objectives_completed"]) == (3, 2, 2)
+        # ADR 0020: the instructor judges; the run achieves nothing and completes nothing.
+        assert result == {"status": "running", "exercise_id": eid, "events_executed": 3, "injects_fired": 2}
         recs = _records(wdb, exercise_id=eid)
         assert [(r["seq"], r["action"], r["status"]) for r in recs] == [
             (0, "simulated_execution", "fired"),
@@ -291,12 +291,12 @@ class TestRunScenarioV2:
         ]
         assert len({r["run_id"] for r in recs}) == 1
         assert len(_ingest_sends(no_real_broker)) == 2
-        assert _state(wdb, eid) == "completed"
+        assert _state(wdb, eid) == "running"
         with wdb.connect() as c:
             total = c.execute(
                 sa.select(tables.exercises.c.total_score).where(tables.exercises.c.id == eid)
             ).scalar()
-        assert total == 15
+        assert total == 0
 
     @pytest.mark.parametrize("terminal", ["completed", "cancelled", "paused"])
     def test_a_late_delivery_does_not_touch_a_newer_state(self, wdb, terminal):
@@ -328,7 +328,7 @@ class TestRunScenarioV2:
         assert len(_records(wdb, exercise_id=eid)) == 1  # nothing after the cancel
         assert _state(wdb, eid) == "cancelled"
 
-    def test_completion_does_not_overwrite_a_state_set_during_the_last_event(self, wdb, monkeypatch):
+    def test_a_state_set_during_the_last_event_is_reported_not_running(self, wdb, monkeypatch):
         eid = _exercise(wdb, _range(wdb))
         real = inject_dispatch.dispatch_inject
 
@@ -377,7 +377,7 @@ class TestRunScenarioV2:
                 c, exercise_id=eid, run_id="run-1", seq=0, t="0:00", action="simulated_execution", status="fired"
             )
         result = exercise_run.run_scenario_v2(exercise_id=eid, scenario_definition={"timeline": TIMELINE})
-        assert result["status"] == "completed" and result["events_executed"] == 3
+        assert result["status"] == "running" and result["events_executed"] == 3
         assert [r["seq"] for r in _records(wdb, exercise_id=eid)] == [0, 1, 2]  # seq 0 not fired twice
 
     def test_a_replay_is_a_new_run_and_keeps_earlier_evidence(self, wdb):
@@ -399,7 +399,7 @@ class TestRunScenarioV2:
             {"t": "0:30", "action": "simulated_execution"},
         ]
         result = exercise_run.run_scenario_v2(exercise_id=eid, scenario_definition={"timeline": timeline})
-        assert result["status"] == "completed" and result["injects_fired"] == 1
+        assert result["status"] == "running" and result["injects_fired"] == 1
         recs = _records(wdb, exercise_id=eid)
         assert [r["status"] for r in recs] == ["failed", "failed", "failed", "failed", "fired"]
         assert recs[2]["detail"] == "invalid event: timeline offset 'soon' is not m:ss"

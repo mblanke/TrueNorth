@@ -1,10 +1,11 @@
-"""Students cannot earn detection credit by querying the platform's inject labels (H4).
+"""Students cannot pick out the attack by querying the platform's inject labels (H4).
 
 Inject telemetry was stamped with ``inject_action``, ``exercise_id``, ``truenorth_simulated``,
 ``event.module: truenorth.inject`` and ``threat.technique.id``, and a Student's detection
 ran as raw Lucene ``query_string``. ``inject_action:c2_beacon`` matched exactly the attack,
-at full precision, and was credited. Now: Student queries go through the closed detection
-grammar (labels and free text refused, 422, no attempt used), the labels live under
+at full precision, and was credited. Since ADR 0020 a detection is evidence for the
+instructor, never credit, but it must still be real evidence: Student queries go through the
+closed detection grammar (labels and free text refused, 422, nothing recorded), the labels live under
 ``tn_ground_truth`` (stored, not indexed), and telemetry search hides them from non-staff.
 """
 
@@ -17,7 +18,7 @@ import pytest
 import yaml
 from _shared import SCENARIO, STARTED, FakeStore, _at, act_as, real_exercise, real_tenant, real_user
 from app import main as app_main
-from app.detections import credit
+from app.detections import templating
 from app.detections.models import DetectionSubmission
 from app.main import app as fastapi_app
 from app.models import ExerciseState, Objective, ObjectiveType, UserRole
@@ -77,7 +78,7 @@ EXPLOITS = [
 
 
 @pytest.mark.parametrize("query", EXPLOITS)
-def test_label_queries_are_422_use_no_attempt_and_earn_nothing(client, db_session, store, setting, query):
+def test_label_queries_are_422_and_record_nothing(client, db_session, store, setting, query):
     store.events = [_labelled(inject_action="c2_beacon", exercise_id=str(setting["ex"].id),
                               truenorth_simulated=True, **{"event.module": "truenorth.inject",
                                                            "threat.technique.id": "T1071.001"}) for _ in range(3)]
@@ -86,45 +87,41 @@ def test_label_queries_are_422_use_no_attempt_and_earn_nothing(client, db_sessio
     r = client.post(f"/exercises/{setting['ex'].id}/objectives/detect_c2/detections", json={"query": query})
 
     assert r.status_code == 422, r.text
-    assert "no attempt used" in r.json()["detail"]
+    assert "nothing recorded" in r.json()["detail"]
     db_session.expire_all()
     assert db_session.query(DetectionSubmission).count() == 0
     obj = db_session.query(Objective).filter(Objective.exercise_id == setting["ex"].id).one()
     assert obj.achieved is False
 
 
-def test_a_real_detection_on_observable_fields_still_scores(client, db_session, store, setting):
+def test_a_real_detection_on_observable_fields_is_recorded_and_credits_nothing(client, db_session, store, setting):
     store.events = [_labelled(), _labelled(), {"event_type": "http", "url.domain": "news.example",
                                               "truenorth": {"ingested_at": _at(5)}}]
     act_as(setting["student"])
     r = client.post(f"/exercises/{setting['ex'].id}/objectives/detect_c2/detections",
                     json={"query": "event_type:http AND url.domain:*northwind-update*"})
     assert r.status_code == 201, r.text
-    assert r.json()["verdict"] == "achieved"
+    assert (r.json()["verdict"], r.json()["events_matched"]) == ("recorded", 2)
+    db_session.expire_all()
+    assert db_session.query(Objective).filter(Objective.exercise_id == setting["ex"].id).one().achieved is False
 
 
-def test_every_shipped_answer_key_is_expressible_in_the_detection_grammar():
-    """A Student must be able to write what the key says, or the objective is unwinnable."""
+def test_every_shipped_look_for_query_is_expressible_in_the_detection_grammar():
+    """What the instructor looks for must be something a Student can write as a detection."""
     keys = []
     for path in sorted((REPO / "content/scenarios").glob("*/scenario.yaml")):
         doc = yaml.safe_load(path.read_text()) or {}
         for obj in doc.get("objectives") or []:
             q = (obj.get("params") or {}).get("query")
             if isinstance(q, str):
-                keys.append((path.parent.name, obj.get("id"), credit.render(q, doc.get("variables") or {})))
+                keys.append((path.parent.name, obj.get("id"), templating.render(q, doc.get("variables") or {})))
     assert keys
     for scenario, ref, q in keys:
         try:
             detection_query.parse_detection(q)
         except QueryError as exc:  # pragma: no cover - the message is the point
-            pytest.fail(f"{scenario}:{ref} key {q!r} is not expressible: {exc}")
+            pytest.fail(f"{scenario}:{ref} look-for {q!r} is not expressible: {exc}")
         assert not detection_query.references_labels(q), (scenario, ref)
-
-
-def test_an_answer_key_on_labels_is_not_scorable():
-    doc = "objectives:\n  - id: o\n    params: {query: 'inject_action:c2_beacon'}\n"
-    with pytest.raises(credit.NotScorable, match="labels"):
-        credit.answer_key("opensearch_query", None, "o", doc)
 
 
 def test_the_label_namespace_is_the_one_the_engine_writes():
