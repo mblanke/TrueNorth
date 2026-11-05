@@ -31,9 +31,10 @@ def notify(
     message: str = "",
     link: str | None = None,
     kind: str = "info",
+    extra: dict | None = None,
 ) -> int:
     """Queue a notification for each recipient except the actor; returns how many."""
-    data = json.dumps({"link": link, "kind": kind})
+    data = json.dumps({"link": link, "kind": kind, **(extra or {})})
     seen: set[uuid.UUID] = set()
     for uid in user_ids:
         if uid is None or uid == actor_id or uid in seen:

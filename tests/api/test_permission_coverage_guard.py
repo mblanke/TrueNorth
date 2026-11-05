@@ -52,6 +52,8 @@ SIGN_IN_ONLY: dict[str, str] = {
     "GET /users/me": "own: the caller's profile",
     "GET /notifications": "own: the caller's inbox (filtered on user_id)",
     "GET /notifications/unread-count": "own: the caller's inbox",
+    "GET /notifications/settings": "own: the caller's email switch (their row, keyed by their id and tenant)",
+    "PUT /notifications/settings": "own: writes only the caller's own switch; the body names no user",
     "POST /notifications/read-all": "own: marks the caller's own notifications read",
     "POST /notifications/{notification_id}/read": "own: 404 unless the notification is the caller's",
     "GET /onboarding/state": "own: the caller's onboarding state",
