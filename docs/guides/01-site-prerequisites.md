@@ -314,7 +314,7 @@ to the internet for the online install, NTP, DNS). The flows TrueNorth needs are
 | From | To | Port | Why |
 |---|---|---|---|
 | TrueNorth VM | vCenter | TCP 443 | Provisioning, discovery |
-| TrueNorth VM | Every ESXi host's management address | TCP 443 | Guest file transfer during range builds |
+| TrueNorth VM | Every ESXi host's management address | TCP 443 | Guest file transfer during range builds; relaying VM consoles (see below) |
 | TrueNorth VM | DC(s) | TCP 636 (LDAPS), TCP/UDP 53 (DNS), UDP 123 (NTP) | Directory sign-in, name resolution, time |
 | TrueNorth VM | GPU AI node | TCP 4000 | AI features (optional) |
 | TrueNorth VM | Backup target VM | TCP 22 | Nightly copy of the backups (06 §3) |
@@ -325,6 +325,16 @@ to the internet for the online install, NTP, DNS). The flows TrueNorth needs are
 | TrueNorth VM (worker), **online feeds only** | `endoflife.date`, `www.cisa.gov`, `services.nvd.nist.gov` | TCP 443 | Daily content feeds (06 §7). GET requests only; no site data is sent |
 
 An air-gapped site needs none of the internet flows: guide 02 Appendix A.
+
+**Consoles are the TrueNorth VM → ESXi hosts flow above, and the only screen flow.** A
+browser opens its console on the TrueNorth VM (`wss://<tn-fqdn>/ws/console/…`, TCP 443, the
+same route as the web app) and TrueNorth relays the machine's screen from the ESXi host.
+Students and instructors need **no** route to vCenter or the ESXi hosts, and their browsers
+never see a host certificate. When a range's connection verifies TLS, it is the TrueNorth VM
+that checks the ESXi host's certificate, against the same trust store it uses for vCenter
+(§5). None of this console behaviour has been confirmed against a real ESXi host yet: the
+relay and the vSphere adapter are covered by tests with a mock console and a mocked vSphere
+SDK only.
 
 ---
 
