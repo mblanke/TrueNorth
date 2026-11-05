@@ -125,7 +125,13 @@ Content (courses, modules, labs, scenarios, range templates, golden images) has 
     relays to the hypervisor (`app/console_relay`). The grant (user, VM, about five minutes,
     three connections at most, four live per user, one socket at a time) is checked again
     while the socket is open: the session window, the roll call and seat, observer consoles
-    on, the role, the range running; the socket ends with the window. **An observer is issued
+    on, the role, the range running; the socket ends with the window. **The sign-in token is
+    checked at connect only** (Keycloak access tokens last 300 s; closing at their expiry cut
+    every console off within five minutes). The user's TrueNorth account is re-read at each
+    renewal, so a disable, a role change or a seat change takes effect within seconds; a
+    sign-out or disable made only at the identity provider reaches an open console through
+    the AD status sync, or at the eight-hour ceiling (`MAX_OPEN_SECONDS`, below Keycloak's
+    ten-hour session). Revoke in TrueNorth to cut a console off at once. **An observer is issued
     a console only where the adapter's stream can be held view-only**; for vSphere that is the
     relay's own allowlist (S4, #369, `console_relay/rfb_filter.py`): on a view-only grant the
     relay frames the RFB byte stream and forwards only SetPixelFormat, SetEncodings and
