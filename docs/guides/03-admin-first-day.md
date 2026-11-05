@@ -6,11 +6,12 @@ can run classes. Day-to-day upkeep (backups, upgrades, porting golden images, al
 [06-operations-runbook.md](06-operations-runbook.md).
 
 Checked against tag `v1.2.0-rc17` (`dd98ace1`, the release under test, 2026-11-05): every
-UI label, route and installer variable named below was verified in that tree. Earlier reads:
+UI label, route and installer variable named below was verified in that tree. Sections 5 to
+8 and 11 were re-read label by label against the tag on 2026-11-05 (the modules behind them
+are unchanged since `dd98ace1`). Earlier reads:
 checked against `main` at `fd4f79a6` (2026-10-27, v1.2.0); reconciled with `main` at
 `353339c2` (2026-11-02) for site setup, the platform tenant, time zone, classes, roll-call
-domains, users, email help, unit readiness and content port. Sections 5 to 8 and 11 still
-owe a full end-to-end re-read against the tag; their named labels were spot-checked only.
+domains, users, email help, unit readiness and content port.
 Words follow
 [GLOSSARY.md](../GLOSSARY.md). UI paths are written as **sidebar section → item → tab or
 card → button**.
@@ -576,6 +577,7 @@ Every change is audited under your name.
 | Bulk CSV roster of people who must exist before they sign in: no screen | `POST /users/import-csv` |
 | Approving a request into a different tenant: no screen | `tenant_id` on `POST /registration/requests/{id}/approve` |
 | Observer consoles on class sessions are off, and the installer has no setting for them | `CLASS_OBSERVER_CONSOLES` on the API, see guide 04 |
+| An open console outlives its sign-in token: the token is checked when the console connects, not while it is open (ADR 0014, "Console relay"; issue #441 tracks the fix) | To cut someone off now, act in TrueNorth, not the directory: guide 06 §10 |
 
 ---
 

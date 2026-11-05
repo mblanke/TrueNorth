@@ -17,6 +17,7 @@ checkout in `~/truenorth` on the TrueNorth VM, the site inventory in
 | [7. Content feeds](#7-content-feeds) | Daily (online) or per bundle (air-gapped) |
 | [8. Placement and port mirroring](#8-placement-and-port-mirroring) | SOC ranges miss traffic |
 | [9. AD status sync: dry run, then enable](#9-ad-status-sync-dry-run-then-enable) | The first nights after install |
+| [10. Cutting a user off](#10-cutting-a-user-off) | Someone must lose access now |
 
 Deeper references, which this guide points into rather than repeats: `install/README.md`
 (every installer variable), `docs/operations.md` (alert rules, range leases, Greyspace),
@@ -830,6 +831,31 @@ Deactivating removes the person from the roll call of open classes (freeing thei
 nothing is deleted, and an administrator can re-enable the account in **Users**. Without
 email (02 §6.4), class leads are not told: read the panel. Details: `docs/identity.md`
 "AD status sync (nightly)".
+
+---
+
+## 10. Cutting a user off
+
+Someone has left, or a live session must stop. What reaches an **open console** (a live
+screen on a class or lab range, ADR 0014 "Console relay") and how fast:
+
+| Act where | When the open console closes |
+|---|---|
+| Disable the user in **TrueNorth**: **Admin → Users → Delete** (it deactivates; **Re-enable** undoes it) | At the relay's next re-check, within about **10 s** |
+| Take the Student off the class's roll call (guide 04), or end the session early (**Schedule → Move or resize**) or cancel it (**Schedule → Cancel booking**, or **Cancel class** on the class, guide 04) | Same: within about 10 s |
+| Disable the user or sign them out in **AD or Keycloak only** | **Not at once.** At the nightly AD sync (§9, 02:00 UTC) — or, for a console that stays open, at the **8-hour ceiling**, when it is closed and must be reopened |
+
+The 10 s comes from the relay: every few seconds it re-reads the user's account, the roll
+call and seat, the role and the session window, and closes the socket when any of them no
+longer allows it. The 8-hour ceiling and the nightly sync exist because the **sign-in token
+is checked only when the console connects**: a console whose holder was disabled only in the
+directory keeps working until TrueNorth's own data says stop (ADR 0014). That is the
+trade-off, accepted on purpose — closing consoles at the token's 5-minute expiry cut every
+console off mid-class — and it is why the urgent step is always a TrueNorth-side one.
+
+Leave a trail, too: every class console grant is audited (`range_console_open`: who, range,
+machine, VM, why), and a Student's console open counts as attendance evidence. For the
+account-level steps (deactivate, seats, re-enable) see §9 and guide 03 §8.
 
 ---
 
