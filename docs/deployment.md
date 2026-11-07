@@ -16,8 +16,9 @@ Ubuntu 24.04 with `/srv/truenorth` empty (it installs a pinned Docker; `tn_insta
 to a running, AD-federated TrueNorth, and it handles several things that are easy to get
 wrong manually:
 
-- **Migration ordering.** `app/main.py`'s lifespan calls
-  `Base.metadata.create_all()` on every API start, in every uvicorn worker. Bring
+- **Migration ordering.** `control-plane/api/app/main.py`'s lifespan calls
+  `Base.metadata.create_all()` on every API start where `DB_AUTO_CREATE` is on, in
+  every uvicorn worker. Bring
   the API up before Alembic on a fresh database and the migration dies on
   `DuplicateTable`. The installer brings up Postgres alone, migrates in a
   one-shot container, then starts everything else — and sets `DB_AUTO_CREATE=false`.
@@ -38,7 +39,8 @@ is in guide 01; backups, upgrades and troubleshooting are in guide 06. A develop
 (`compose.dev.yml`) is described in [development.md](development.md).
 
 > **Note on `PROVISIONER_BACKEND`:** the valid values are the registry keys in
-> `worker/provisioners/__init__.py` — `mock` and `vsphere_api` (supported), and
+> `control-plane/worker/worker/provisioners/__init__.py` — `mock` and `vsphere_api`
+> (supported), and
 > `proxmox_api` and `hyperv` (experimental: the API, the workers and the installer
 > preflight refuse them unless `EXPERIMENTAL_PROVISIONERS=true` /
 > `tn_experimental_provisioners: true`). The Terraform backends were removed (ADR 0009).
@@ -99,7 +101,7 @@ equal. The settings are tabulated in `install/README.md` ("Identity hardening").
 | `truenorth-smoke` | confidential, **disabled** | Password grant, for `95-smoke-test` only: `roles/tn_smoke` enables it for one token request and disables it again |
 
 The password grant (direct access grants) is off on `truenorth-web`, `truenorth-api` and
-`truenorth-cli`. Access tokens last 5 minutes; browser sessions 30 minutes idle, 10 hours
+`truenorth-cli`. Access tokens last 5 minutes; browser sessions 60 minutes idle, 10 hours
 maximum. Roles are `admin`, `instructor`, `student`, `observer`, `range_ops`; the
 installer's `truenorth-identity` client scope adds the `groups` and AD identity claims
 and the API audience (`roles/tn_keycloak/defaults/main.yml`, `tn_kc_protocol_mappers`).
@@ -154,7 +156,7 @@ that operators ask about:
 | Variable | Default | Required | Description |
 |----------|---------|----------|-------------|
 | `TRUSTED_PROXY_CIDRS` | `127.0.0.0/8,::1/128,172.16.0.0/12` | Prod | Peers whose `X-Forwarded-For` is believed (comma-separated CIDRs; `none` ignores the header). Set it to your reverse proxies' addresses. Auth-zone IP allowlists, the rate limiter and `NOISE_AGENT_CIDRS` all use the resulting address. The bundled nginx configs overwrite `X-Forwarded-For` with `$remote_addr`; a proxy in front of them must be added to `set_real_ip_from` in `infra/platform/nginx/nginx.conf`. |
-| `NOISE_AGENT_CIDRS` | -- | Recommended | Management network(s) noise agents call from; `/noise/agent/*` answers 403 to anyone else. nginx does not filter this path itself: put an `allow`/`deny` `location ^~ /api/noise/agent/` in front if you want it refused at the edge too. |
+| `NOISE_AGENT_CIDRS` | -- | Recommended | Management network(s) noise agents call from; `/noise/agent/*` answers 403 to anyone else. The edge nginx refuses the path too (`infra/platform/nginx/conf.d/truenorth.conf`, `location ~ ^/api/(v1/)?noise/agent/`), but its list is `infra/platform/nginx/snippets/noise-agent-cidrs.conf`, shipped `default 1;` — allow all. Replace that default with your management network and set `NOISE_AGENT_CIDRS` to the same value. |
 | `METRICS_SCRAPE_TOKEN` | -- | Helm | When set, `/metrics` requires `Authorization: Bearer <token>`. |
 | `SCHEDULER_FEED_BASE_URL` | -- | Prod | Public origin of calendar-feed URLs (`https://range.example`). Unset, the API uses the request's own `Host` and, with auth on, logs a warning at startup; `X-Forwarded-Host` is never used. |
 
