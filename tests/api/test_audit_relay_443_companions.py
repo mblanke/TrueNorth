@@ -13,8 +13,8 @@ unexpected pass turns into a hard failure and the marker comes off. No app code 
   ``setup_middleware`` does not cover; the token must be redacted there too.
 * Companion of ``test_a_console_just_closed_frees_the_live_cap`` (finding
   ``control-plane/api/app/console_relay/service.py:143``): the cap is per user regardless of
-  role, so an *instructor's* closed-but-unexpired consoles hold his four seats exactly as a
-  Student's do; the finding is not the Student's alone.
+  role, so an *instructor's* closed-but-unexpired consoles hold the instructor's four seats
+  exactly as a Student's do; the finding is not the Student's alone.
 """
 
 from __future__ import annotations
@@ -67,20 +67,21 @@ def test_the_grant_in_the_refused_ws_handshake_line_is_redacted():
 
 
 @pytest.mark.xfail(strict=True, reason="audit #443: the live cap counts closed-but-unexpired grants (control-plane/api/app/console_relay/service.py:143) — companion")
-def test_an_instructors_just_closed_consoles_free_his_live_cap(client, db_session, request):
+def test_an_instructors_just_closed_consoles_free_their_live_cap(client, db_session, request):
     """Companion of ``test_a_console_just_closed_frees_the_live_cap``: the same finding
     (control-plane/api/app/console_relay/service.py:143) from a second role. ``issue`` counts
     by user and tenant only (service.py:141-143), so the cap binds the instructor like the
-    Student: after the instructor has opened and closed four consoles — none live — his fifth
-    machine must not answer 429 "You already have 4 consoles open"."""
+    Student: after the instructor has opened and closed four consoles — none live — the
+    instructor's fifth machine must not answer 429 "You already have 4 consoles open"."""
     relay_world = request.getfixturevalue("world")
     for i in range(MAX_LIVE_GRANTS):
         with _open(client, relay_world.grant(relay_world.lead, vm_name=f"vm{i}"), who="kc-lead") as ws:
             assert ws.receive_bytes() == RFB_GREETING
         assert _wait_for(_released(db_session))  # the socket is closed and the grant released
 
-    his = db_session.query(ConsoleGrant).filter(ConsoleGrant.user_id == relay_world.lead.id).all()
-    assert len(his) == MAX_LIVE_GRANTS and not any(g.live_until is not None for g in his), (
+    instructor_grants = db_session.query(ConsoleGrant).filter(ConsoleGrant.user_id == relay_world.lead.id).all()
+    assert len(instructor_grants) == MAX_LIVE_GRANTS and not any(
+        g.live_until is not None for g in instructor_grants), (
         "every socket is closed: no console of the instructor is open")
 
     refused = None
