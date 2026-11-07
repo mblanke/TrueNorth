@@ -267,7 +267,7 @@ def test_published_task_contract_artifacts_match_the_source():
 def test_api_image_contains_no_worker_package():
     """ADR 0002 rule 5: "The API image does not contain the `worker` package."
 
-    The api Dockerfile is an allowlist COPY (control-plane/api/Dockerfile:16); nothing
+    The api Dockerfile is an allowlist COPY (control-plane/api/Dockerfile:16-20); nothing
     may copy a worker package in, and no API module may import one — imports would work
     under pytest and fail in production, which is why mosa_check counts them
     (`api_imports_worker`, baseline 0).
