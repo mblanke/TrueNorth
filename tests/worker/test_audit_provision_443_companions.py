@@ -75,26 +75,43 @@ def task_env(monkeypatch, lease_always_free):
 def test_a_partial_destroy_that_keeps_the_port_group_is_not_recorded_destroyed_and_releases_nothing(
         task_env, monkeypatch):
     """Companion to the tasks.py:230 finding (the oracle's input: a VM whose power-off
-    timed out). Second input, the other half of the duplicate's title — "port groups
-    kept": the teardown removed every VM but its port group remove timed out, so
-    ``partial`` again sails through and the range is recorded ``destroyed`` over a live
-    port group, its reservations freed for the next range. Same secure behaviour: the
-    task fails, records no ``destroyed`` state and releases nothing."""
+    timed out — only free-text ``errors``, nothing else distinguishes its input). Second
+    input, the other half of the duplicate's title — "port groups kept": every VM and the
+    range folder went, the port group remove timed out, and the backend says so in its S5
+    teardown report (vsphere_inventory.unidentified's shape: the port group left
+    ``unidentified``, carrying the range's owner mark). That report is the evidence an
+    administrator needs to delete the live port group afterwards
+    (``delete_confirmed_teardown_items`` deletes only items listed in the range's stored
+    report), so the secure fix must not discard it with the failure: the task fails,
+    settles ``failed``, records no ``destroyed`` state, releases nothing — and still hands
+    the report to ``record_teardown`` (worker/tasks.py:229, before the status gate)."""
     released: list[str] = []
+    teardown_reports: list = []
+    report = {"remaining": [],
+              "unidentified": [{"kind": "portgroup", "moid": "dpg-9", "name": "dPG-TN-v150",
+                                "key": "dvportgroup-9", "vlan": 150, "marks": ["owner_mark"]}],
+              "not_checked": []}
 
     class Prov:
         async def destroy(self, range_id, output):
-            return DestroyResult(status="partial", resources_removed=4,
+            return DestroyResult(status="partial", resources_removed=5, teardown=report,
                                  errors=["Port group dPG-TN-v150: destroy task timed out"])
+
+    def record(session_factory, range_id, result):
+        teardown_reports.append(result.teardown)
+        return None  # the real record never raises; its storage is its own test's subject
 
     monkeypatch.setattr(tasks.range_alloc, "release_after_destroy",
                         lambda *a: released.append("released") or 0)
+    monkeypatch.setattr(tasks, "record_teardown", record)
     monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None, **kw: Prov())
     monkeypatch.setattr(tasks, "_last_attempt", lambda task: True)  # final: no retry
     with pytest.raises(Exception, match="destroy task timed out|partial"):
         tasks.destroy_range.run("r-1")
     assert not released, "a partial destroy freed the range's VLAN/uplink/MAC reservations"
     assert "destroyed" not in [s for s, _ in task_env["states"]]
+    assert "failed" in [s for s, _ in task_env["states"]], "the partial destroy settled nowhere"
+    assert teardown_reports == [report], "the surviving port group's teardown report was discarded"
 
 
 # -- high, tasks.py:168 — a partial build (a VM failed to clone) recorded `ready` -------
