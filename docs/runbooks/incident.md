@@ -29,8 +29,8 @@ When in doubt, pick the higher severity and lower it later.
    journalctl -t truenorth-backup --since -2d
    ```
 3. **Stabilise**: stop the bleeding with the smallest reversible action (restart one
-   service, pause a queue, put nginx in maintenance). Write every action and its time in the
-   record.
+   service, pause a queue, take the edge out of the pool with `dc stop nginx`). Write every
+   action and its time in the record.
 4. **Protect data before risky actions.** Before anything that touches a datastore
    (restore, manual SQL, volume work), take a backup if PostgreSQL is still readable:
    `scripts/backup/backup.sh` ([backup-restore.md](backup-restore.md)).
