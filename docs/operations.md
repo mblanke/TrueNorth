@@ -48,7 +48,6 @@ the api and workers write JSON lines), rotated by Docker at 50 MB × 5.
 | Redis | redis_exporter | 9121 |
 | OpenSearch, Moodle, ARC² runner | host probes → node_exporter textfile (`truenorth_probes.prom`) | 9100 |
 | Backups | `backup.sh` → node_exporter textfile (`truenorth_backup.prom`) | 9100 |
-| MinIO | `/minio/v2/metrics/cluster` | 9000 |
 | Node Exporter | `/metrics` | 9100 |
 
 Firing alerts can always be read on the host, whether or not they are delivered:
