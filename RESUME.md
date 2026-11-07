@@ -16,13 +16,16 @@ Releasing: `docs/release.md`.
   prose without re-running it. The classes, approval and calendar work (ADR 0014, #277,
   #291–#312) are in `v1.2.0-rc18` and later candidates (`git merge-base --is-ancestor
   35c4cece v1.2.0-rc18`), as is the console relay proper (#366, #427/#428, #384); its
-  follow-ups #430 and #442 first appear in `v1.2.0-rc19` (`git merge-base --is-ancestor
-  d96f8074 v1.2.0-rc19`).
+  follow-ups #430 and #442 first appear in `v1.2.0-rc19` (`git log --oneline
+  v1.2.0-rc18..v1.2.0-rc19` shows what rc19 added).
   - Changes: `CHANGELOG.md`.
   - Known limitations, simulator-only evidence and the staging record:
     `docs/release-notes/v1.2.0.md`.
-  - How each role uses the product: `docs/guides/` (03 admin, 04 instructor, 05 Student).
-    01, 02 and 06 (site, install, operations) are on a separate docs branch.
+  - How each role uses the product: `docs/guides/` (03 admin, 04 instructor, 05 Student —
+    each describes the console its role sees; the relay's behaviour is specified in
+    `docs/adr/0014-classes-onboarding-and-calendar.md`, "Console relay"). 01 (site
+    prerequisites), 02 (install) and 06 (operations) are in `docs/guides/` too (since
+    579d37be, 2026-10-27).
   - `docs/onboarding.md` and `docs/user-guide.md` now only point to the guides.
 - **Where the code lives:** section modules under `control-plane/api/app/<module>/`:
   - scheduler and capacity, classes (ADR 0014), acknowledgement, content review and feeds,
