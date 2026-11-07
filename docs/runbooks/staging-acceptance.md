@@ -133,9 +133,9 @@ expected role — `instructor.demo`, `trainee1.demo` (the participant Student),
 | Module | Checks |
 |---|---|
 | infra | `/health/live`, `/health/ready`; `/health/deep` with all seven components plus `audit_export` (the signed daily audit export is current; ADR 0011) (OpenSearch yellow passes: a single node cannot place replicas; anything else not healthy fails); `/metrics` 401 without `METRICS_SCRAPE_TOKEN`, Prometheus text with it; through nginx: `/health` and `/api/health` 200, `/api/metrics` 404; `backup.env` present and sets `BACKUP_DIR` |
-| platform-core | a user for each role; Student and Observer refused staff routes (403: audit log, users, booking, ranges, exercises), instructor refused AI config; tenant scoping (every role in the admin's tenant, rows carry it, foreign ids 404); the audit log records the exercise's create and start; demo accounts' subjects match Keycloak (needs the admin credential); the login banner (AC-8): the realm's theme is `truenorth`, its localization holds the site's banner, and its sign-in page shows it with a required acknowledgement (same credential); the audit log is append-only: PostgreSQL refuses an UPDATE and a DELETE of the newest row (rolled back); the audit export: one hash chain in `audit_exports`, current, and the newest manifest's hash, Ed25519 signature and file verified in the archive (`--audit-archive`) |
+| platform-core | a user for each role; Student and Observer refused staff routes (403: audit log, users, booking, ranges, exercises), instructor refused AI config; tenant scoping (the tenant's Student and Instructor, rows carry it, foreign ids 404); the audit log records the exercise's create and start; demo accounts' subjects match Keycloak (needs the admin credential); the login banner (AC-8): the realm's theme is `truenorth`, its localization holds the site's banner, and its sign-in page shows it with a required acknowledgement (same credential); the audit log is append-only: PostgreSQL refuses an UPDATE and a DELETE of the newest row (rolled back); the audit export: one hash chain in `audit_exports`, current, and the newest manifest's hash, Ed25519 signature and file verified in the archive (`--audit-archive`) |
 | web-shell | the Angular shell served through nginx for `/`, `/dashboard`, `/learning/courses`; for 17 main routes, the API endpoint each page loads answers each role as `app/rbac.py` says (50 role checks) |
-| content | all shipped course files (`content/courses/*.yaml`, 44) have their catalogue course with modules; every shipped template, scenario and Sigma rule is loaded; the VM image catalogue is not empty |
+| content | all shipped course files (`content/courses/*.yaml`, 104) have their catalogue course with modules; every shipped template, scenario and Sigma rule is loaded; the VM image catalogue is not empty |
 | curriculum | QSP qualifications with performance objectives, learning paths, developmental progression, the curriculum map; a Student's own map |
 | lms | the participant Student enrolled on C103 sits its quizzed module's quiz (answers hidden from them), passes, and the module progress and the PO on their curriculum map show completed; cmi5: on an accepted release of a published course, the Student launches an AU, fetches the token once (a second fetch is refused), reads `LMS.LaunchData` and learner preferences, sends `initialized` and `terminated` through TrueNorth's LRS endpoint, and the statement is read back from the LRS; each registered Moodle platform is reachable and its results list answers; **Moodle loop (integration, bypasses browser)**: see below |
 | scenario-engine | the shipped `incident-response-drill` validates and its exercise (the installer's demo exercise, or a pending `acceptance-plan-…`) carries exactly the scenario's objectives and timeline; `acceptance-exercise-<tag>` starts, **worker-scenario** fires its inject (recorded `fired`), it stays running after the timeline (any backend, ADR 0020), pauses (a second pause 409) and resumes |
@@ -265,12 +265,13 @@ Moodle grades), and leaves them enrolled on the course. Anything cleanup could n
 - **detection: `0 events matched`.** Detection credit is windowed on `truenorth.ingested_at`,
   stamped by OpenSearch's ingest pipeline. Re-run the bootstrap the installer runs
   (`python -m telemetry.pipelines.bootstrap`, role `tn_telemetry`).
-- **provisioners: `Connection failed: … /api/session` 404.** The API's vSphere connection
-  backend (`control-plane/api/app/hypervisor_backends/vsphere.py`) speaks only the vCenter
-  Automation API (`/api/session`) on port 443: it ignores the connection's port, and has no
-  fallback to the legacy `/rest` session that older vCenters and vcsim offer (the worker's
-  provisioner has one). A simulator on another port, or one without `/api`, fails here. That is
-  a defect in that backend, not in the suite.
+- **provisioners: `Connection failed: … /api/session`.** The login `POST /api/session` failed
+  with something other than 404 (a 401 is the connection's credentials; otherwise the vCenter's
+  answer says what). A vCenter on another port, or one without `/api` (older vCenters, vcsim),
+  does not fail here: the backend (`control-plane/api/app/hypervisor_backends/vsphere.py`)
+  honours the connection's port (the URL omits it only for 443, 8006 or unset) and detects the
+  dialect at login, falling back to the legacy `/rest` session — same rule as the worker's
+  provisioner.
 - **lms cmi5: SKIP `no accepted course release … on a published course`.** No course with an
   accepted ARC² release is published yet (`scripts/arc2_batch_inprocess.py` publishes them).
 - **lms Moodle loop: SKIP `… is not published to …`.** Publish an accepted release of the
