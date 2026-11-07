@@ -64,7 +64,7 @@ code straight away (that is the step-up, docs/identity.md).
 
 - Keycloak: Realm `truenorth` > Events > Admin events shows `DELETE .../credentials/...`
   and `ACTION` on the user (needs the [master admin](#the-master-realm-admin)).
-- TrueNorth: Admin > Audit log (platform administrator) shows `mfa_reset` for the user.
+- TrueNorth: Admin > Audit Log (platform administrator) shows `mfa_reset` for the user.
 
 ## Keycloak unavailable
 
@@ -123,10 +123,10 @@ turned off) the 90-day rule does not run at all and nothing alerts. Every use of
 `break_glass_sign_in` audit row: when it fires and nobody planned it, treat it as an
 incident (docs/runbooks/incident.md) and reset its password with the playbook above.
 
-Someone else's local account disabled by the rule: an administrator re-enables it with
-`PATCH /users/{id}?is_active=true` (a query parameter; v1.2.0 has no button for it in Users; the 90 days
-start again). The sync never touches Keycloak, so the Keycloak account itself
-was never disabled.
+Someone else's local account disabled by the rule: an administrator re-enables it with the
+**Re-enable** button in Users, which issues `PATCH /users/{id}?is_active=true` (a query
+parameter); the 90 days start again. The sync never touches Keycloak, so the Keycloak
+account itself was never disabled.
 
 ## The master realm admin
 
