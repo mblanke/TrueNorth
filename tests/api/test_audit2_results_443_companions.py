@@ -363,8 +363,8 @@ def test_f38_companion_the_reversed_cross_tenant_package_id_reuse_is_a_mapped_re
 @pytest.mark.audit443
 @pytest.mark.xfail(
     strict=True,
-    reason="audit #443: concurrent bundle imports race the check-then-insert store; unhandled "
-           "IntegrityError (control-plane/api/app/content_feeds/service.py:204) — companion",
+    reason="audit #443: concurrent bundle imports race the check-then-insert store in _store; unhandled "
+           "IntegrityError (control-plane/api/app/content_feeds/service.py:235) — companion",
 )
 def test_f39_companion_three_concurrent_bundle_imports_neither_crash_nor_lose(monkeypatch, tmp_path):
     """Same finding, boundary value: three racers instead of two — the loser(s) of the
