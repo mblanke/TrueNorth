@@ -12,11 +12,7 @@ Two checks:
   node ``id`` in that course's declared template (the seven held courses --
   C302, C305, C306, RMC C202, RMC C205, RMC C207, RMC C211 -- carry no
   ``lab_range`` yet, so they are out of scope by construction, not by list);
-* every range template has a lab checklist under ``docs/lab-checks/``. The
-  checklists land in sibling commits of card #478, so that check is
-  ``xfail(strict=False)`` until they arrive -- it reports xfail, not pass,
-  while the directories exist but the docs do not. Remove the marker once the
-  eight checklists are committed.
+* every range template has a lab checklist under ``docs/lab-checks/``.
 """
 
 from __future__ import annotations
@@ -78,7 +74,6 @@ def test_lab_step_hosts_exist_in_the_template(path):
     assert not missing, f"{path.name}:\n  " + "\n  ".join(missing)
 
 
-@pytest.mark.xfail(strict=False, reason="checklists land in sibling commits of card #478")
 @pytest.mark.parametrize("name", TEMPLATES)
 def test_every_template_has_a_lab_checklist(name):
     assert (RANGE_DIR / name).is_dir(), f"no range template {name}"
