@@ -355,7 +355,7 @@ The complete role-to-permission mapping as defined in `rbac.py`
 | `aar:read` | X | X | X | X | |
 | `noise:read` | X | X | | | |
 | `noise:control` | X | X | | | |
-| `wiki:read` | X | X | X | X | |
+| `wiki:read` | X | X | X | X | X |
 | `wiki:edit` | X | X | | | X |
 | `wiki:admin` | X | | | | |
 | `ticket:create` | X | X | X | | X |
@@ -363,7 +363,7 @@ The complete role-to-permission mapping as defined in `rbac.py`
 | `ticket:admin` | X | | | | |
 | `schedule:read` | X | X | | X | X |
 | `schedule:write` | X | X | | | |
-| `schedule:admin` (any admin; the over-capacity policy `PUT /scheduler/policy` is additionally platform-admin only, `rbac.require_platform_admin`) | X | | | | |
+| `schedule:admin` (any admin; the over-capacity policy `PUT /scheduler/policy` and the manual clock `POST /scheduler/tick` are additionally platform-admin only, `rbac.require_platform_admin`) | X | | | | |
 | `schedule:approve` (ADR 0014 §14: approve, reject or propose a time for class sessions) | X | | | | X |
 
 **An instructor's own class (#200).** `enrollment:manage_own` and `team:manage_own` are
