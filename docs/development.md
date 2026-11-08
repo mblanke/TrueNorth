@@ -934,10 +934,12 @@ ng serve --proxy-config proxy.conf.json
 ### Frontend Architecture
 
 ```
-src/app/
-+-- core/                 # API client, auth, guards, interceptors, models
-+-- features/             # Per-section modules (ranges, exercises, courses, ...)
-+-- shared/               # Shared components, charts, markdown, tour
+src/
++-- app/                   # Angular application code
+|   +-- core/              # API client, auth, guards, interceptors, models
+|   +-- features/          # Per-section modules (ranges, exercises, courses, ...)
+|   +-- shared/            # Shared components, charts, markdown, tour
++-- environments/          # Environment configs (environment.ts, environment.prod.ts, app-environment.ts)
 ```
 
 ### Build for Production
@@ -1137,15 +1139,17 @@ python tools/cli/forge.py telemetry search <range-id> --query "process.name:powe
 
 ## SDK Usage
 
-The SDK client (`tools/sdk/client.py`, importable as `truenorth_sdk`) is **async**
-(httpx under the hood). The default `base_url` is `http://localhost:8080` (or
+The SDK client is **async** (httpx under the hood). From the repo root, import it
+as `from tools.sdk import TrueNorthClient` (no `truenorth_sdk` top-level module is
+installed; the standalone `truenorth-sdk` distribution named in `tools/sdk/README.md`
+and `tools/sdk/pyproject.toml` is not wired up in this repo). The default `base_url` is `http://localhost:8080` (or
 `TRUENORTH_API_URL`); the dev stack publishes the API on `127.0.0.1:8081`, so pass it
 explicitly there.
 
 ```python
 import asyncio
 
-from truenorth_sdk import TrueNorthClient  # tools.sdk
+from tools.sdk import TrueNorthClient
 
 
 async def main():
