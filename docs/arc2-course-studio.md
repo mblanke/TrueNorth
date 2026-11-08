@@ -1,10 +1,13 @@
 # ARC² Course Studio and TrueNorth LMS integration
 
 > **Status:** plan of record, v3 (2026-09-26), validated against the repository the same day
-> (§10). It amends the ARC² engine plan v2 (2026-09-24) and separates course *authoring*
-> from training *delivery*. Slice A (the authoring engine) is being built on branch
-> `claude/arc2-ai-rapid-cyber-8d8a3e`; slices B–F are design only. This document does not
-> certify the branch, deploy a Studio UI, validate prerequisites, or publish a course.
+> (§10) and claim-tested against it again on 2026-11-08. It amends the ARC² engine plan v2
+> (2026-09-24) and separates course *authoring* from training *delivery*. Slice A (the
+> authoring engine) was built on branch `claude/arc2-ai-rapid-cyber-8d8a3e` and is merged to
+> main (`tools/arc2/`, `tests/arc2/`); of slices B–F, the release boundary, publications,
+> test-content labelling and the Studio UI have since landed too (§10–§15). This document
+> does not certify the branch, deploy a Studio UI, validate prerequisites, or publish a
+> course.
 
 ## 1. Product boundary
 
@@ -86,11 +89,11 @@ after content acceptance, not another generation stage. The publishing service r
 release digest (§10, correction 4), curriculum approval and destination readiness before it
 changes delivery state.
 
-The intended instructor journey, once slices B–E exist:
+The intended instructor journey, as slices B–E land:
 
 1. Course Studio submits a request to the authoring API.
-2. A durable job records the project and run identity and invokes the engine (§10,
-   correction 5: how is not yet decided).
+2. A durable job records the project and run identity and invokes the engine (the runner,
+   §11; how it reaches a model, §13).
 3. Studio shows stage progress and the two reviews, using the same gate operations as the
    CLI. Restarting the browser does not restart generation.
 4. An authorized publisher selects an accepted release and a configured LMS destination.
@@ -145,7 +148,7 @@ silently turning them into stricter rules.
 
 Semester order does not establish a prerequisite. DP placement and eligibility are separate
 fields. Completing a course does not necessarily satisfy every skill or qualification
-requirement associated with it. **Today's code does derive prerequisites from order; see
+requirement associated with it. **The linear learning-path graph is still order-derived; see
 §10, correction 1.**
 
 Only approved relationships drive student blocking and prerequisite arrows. Draft proposals
@@ -176,8 +179,9 @@ approved source material exists (`docs/dp3-5-curriculum-proposal.md`).
   publishing credentials.
 
 The current content importer updates course and module records in place and unpublishes the
-course (`course_content_ingest.py:384`). Do not attach a Publish button to it; first add a
-release-aware staging adapter that preserves active delivery and enrolled students.
+course (`course_content_ingest.py:501-534`; `is_published = False` at `:521`). Do not attach
+a Publish button to it; first add a release-aware staging adapter that preserves active
+delivery and enrolled students.
 
 ## 7. Student experience and results
 
@@ -195,12 +199,12 @@ separate from them. Range telemetry alone does not grant a qualification. ARC² 
 authorized, release-linked feedback and aggregate improvement signals; it needs no
 unrestricted student transcripts and no permission to rewrite grades.
 
-**Studio placement:** add **Courses** to the existing Authoring Studio
+**Studio placement:** **Courses** sits in the existing Authoring Studio
 (`app.routes.ts`, hub `authoring`, beside Ranges, Scenarios, Detections, MESL, Forge and
-Content), with project views **Overview, Outline, Preview, Assessment, Lab, Validation**. Raw
-files and code live in an advanced view. The seven agents appear as stage status, not as
-separate menus. The LMS catalogue and the career path deep-link to the authorized delivery
-view.
+Content), with run views **Files, Outline, Quiz Bank, Preview, Code, Lab and To-do**
+(`arc2-studio.component.ts`). Raw files and code live in an advanced view. The seven agents
+appear as stage status, not as separate menus. The LMS catalogue and the career path
+deep-link to the authorized delivery view.
 
 ## 8. Delivery slices
 
@@ -245,51 +249,59 @@ where the student career-path view is reached from Moodle.
 | PR 3 (committed with this document) | the seven `arc2-*` agents, `/arc2`, the `docs/AGENTS.md` section, `check --dry-run`, and the contract fixes an adversarial review of PR 3 required: step-7 rework, pre-package checks at QA, preview re-open on upstream rework, sha256 digests exempt from `qa.defang` |
 | Checks run | DoD green at `c92905a` (826 passed, 1 skipped; ruff 28/28); DoD green on the PR 3 tree (835 passed, 1 skipped; ruff 28/28); `tests/arc2` 112 passed, 1 skipped |
 | Not yet verified | an end-to-end `/arc2` run with the real agents (dry runs A and B); XSD validation (schema not vendored); a runtime cmi5 launch against an LMS/LRS |
-| Not on the main checkout | `tools/arc2/` is absent on `feat/cyber-operator-curriculum` until this branch merges |
+| Not on all checkouts | `tools/arc2/` was absent on `feat/cyber-operator-curriculum` until that branch merged; it is on main now |
 
 ### Confirmed against the repository
 
 - Route hubs `authoring` ("Authoring Studio") and `learning` exist
-  (`control-plane/web/src/app/app.routes.ts:57,126`).
-- The content importer updates in place and unpublishes (`course_content_ingest.py:384`).
+  (`control-plane/web/src/app/app.routes.ts:88,202`).
+- The content importer updates in place and unpublishes (`course_content_ingest.py:501-534`).
 - `Course`, `Enrollment` and `LearningPath` carry a nullable `tenant_id`; `Enrollment` points
-  at a course (unique per user and course), so nothing pins a student to a release today.
-- DP 3–5 is proposal-only; the catalogue holds `dp_order` 1 and 2.
+  at a course (unique per user and course, `models.py:776`). Enrolments now pin to a release
+  (`EnrollmentReleasePin`, `app/course_releases/models.py:94-97`).
+- The operator catalogue holds `dp_order` 1 and 2 (`cyber_operator_programme.csv`);
+  `specialist_pathways.csv` lists `dp_order` 3–5, as `proposed`, `unsourced` rows — DP 3–5 is
+  still proposal-only (`docs/dp3-5-curriculum-proposal.md`).
 - The framework sidecar is what the engine does: `xapi.json` stays in `04-artifacts/`, and
   `cmi5.no_framework_tokens` scans the package.
 
-### Corrections
+### Corrections (1, 3, 4 and 5 re-checked against the repository 2026-11-08)
 
-1. **Prerequisites are already derived from course order.** `qsp_paths._linear_prereq`
-   (`qsp_paths.py:366`) chains each learning path's courses in order; `course_prereq_edges`
-   (`:413`) serves those edges and `routers/qsp.py:810` sends them to the UI as arrows. This
-   contradicts §5. Slice B must relabel them as sequence (or stop drawing them) until approved
-   edges exist, and migrate `LearningPath.prerequisite_graph` and
-   `Course.course_meta["prerequisites"]` (both untyped JSON) into the reviewed edge model, so
-   there is one source.
+1. **The prerequisite arrows no longer come from course order.** `qsp_paths._linear_prereq`
+   (`qsp_paths.py:382`) still chains each learning path's courses in order into
+   `LearningPath.prerequisite_graph` (`qsp_paths.py:531`), but `course_prereq_edges`
+   (`:429`) now derives the UI edges from each course's declared `prerequisites` in
+   `content/courses/*.yaml` (docstring `:434-438`: "Until 2026-10-20 this read every
+   LearningPath's `prerequisite_graph`"), and `routers/qsp.py:915` sends them as arrows —
+   the direction §5 asks for. `LearningPath.prerequisite_graph` and
+   `Course.course_meta["prerequisites"]` (both untyped JSON) still need the slice B
+   migration into the reviewed edge model, so there is one source.
 2. **The career-path design is an open decision.** Commit `c5f4a5b` (2026-09-23) replaced
    the DP grid with SVG arrows by a collapsible list per qualification, calling the grid "a
    wall". The 2026-09-26 navigation mockup (not in the repository) brings back wide DP columns,
    semester cards and arrows. Decide before slice C/F; it does not affect slice A.
-3. **RBAC has none of the capabilities this plan assumes.** The roles are `admin`,
-   `instructor`, `range_ops`, `student` and `observer` (`rbac.py:107-184`); there is no
-   commander or event-coordinator role and no course, curriculum-approval or publish
-   permission. `POST /courses/import-programme` and `/courses/import-course-content`
-   (`routers/courses.py:354,384`) require only a signed-in user. Slice B adds permissions
-   such as `course:author`, `curriculum:approve` and `course:publish`. The import endpoints
-   should be gated now, as a separate security fix.
-4. **There is no accepted package digest yet.** The preview gate hashes the stage inputs
-   (`02-content` … `05-sensor` plus stage keys); the package is built after acceptance. Per-file
-   sha256s exist in the manifest's `files[]`. Slice B defines the release digest as the
-   preview digest plus the sorted `(path, sha256)` list of the package and bundle files, which
-   makes `release_id` content-addressed.
-5. **The engine cannot yet run from a server job.** The seven agents are Claude Code
-   subagents driven by `/arc2` in an interactive session; a Celery task cannot launch them,
-   and the content-pack rule (no external or cloud API; CUI stays on-box) rules out a cloud
-   model in the enclave. Before slice D, choose one of:
-   - a headless harness (`claude -p` or the Agent SDK) against an on-premises model (Taz); or
-   - porting the stages to `ai-orchestrator`, which already has `/ai/course-generate`
-     (unauthenticated) and ollama, openai and anthropic backends.
+3. **RBAC has some of the capabilities this plan assumes.** The roles are `admin`,
+   `instructor`, `range_ops`, `student` and `observer` (`app/models.py:97-102`); there is
+   still no commander or event-coordinator role. `course:author` and `course:release`
+   exist (`rbac.py:124-125`); `curriculum:approve` and `course:publish` do not. The import
+   endpoints were gated as this correction asked: `POST /courses/import-programme` and
+   `/courses/import-course-content` (`routers/courses.py:445,477`) now require
+   `course:author` ("was: any signed-in user"). Slice B still adds `curriculum:approve`
+   and `course:publish`.
+4. **The release digest now exists.** When this was written there was no accepted package
+   digest: the preview gate hashed the stage inputs (`02-content` … `05-sensor` plus stage
+   keys) and the package was built after acceptance, with per-file sha256s in the manifest's
+   `files[]`. `tools/arc2/release.py` now defines `release_digest` (`:98`) over the release
+   metadata and part digests and names the tarball `<slug>-<digest[:12]>.tar.gz` (`:213`), so
+   the
+   release is content-addressed, as slice B intended.
+5. **The engine now runs from a server job.** When this was written the seven agents ran only
+   as Claude Code subagents driven by `/arc2` in an interactive session, and a Celery task
+   still cannot launch them directly. The runner (`tools/arc2/runner.py`) closes the gap: a job
+   runs the whole `claude` process tree under the OS sandbox (§11, S1b) and reaches a model
+   through the subscription endpoint or an Anthropic-compatible local gateway (`ARC2_MODE`).
+   The content-pack rule (no external or cloud API; CUI stays on-box) is why §13 defaults to
+   the local gateway and keeps data off-host.
 6. **Name collision.** The release descriptor's stable ID is `studio_course_id`, because the
    manifest's `cmi5.course_id` is already the publisher IRI.
 
@@ -462,7 +474,7 @@ install/README.md, "ARC² Course Studio (optional)". This section records the de
 
 **Data leaves the host.** With the installer's defaults, every Studio request, all feedback
 and the content the agents generate go to Anthropic's API (or to the gateway in
-`tn_arc2_anthropic_base_url`). §10 correction 5 still applies: the content-pack rule (no
+`tn_arc2_anthropic_base_url`). The content-pack rule (no
 external or cloud API; CUI stays on-box) rules this out for an enclave holding CUI. Enable
 it only where sending course material to that endpoint is acceptable. An on-premises,
 Anthropic-compatible endpoint can be used through `tn_arc2_anthropic_base_url`
