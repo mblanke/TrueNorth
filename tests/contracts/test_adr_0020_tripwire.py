@@ -1,9 +1,10 @@
 """ADR 0020 tripwires: instructors judge team exercises (docs/adr/0020).
 
 Each test pins one decision of the ADR to the code that enforces it, so the day the code
-drifts from the ADR a test goes red. Structural tests scan the API and worker sources with
-AST (the same approach as test_audit_jobs_celery_free.py); behavioural tests run the
-in-process units against the shared SQLite fixtures — no live services, no network.
+drifts from the ADR a test goes red. Structural tests scan the API, worker and Angular
+panel sources (AST or plain text — the same approach as test_audit_jobs_celery_free.py);
+behavioural tests run the in-process units against the shared SQLite fixtures — no live
+services, no network.
 
 Decisions NOT covered here (no test possible without them being built or run):
 - Decision 6 (Exercise Studio judging guide, `scoring.no_free_credit` /
@@ -36,6 +37,7 @@ from fastapi import HTTPException
 ROOT = Path(__file__).resolve().parents[2]
 API = ROOT / "control-plane/api/app"
 WORKER = ROOT / "control-plane/worker/worker"
+WEB = ROOT / "control-plane/web/src/app"
 
 NOW = datetime.now(UTC)
 # The AUTH_DISABLED tenant/user the root conftest seeds (tests/conftest.py DEV_ID).
@@ -123,6 +125,18 @@ def _exercise(db, *, state: ExerciseState = ExerciseState.running, max_score: in
         )
     db.flush()
     return ex
+
+
+def _as_current_user(row: User) -> CurrentUser:
+    """The CurrentUser a real request would carry for a User row (routers take one)."""
+    return CurrentUser(
+        id=str(row.id),
+        email=row.email,
+        display_name=row.display_name,
+        role=row.role,
+        tenant_id=DEV_TENANT_ID,
+        keycloak_id=row.keycloak_id,
+    )
 
 
 def _student(db) -> User:
@@ -336,6 +350,22 @@ def test_submissions_reach_the_endpoint_participants_only():
     assert "may_submit" in source, "submit_detection no longer checks participants"
 
 
+def test_a_student_sees_their_own_submissions_and_staff_see_everyones(db_session):
+    """ADR 0020 §3: "The Student sees their own submissions; instructors see everyone's on
+    the objective they are judging." ``list_detections`` filters on the caller's user_id
+    for a non-staff caller and hands staff every submission on the exercise."""
+    ex = _exercise(db_session)
+    student, other = _student(db_session), _student(db_session)
+    mine = _submission(db_session, ex, "obj-a", student)
+    theirs = _submission(db_session, ex, "obj-b", other)
+
+    seen = detections_router.list_detections(exercise_id=ex.id, db=db_session, user=_as_current_user(student))
+    assert [r.id for r in seen] == [mine.id], "a Student saw another Student's submission"
+
+    staff = detections_router.list_detections(exercise_id=ex.id, db=db_session, user=_instructor())
+    assert {r.id for r in staff} == {mine.id, theirs.id}, "staff do not see every submission"
+
+
 # ── Decision 4: the scenario `query` is guidance, never an answer key ─
 
 
@@ -374,17 +404,33 @@ def test_a_mock_run_ends_running_and_the_worker_never_judges():
     assert "running" in statuses, f"run_scenario_v2 ends with {statuses}"
     assert "completed" not in statuses and "achieved" not in statuses
 
-    for path in sorted(WORKER.glob("*.py")):
+    for path in sorted(WORKER.rglob("*.py")):  # subpackages too (worker/worker/provisioners/)
         imported = set()
         for node in (n for n in ast.walk(_tree(path)) if isinstance(n, (ast.Import, ast.ImportFrom))):
-            if isinstance(node, ast.Import):
-                imported.update(a.name.split(".")[0] for a in node.names)
-            else:  # `from . import x`, `from .x import y`, `from app.x import y`
-                if node.module:
-                    imported.add(node.module.split(".")[0])
-                imported.update(a.name.split(".")[0] for a in node.names)
+            # Every name a judging module could be reached by, in any import form:
+            # `from . import x`, `from .x import y`, `from app.exercise_judging import y`,
+            # `import app.exercise_judging`.
+            dotted = [a.name for a in node.names]
+            if isinstance(node, ast.ImportFrom) and node.module:
+                dotted.append(node.module)
+            imported.update(part for name in dotted for part in name.split("."))
         judged_by = imported & {"exercise_judging", "exercise_completion", "detections"}
         assert not judged_by, f"worker/{path.name} imports {sorted(judged_by)}"
+
+
+# ── Consequences: the Student panel copy ──────────────────────────────
+
+
+def test_the_student_panel_says_recorded_with_no_attempts_countdown():
+    """ADR 0020 Consequences: "The Student panel says 'Recorded: your query matched N
+    events; your instructor judges the objective'. There is no achieved/missed, and no
+    attempts countdown, only the 20-submission bound." The detection panel's message text
+    and its verdict words carry exactly that."""
+    source = (WEB / "features/exercise-detail/detection-panel.component.ts").read_text()
+    assert "Recorded: your query matched" in source, "the panel no longer reports 'Recorded'"
+    assert "Your instructor judges the objective." in source, "the panel no longer defers to the instructor"
+    assert "submissions left" in source, "the 20-submission bound is no longer shown"
+    assert "attempts left" not in source, "an attempts countdown returned"
 
 
 # ── Adversarial-review items (ADR 0020, "After the adversarial review") ──
