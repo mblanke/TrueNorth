@@ -86,10 +86,15 @@ def test_course_delete_refuses_with_the_message_the_adr_documents():
 
 
 def test_deleting_a_user_retires_the_row():
-    """ADR 0010 decision 2: "users are soft-deleted (``SoftDeleteMixin``)"."""
+    """ADR 0010 decision 2: "users are soft-deleted (``SoftDeleteMixin``)". User subclasses
+    the mixin the ADR names; its DELETE handler retires the row today by deactivating it
+    (``is_active = False``), so the handler check accepts either documented mechanism —
+    a faithful move to ``target.soft_delete()`` must not trip this wire, a hard delete must."""
     assert issubclass(m.User, m.SoftDeleteMixin)
     src = inspect.getsource(admin_router.delete_user)
-    assert "is_active = False" in src, "the user DELETE handler no longer retires the row"
+    retires = ("is_active = False" in src
+               or "soft_delete()" in src or "deleted_at" in src)
+    assert retires, "the user DELETE handler no longer retires the row"
     assert "db.delete(" not in src, "the user DELETE handler deletes the row"
 
 
