@@ -121,24 +121,37 @@ def test_a_partial_destroy_that_keeps_the_port_group_is_not_recorded_destroyed_a
 @pytest.mark.xfail(strict=True, reason="audit #443: A partial build (a VM failed to clone) is "
                                        "recorded `ready` with no error (tasks.py:168) — companion")
 def test_a_partial_build_persists_its_error_and_is_never_settled_ready(task_env, monkeypatch):
-    """Companion to the tasks.py:168 finding (the oracle's input pins the greyspace half:
-    greyspace must not run on a partly built range). Second input, the recording half the
-    audit titles: a clone that failed for another reason, observed through the task's
-    return value and the persisted state — the range is not settled ``ready`` and an
-    error is persisted, so the API cannot issue the credentials page over a half build."""
-    vms = [{"vm_id": "vm-2", "name": "r-sql01"}]
+    """Companion to the tasks.py:168 finding (the oracle's input pins the greyspace half —
+    greyspace must not run on a partly built range — and reads the task's return dict; the
+    greyspace guard is deliberately left out here, it is the oracle's angle). Second input
+    and second observation point, the persistence half the audit titles ("the errors are
+    never persisted"): two of three VMs built and up, the third clone failed for another
+    reason — a VM in neither ``vms`` nor ``not_ready``, only in ``errors`` — watched where
+    the fix must land, the persisted state write (worker/tasks.py:173 takes ``error=error``;
+    the failure path tasks.py:185 takes ``error=str(e)``): the write must carry a non-``ready``
+    state with a non-empty error, so the API cannot issue the credentials page over a half
+    build with no recorded reason. ``build_outcome`` reads only ``not_ready``/``isolation``
+    (range_alloc.py:316-321), never ``result.errors`` — that is the bug."""
+    vms = [{"vm_id": "vm-2", "name": "r-sql01"}, {"vm_id": "vm-3", "name": "r-kali01"}]
 
     class Prov:
         async def provision(self, range_id, template, allocations):
             return ProvisionResult(status="partial", vms=vms,
-                                   errors=["VM r-sql01: Cannot create clone: cannot migrate vm"])
+                                   errors=["VM r-win01: Cannot create clone: cannot migrate vm"])
 
     monkeypatch.setattr(tasks.range_alloc, "reserve_for_build", lambda *a: {})
     monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None, **kw: Prov())
+    monkeypatch.setattr(tasks, "_last_attempt", lambda task: True)  # final: no retry
     monkeypatch.setattr(tasks.greyspace, "after_provision", lambda *a, **k: None)
-    out = tasks.provision_range.run("r-1")
+    try:
+        out = tasks.provision_range.run("r-1")
+    except Exception as exc:  # noqa: BLE001 — observed, not swallowed: a fix may raise instead
+        out = {"status": "raised", "error": str(exc)}  # of recording (build_outcome's docstring
+        # prefers recorded, tasks.py:176); either shape must persist the reason, asserted below.
     assert out["status"] != "ready" and out.get("error"), f"partial build settled {out}"
     assert "ready" not in [s for s, _ in task_env["states"]]
+    assert any(s == "failed" and kw.get("error") for s, kw in task_env["states"]), \
+        f"the partial build's error was never persisted: {task_env['states']}"
 
 
 # -- high, schemas.py:147 — provisioner_output readable by Student and Observer --------
