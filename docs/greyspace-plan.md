@@ -35,7 +35,7 @@ Decisions taken with the user (2026-10-03):
 - Integration: a **range template block** the Range Designer drops into any range,
   provisioned by the existing worker.
 - **Corpus is 10 TB+** of scraped pages and video → lives once on NetApp
-  (`docs/dell-netapp-mobile-kit-inventory.md:177`, ~600 TB, NFS), mounted **read-only**.
+  (`docs/dell-netapp-mobile-kit-inventory.md:178`, ~600 TB, NFS), mounted **read-only**.
 - Greyspace runtime is a **Docker stack** pointing at that data.
 - Exercises hide **breadcrumbs** in some sites → per-range writable overlay, never the corpus.
 - Deliverable of the 2026-10-03 session: this plan + a UI mockup (the build status is above).
@@ -108,7 +108,7 @@ Key design points:
      add `greyspace` (fqdn→ip map, resolver ip, overlay handle) so injectors and the
      still-unrendered-in-timeline-params `{{ c2_domain }}` / `{{ attacker_ip }}`
      placeholders (`content/scenarios/apt-nation-state/scenario.yaml:69` — its
-     `variables:` at `:32` renders objective queries only;
+     `variables:` at `:31` renders objective queries only;
      `content/inject-packs/phishing-campaign.yaml:48`) resolve to real Greyspace names.
    - Mock provisioner stays the dev path (this box is mock by design).
 1. **Template block / composition.** Add `includes:` to template YAML
@@ -173,7 +173,7 @@ team). Styled per the LMS-preview direction (less is more, role menus).
 - Unit: block expansion, config generators (zones/vhosts/FRR) from a fixture manifest,
   breadcrumb injector plant/remove, schema validation.
 - API: tenant isolation tests for any new endpoint (404 for foreign range).
-- Mock provisioner end-to-end: create range with `includes: greyspace` → provision →
-  configure stage emits compose + configs.
+- Mock provisioner end-to-end: create range with the template's `greyspace:` block
+  (Status slice 1: not `includes:`) → provision → configure stage emits compose + configs.
 - On the demo env: `dig @root` resolves fake TLDs, `curl --resolve` hits a rehosted site
   with trusted cert, a planted breadcrumb is served and its fetch shows in OpenSearch.
