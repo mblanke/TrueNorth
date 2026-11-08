@@ -169,9 +169,10 @@ registration form, with no link to a class).
 
 **Roll call** (ADR 0014):
 The Students on a class, by email (`RollCallEntry`, `app/classes/models.py`; statuses
-invited, signed_in, pending: added after the sessions were approved with no room left,
-waiting for an approver, removed, and forfeited: see **Seat forfeit**. There is no
-`ready` status; ADR 0014's delivery slice 3 removed it). Being on it is approval
+invited, signed_in, pending (added after the sessions were approved with no room left;
+waits for an approver), removed (taken off by the lead or an admin), and forfeited: see
+**Seat forfeit**. There is no `ready` status; ADR 0014's delivery slice 3 notes it was
+never written and is gone). Being on it is approval
 to join: a roll-call Student's first AD sign-in with a verified email admits them
 (`app/classes/onboarding.py`). A class is visible only to its roll call, instructors,
 observers and admins.
