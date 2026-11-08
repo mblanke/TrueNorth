@@ -32,7 +32,7 @@ competing meaning. DP1/DP2 here are **not** new tags: no course produced from th
 calendar introduces a `dp1`/`dp2` tag namespace, because `dp_order` on the existing
 `Qualification` rows already carries it.
 
-Note that `qsp_paths.py:68-74` deliberately leaves DP 3–5 rank labels blank because no
+Note that `qsp_paths.py:59-74` deliberately leaves DP 3–5 rank labels blank because no
 CAF source on-box establishes them — *"fabricated rank data must never reach CAF
 users."* This document is held to the same standard, which is why the header above
 exists.
