@@ -92,13 +92,14 @@ def _job(workflow_text: str, name: str) -> str:
 
 
 def test_the_ratchet_runs_in_the_definition_of_done_gate():
-    # "`scripts/mosa_check.py` runs in `scripts/dod.sh` and CI."
+    """ADR 0003 line 13: "`scripts/mosa_check.py` runs in `scripts/dod.sh` and CI"."""
     text = DOD.read_text(encoding="utf-8")
     assert "scripts/mosa_check.py" in text, "DoD no longer runs the MOSA ratchet"
     for line in text.splitlines():
         if "mosa_check.py" in line and not line.lstrip().startswith("#"):
             assert "|| fail" in line, f"DoD must fail when the ratchet fails: {line!r}"
-    # "Rules now: a missing tool is a FAILURE, never a silent skip. No `|| true` anywhere."
+    # dod.sh:11's own standing rule, quoted: "a missing tool is a FAILURE, never a
+    # silent skip. No `|| true` anywhere."
     swallowed = [
         ln
         for ln in text.splitlines()
@@ -108,8 +109,10 @@ def test_the_ratchet_runs_in_the_definition_of_done_gate():
 
 
 def test_the_ratchet_runs_in_ci_and_fails_on_an_uncommitted_lowered_baseline():
-    # "A count above baseline fails, and a count below it lowers the baseline
-    # automatically. CI also fails if the lowered baseline isn't committed."
+    """ADR 0003 lines 13-15: "A count above baseline fails, and a count below it
+    lowers the baseline automatically. CI also fails if the lowered baseline isn't
+    committed."
+    """
     mosa = _job(CI.read_text(encoding="utf-8"), "mosa")
     assert "python scripts/mosa_check.py" in mosa, "CI no longer runs the MOSA ratchet"
     assert "git diff --exit-code .dod-mosa-baseline" in mosa, (
@@ -118,7 +121,10 @@ def test_the_ratchet_runs_in_ci_and_fails_on_an_uncommitted_lowered_baseline():
 
 
 def test_every_metric_the_adr_names_is_counted_and_recorded_in_the_baseline():
-    # "It counts the following and records them in `.dod-mosa-baseline`." (then the table)
+    """ADR 0003 lines 13-14: "It counts the following and records them in
+    `.dod-mosa-baseline`." — the following being the table's metric names, parsed
+    from the ADR itself so a renamed or added row trips this test.
+    """
     mod = _mosa_check()
     counted = set(_counts(mod))
     recorded = set(json.loads((ROOT / ".dod-mosa-baseline").read_text(encoding="utf-8")))
@@ -129,7 +135,7 @@ def test_every_metric_the_adr_names_is_counted_and_recorded_in_the_baseline():
 
 
 def test_a_count_above_baseline_fails_the_gate(tmp_path, monkeypatch: pytest.MonkeyPatch):
-    # "A count above baseline fails ..."
+    """ADR 0003 line 14: "A count above baseline fails ..."."""
     mod = _mosa_check()
     counts = _counts(mod)
     growable = [
@@ -148,7 +154,9 @@ def test_a_count_above_baseline_fails_the_gate(tmp_path, monkeypatch: pytest.Mon
 
 
 def test_a_count_below_baseline_lowers_it_automatically(tmp_path, monkeypatch: pytest.MonkeyPatch):
-    # "... and a count below it lowers the baseline automatically."
+    """ADR 0003 lines 14-15: "... and a count below it lowers the baseline
+    automatically."
+    """
     mod = _mosa_check()
     counts = _counts(mod)
     name = "lines_api_models_py"
@@ -168,8 +176,9 @@ def test_a_count_below_baseline_lowers_it_automatically(tmp_path, monkeypatch: p
 
 
 def test_supply_chain_job_publishes_sbom_and_audit_reports_as_artifacts():
-    # "CI job `supply-chain` produces a CycloneDX SBOM (`sbom.cdx.json`) and pip-audit and
-    # npm audit reports as build artifacts."
+    """ADR 0003 lines 28-29: "CI job `supply-chain` produces a CycloneDX SBOM
+    (`sbom.cdx.json`) and pip-audit and npm audit reports as build artifacts."
+    """
     job = _job(CI.read_text(encoding="utf-8"), "supply-chain")
     assert "anchore/sbom-action" in job, "supply-chain no longer produces an SBOM"
     assert "format: cyclonedx-json" in job, "the SBOM is no longer CycloneDX"
@@ -180,8 +189,10 @@ def test_supply_chain_job_publishes_sbom_and_audit_reports_as_artifacts():
 
 
 def test_the_audits_are_blocking_and_always_run():
-    # "The audits are **blocking**. Any known advisory fails the build. ... Both always run
-    # and the reports always upload, so a failing build carries its evidence."
+    """ADR 0003 lines 30, 33: "The audits are **blocking**. Any known advisory fails
+    the build. ... Both always run and the reports always upload, so a failing build
+    carries its evidence."
+    """
     job = _job(CI.read_text(encoding="utf-8"), "supply-chain")
     assert "continue-on-error" not in job, "the supply-chain audits were made non-blocking"
     assert job.count("if: success() || failure()") >= 2, (
@@ -194,28 +205,41 @@ def test_the_audits_are_blocking_and_always_run():
 
 
 def test_pip_audit_covers_every_python_service_and_npm_audit_the_web_production_deps():
-    # "pip-audit covers every Python service's pins (api, worker, ai-orchestrator,
-    # telemetry-pipeline, scenario-engine) and npm audit covers the web app's production
-    # dependencies." telemetry-pipeline was removed from the runtime (see the worker
-    # return), so the surviving services are pinned here; adding a Python service and
-    # leaving it unaudited fails this test via its requirements.txt below.
+    """ADR 0003 lines 30-32: "pip-audit covers every Python service's pins (api,
+    worker, ai-orchestrator, telemetry-pipeline, scenario-engine) and npm audit
+    covers the web app's production dependencies."
+
+    The ADR's literal list also names telemetry-pipeline, which was removed from the
+    runtime (see the worker return's FINDING); this test pins the surviving four and
+    discovers them from the tree — a Python service here is a directory holding both
+    a requirements.txt and a Dockerfile — so a service that vanishes, or a new one
+    that CI does not audit, fails the equality below.
+    """
     job = _job(CI.read_text(encoding="utf-8"), "supply-chain")
-    for requirements in (
+    skip_parts = {"node_modules", "dist", ".venv"}
+    service_reqs = sorted(
+        p.relative_to(ROOT).as_posix()
+        for p in ROOT.rglob("requirements.txt")
+        if (p.parent / "Dockerfile").is_file() and not skip_parts & set(p.parts)
+    )
+    assert service_reqs == [
+        "ai-orchestrator/requirements.txt",
         "control-plane/api/requirements.txt",
         "control-plane/worker/requirements.txt",
-        "ai-orchestrator/requirements.txt",
         "scenario-engine/requirements.txt",
-    ):
+    ], (
+        "pip-audit coverage does not match the Python services in the tree "
+        f"(a directory with requirements.txt + Dockerfile): {service_reqs}"
+    )
+    for requirements in service_reqs:
         assert requirements in job, f"pip-audit no longer covers {requirements}"
     assert "--omit=dev" in job, "npm audit no longer covers only production dependencies"
-    for service in ("control-plane/api", "control-plane/worker", "ai-orchestrator", "scenario-engine"):
-        reqs = (ROOT / service / "requirements.txt").exists()
-        assert reqs, f"pip-audit coverage list is stale: {service}/requirements.txt vanished"
 
 
 def test_no_advisory_is_ignored_without_an_adr_naming_it():
-    # "Do not add an ignore without an ADR that names the advisory, why it does not apply,
-    # and when it will be revisited."
+    """ADR 0003 lines 45-46: "Do not add an ignore without an ADR that names the
+    advisory, why it does not apply, and when it will be revisited."
+    """
     adr_text = "\n".join(
         p.read_text(encoding="utf-8") for p in sorted((ROOT / "docs" / "adr").glob("*.md"))
     )
@@ -236,7 +260,9 @@ def test_no_advisory_is_ignored_without_an_adr_naming_it():
 
 
 def test_third_party_container_images_are_pinned_and_never_latest():
-    # "Third-party container images are pinned to a tag. Never use `:latest`."
+    """ADR 0003 line 47: "Third-party container images are pinned to a tag. Never use
+    `:latest`."
+    """
     dockerfiles = [
         p
         for p in ROOT.rglob("Dockerfile*")
@@ -281,8 +307,9 @@ def test_third_party_container_images_are_pinned_and_never_latest():
 
 
 def test_the_license_is_proprietary_all_rights_reserved():
-    # "The repository is **proprietary, all rights reserved** (`LICENSE`). This can be
-    # relaxed later by the copyright holder."
+    """ADR 0003 lines 50-51: "The repository is **proprietary, all rights reserved**
+    (`LICENSE`). This can be relaxed later by the copyright holder."
+    """
     text = (ROOT / "LICENSE").read_text(encoding="utf-8")
     for marker in _PROPRIETARY_MARKERS:
         assert marker in text, f"LICENSE no longer states {marker!r}"
@@ -291,10 +318,14 @@ def test_the_license_is_proprietary_all_rights_reserved():
 
 
 def test_the_license_leaves_government_data_rights_to_the_contract():
-    # "Government data rights (e.g. DFARS 252.227-7013/-7014 in the US, or the applicable
-    # Canadian contract terms for CAF/DND) are set **by contract**, not by this file.
-    # Deliverables must carry the restrictive markings the contract allows; unmarked
-    # deliverables can default to unlimited rights."
+    """ADR 0003 lines 53-56: "Government data rights (e.g. DFARS 252.227-7013/-7014 in
+    the US, or the applicable Canadian contract terms for CAF/DND) are set **by
+    contract**, not by this file. Deliverables must carry the restrictive markings the
+    contract allows; unmarked deliverables can default to unlimited rights."
+
+    The legal fact itself is not code-checkable; only the LICENSE sentence restating
+    it ("applicable contract") is pinned here.
+    """
     text = (ROOT / "LICENSE").read_text(encoding="utf-8")
     assert "applicable contract" in text, (
         "LICENSE no longer leaves government data rights to the contract"
