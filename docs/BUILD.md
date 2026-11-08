@@ -27,12 +27,17 @@ TrueNorth Range uses GitHub Actions for CI/CD with the following workflow trigge
 
 | Trigger | Pipeline | Actions |
 |---------|----------|---------|
-| Push to `main` | Full CI | Lint, test, build, push images, deploy to staging |
-| Push to `develop` | CI | Lint, test, build (no push) |
-| Pull Request | PR Check | Lint, test, security scan |
-| Tag `v*` | Release | Full CI + tag images + deploy to production |
-| Manual dispatch | Custom | Selectable: build, deploy, packer, terraform |
-| Schedule (weekly) | Security | Dependency scan, container scan |
+| Push to `main` | CI (`ci.yml`) | Lint, test, Docker builds (loaded, scanned — not pushed) |
+| Pull Request | CI (`ci.yml`), plus `helm-kind.yml` and `terraform-plan.yml` (only on `infra/proxmox/terraform/**` changes) | Lint, test, supply-chain audit, image build + Trivy gate |
+| Tag `v*` | Release (`release.yml`) | Build, scan, sign and tag six images in GHCR; publish `release-manifest.json` — no deploy |
+| Manual dispatch | Packer (`packer-build.yml`) | Validate and/or build the Proxmox templates |
+
+There is no `develop` branch trigger (`.github/workflows/ci.yml:5-9` lists only
+`main`), no scheduled security scan, and **no workflow deploys anything**
+(`release.yml:9-10`: "nothing here deploys anything"). Deployments are
+operator-run: `install/` (Ansible), `make prod-up`, or the Helm chart
+(`infra/k8s/helm/truenorth-range`). The only scheduled workflow is the backup
+drill (`.github/workflows/backup-drill.yml:19`).
 
 ```mermaid
 flowchart LR
@@ -40,28 +45,29 @@ flowchart LR
         PR[Pull Request]
         PUSH[Push to main]
         TAG[Tag v*]
-        SCHED[Schedule]
     end
 
     subgraph CI Pipeline
         LINT[Lint & Format]
-        TEST[Unit Tests]
-        ITEST[Integration Tests]
+        TEST[Tests]
         SEC[Security Scan]
         BUILD[Docker Build]
     end
 
-    subgraph CD Pipeline
-        PUSH_IMG[Push Images]
-        STAGE[Deploy Staging]
-        SMOKE[Smoke Tests]
-        PROD[Deploy Production]
+    subgraph Release - release.yml
+        RIMG[Build, scan, sign images]
+        RMAN[release-manifest.json]
+        RREL[GitHub Release]
+    end
+
+    subgraph Operator-run
+        INST[install/ Ansible, make prod-up, or Helm]
     end
 
     PR --> LINT --> TEST --> SEC
-    PUSH --> LINT --> TEST --> ITEST --> BUILD --> PUSH_IMG --> STAGE --> SMOKE
-    TAG --> LINT --> TEST --> ITEST --> BUILD --> PUSH_IMG --> STAGE --> SMOKE --> PROD
-    SCHED --> SEC
+    PUSH --> LINT --> TEST --> SEC --> BUILD
+    TAG --> RIMG --> RMAN --> RREL
+    RREL --> INST
 ```
 
 ---
@@ -73,169 +79,49 @@ flowchart LR
 ```
 .github/workflows/
 +-- ci.yml              # Main CI pipeline (push/PR)
-+-- release.yml         # Release pipeline (tag)
-+-- security.yml        # Weekly security scan
-+-- packer.yml          # Packer image build (manual)
-+-- terraform.yml       # Terraform plan/apply (manual)
-+-- docs.yml            # Documentation build and deploy
++-- release.yml         # Release pipeline (tag): build, scan, sign, publish — no deploy
++-- packer-build.yml    # Proxmox Packer image build (manual dispatch)
++-- terraform-plan.yml  # Terraform plan posted to the PR (infra/proxmox/terraform)
++-- helm-kind.yml       # Installs the Helm chart into a kind cluster (push/PR)
++-- backup-drill.yml    # Scheduled backup drill
++-- lab.yml             # Lab session workflow
++-- taz-guard.yml       # Worker-protocol guard
 ```
 
 ### ci.yml — Main CI Pipeline
 
-> **Illustrative, not the live file.** The workflows that run are in `.github/workflows/`
-> (lanes: `RESUME.md`). Releases are `release.yml`: images by digest, a blocking Trivy
-> scan, and `release-manifest.json` (`docs/release.md`). No workflow deploys.
+> **The live file is `.github/workflows/ci.yml`** (1000+ lines). Excerpt of the
+> real header, not an illustrative sketch:
 
 ```yaml
 name: CI
+
+# Third-party actions are pinned by commit SHA (comment: the release it is).
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 env:
-  REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
-
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install tools
-        run: pip install ruff mypy
-      - name: Ruff lint
-        run: ruff check control-plane/ ai-orchestrator/ scenario-engine/
-      - name: Ruff format check
-        run: ruff format --check control-plane/ ai-orchestrator/ scenario-engine/
-      - name: MyPy type check
-        run: mypy control-plane/api/app/ --ignore-missing-imports
-
-  test-unit:
-    runs-on: ubuntu-latest
-    needs: lint
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install dependencies
-        run: |
-          cd control-plane/api
-          pip install -r requirements.txt -r requirements-dev.txt
-      - name: Run unit tests
-        run: pytest tests/unit/ -v --cov=app --cov-report=xml
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        with:
-          file: coverage.xml
-
-  test-integration:
-    runs-on: ubuntu-latest
-    needs: test-unit
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: truenorth_test
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-        ports: ["5432:5432"]
-      redis:
-        image: redis:7
-        ports: ["6379:6379"]
-      opensearch:
-        image: opensearchproject/opensearch:2.13.0
-        env:
-          discovery.type: single-node
-          DISABLE_SECURITY_PLUGIN: "true"
-        ports: ["9200:9200"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install dependencies
-        run: |
-          cd control-plane/api
-          pip install -r requirements.txt -r requirements-dev.txt
-      - name: Run integration tests
-        env:
-          DATABASE_URL: postgresql://test:test@localhost:5432/truenorth_test
-          REDIS_URL: redis://localhost:6379/0
-          OPENSEARCH_URL: http://localhost:9200
-        run: pytest tests/integration/ -v --timeout=120
-
-  security-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Pip audit
-        run: pip-audit --requirement control-plane/api/requirements.txt
-      # Never @master or a tag: Trivy's release channel was compromised on 2026-03-19
-      # (CVE-2026-33634). Pin the action by commit SHA and install a checksum-verified
-      # Trivy yourself, as ci.yml and release.yml do (docs/release.md "Pins").
-      - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          skip-setup-trivy: true
-          scan-type: fs
-          scan-ref: .
-          severity: HIGH,CRITICAL
-
-  build:
-    runs-on: ubuntu-latest
-    needs: [test-unit, security-scan]
-    strategy:
-      matrix:
-        component:
-          - { name: control-plane-api, context: control-plane/api }
-          - { name: celery-worker, context: control-plane/worker }
-          - { name: ai-orchestrator, context: ai-orchestrator }
-          - { name: scenario-engine, context: scenario-engine }
-          - { name: frontend, context: frontend }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: ${{ matrix.component.context }}
-          push: ${{ github.ref == 'refs/heads/main' }}
-          tags: |
-            ${{ env.IMAGE_PREFIX }}/${{ matrix.component.name }}:${{ github.sha }}
-            ${{ env.IMAGE_PREFIX }}/${{ matrix.component.name }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  deploy-staging:
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.ref == 'refs/heads/main'
-    environment: staging
-    steps:
-      - uses: actions/checkout@v4
-      - name: Deploy to staging
-        run: |
-          helm upgrade --install truenorth charts/truenorth \
-            --namespace staging \
-            --set image.tag=${{ github.sha }} \
-            -f charts/truenorth/values-staging.yaml
-      - name: Run smoke tests
-        run: |
-          sleep 30
-          pytest tests/smoke/ -v --base-url=https://staging.truenorth.local
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "22"
 ```
+
+Its lanes (jobs), as of this writing: `lint-python` (ruff 0.16.3 via the same
+ratchet as `scripts/dod.sh`), `test-python-shard` (the suite split across 5
+shards, each with its own PostgreSQL 16 and OpenSearch 2.13.0;
+`test-python` aggregates and is what branch protection requires), `mosa`
+(the MOSA ratchets), `supply-chain`, `lint-angular`, `build-angular`,
+`build-docker` (six services, built and Trivy-scanned, `push: false`),
+`helm-lint`, `packer-vsphere` (vSphere templates: syntax checks only),
+`lint-install`, `keycloak-realm`, `keycloak-mfa`, `integration`
+(`scripts/itest.sh`), `e2e`, `journeys`, `load-smoke` (k6), `moodle`,
+`cmi5`, `vsphere-sim` (vcsim), `ad` and `greyspace`. There is no
+`deploy-*` job, no codecov upload and no mypy lane.
 
 ---
 
@@ -245,22 +131,36 @@ jobs:
 
 | Component | Language | Build Tool | Base Image | Output |
 |-----------|---------|-----------|-----------|--------|
-| Control Plane API | Python 3.12 | pip + Docker | `python:3.12-slim` | Container |
-| Celery Worker | Python 3.12 | pip + Docker | `python:3.12-slim` | Container |
-| AI Orchestrator | Python 3.12 | pip + Docker | `python:3.12-slim` | Container |
-| Scenario Engine | Python 3.12 | pip + Docker | `python:3.12-slim` | Container |
-| Frontend | TypeScript | npm + Docker | `node:22-alpine` → `nginx:alpine` | Container |
+| Control Plane API | Python 3.11 | pip + Docker | `python:3.11-slim` | Container |
+| Celery Worker | Python 3.11 | pip + Docker | `python:3.11-slim` | Container |
+| AI Orchestrator | Python 3.11 | pip + Docker | `python:3.11-slim` | Container |
+| Scenario Engine | Python 3.11 | pip + Docker | `python:3.11-slim` | Container |
+| Frontend | TypeScript | npm + Docker | `node:22-alpine` → `nginx:1.30-alpine` | Container |
+| Moodle | PHP | Docker | `ghcr.io/erseco/alpine-moodle:v5.2.3` digest-pinned (`infra/platform/moodle/Dockerfile:15`) | Container |
 | Range Templates | HCL + Shell | Packer | Various OS ISOs | VM Images |
-| Infrastructure | HCL | Terraform | N/A | Cloud Resources |
+| Infrastructure | HCL | Terraform | N/A | Hypervisor resources |
+
+All four Python images build from `python:3.11-slim` (the per-component
+`Dockerfile`s); CI pins `PYTHON_VERSION: "3.11"` (`.github/workflows/ci.yml:15`)
+and `pyproject.toml` targets `py311`. CI and the release build **six** images:
+api, worker, web, scenario-engine, ai-orchestrator and moodle
+(`.github/workflows/release.yml:100-118`); `make build` builds api, worker, ai
+and web (`Makefile:123`).
 
 ### Python Dependency Matrix
 
 | Component | Key Dependencies | Version Constraints |
 |-----------|-----------------|-------------------|
-| Control Plane API | FastAPI 0.115+, SQLAlchemy 2.0+, Pydantic 2.0+, uvicorn | Pinned in requirements.txt |
-| Celery Worker | Celery 5.3+, redis 5.0+, python-terraform | Pinned in requirements.txt |
-| AI Orchestrator | FastAPI 0.115+, openai 1.0+, anthropic 0.20+, httpx | Pinned in requirements.txt |
-| Scenario Engine | pyyaml 6.0+, opensearch-py 2.4+, minio 7.2+ | Pinned in requirements.txt |
+| Control Plane API | FastAPI, SQLAlchemy, Pydantic, uvicorn, Celery, redis, minio, proxmoxer | Exact pins in `control-plane/api/requirements.txt` |
+| Celery Worker | Celery, redis, SQLAlchemy, pyvmomi, pywinrm, flower | Exact pins in `control-plane/worker/requirements.txt` |
+| AI Orchestrator | FastAPI, httpx, pydantic (OpenAI-compatible endpoint over httpx — no cloud SDKs) | Exact pins in `ai-orchestrator/requirements.txt` |
+| Scenario Engine | pyyaml, jsonschema, httpx, pydantic | Exact pins in `scenario-engine/requirements.txt` |
+
+Observed pins (2026-11-08): FastAPI 0.142.2, SQLAlchemy 2.0.32, Pydantic
+2.13.5, uvicorn 0.54.0, Celery 5.4.0, redis 5.0.8, httpx 0.27.2 (aligned across
+all four services), pyyaml 6.0.2, minio 7.2.7, pyvmomi 8.0.3.0.1. There is no
+`python-terraform`, `openai` or `anthropic` dependency anywhere, and no
+`opensearch-py` in the scenario engine.
 
 ---
 
@@ -268,51 +168,52 @@ jobs:
 
 ### Dockerfile Pattern
 
-All components follow a multi-stage build pattern:
+The Python services are **single-stage** builds on `python:3.11-slim` — no
+builder stage, no `HEALTHCHECK` in the Dockerfiles (probes are configured by
+the platform: `/health/live` and `/health/ready`,
+`control-plane/api/app/main.py:605-611`). Shared pattern
+(`control-plane/api/Dockerfile`):
 
 ```dockerfile
-# Stage 1: Build
-FROM python:3.12-slim AS builder
-
-WORKDIR /build
-COPY requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
-
-# Stage 2: Runtime
-FROM python:3.12-slim AS runtime
-
-# Security: non-root user
-RUN groupadd -r truenorth && useradd -r -g truenorth truenorth
-
+FROM python:3.11-slim
 WORKDIR /app
-COPY --from=builder /install /usr/local
-COPY app/ ./app/
-
-# Security: no shell, read-only where possible
-USER truenorth
+RUN apt-get update && apt-get upgrade -y ...          # distro updates at build time
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip uninstall -y setuptools wheel              # build tooling carries CVEs
+COPY app ./app                                        # allowlist, never COPY . .
+ARG TN_VERSION=dev                                    # passed by release.yml
+RUN useradd --system --uid 10001 --create-home --home-dir /home/app app
+USER app                                              # code and deps stay root-owned
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')"
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port 8080 --workers ${UVICORN_WORKERS:-4} ..."]
 ```
+
+Differences per service: the worker has no `EXPOSE` and runs
+`celery -A worker.celery_app` (`control-plane/worker/Dockerfile:44`); the AI
+orchestrator exposes **6000** (`ai-orchestrator/Dockerfile:21`); the scenario
+engine exposes **8082** and its default command is
+`python -m runner.run --help` (`scenario-engine/Dockerfile`). The api and
+worker images need named build contexts (`content=content`, and
+`scenario_engine=scenario-engine` for the worker) — see the build commands
+below.
 
 ### Frontend Dockerfile
 
 ```dockerfile
 # Stage 1: Build Angular
-FROM node:22-alpine AS builder
+FROM node:22-alpine AS build
 WORKDIR /app
-COPY package*.json ./
+COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build -- --configuration=production
+RUN npm run build:prod && npm run check:prod-env
 
 # Stage 2: Serve with Nginx, as the unprivileged nginx user (so on 8080, pid in /tmp)
 FROM nginx:1.30-alpine
 RUN sed -i -e '/^user /d' -e 's,^pid .*,pid /tmp/nginx.pid;,' /etc/nginx/nginx.conf \
     && chown -R nginx:nginx /var/cache/nginx
-COPY --from=builder /app/dist/truenorth-frontend/browser/ /usr/share/nginx/html/
+COPY --from=build /app/dist/truenorth-range-web/browser /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 USER nginx
 EXPOSE 8080
@@ -325,23 +226,29 @@ dependencies root-owned.
 ### Local Build Commands
 
 ```bash
-# Build all images
+# Build all images (api, worker, ai, web)
+make build
+
+# Build specific component — the api needs the content/ named context, the worker
+# also scenario_engine/ (their Dockerfiles COPY --from=content / --from=scenario_engine)
+docker build -t truenorth-api:latest --build-context content=content control-plane/api/
+docker build -t truenorth-worker:latest \
+  --build-context scenario_engine=scenario-engine --build-context content=content \
+  control-plane/worker/
+
+# Build the whole dev stack
 docker compose -f infra/platform/docker/compose.dev.yml build
 
-# Build specific component
-docker build -t truenorth/control-plane-api:dev control-plane/api/
-
-# Build with BuildKit cache
-DOCKER_BUILDKIT=1 docker build \
-  --cache-from truenorth/control-plane-api:latest \
-  -t truenorth/control-plane-api:dev \
-  control-plane/api/
-
 # Scan built image
-trivy image truenorth/control-plane-api:dev
+trivy image truenorth-api:latest
 ```
 
+(`make build` and the per-image targets are `Makefile:123-141`.)
+
 ### Image Size Targets
+
+> **Illustrative.** No sizes are measured or asserted anywhere in the repo; the
+> "Actual" column is UNKNOWN until someone builds the images and inspects them.
 
 | Image | Target Size | Actual |
 |-------|-----------|--------|
@@ -357,102 +264,93 @@ trivy image truenorth/control-plane-api:dev
 
 ### Overview
 
-Packer builds VM templates for range environments. Each template produces a Proxmox VM template that Terraform uses for provisioning.
+Packer builds VM templates for range environments. There is no single
+`infra/packer/` tree: templates live **per hypervisor**, in `infra/proxmox/packer/`
+(the ones `.github/workflows/packer-build.yml` builds), `infra/vsphere/packer/`
+(the golden-template tree, ADR 0012) and `infra/hyperv/packer/`.
 
 ### Packer Template Structure
 
 ```
-infra/packer/
-+-- windows-server-2022/
-|   +-- windows-server-2022.pkr.hcl
-|   +-- scripts/
-|   |   +-- install-sysmon.ps1
-|   |   +-- configure-winrm.ps1
-|   |   +-- install-ad.ps1
-|   |   +-- harden.ps1
-|   +-- answer-file/
-|       +-- autounattend.xml
-+-- windows-11/
-|   +-- windows-11.pkr.hcl
-|   +-- scripts/
-|       +-- install-sysmon.ps1
-|       +-- install-office.ps1
-+-- ubuntu-2404/
-|   +-- ubuntu-2404.pkr.hcl
-|   +-- scripts/
-|       +-- install-zeek.sh
-|       +-- install-auditd.sh
-|       +-- install-elk.sh
-|       +-- harden.sh
-+-- kali-2024/
-|   +-- kali-2024.pkr.hcl
-|   +-- scripts/
-|       +-- install-tools.sh
-+-- pfsense-27/
-    +-- pfsense-27.pkr.hcl
-    +-- config/
-        +-- config.xml
+infra/proxmox/packer/
++-- ubuntu-2404.pkr.hcl
++-- windows-server-2022.pkr.hcl
++-- windows-10-workstation.pkr.hcl
++-- kali-linux.pkr.hcl
++-- pfsense.pkr.hcl
++-- security-onion.pkr.hcl
++-- variables.pkr.hcl              # variable declarations
++-- truenorth.auto.pkrvars.hcl     # checked-in values
++-- http/                          # cloud-init / answer files
++-- build-all.ps1
+
+infra/vsphere/packer/              # golden templates (ADR 0012)
++-- windows.pkr.hcl / windows-common.pkr.hcl
++-- linux.pkr.hcl
++-- appliances.pkr.hcl / derived.pkr.hcl / roles.pkr.hcl / plugins.pkr.hcl
++-- variants.pkr.hcl + variants/
++-- variables.pkr.hcl + lab.auto.pkrvars.hcl.example
++-- build.sh + files/ + http/
+
+infra/hyperv/packer/
++-- ubuntu-2404.pkr.hcl, windows-server-2022.pkr.hcl, variables.pkr.hcl
 ```
 
 ### Building Packer Images
 
 ```bash
-# Validate template
-cd infra/packer/windows-server-2022
-packer validate -var-file=../variables.pkrvars.hcl .
+# Syntax-validate all Proxmox templates (make packer-validate, Makefile:153-158)
+cd infra/proxmox/packer
+for hcl in *.pkr.hcl; do packer validate -syntax-only "$hcl"; done
 
-# Build template
-packer build -var-file=../variables.pkrvars.hcl .
-
-# Build with specific Proxmox target
-packer build \
-  -var "proxmox_url=https://pve.truenorth.local:8006/api2/json" \
-  -var "proxmox_node=pve01" \
-  -var-file=../variables.pkrvars.hcl \
-  .
-
-# Build all templates (CI/CD)
-for dir in infra/packer/*/; do
-  packer build -var-file=infra/packer/variables.pkrvars.hcl "$dir"
-done
+# Build one template — the Proxmox connection comes in as PKR_VAR_* variables
+# (from truenorth.auto.pkrvars.hcl or the CI secrets, packer-build.yml:82-89)
+packer init .
+packer build -force -on-error=cleanup windows-server-2022.pkr.hcl
 ```
 
 ### Packer Build Pipeline (GitHub Actions)
 
+> **The live workflow is `.github/workflows/packer-build.yml`** (manual
+> dispatch, `ubuntu-latest`, not self-hosted): a `validate` job runs
+> `packer validate -syntax-only` over every template, then an optional `build`
+> job (input `validate_only`, environment `proxmox`) builds the chosen template
+> with `PKR_VAR_proxmox_*` secrets — URL, username and password, not a token.
+> Template choices: all, ubuntu-2404, windows-server-2022,
+> windows-10-workstation, kali-linux, pfsense, security-onion. The vSphere
+> golden templates are only fmt/validate-syntax checked in CI (`ci.yml` job
+> `packer-vsphere`); a full validate needs a filled `lab.auto.pkrvars.hcl` and
+> builds run on site.
+
 ```yaml
+# Excerpt of .github/workflows/packer-build.yml — read the file for the whole thing
 name: Packer Build
 on:
   workflow_dispatch:
     inputs:
       template:
-        description: Template to build
+        description: "Packer template to build"
         type: choice
-        options:
-          - windows-server-2022
-          - windows-11
-          - ubuntu-2404
-          - kali-2024
-          - pfsense-27
-          - all
+        options: [all, ubuntu-2404, windows-server-2022, windows-10-workstation,
+                  kali-linux, pfsense, security-onion]
+      validate_only: { type: boolean, default: false }
 
 jobs:
   build:
-    runs-on: [self-hosted, proxmox]
+    runs-on: ubuntu-latest
+    environment: proxmox
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-packer@main
-      - name: Packer init
-        run: packer init infra/packer/${{ inputs.template }}/
-      - name: Packer build
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: hashicorp/setup-packer@ce93c3c08a6c2ff2275bf4b54ff0d9a75f6c9789 # v3.4.0
+      - run: packer init infra/proxmox/packer
+      - name: Build template(s)
         env:
-          PROXMOX_URL: ${{ secrets.PROXMOX_URL }}
-          PROXMOX_TOKEN: ${{ secrets.PROXMOX_TOKEN }}
-        run: |
-          packer build \
-            -var "proxmox_url=$PROXMOX_URL" \
-            -var "proxmox_token=$PROXMOX_TOKEN" \
-            -var-file=infra/packer/variables.pkrvars.hcl \
-            infra/packer/${{ inputs.template }}/
+          PKR_VAR_proxmox_url: ${{ secrets.PROXMOX_URL }}
+          PKR_VAR_proxmox_username: ${{ secrets.PROXMOX_USERNAME }}
+          PKR_VAR_proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
+          PKR_VAR_proxmox_node: ${{ secrets.PROXMOX_NODE }}
+          # ... plus storage, iso_storage, bridge; packer-build.yml:82-89
+        run: packer build -force -on-error=cleanup "${{ inputs.template }}.pkr.hcl"
 ```
 
 ---
@@ -462,80 +360,47 @@ jobs:
 ### Terraform Module Structure
 
 ```
-infra/terraform/
-+-- modules/
-|   +-- range/
-|   |   +-- main.tf          # VM provisioning
-|   |   +-- variables.tf
-|   |   +-- outputs.tf
-|   |   +-- network.tf       # VLAN creation
-|   +-- platform/
-|       +-- main.tf           # Platform infrastructure
-|       +-- database.tf
-|       +-- redis.tf
-|       +-- opensearch.tf
-+-- environments/
-    +-- dev/
-    |   +-- main.tf
-    |   +-- terraform.tfvars
-    +-- staging/
-    |   +-- main.tf
-    |   +-- terraform.tfvars
-    +-- production/
-        +-- main.tf
-        +-- terraform.tfvars
-        +-- backend.tf        # S3 state backend
+infra/proxmox/terraform/       # make tf-plan / tf-validate (Makefile:160-165); CI plans on PR
++-- main.tf                    # telmate/proxmox provider
++-- variables.tf
++-- modules/dns/, modules/networking/
+
+infra/vsphere/terraform/       # the range builder's target (ADR 0009)
++-- main.tf, variables.tf
+
+infra/hyperv/terraform/
++-- main.tf, variables.tf
 ```
+
+There are no `environments/` overlays and no `modules/range` — each
+hypervisor's tree is the module.
 
 ### Terraform Commands
 
 ```bash
-# Plan (review changes)
-cd infra/terraform/environments/production
-terraform init
-terraform plan -out=tfplan
+# Plan (review changes) — make tf-plan, Makefile:160-162
+cd infra/proxmox/terraform
+terraform init -input=false
+terraform plan
 
-# Apply (execute changes)
-terraform apply tfplan
-
-# Range provisioning (called by Celery worker)
-cd infra/terraform/modules/range
-terraform init
-terraform plan \
-  -var="range_id=<uuid>" \
-  -var="template=medium-enterprise" \
-  -var="vlan_id=101" \
-  -out=tfplan
-terraform apply tfplan
-
-# Destroy a range
-terraform destroy \
-  -var="range_id=<uuid>" \
-  -var="template=medium-enterprise" \
-  -var="vlan_id=101"
+# Validate — make tf-validate
+cd infra/proxmox/terraform && terraform init -input=false && terraform validate
 ```
+
+Range provisioning is **not** done through Terraform any more: the Terraform
+provisioner backends were removed — the worker image has no terraform binary
+and ADR 0009 rules `terraform_vsphere` out as a range builder
+(`control-plane/worker/worker/provisioners/__init__.py:5-9`). The supported
+backends are `mock` and `vsphere_api`, with `proxmox_api` and `hyperv`
+experimental; they call the hypervisor APIs directly.
 
 ### State Management
 
-| Environment | Backend | Lock |
-|------------|---------|------|
-| Development | Local | N/A |
-| Staging | S3 (MinIO) | DynamoDB (or PostgreSQL) |
-| Production | S3 (MinIO) + encryption | DynamoDB (or PostgreSQL) |
-
-```hcl
-# Production backend configuration
-terraform {
-  backend "s3" {
-    bucket         = "truenorth-terraform-state"
-    key            = "production/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "truenorth-terraform-locks"
-    endpoint       = "https://minio.truenorth.local"
-  }
-}
-```
+Local state by default. `infra/proxmox/terraform/main.tf:15-34` carries a
+**commented-out** S3/MinIO backend ("enable this block and configure for
+production"); `infra/vsphere/terraform/main.tf:5` notes the module "has no
+backend any more (removed 2026-10, ADR 0009)". There is no DynamoDB lock
+configuration anywhere.
 
 ---
 
@@ -545,49 +410,56 @@ terraform {
 
 ```
 tests/
-+-- unit/                     # Fast, isolated, no external deps
-|   +-- test_models.py
-|   +-- test_rbac.py
-|   +-- test_state_machines.py
-+-- integration/              # With real databases/services
-|   +-- test_ranges_api.py
-|   +-- test_exercises_api.py
-|   +-- test_websocket.py
-+-- smoke/                    # Post-deployment validation
-|   +-- test_health.py
-|   +-- test_basic_workflow.py
-+-- e2e/                      # Full user journeys
-|   +-- test_provision_exercise_aar.py
++-- api/                      # API tests (make test-api)
++-- worker/                   # Worker tests (make test-worker)
++-- contracts/                # Contract tests, incl. CI shard coverage
++-- integration/              # Against a real stack (make itest; CI job `integration`)
+|   +-- test_range_lifecycle.py
+|   +-- test_exercise_lifecycle.py
+|   +-- ... (24 test modules)
++-- e2e/                      # Playwright journeys (tests/e2e, CI job `e2e`)
 +-- scenario_engine/
-    +-- test_content_validation.py
-    +-- test_injectors.py
-    +-- test_validators.py
+|   +-- test_content_validation.py
+|   +-- test_injectors.py
+|   +-- test_event_stores.py
++-- ai_orchestrator/ arc2/ noise_agent/ scheduler/ scoring/ scripts/ tools/
++-- load/                     # k6 scenarios (tests/load/scenarios/*.js, CI job `load-smoke`)
++-- conftest.py, _shared.py
 ```
+
+There is no `tests/unit/` and no `tests/smoke/`; the fast lane is the
+`not slow and not integration` marker selection (`make test-fast`), and
+post-deployment validation is `scripts/staging_acceptance.py`, run by
+`make itest` / CI's acceptance step.
 
 ### Test Execution
 
 ```bash
-# Unit tests (fast — ~30s)
-pytest tests/unit/ -v --cov
+# Fast tests (no slow/integration markers) — make test-fast
+pytest -m "not slow and not integration" -v --tb=short
 
-# Integration tests (requires services — ~2min)
-pytest tests/integration/ -v --timeout=120
+# Integration tests: build + start an isolated stack, migrate, run
+# tests/integration + the acceptance suite, tear down — make itest
+bash scripts/itest.sh all
 
-# Smoke tests (against running instance — ~30s)
-pytest tests/smoke/ -v --base-url=https://staging.truenorth.local
-
-# All tests
-pytest tests/ -v --cov --timeout=300
+# All tests with coverage — make test
+pytest --cov=control-plane/api --cov=control-plane/worker \
+  --cov=scenario-engine --cov=ai-orchestrator \
+  --cov-report=term-missing --cov-report=html:htmlcov -v --tb=short
+open htmlcov/index.html
 
 # Specific test file
-pytest tests/unit/test_rbac.py -v
-
-# With coverage report
-pytest tests/ --cov=app --cov-report=html
-open htmlcov/index.html
+pytest tests/api/test_auth_backends.py -v
 ```
 
+There is no `pytest-timeout` in the test environment, so `--timeout=120`
+fails with "unrecognized arguments"; long-running lanes are bounded in CI by
+`timeout-minutes` instead (`.github/workflows/ci.yml`).
+
 ### Coverage Targets
+
+> **Illustrative.** No coverage thresholds are enforced anywhere in the repo;
+> the "Current" column is UNKNOWN until a full coverage run is done (`make test`).
 
 | Component | Target | Current |
 |-----------|--------|---------|
@@ -603,71 +475,69 @@ open htmlcov/index.html
 
 ### Release Workflow
 
+There is no `develop` branch: feature branches PR straight into `main`, and
+releases are tags off `main`.
+
 ```mermaid
 flowchart LR
-    A[Feature Branch] --> B[PR to develop]
-    B --> C[Code Review]
-    C --> D[Merge to develop]
-    D --> E[PR to main]
-    E --> F[Integration Tests]
-    F --> G[Merge to main]
-    G --> H[Create Tag v*]
-    H --> I[Release Pipeline]
-    I --> J[Deploy Staging]
-    J --> K[Smoke Tests]
-    K --> L[Deploy Production]
-    L --> M[Post-deploy Validation]
+    A[Feature Branch] --> B[PR to main]
+    B --> C[CI + Code Review]
+    C --> D[Merge to main]
+    D --> E[Tag v*]
+    E --> F[release.yml: build + scan + sign 6 images]
+    F --> G[release-manifest.json, SBOMs, SHA256SUMS]
+    G --> H[GitHub Release with --generate-notes]
 ```
+
+`release.yml` is build-and-publish only — its header says "nothing here
+deploys anything" (`.github/workflows/release.yml:9-10`). There is no
+staging deployment trigger, no Helm chart publish, and no GitHub-approval
+production deploy; deployment is operator-run (see "Environment Promotion"
+below). The full runbook is `docs/release.md`.
 
 ### Step-by-Step Release
 
-1. **Prepare release branch:**
+1. **Prepare:**
    ```bash
    git checkout main
    git pull origin main
    ```
 
-2. **Update version numbers:**
+2. **Version numbers** — only where they are actually read:
    ```bash
-   # Update pyproject.toml / setup.py
-   # Update package.json (frontend)
-   # Update Chart.yaml (Helm)
+   # control-plane/web/package.json:3        ("version")
+   # infra/k8s/helm/truenorth-range/Chart.yaml  (version + appVersion)
+   # Every Docker image instead takes TN_VERSION from the git tag
+   # (release.yml:150 build-args), so no pyproject/setup.py bump is needed.
    ```
 
-3. **Update CHANGELOG.md:**
-   ```markdown
-   ## [1.5.0] - 2026-01-15
-   ### Added
-   - New "supply-chain" scenario
-   - Batch provision endpoint
-   ### Fixed
-   - WebSocket reconnection on token refresh
-   ### Changed
-   - Upgraded OpenSearch client to 2.5
-   ```
+3. **Update CHANGELOG.md** with the release's entries.
 
 4. **Create and push tag:**
    ```bash
-   git tag -a v1.5.0 -m "Release 1.5.0 - Supply chain scenario"
+   git tag -a v1.5.0 -m "Release 1.5.0"
    git push origin v1.5.0
    ```
 
-5. **Monitor release pipeline:**
-   - CI runs full test suite
-   - Docker images built and tagged with `v1.5.0`
-   - Helm chart published
-   - Staging deployment triggered
-   - Smoke tests run against staging
+5. **Monitor release pipeline** (`.github/workflows/release.yml`):
+   - Six images built fresh (no cache), pushed **untagged, by digest**
+     (`release.yml:144`, "Build and push by digest")
+   - Trivy scan blocks on fixable HIGH/CRITICAL; SBOM (SPDX) attached
+   - Signed digest → `cosign sign` + `cosign attest`; only then tagged with
+     the version and verified to resolve to the scanned digest
+     (`release.yml:232`, "Tag the scanned digest with the version")
+   - `release-manifest.json` (service → digest) + `SHA256SUMS`, signed with
+     `cosign sign-blob` (`release.yml:297,331-341`); the installer pulls by
+     digest
 
-6. **Approve production deployment:**
-   - Manual approval gate in GitHub Actions
-   - Production deployment via Helm upgrade
-   - Post-deployment smoke tests
+6. **Create GitHub Release:**
+   ```bash
+   gh release create "$VERSION" assets/out/* \
+     --verify-tag --generate-notes    # release.yml:351; --prerelease if the tag has a suffix
+   ```
 
-7. **Create GitHub Release:**
-   - Auto-generated release notes
-   - Link to CHANGELOG
-   - Attach any binary artifacts
+7. **Deploy:** operator-run, following `docs/release.md` and
+   `install/` (Ansible) — see "Environment Promotion".
 
 ---
 
@@ -700,10 +570,10 @@ Examples:
 
 | File | Contains Version |
 |------|-----------------|
-| `control-plane/api/app/__init__.py` | `__version__ = "1.5.0"` |
-| `control-plane/api/pyproject.toml` | `version = "1.5.0"` |
-| `frontend/package.json` | `"version": "1.5.0"` |
-| `charts/truenorth/Chart.yaml` | `version: 1.5.0`, `appVersion: 1.5.0` |
+| `pyproject.toml:9` | `version = "0.1.0"` (Python package; no `control-plane/api/pyproject.toml` exists) |
+| `control-plane/api/app/settings.py:65` | `app_version()` returns the `TN_VERSION` env (Dockerfile `ARG TN_VERSION`), falling back to `"dev"` — there is no static `__version__` |
+| `control-plane/web/package.json:3` | `"version": "0.1.0"` |
+| `infra/k8s/helm/truenorth-range/Chart.yaml` | `version: 1.0.0`, `appVersion: "1.0.0"` |
 | `CHANGELOG.md` | Release history |
 
 ---
@@ -712,48 +582,60 @@ Examples:
 
 ### Container Images
 
+Six images (release.yml matrix, `.github/workflows/release.yml:99-118`):
+
 | Image | Registry | Tags |
 |-------|---------|------|
-| `truenorth/control-plane-api` | ghcr.io | `latest`, `v1.5.0`, `sha-abc1234` |
-| `truenorth/celery-worker` | ghcr.io | `latest`, `v1.5.0`, `sha-abc1234` |
-| `truenorth/ai-orchestrator` | ghcr.io | `latest`, `v1.5.0`, `sha-abc1234` |
-| `truenorth/scenario-engine` | ghcr.io | `latest`, `v1.5.0`, `sha-abc1234` |
-| `truenorth/frontend` | ghcr.io | `latest`, `v1.5.0`, `sha-abc1234` |
+| `truenorth-api` | ghcr.io/mblanke | version tag only (`v1.5.0`), added to the scanned digest after Trivy (`release.yml:232-243`); no `latest`, no `sha-` tags |
+| `truenorth-worker` | ghcr.io/mblanke | same |
+| `truenorth-web` | ghcr.io/mblanke | same |
+| `truenorth-scenario-engine` | ghcr.io/mblanke | same |
+| `truenorth-ai-orchestrator` | ghcr.io/mblanke | same |
+| `truenorth-moodle` | ghcr.io/mblanke | same |
+
+Installers do not consume tags: `release-manifest.json` maps each service to
+its digest and the Ansible installer pulls by digest
+(`release.yml:297-341`, `install/roles/tn_release`).
 
 ### Helm Chart
 
-```bash
-# Add chart repository
-helm repo add truenorth https://charts.truenorth.local
+The chart lives in-repo at `infra/k8s/helm/truenorth-range` and is installed
+from the checkout (CI's `helm-kind.yml` does exactly that); no chart
+repository is published by any workflow in this repo, so any `helm repo add`
+URL is UNKNOWN/illustrative:
 
-# Install specific version
-helm install truenorth truenorth/truenorth --version 1.5.0
+```bash
+# From the checkout
+helm install truenorth infra/k8s/helm/truenorth-range --version 1.0.0
 ```
 
 ### Packer Images
 
-Stored in Proxmox template storage with naming convention:
-```
-truenorth-{os}-{version}-{build-date}
-# Examples:
-truenorth-win2022-1.5.0-20260115
-truenorth-ubuntu2404-1.5.0-20260115
-truenorth-kali2024-1.5.0-20260115
-```
+Stored as Proxmox templates; names are set per-template by `vm_name`, not by
+a `truenorth-{os}-{version}-{build-date}` convention — e.g.
+`vm_name = "ubuntu-2404-cloud"` (`infra/proxmox/packer/ubuntu-2404.pkr.hcl:41`).
+Check each `*.pkr.hcl` for the actual name.
 
 ---
 
 ## Environment Promotion
 
-```
-develop → staging → production
-```
+There is no `develop` branch and **no workflow in this repo deploys
+anything** (`release.yml:9-10`; the only `schedule:` trigger is
+`backup-drill.yml:19`). There are no dev/staging/prod GitHub environments;
+deployment is operator-run from the release artifacts:
 
-| Environment | Deploy Trigger | Approval | URL |
-|------------|---------------|----------|-----|
-| Development | Push to `develop` | Automatic | `https://dev.truenorth.local` |
-| Staging | Push to `main` | Automatic | `https://staging.truenorth.local` |
-| Production | Tag `v*` | Manual approval | `https://truenorth.local` |
+- **Install/upgrade:** `install/` Ansible roles (the installer pins digests
+  from `release-manifest.json`, `install/roles/tn_release`), or compose
+  (`make prod-up`), or the Helm chart (`infra/k8s/helm/truenorth-range`,
+  v1.0.0).
+- **Pre-production validation:** CI's integration/acceptance lanes
+  (`scripts/itest.sh`, `scripts/staging_acceptance.py`).
+
+| Environment | Deploy Trigger | Approval |
+|------------|---------------|----------|
+| Staging-like | Operator runs the installer / compose against a host | Operator |
+| Production | Same, after the promotion checklist | Operator |
 
 ### Promotion Checklist
 
@@ -774,24 +656,20 @@ Before promoting staging → production:
 ### Application Rollback
 
 ```bash
-# Rollback to previous revision
-kubectl rollout undo deployment truenorth-api -n production
-kubectl rollout undo deployment celery-worker -n production
+# Helm-installed: rollback to previous revision
+helm rollback truenorth 1 -n production
 
-# Rollback to specific version
+# Rollback to a specific release version's digest
 kubectl set image deployment/truenorth-api \
-  api=ghcr.io/truenorth/control-plane-api:v1.4.0 \
+  api=ghcr.io/mblanke/truenorth-api@sha256:<digest-from-release-manifest> \
   -n production
-
-# Via Helm
-helm rollback truenorth 1 -n production  # Rollback to revision 1
 ```
 
 ### Database Rollback
 
 ```bash
 # Rollback last migration
-cd control-plane/api
+cd control-plane/api   # its alembic.ini sets script_location = alembic
 alembic downgrade -1
 
 # Rollback to specific revision
