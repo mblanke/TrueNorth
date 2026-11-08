@@ -174,6 +174,7 @@ token subject and address. There are no role tiers; limits are per route:
 | 30 / min | `POST /ranges` |
 | 5 / min | `POST /ranges/batch-provision` |
 | 20 / min | `POST /ai/*` |
+| 30 / min | `POST /curricula/{id}/search`, `POST /curricula/{id}/generate-course` |
 | 10 / min | `POST /exercise-forge`, `POST /quizzes/generate`, AAR ai-enhance, MESL generate |
 | 30 / min | `POST /exercises/{id}/objectives/{ref}/detections` |
 | Unlimited | `GET /health` |
@@ -1402,15 +1403,22 @@ The channel is part of the URL and the access token is the second **subprotocol*
 (`app/main.py`: `@app.websocket("/ws/{channel}")`, `app/ws_auth.py`):
 
 ```js
-const ws = new WebSocket("ws://localhost:4200/api/ws/range.<range_id>", ["bearer", token]);
+const ws = new WebSocket("ws://localhost:4200/ws/range.<range_id>", ["bearer", token]);
 // direct to the API container in dev: ws://127.0.0.1:8081/ws/<channel>
 ```
 
+In development the web nginx upgrades only `/ws/` (its `/api/` location sends no
+`Upgrade` header — `control-plane/web/nginx.conf`), so the `:4200` URL above has no
+`/api` prefix. In production the edge strips `/api/` and upgrades
+(`infra/platform/nginx/conf.d/truenorth.conf`), so `wss://<site>/api/ws/<channel>`
+works there.
+
 A missing/invalid token, or a channel the user may not open, is closed with **1008**.
 
-**Channels:** `range.<id>`, `exercise.<id>`, `tenant.<id>` (the user's tenant) and
-`system.*` (platform administrator only). Collaboration rooms are `room.<id>`, joined
-in-band rather than in the URL.
+**Channels:** `range.<id>`, `exercise.<id>`, `exercise.<id>.staff` (as `exercise.<id>`,
+for holders of `scenario:update` — full instructor-inject events go there),
+`tenant.<id>` (the user's tenant) and `system.*` (platform administrator only).
+Collaboration rooms are `room.<id>`, joined in-band rather than in the URL.
 
 ### Message Format
 
@@ -1419,17 +1427,19 @@ All server messages use a structured JSON envelope
 
 ```json
 {
-  "type": "room_message",
+  "type": "room_chat",
   "channel": "room.f6a7b8c9",
   "sequence": 42,
   "timestamp": "2026-01-15T10:30:00.123456+00:00",
   "data": {
-    "room_id": "f6a7b8c9",
     "sender_user_id": "b2c3d4e5-...",
     "text": "hello"
   }
 }
 ```
+
+`data` is the sending client's payload; the server stamps only `sender_user_id`
+(`app/main.py:707`) — a client cannot speak for another member.
 
 ### Message Types
 
@@ -1437,15 +1447,20 @@ All server messages use a structured JSON envelope
 |------|-------------|------|
 | `room_member_joined` | A user joined a collaboration room | `room_id`, `user_id`, `display_name`, `conn_id` |
 | `room_member_left` | A user left a collaboration room | `room_id`, `user_id`, `conn_id` |
-| `room_message` | A chat message from another room member | `room_id`, `sender_user_id`, client payload |
+| `room_chat` | A chat message from another room member | `sender_user_id` plus the sender's payload |
+| `room_cursor` | Another member's cursor position | `sender_user_id` plus the sender's payload |
 | `room_members` | Reply to a `room_members` action | `members` list |
+| `annotation_created` | An analyst annotation was created (`POST /ops/exercises/{id}/annotations`) | `AnnotationOut` fields (`app/routers/ops_center.py`) |
+| `command_shared` | A command was shared (`POST /ops/exercises/{id}/commands`) | `SharedCommandOut` fields (`app/routers/ops_center.py`) |
+| `instructor_inject` | An instructor inject fired | On `exercise.<id>.staff` the full event; on `exercise.<id>` that it happened and, for a narrative inject, its text (`app/ws_auth.py:participant_inject_event`) |
 | `ping` / `pong` | Heartbeat | — |
 | `ack` / `error` | Reply frames (ack for unrecognised input, error details) | `data` / `detail` |
 
-Domain events (`range.ready`, `exercise.started`, `scenario.inject.fired`,
-`system.alert`, … — dotted names in `app/events.py`) are published on the internal
-event bus; the WebSocket endpoint broadcasts room events today, not a live feed of
-those domain events.
+`annotation_created`, `command_shared` and `instructor_inject` are broadcast on the
+exercise's `exercise.<id>` (and `exercise.<id>.staff`) channels today
+(`app/routers/ops_center.py`). Other domain events (`range.ready`, `exercise.started`,
+`scenario.inject.fired`, `system.alert`, … — dotted names in `app/events.py`) are
+published on the internal event bus; the WebSocket endpoint is not a live feed of those.
 
 ### Channel Subscription
 
@@ -1454,7 +1469,7 @@ connected, a client collaborates in rooms with these actions:
 
 ```json
 {"action": "join_room", "room_id": "a7b8c9d0", "display_name": "Alice"}
-{"action": "room_message", "room_id": "a7b8c9d0", "type": "chat", "data": {"text": "hello"}}
+{"action": "room_message", "room_id": "a7b8c9d0", "type": "room_chat", "data": {"text": "hello"}}
 {"action": "room_members", "room_id": "a7b8c9d0"}
 {"action": "leave_room", "room_id": "a7b8c9d0"}
 ```
@@ -1478,16 +1493,18 @@ The server sends a ping every 30 seconds. Clients must respond with a pong withi
 
 The auto-generated OpenAPI specification is available at:
 
-| Format | URL |
-|--------|-----|
-| Interactive (Swagger UI) | `http://localhost:4200/api/docs` |
-| ReDoc | `http://localhost:4200/api/redoc` |
-| Raw JSON | `http://localhost:4200/api/openapi.json` |
+| Format | Development (API direct, loopback only) | Production (edge, management networks only) |
+|--------|------------------------------------------|---------------------------------------------|
+| Interactive (Swagger UI) | `http://127.0.0.1:8081/docs` | `https://<site>/api/docs` |
+| ReDoc | `http://127.0.0.1:8081/redoc` | `https://<site>/api/redoc` |
+| Raw JSON | `http://127.0.0.1:8081/openapi.json` | `https://<site>/api/openapi.json` |
 
-These go through nginx (`/api/` prefix stripped) and are restricted to management
-networks (`infra/platform/nginx/conf.d/truenorth.conf`). Direct to the API container in
-dev (loopback only): `http://127.0.0.1:8081/docs`, `/redoc`, `/openapi.json`. The
-published contract copy lives at `docs/interfaces/openapi.json`.
+The web container's nginx on `:4200` answers these with **404** in development —
+operator surfaces are not served through it (`control-plane/web/nginx.conf`, "Operator
+surfaces are not served through the web container"). In production the edge serves
+`/api/docs`, `/api/redoc` and `/api/openapi.json` restricted to management networks
+(`infra/platform/nginx/conf.d/truenorth.conf`). The published contract copy lives at
+`docs/interfaces/openapi.json`.
 
 ---
 
