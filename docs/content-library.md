@@ -138,7 +138,7 @@ host-requirement data.
 | `ws-01`…`ws-03` | windows-11 | 10.0.3.10–.12 |
 | `fw-01` | pfsense | 10.0.1.1 (one NIC per VLAN) |
 
-#### Medium Enterprise (`medium-enterprise`) — v1.0, 8 VMs
+#### Medium Enterprise (`medium-enterprise`) — v1.0, 8 nodes (no `vm_count`)
 
 | VLAN | Subnet | Purpose |
 |------|--------|---------|
@@ -308,9 +308,11 @@ A short introductory ransomware drill: phishing email, simulated dropper executi
 ### Rule Catalog
 
 Nine shipped rules in `content/detections/*.yaml`, IDs `tn-detect-001`…`tn-detect-009`
-(Sigma-inspired: older rules carry `mitre_attack`/`level` keys, newer ones
-`mitre_technique`/`severity`/`status`). The loader reads either key form
-(`scripts/load_content.py`, `load_detections`).
+(Sigma-inspired: the four older rules carry `mitre_attack`/`level` keys, the five newer
+ones `mitre_technique`/`severity`/`status`). The loader reads `level`/`severity` and
+`mitre_technique`/`tags` (`scripts/load_content.py:213,228`, `load_detections`) — it does
+**not** read `mitre_attack`, so the four older rules upload with no technique list; the
+Technique(s) column below is what each YAML carries, not what the loader uploads.
 
 | Rule ID | File | Title | Technique(s) | Severity | Status |
 |---------|------|-------|--------------|----------|--------|
@@ -417,13 +419,13 @@ and `T1562.008` (revoked by T1685.002). The scenario YAML predates those revocat
 
 ### Coverage Summary
 
-Counts read from the shipped catalogue (816 technique entries, 149 revoked, tactic named
+Counts read from the shipped catalogue (858 technique entries, 149 revoked, tactic named
 per its `"tactics"` list; a technique counts in every tactic it maps to). The catalogue
 names TA0005 **"Stealth"** (not "Defense Evasion") and TA0112 "Defense Impairment".
 
 | Tactic | Catalogue ID | Catalogue active techniques | Exercised by shipped scenarios |
 |--------|--------------|----------------------------|--------------------------------|
-| Initial Access | TA0001 | 22 | T1190, T1566.001, T1078.004 |
+| Initial Access | TA0001 | 22 | T1078, T1078.002, T1078.004, T1190, T1566.001 |
 | Execution | TA0002 | 69 | T1059.001, T1059.005, T1053.005, T1204 |
 | Persistence | TA0003 | 117 | T1078, T1078.002, T1078.004, T1053.005, T1098, T1098.003 |
 | Privilege Escalation | TA0004 | 98 | T1078, T1078.002, T1078.004, T1053.005, T1098, T1098.003 |
