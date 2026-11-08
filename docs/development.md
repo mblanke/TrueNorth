@@ -30,7 +30,7 @@
 | Tool | Version | Purpose |
 |------|---------|---------|
 | Python | 3.11+ | API, worker, scenario engine, CLI |
-| Node.js | 20+ | Angular frontend |
+| Node.js | 20+ (the repo pins 22 via `.nvmrc`) | Angular frontend |
 | Docker | 24+ | Container runtime |
 | Docker Compose | v2.24+ | Service orchestration |
 | Git | 2.40+ | Version control |
@@ -73,40 +73,39 @@ pip install ruff mypy pre-commit
 ## Repository Structure
 
 ```
-Core_Docs/
+<repo root>                          # cloned as truenorth-range (pyproject name)
 +-- control-plane/
 |   +-- api/                        # FastAPI backend (main application)
 |   |   +-- app/
 |   |   |   +-- __init__.py
 |   |   |   +-- main.py             # App factory, middleware, lifespan events
-|   |   |   +-- models.py           # SQLAlchemy ORM (12 models, 282 lines)
+|   |   |   +-- models.py           # SQLAlchemy ORM (68 models, 1816 lines)
 |   |   |   +-- schemas.py          # Pydantic v2 schemas (request/response)
 |   |   |   +-- auth.py             # Keycloak JWT validation middleware
-|   |   |   +-- rbac.py             # Fine-grained RBAC (25 perms, 5 roles, 280 lines)
+|   |   |   +-- rbac.py             # Fine-grained RBAC (74 perms, 5 roles, 576 lines)
 |   |   |   +-- db.py               # Database engine, session factory
-|   |   |   +-- websocket_manager.py # Production WS (Redis pub/sub, 476 lines)
+|   |   |   +-- websocket_manager.py # Production WS (Redis pub/sub, 538 lines)
 |   |   |   +-- xapi.py             # xAPI/cmi5 statement emitter
 |   |   |   +-- routers/
 |   |   |       +-- __init__.py     # Router package exports
-|   |   |       +-- ranges.py       # Range CRUD + lifecycle (243 lines)
-|   |   |       +-- exercises.py    # Exercise + scoring + AAR (303 lines)
-|   |   |       +-- templates.py    # Template CRUD (126 lines)
-|   |   |       +-- scenarios.py    # Scenario CRUD (134 lines)
-|   |   |       +-- admin.py        # Tenants, users, teams, audit (222 lines)
+|   |   |       +-- ranges.py       # Range CRUD + lifecycle (1135 lines)
+|   |   |       +-- exercises.py    # Exercise + scoring + AAR (810 lines)
+|   |   |       +-- templates.py    # Template CRUD (337 lines)
+|   |   |       +-- scenarios.py    # Scenario CRUD (214 lines)
+|   |   |       +-- admin.py        # Tenants, users, teams, audit (678 lines)
 |   |   +-- requirements.txt
 |   |   +-- Dockerfile
 |   |   +-- alembic/                # Database migrations
 |   |   +-- alembic.ini
-|   +-- web/                        # Angular 17+ frontend
+|   +-- web/                        # Angular 21 frontend
 |   |   +-- src/
 |   |   |   +-- app/
-|   |   |   |   +-- components/     # Shared components
-|   |   |   |   +-- pages/          # Route pages (dashboard, ranges, exercises)
-|   |   |   |   +-- services/       # HTTP and WebSocket services
-|   |   |   |   +-- models/         # TypeScript interfaces
-|   |   |   +-- environments/       # Environment configs
+|   |   |   |   +-- core/           # API client, auth, guards, interceptors, models
+|   |   |   |   +-- features/       # Per-section modules (ranges, exercises, courses, ...)
+|   |   |   |   +-- shared/         # Shared components, charts, markdown, tour
 |   |   +-- angular.json
 |   |   +-- package.json
+|   |   +-- proxy.conf.json         # ng serve /api proxy -> the dev API
 |   +-- worker/                     # Celery background tasks
 |       +-- worker/
 |       |   +-- celery_app.py       # Celery configuration
@@ -114,18 +113,19 @@ Core_Docs/
 |       +-- requirements.txt
 |       +-- Dockerfile
 +-- scenario-engine/
-|   +-- injectors/
-|   |   +-- base.py                 # Injector ABC + registry decorator
-|   |   +-- dns_spike.py            # DNS query burst generator
-|   |   +-- http_burst.py           # HTTP traffic generator
-|   |   +-- email_phish.py          # Phishing email simulator
-|   |   +-- simulated_execution.py  # Process/malware simulation
-|   |   +-- identity.py             # Identity manipulation injector
-|   +-- validators/
-|   |   +-- base.py                 # Validator ABC + registry decorator
-|   |   +-- opensearch_query.py     # OpenSearch detection checker
-|   |   +-- manual_ack.py           # Manual acknowledgment validator
-|   |   +-- deliverable_check.py    # MinIO artifact validator
+|   +-- scenario_engine/            # importable package (scenario_engine.*)
+|   |   +-- injectors/
+|   |   |   +-- base.py             # BaseInjector ABC (params-in-constructor)
+|   |   |   +-- dns_spike.py        # DNS query burst generator
+|   |   |   +-- http_burst.py       # HTTP traffic generator
+|   |   |   +-- email_phish.py      # Phishing email simulator
+|   |   |   +-- simulated_execution.py  # Process/malware simulation
+|   |   |   +-- identity_new_admin_user.py  # Identity manipulation injector
+|   |   +-- validators/
+|   |   |   +-- base.py             # Validator ABC
+|   |   |   +-- opensearch_query.py # OpenSearch detection checker
+|   |   |   +-- manual_ack.py       # Manual acknowledgment validator
+|   |   |   +-- deliverable_check.py # MinIO artifact validator
 |   +-- runner/
 |   |   +-- run.py                  # CLI scenario executor
 |   +-- schemas/
@@ -138,21 +138,20 @@ Core_Docs/
 +-- ai-orchestrator/
 |   +-- app/
 |   |   +-- main.py                 # FastAPI app
-|   |   +-- fleet.py                # Multi-node LLM fleet routing
-|   |   +-- backends/               # OpenAI, Anthropic, Ollama, Mock
-|   |   +-- prompts/                # System prompts per capability
+|   |   +-- backends/               # OpenAI-compatible, Anthropic, Ollama, Mock
 |   +-- requirements.txt
 |   +-- Dockerfile
 +-- telemetry/
 |   +-- pipelines/                  # OpenSearch ingest pipelines
-|   +-- mappings/                   # Index templates
-|   +-- dashboards/                 # Saved dashboard objects
+|   +-- correlation-rules/          # Correlation rule definitions
 +-- content/
 |   +-- ranges/                     # Range template YAML files
 |   +-- scenarios/                  # Scenario YAML files
-|   +-- inject-packs/              # Reusable inject collections
+|   +-- inject-packs/               # Reusable inject collections
 |   +-- datasets/                   # Sample event data (JSON/NDJSON)
 |   +-- detections/                 # Sigma-style detection rules
+|   +-- catalogue/                  # Curated CSV/YAML catalogues (references.yaml)
+|   +-- courses/                    # Authored course content (YAML modules/labs/quizzes)
 +-- infra/
 |   +-- platform/docker/
 |   |   +-- compose.dev.yml         # Core development services
@@ -163,11 +162,11 @@ Core_Docs/
 |       +-- packer/                 # Packer templates
 +-- tools/
 |   +-- cli/
-|   |   +-- forge.py                # Typer CLI (range, exercise, template commands)
+|   |   +-- forge.py                # Typer CLI (range, scenario, template, exercise commands)
 |   |   +-- requirements.txt
 |   +-- sdk/
 |       +-- __init__.py
-|       +-- client.py               # TrueNorthClient class
+|       +-- client.py               # TrueNorthClient (async) class
 +-- tests/
 |   +-- conftest.py                 # Shared fixtures (db, client, auth mock)
 |   +-- api/                        # API endpoint tests
@@ -176,9 +175,8 @@ Core_Docs/
 +-- scripts/
 |   +-- dod.ps1                     # Windows DoD gate script
 |   +-- dod.sh                      # Linux/macOS DoD gate
-+-- docs/                           # Documentation
++-- docs/                           # Documentation (incl. SKILLS.md, the skill index)
 +-- AGENTS.md                       # Agent operating system
-+-- SKILLS.md                       # Skill index
 ```
 
 ---
@@ -189,7 +187,7 @@ Core_Docs/
 
 ```bash
 git clone <repo-url>
-cd "TrueNorth Range/Core_Docs"
+cd truenorth-range
 ```
 
 ### Step 2: Start Infrastructure Services
@@ -221,10 +219,12 @@ pip install -r requirements.txt
 
 ```bash
 cd control-plane/api
-AUTH_DISABLED=true uvicorn app.main:app --reload --port 8080
+AUTH_DISABLED=true uvicorn app.main:app --reload --port 8081
 ```
 
-The API is now available at `http://localhost:8080`. Auto-reload is enabled for development.
+The API is now available at `http://localhost:8081` (the dev stack publishes it on
+`127.0.0.1:8081`; see `infra/platform/docker/compose.dev.yml` and `make dev`).
+Auto-reload is enabled for development.
 
 ### Step 5: Run the Celery Worker (Optional)
 
@@ -238,10 +238,10 @@ celery -A worker.celery_app worker --loglevel=info
 
 ```bash
 # Health check
-curl http://localhost:8080/health
+curl http://localhost:8081/health
 
 # Interactive API docs
-open http://localhost:8080/docs
+open http://localhost:8081/docs
 
 # CLI
 pip install -r tools/cli/requirements.txt
@@ -256,13 +256,15 @@ python tools/cli/forge.py health
 
 ```bash
 # Install test dependencies
-pip install pytest pytest-cov pyyaml httpx
+pip install -r requirements-test.txt
 
 # Run all tests
 pytest -v
 
-# With coverage report
-pytest --cov=control_plane_api --cov-report=html --cov-report=term -v
+# With coverage report (the same invocation `make test` uses)
+pytest --cov=control-plane/api --cov=control-plane/worker --cov=scenario-engine \
+       --cov=ai-orchestrator --cov-report=term-missing --cov-report=html:htmlcov \
+       -v --tb=short
 
 # Open coverage report
 open htmlcov/index.html
@@ -284,28 +286,28 @@ pytest tests/scenario_engine/test_content_validation.py -v
 pytest tests/worker/ -v
 
 # Single test file
-pytest tests/api/test_ranges.py -v
+pytest tests/api/test_crud.py -v
 
-# Single test function
-pytest tests/api/test_ranges.py::test_create_range -v
+# Single test class / function
+pytest tests/api/test_crud.py::TestRanges -v
+pytest tests/api/test_crud.py::TestRanges::test_create_range -v
 ```
 
 ### Load Testing
 
+Load tests are [k6](https://grafana.com/docs/k6/) scripts in `tests/load/` (there is no
+locust suite). See `tests/load/README.md` for the full scenario list and environment
+variables (`BASE_URL` defaults to `http://localhost:8081`, `API_PREFIX` to `/api/v1`).
+
 ```bash
-# Install locust
-pip install locust
+# Install k6 (winget install k6 / brew install k6 / docker pull grafana/k6)
+k6 version
 
-# Run load tests
-locust -f tests/load/locustfile.py --host=http://localhost:8080
+# Run a scenario
+k6 run tests/load/scenarios/baseline.js
 
-# Headless mode (CI)
-locust -f tests/load/locustfile.py \
-  --host=http://localhost:8080 \
-  --users 100 \
-  --spawn-rate 10 \
-  --run-time 60s \
-  --headless
+# The CI smoke profile ( PROFILE=smoke, 1 VU for 30s — CI runs every scenario this way )
+k6 run --vus 1 --duration 30s -e PROFILE=smoke tests/load/scenarios/smoke.js
 ```
 
 ### Test Coverage Requirements
@@ -347,17 +349,25 @@ target-version = "py311"
 line-length = 120
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "TCH"]
-ignore = ["E501"]  # Line length handled by formatter
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+ignore = [
+    "E501",  # line length handled by the formatter
+    "B008",  # FastAPI Depends() in defaults
+    "UP042",
+    "F811",
+    "E402",  # app.main imports after path setup
+    "N999",  # hyphenated directories are not importable anyway
+]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app", "worker", "scenario_engine"]
+known-third-party = ["alembic"]
 ```
 
 ### Mypy (Type Checking)
 
 ```bash
-mypy control-plane/api/app --ignore-missing-imports
+mypy control-plane/api/app control-plane/worker/worker ai-orchestrator/app \
+     scenario-engine/scenario_engine --ignore-missing-imports
 ```
 
 ### Pre-commit Hooks
@@ -375,16 +385,19 @@ pre-commit run --all-files
 ```yaml
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.4.0
+    rev: v0.8.4
     hooks:
       - id: ruff
-        args: [--fix]
+        args: [--fix, --exit-non-zero-on-fix]
       - id: ruff-format
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.9.0
+    rev: v1.13.0
     hooks:
       - id: mypy
-        additional_dependencies: [sqlalchemy-stubs]
+        args: [--ignore-missing-imports]
+        pass_filenames: false
+  # plus pre-commit-hooks v4.6.0, detect-secrets v1.5.0, hadolint v2.12.0 —
+  # see .pre-commit-config.yaml for the full set
 ```
 
 ---
@@ -457,7 +470,8 @@ Python literal.
 It is called from `_seed_dev_data()` in `app/main.py` on **every** startup, from the
 `lifespan` handler. There is no env flag gating it — each seed function is itself
 responsible for returning early when its table is already populated, which is why
-idempotency is mandatory rather than a nicety.
+idempotency is mandatory rather than a nicety. (`SEED_DEV_DATA` exists but gates only
+the extra dev tenant/admin account, not these reference seeders.)
 
 ```python
 from .seed import (
@@ -650,6 +664,11 @@ sourced file.
 
 ### Step-by-Step Guide
 
+> The notification example below is **illustrative**, not a description of the existing
+> `notifications` feature: the real router (`app/routers/notifications.py`) is
+> signed-in-only — there are no `NOTIFICATION_*` permissions in `rbac.py` — and the real
+> model is `UserNotification` in `app/notifications/models.py`.
+
 **1. Add the model** (`control-plane/api/app/models.py`):
 
 ```python
@@ -740,73 +759,77 @@ def test_create_notification(client, auth_headers):
 
 ### Step-by-Step Guide
 
-**1. Create injector file** (`scenario-engine/injectors/my_injector.py`):
+**1. Create injector file** (`scenario-engine/scenario_engine/injectors/my_injector.py`):
+
+Subclass `BaseInjector` (`scenario_engine/injectors/base.py`): params arrive in the
+constructor, `execute(context: dict) -> dict` returns a dict, and the class declares
+`name` and `required_params`. Nothing else is needed — the package is scanned at import
+time and every concrete `BaseInjector` subclass is registered automatically under its
+`name` (the `@register_injector` decorator from `scenario_engine.injectors` exists for
+explicit registration, and takes no arguments).
 
 ```python
-from scenario_engine.injectors.base import Injector, register_injector, RangeContext, InjectResult
+from typing import Any
 
-@register_injector("lateral_movement")
-class LateralMovementInjector(Injector):
-    """Simulates lateral movement via PsExec or WMI."""
+from .base import BaseInjector
 
-    def execute(self, context: RangeContext, params: dict) -> InjectResult:
-        technique = params.get("technique", "T1570")
-        source = params.get("source_host", "ws01")
-        target = params.get("target_host", "srv01")
-        method = params.get("method", "psexec")
 
-        # Generate telemetry events
+class LateralMovementInjector(BaseInjector):
+    """Simulates lateral movement via PsExec or WMI; sends nothing."""
+
+    name = "lateral_movement"
+    description = "Synthetic lateral-movement records (PsExec/WMI style)."
+    required_params = ["target_host"]
+
+    def execute(self, context: dict[str, Any]) -> dict[str, Any]:
+        technique = self.params.get("technique", "T1570")
+        target = self.params["target_host"]
+
+        # Synthetic telemetry events (all injectors here are simulated)
         events = [
             {
-                "timestamp": context.current_time.isoformat(),
                 "event.action": "network_connection",
-                "source.ip": context.resolve_host(source),
-                "destination.ip": context.resolve_host(target),
+                "destination.ip": target,
                 "destination.port": 445,
-                "process.name": f"{method}.exe",
-            },
-            {
-                "timestamp": context.current_time.isoformat(),
-                "event.action": "process_create",
-                "host.name": target,
-                "process.name": "cmd.exe",
-                "process.parent.name": f"{method}.exe",
+                "process.name": "psexec.exe",
+                "technique": technique,
             },
         ]
-
-        return InjectResult(
-            success=True,
-            message=f"Lateral movement: {source} -> {target} via {method}",
-            artifacts={"events": events},
-            mitre_technique=technique,
-        )
+        return {"injector": self.name, "events": events}
 ```
 
-**2. Add to injector registry** — The `@register_injector` decorator handles this automatically.
+**2. Add to injector registry** — automatic: `_auto_discover()` in
+`scenario_engine/injectors/__init__.py` imports every module in the package and
+registers each concrete class under its `name`. The action name in a scenario timeline
+may also be written `inject.lateral_movement`; `canonical_action()` maps both to the
+same registry key.
 
 **3. Write tests** (`tests/scenario_engine/test_lateral_movement.py`):
 
 ```python
+from scenario_engine.injectors import get_injector
+
+
 def test_lateral_movement_injector():
-    from scenario_engine.injectors.my_injector import LateralMovementInjector
-    injector = LateralMovementInjector()
-    result = injector.execute(mock_context, {"source_host": "ws01", "target_host": "srv01"})
-    assert result.success
-    assert len(result.artifacts["events"]) == 2
+    injector = get_injector("lateral_movement")
+    injector.params = {"target_host": "srv01"}
+    injector.validate_params()
+    result = injector.execute({})
+    assert result["injector"] == "lateral_movement"
+    assert len(result["events"]) == 1
 ```
 
 **4. Use in scenarios:**
 
+Timeline items are keyed by `t` (`"M:SS"` minutes:seconds offset), not `id`/`delay_minutes`
+(see `scenario-engine/schemas/scenario.schema.json`):
+
 ```yaml
 timeline:
-  - id: event-3
-    type: lateral_movement
-    delay_minutes: 15
-    depends_on: event-2
+  - t: "0:15"
+    action: lateral_movement
     params:
-      source_host: ws01
       target_host: srv01
-      method: psexec
       technique: T1570
 ```
 
@@ -899,48 +922,29 @@ ng serve --proxy-config proxy.conf.json
 ```json
 {
   "/api": {
-    "target": "http://localhost:8080",
+    "target": "http://localhost:8081",
     "secure": false,
     "pathRewrite": { "^/api": "" }
-  },
-  "/ws": {
-    "target": "ws://localhost:8080",
-    "ws": true
   }
 }
 ```
+
+(This is the whole file — there is no separate `/ws` block.)
 
 ### Frontend Architecture
 
 ```
 src/app/
-+-- components/           # Shared UI components
-|   +-- range-card/
-|   +-- exercise-timer/
-|   +-- objective-list/
-+-- pages/                # Route pages
-|   +-- dashboard/
-|   +-- ranges/
-|   +-- exercises/
-|   +-- scenarios/
-|   +-- aar-viewer/
-+-- services/             # API and WebSocket services
-|   +-- api.service.ts
-|   +-- websocket.service.ts
-|   +-- auth.service.ts
-+-- models/               # TypeScript interfaces
-|   +-- range.model.ts
-|   +-- exercise.model.ts
-+-- guards/               # Route guards
-|   +-- auth.guard.ts
-|   +-- role.guard.ts
++-- core/                 # API client, auth, guards, interceptors, models
++-- features/             # Per-section modules (ranges, exercises, courses, ...)
++-- shared/               # Shared components, charts, markdown, tour
 ```
 
 ### Build for Production
 
 ```bash
 ng build --configuration production
-# Output: dist/truenorth-web/
+# Output: dist/truenorth-range-web/
 ```
 
 ---
@@ -976,7 +980,7 @@ docker compose -f compose.dev.yml logs --tail=100 api
 
 ```bash
 docker compose -f compose.dev.yml exec api bash
-docker compose -f compose.dev.yml exec postgres psql -U truenorth truenorth_range
+docker compose -f compose.dev.yml exec postgres psql -U forge forge
 docker compose -f compose.dev.yml exec redis redis-cli
 ```
 
@@ -995,7 +999,7 @@ docker compose -f compose.dev.yml up -d     # Fresh start
 
 ```bash
 # Enable debug logging
-LOG_LEVEL=DEBUG AUTH_DISABLED=true uvicorn app.main:app --reload --port 8080
+LOG_LEVEL=DEBUG AUTH_DISABLED=true uvicorn app.main:app --reload --port 8081
 
 # Use debugger (VS Code)
 # Add to launch.json:
@@ -1004,7 +1008,7 @@ LOG_LEVEL=DEBUG AUTH_DISABLED=true uvicorn app.main:app --reload --port 8080
 #   "type": "python",
 #   "request": "launch",
 #   "module": "uvicorn",
-#   "args": ["app.main:app", "--reload", "--port", "8080"],
+#   "args": ["app.main:app", "--reload", "--port", "8081"],
 #   "env": {"AUTH_DISABLED": "true"}
 # }
 ```
@@ -1012,8 +1016,8 @@ LOG_LEVEL=DEBUG AUTH_DISABLED=true uvicorn app.main:app --reload --port 8080
 ### Database Debugging
 
 ```bash
-# Connect to database
-docker exec -it tn-postgres psql -U truenorth truenorth_range
+# Connect to database (compose.dev.yml sets POSTGRES_USER/DB to "forge")
+docker compose -f infra/platform/docker/compose.dev.yml exec postgres psql -U forge forge
 
 # Useful queries
 SELECT state, count(*) FROM ranges GROUP BY state;
@@ -1036,15 +1040,23 @@ celery -A worker.celery_app inspect registered
 
 ### WebSocket Debugging
 
+The endpoint is `@app.websocket("/ws/{channel}")` (`app/main.py`); a channel is
+`range.<id>`, `exercise.<id>`, `tenant.<id>` or `system.*`. Auth is a token sent as the
+second WebSocket subprotocol (`["bearer", <token>]`) — there is no query-string token;
+the server closes with 1008 without one.
+
 ```bash
 # Use websocat for WebSocket testing
-websocat ws://localhost:8080/ws
+websocat ws://localhost:8081/ws/system.events -H "Sec-WebSocket-Protocol: bearer, <token>"
 
 # Or with Python
 python -c "
 import asyncio, websockets
 async def test():
-    async with websockets.connect('ws://localhost:8080/ws') as ws:
+    async with websockets.connect(
+        'ws://localhost:8081/ws/system.events',
+        subprotocols=['bearer', '<token>'],
+    ) as ws:
         msg = await ws.recv()
         print(msg)
 asyncio.run(test())
@@ -1072,7 +1084,7 @@ Follow the AGENTS.md operating model:
 - Run unit tests: `pytest -v`
 - Run linter: `ruff check .`
 - Run type checker: `mypy`
-- Run DoD gate: `pwsh scripts/dod.ps1`
+- Run DoD gate: `bash scripts/dod.sh` (`scripts/dod.ps1` is the Windows equivalent)
 
 ### 4. REVIEW
 - Self-review against `SKILLS/50-pr-review.md`
@@ -1090,50 +1102,83 @@ pip install -r tools/cli/requirements.txt
 
 # General
 python tools/cli/forge.py health              # Check API health
-python tools/cli/forge.py seed --demo          # Seed demo data
+python tools/cli/forge.py login               # Store API credentials
+python tools/cli/forge.py config              # Show CLI configuration
 
 # Ranges
 python tools/cli/forge.py range list           # List all ranges
 python tools/cli/forge.py range create --name "R1" --template-id <uuid>
-python tools/cli/forge.py range provision <id>
+python tools/cli/forge.py range get <id>
+python tools/cli/forge.py range batch-provision <id>...   # up to 500 range ids
+python tools/cli/forge.py range stats
 python tools/cli/forge.py range destroy <id>
 
 # Templates
 python tools/cli/forge.py template list
 python tools/cli/forge.py template validate <yaml-path>
 
+# Scenarios
+python tools/cli/forge.py scenario list
+
 # Exercises
 python tools/cli/forge.py exercise list
 python tools/cli/forge.py exercise start <id>
 python tools/cli/forge.py exercise complete <id>
+python tools/cli/forge.py exercise aar <id>
+
+# Telemetry
+python tools/cli/forge.py telemetry search <range-id> --query "process.name:powershell.exe"
+
+# The package also installs a `forge` console script (pyproject [project.scripts]),
+# so `forge range list` works from an activated venv.
 ```
 
 ---
 
 ## SDK Usage
 
+The SDK client (`tools/sdk/client.py`, importable as `truenorth_sdk`) is **async**
+(httpx under the hood). The default `base_url` is `http://localhost:8080` (or
+`TRUENORTH_API_URL`); the dev stack publishes the API on `127.0.0.1:8081`, so pass it
+explicitly there.
+
 ```python
-from tools.sdk import TrueNorthClient
+import asyncio
 
-# Initialize
-client = TrueNorthClient(
-    base_url="http://localhost:8080",
-    token="<jwt-token>"  # Optional if AUTH_DISABLED=true
-)
+from truenorth_sdk import TrueNorthClient  # tools.sdk
 
-# Health check
-print(client.health())
 
-# Range operations
-ranges = client.list_ranges()
-new_range = client.create_range(name="SDK Range", template_id="<uuid>")
-client.provision_range(new_range["id"])
+async def main():
+    # Initialize — token/api_key fall back to TRUENORTH_TOKEN / TRUENORTH_API_KEY
+    # (a dev stack with AUTH_DISABLED=true needs none)
+    client = TrueNorthClient(base_url="http://localhost:8081")
 
-# Exercise operations
-exercises = client.list_exercises()
-client.start_exercise(exercise_id="<uuid>")
-client.complete_exercise(exercise_id="<uuid>")
+    # Health check
+    print(await client.health())
 
-# Telemetry
-events = client.search_telemetry(range_id="<uuid>", query="process.name:powershell.exe")
+    # Range operations
+    ranges = await client.list_ranges()
+    new_range = await client.create_range(name="SDK Range", template_id="<uuid>")
+    await client.provision_range(new_range["id"])
+
+    # Exercise operations
+    exercises = await client.list_exercises()
+    await client.start_exercise(exercise_id="<uuid>")
+    await client.complete_exercise(exercise_id="<uuid>")
+
+    # Telemetry
+    events = await client.search_telemetry(range_id="<uuid>", query="process.name:powershell.exe")
+
+    await client.close()
+
+asyncio.run(main())
+```
+
+`async with TrueNorthClient(...) as client:` works too (it closes on exit), and
+`TrueNorthClient.Sync(...)` wraps the same calls synchronously for scripts and REPLs:
+
+```python
+with TrueNorthClient.Sync("http://localhost:8081") as tn:
+    print(tn.health())
+    ranges = tn.list_ranges()
 ```
