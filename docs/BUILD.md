@@ -200,10 +200,14 @@ below.
 
 ### Frontend Dockerfile
 
+Excerpt (`control-plane/web/Dockerfile` is authoritative; `...` marks elided
+lines):
+
 ```dockerfile
 # Stage 1: Build Angular
 FROM node:22-alpine AS build
 WORKDIR /app
+...                     # elided: the lockfile-reproducibility comment (:4)
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
@@ -211,12 +215,18 @@ RUN npm run build:prod && npm run check:prod-env
 
 # Stage 2: Serve with Nginx, as the unprivileged nginx user (so on 8080, pid in /tmp)
 FROM nginx:1.30-alpine
+RUN apk upgrade --no-cache                              # distro updates at build time
 RUN sed -i -e '/^user /d' -e 's,^pid .*,pid /tmp/nginx.pid;,' /etc/nginx/nginx.conf \
     && chown -R nginx:nginx /var/cache/nginx
 COPY --from=build /app/dist/truenorth-range-web/browser /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+...
+# elided: docker/40-truenorth-runtime-config.sh installed to
+# /docker-entrypoint.d/ (writes the SPA runtime config from TN_* env at start)
+# and ARG TN_VERSION / ENV / LABEL tagging (:26-32)
 USER nginx
 EXPOSE 8080
+CMD ["nginx", "-g", "daemon off;"]
 ```
 
 The authoritative file is `control-plane/web/Dockerfile`. The api, worker,
