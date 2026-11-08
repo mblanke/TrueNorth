@@ -202,7 +202,8 @@ unrestricted student transcripts and no permission to rewrite grades.
 **Studio placement:** **Courses** sits in the existing Authoring Studio
 (`app.routes.ts`, hub `authoring`, beside Ranges, Scenarios, Detections, MESL, Forge and
 Content), with run views **Files, Outline, Quiz Bank, Preview, Code, Lab and To-do**
-(`arc2-studio.component.ts`). Raw files and code live in an advanced view. The seven agents
+(`arc2-studio.component.ts`). Raw files are the Files tab; the course YAML renders
+read-only on the Code tab. The seven agents
 appear as stage status, not as separate menus. The LMS catalogue and the career path
 deep-link to the authorized delivery view.
 
@@ -215,7 +216,7 @@ likely change locations, not claims that the integration code exists.
 | --- | --- | --- | --- |
 | **A. Authoring engine** | `tools/arc2/`, the seven `arc2-*` agents, `/arc2`, `tests/arc2/` | Both human gates, hash invalidation, routed rework, three-failure takeover, dry runs A/B, no tracked content changes during a run | No LMS migration; resumable staged runs |
 | **B. Release boundary** | Release schema and validator under `tools/arc2/`; API models and schemas; release persistence; adapter tests; the reviewed prerequisite model; new RBAC permissions | Freeze one accepted release; reject changed digests, missing approval and malformed prerequisites; a release cannot be overwritten | Additive migration under `control-plane/api/alembic/`; existing courses become explicit legacy baselines, without invented historical approval |
-| **C. Manual delivery pilot** | Release-aware adapter around `course_content_ingest.py`; curriculum and progress integration; `PROMOTE.md`; a Moodle integration runbook (not yet written) | Publish a fixture to an isolated delivery environment; launch a real module; confirm completion and results; old-release students continue | Staged separately; the active release survives a failure; remote receipts reconciled before retry |
+| **C. Manual delivery pilot** | Release-aware adapter around `course_content_ingest.py`; curriculum and progress integration; `PROMOTE.md`; a Moodle integration runbook (`docs/runbooks/moodle.md` already covers install, publish and the Student loop; it predates this slice, so the pilot-specific steps are untested against it) | Publish a fixture to an isolated delivery environment; launch a real module; confirm completion and results; old-release students continue | Staged separately; the active release survives a failure; remote receipts reconciled before retry |
 | **D. Course Studio** | Angular authoring course feature, `app.routes.ts`, authoring API and jobs on existing worker conventions | Create a request, review the outline, rework the preview, resume after worker or browser restart, show package readiness and outstanding actions | Durable job state; deployed behind a feature flag with the CLI as fallback |
 | **E. Publish to LMS** | Publication API and job, destination adapter, RBAC, audit, Studio action | A double click or retry creates one publication; unauthorized requests fail; changed approval blocks activation; an interrupted remote import recovers | Additive job and mapping records; new publications can be switched off without touching student delivery |
 | **F. Readiness and improvement loop** | Existing curriculum, course and progress, integration and reporting surfaces | Students see their approved eligibility path and pinned content; event replay produces one outcome; instructor feedback opens a draft without changing the live course | Versioned projections and replay rules; MITE decisions and historical evidence are never rewritten |
@@ -309,8 +310,10 @@ where the student career-path view is reached from Moodle.
 
 - Files carry a `kind` but no `audience`; instructor material is separated by directory name
   only (`cmi5.no_instructor_content`). Slice B adds `audience`.
-- The Moodle integration runbook named in slice C does not exist yet; only the design
-  (`docs/moodle-integration.md`) does.
+- The Moodle integration runbook named in slice C exists: `docs/runbooks/moodle.md`
+  (install, publish a release, take a course as a Student). The design is
+  `docs/moodle-integration.md`. The runbook predates the slice-C pilot, so the pilot's
+  isolated-delivery steps are not covered by it yet.
 
 ## 11. Run ownership (2026-10-04)
 
