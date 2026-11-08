@@ -463,6 +463,20 @@ def test_used_means_made_from_the_current_revision_on_a_matching_range(db_sessio
     db_session.flush()
     assert proven.exercise_template_use(db_session, et, scope).met is False
 
+    # ... and on a range built from the range template it runs on now: even a valid use row at
+    # the current revision with a passing score proves nothing on a range built from another
+    # range template
+    other_rt = _range_template(db_session, t, "Other proven lab")
+    wrong_range = _range(db_session, t, other_rt)
+    wrong = Exercise(id=uuid.uuid4(), name="Wrong build", kind="collective", range_id=wrong_range.id, tenant_id=t,
+                     state=ExerciseState.completed, total_score=80, max_score=100, completed_at=NOW)
+    db_session.add(wrong)
+    db_session.flush()
+    db_session.add(ExerciseTemplateUse(exercise_id=wrong.id, template_id=et.id, template_revision=et.revision,
+                                       tenant_id=t))
+    db_session.flush()
+    assert proven.exercise_template_use(db_session, et, scope).met is False
+
     made = _made_from(db_session, et, t, score=80)
     assert proven.exercise_template_use(db_session, et, scope).met is True
 
