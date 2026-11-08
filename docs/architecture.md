@@ -45,7 +45,7 @@ C4Context
     Rel(admin, tnr, "Administers platform")
     Rel(observer, tnr, "Views live data and reports")
     Rel(tnr, keycloak, "Authenticates users via OIDC")
-    Rel(tnr, proxmox, "Provisions VMs via Terraform")
+    Rel(tnr, proxmox, "Provisions VMs via hypervisor API provisioners")
     Rel(tnr, llm, "Generates detections, suggestions, AAR analysis")
     Rel(tnr, lrs, "Emits xAPI statements")
 ```
@@ -69,7 +69,7 @@ C4Container
     }
 
     Container_Boundary(api, "API Layer") {
-        Container(cpapi, "Control Plane API", "FastAPI 0.115+, Pydantic v2", "42 REST endpoints + WebSocket")
+        Container(cpapi, "Control Plane API", "FastAPI 0.142, Pydantic v2", "465 REST paths (593 operations) + WebSocket")
         Container(wsm, "WebSocket Manager", "asyncio, Redis pub/sub", "Real-time event broadcasting")
     }
 
@@ -80,14 +80,14 @@ C4Container
     }
 
     Container_Boundary(data, "Data Layer") {
-        ContainerDb(pg, "PostgreSQL", "PostgreSQL 16", "Relational state, 12 tables")
+        ContainerDb(pg, "PostgreSQL", "PostgreSQL 16", "Relational state, 76 tables")
         ContainerDb(redis, "Redis", "Redis 7", "Task broker, WS pub/sub, cache")
         ContainerDb(os, "OpenSearch", "OpenSearch 2.13", "Telemetry indices, search")
         ContainerDb(minio, "MinIO", "S3-compatible", "Artifacts, reports, images")
     }
 
     Container_Boundary(infra, "Infrastructure Layer") {
-        Container(tf, "Terraform", "HCL, Proxmox provider", "VM provisioning")
+        Container(tf, "Terraform", "HCL, Proxmox provider", "Range network infra (infra/proxmox/terraform); VMs are built by hypervisor API provisioners, ADR 0009")
         Container(packer, "Packer", "HCL", "VM template building")
     }
 
@@ -101,10 +101,8 @@ C4Container
     Rel(cpapi, os, "HTTP")
     Rel(cpapi, minio, "S3 API")
     Rel(cpapi, worker, "Celery tasks")
-    Rel(worker, tf, "CLI")
     Rel(worker, scenario, "Python import")
     Rel(worker, ai, "HTTP")
-    Rel(ai, os, "HTTP queries")
 ```
 
 ---
@@ -113,26 +111,26 @@ C4Container
 
 ### Control Plane API
 
-The API is a FastAPI application organized into 5 router modules with shared authentication, RBAC, and database layers.
+The API is a FastAPI application organized into 44 router modules (423 routes) with shared authentication, RBAC, and database layers. The five routers below are the core range/exercise ones; the rest cover sections like classes, lab sessions, courses, wiki and tickets.
 
 ```mermaid
 graph TB
     subgraph "Control Plane API (FastAPI)"
         MAIN["main.py<br/>App factory + middleware"]
         AUTH["auth.py<br/>Keycloak JWT validation"]
-        RBAC["rbac.py<br/>25+ permissions, 5 roles"]
+        RBAC["rbac.py<br/>74 permissions, 5 roles"]
         DB["db.py<br/>SQLAlchemy engine + sessions"]
-        MODELS["models.py<br/>12 ORM models"]
+        MODELS["models.py + models_tickets.py + models_wiki.py<br/>76 ORM tables"]
         SCHEMAS["schemas.py<br/>Pydantic v2 schemas"]
         WSM["websocket_manager.py<br/>Redis pub/sub, heartbeat"]
         XAPI["xapi.py<br/>xAPI statement emitter"]
 
-        subgraph "Routers"
-            R_RANGES["ranges.py<br/>10 endpoints"]
-            R_EXERCISES["exercises.py<br/>11 endpoints"]
-            R_TEMPLATES["templates.py<br/>5 endpoints"]
-            R_SCENARIOS["scenarios.py<br/>5 endpoints"]
-            R_ADMIN["admin.py<br/>11 endpoints"]
+        subgraph "Routers (44 modules, 5 core ones shown)"
+            R_RANGES["ranges.py<br/>30 routes"]
+            R_EXERCISES["exercises.py<br/>19 routes"]
+            R_TEMPLATES["templates.py<br/>9 routes"]
+            R_SCENARIOS["scenarios.py<br/>6 routes"]
+            R_ADMIN["admin.py<br/>17 routes"]
         end
     end
 
@@ -167,8 +165,8 @@ graph TB
         TASKS["tasks.py<br/>Task definitions"]
         
         subgraph "Task Types"
-            PROV["provision_range<br/>Terraform apply or mock"]
-            DEST["destroy_range<br/>Terraform destroy or mock"]
+            PROV["provision_range<br/>Hypervisor API or mock"]
+            DEST["destroy_range<br/>Hypervisor API or mock"]
             BATCH["batch_provision<br/>Parallel range provisioning"]
             SCEN["run_scenario<br/>Execute scenario timeline"]
         end
@@ -176,7 +174,7 @@ graph TB
 
     subgraph "Backends"
         MOCK["Mock Provisioner<br/>State transitions only"]
-        TF["Terraform Backend<br/>Proxmox provider"]
+        TF["Hypervisor API Provisioners<br/>vsphere_api, proxmox_api, hyperv (ADR 0009)"]
         SE["Scenario Engine<br/>Injectors + validators"]
     end
 
@@ -198,7 +196,7 @@ graph TB
 graph TB
     subgraph "AI Orchestrator (Port 6000)"
         AIMAIN["main.py<br/>FastAPI app"]
-        FLEET["fleet.py<br/>Multi-node routing"]
+        FLEET["main.py<br/>Fleet parsing + tag-priority routing"]
         
         subgraph "Capabilities"
             DET["Detection Rule Gen<br/>/ai/detection-rule"]
@@ -211,13 +209,12 @@ graph TB
             OAI["OpenAI Backend"]
             ANT["Anthropic Backend"]
             OLL["Ollama Backend<br/>Local models"]
+            VLLM["vLLM Backend<br/>OpenAI-compatible"]
             MOCK_AI["Mock Backend<br/>Static responses"]
         end
 
         subgraph "Prompts"
-            P1["detection_system.txt"]
-            P2["scenario_system.txt"]
-            P3["aar_system.txt"]
+            P1["Inline prompt builders<br/>f-strings in main.py"]
         end
     end
 
@@ -229,10 +226,11 @@ graph TB
     FLEET --> OAI
     FLEET --> ANT
     FLEET --> OLL
+    FLEET --> VLLM
     FLEET --> MOCK_AI
     DET --> P1
-    SUG --> P2
-    AAR --> P3
+    SUG --> P1
+    AAR --> P1
 ```
 
 ### Scenario Engine
@@ -248,7 +246,7 @@ graph TB
             I_HTTP["http_burst.py<br/>HTTP traffic"]
             I_PHISH["email_phish.py<br/>Phishing email"]
             I_EXEC["simulated_execution.py<br/>Process sim"]
-            I_IDENT["identity.py<br/>Admin account"]
+            I_IDENT["identity_new_admin_user.py<br/>Admin account"]
         end
 
         subgraph "Validator Registry"
@@ -282,7 +280,7 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant Q as Redis (Celery)
     participant W as Celery Worker
-    participant TF as Terraform/Mock
+    participant TF as Provisioner (hypervisor API / mock)
     participant WS as WebSocket
 
     U->>API: POST /ranges (name, template_id)
@@ -293,14 +291,19 @@ sequenceDiagram
     API->>DB: UPDATE state=provisioning
     API->>Q: Enqueue provision_range task
     API->>WS: Broadcast range_state=provisioning
-    API-->>U: 200 OK
+    API-->>U: 202 Accepted
 
     Q->>W: Dequeue task
-    W->>TF: terraform apply (or mock delay)
-    TF-->>W: Apply complete (outputs)
+    W->>TF: Provisioner call (or mock delay)
+    TF-->>W: Provisioning complete (outputs)
     W->>DB: UPDATE state=ready, provisioner_output
     W->>WS: Broadcast range_state=ready
 ```
+
+> Note: the `Broadcast range_state` steps show the designed flow. The API's event
+> handler (`control-plane/api/app/events.py`) currently does not emit range-state
+> WebSocket broadcasts; live broadcasts exist in the ops-center router
+> (`routers/ops_center.py`) and `main.py`.
 
 ### Exercise Lifecycle Flow
 
@@ -343,6 +346,10 @@ sequenceDiagram
     API-->>I: Exercise with final scores
 ```
 
+> Note: as above, the API does not currently broadcast `exercise_update` /
+> `scenario_event` from this flow; the channels are defined in
+> `websocket_manager.py` and broadcast from the ops-center router.
+
 ### Telemetry Pipeline Flow
 
 ```mermaid
@@ -360,8 +367,8 @@ graph LR
     end
 
     subgraph "OpenSearch Cluster"
-        IDX["Per-range Index<br/>tn-range-{uuid}-*"]
-        PIPE["Ingest Pipeline<br/>tenant_id, range_id tagging"]
+        IDX["Per-range Index<br/>range-{range_id} (+ range-{range_id}-*)"]
+        PIPE["Ingest Pipeline<br/>truenorth.ingested_at stamping"]
         DASH["OpenSearch Dashboards"]
     end
 
@@ -392,7 +399,7 @@ graph LR
 
 ## Data Model
 
-The relational data model consists of 12 tables organized around tenant isolation and range/exercise lifecycle management.
+The relational data model consists of 76 tables (defined in `models.py`, `models_tickets.py` and `models_wiki.py`) organized around tenant isolation and range/exercise lifecycle management. The core tables:
 
 ```mermaid
 erDiagram
@@ -467,7 +474,7 @@ erDiagram
         uuid id PK
         string name
         uuid template_id FK
-        enum state "created/provisioning/ready/running/stopped/destroying/destroyed/failed"
+        enum state "created/provisioning/ready/running/stopping/stopped/starting/destroying/destroyed/failed"
         uuid tenant_id FK
         string provisioner_backend
         text provisioner_output
@@ -525,18 +532,20 @@ erDiagram
 
 **Range States:**
 ```
-created --> provisioning --> ready --> running --> stopped --> destroying --> destroyed
-                  |                      |           |                         ^
-                  v                      |           |                         |
-                failed ------->----------+-----------+--------> destroying --->+
+created --> provisioning --> ready --> running --> stopping --> stopped --> starting --> running
+     |            |            |        |           |           |           |
+     v            v            v        v           v           v           v
+  destroyed     failed -------+--------+-----------+-----------+-----------+ --> destroying --> destroyed
 ```
 
-Valid transitions defined in `control-plane/api/app/models.py`:
+Valid transitions defined in `control-plane/api/app/state_machines.py`:
 - `created` -> `provisioning`, `destroyed`
 - `provisioning` -> `ready`, `failed`
-- `ready` -> `running`, `destroying`
-- `running` -> `stopped`, `destroying`
-- `stopped` -> `running`, `destroying`
+- `ready` -> `running`, `stopping`, `destroying`, `failed`
+- `running` -> `stopping`, `destroying`
+- `stopping` -> `stopped`, `failed`, `destroying`
+- `stopped` -> `starting`, `destroying`
+- `starting` -> `running`, `failed`, `destroying`
 - `destroying` -> `destroyed`, `failed`
 - `failed` -> `provisioning`, `destroying`, `destroyed`
 
@@ -589,6 +598,11 @@ Valid transitions:
 | WebSocket connections | 10,000 | Per-user limits (50), Redis pub/sub, graceful degradation |
 | Ranges per tenant | 500 | Composite indexes on (tenant_id, state), query optimization |
 
+> The 100,000 events/sec and 500 ranges/tenant rows are design targets with no
+> measured source in the repository (unverified); the 1,200-user / 70,000-VM
+> targets are the compose sizing comment (`compose.dev.yml`), and the 10,000
+> WebSocket / 50 per-user limits are code defaults in `websocket_manager.py`.
+
 ### Database Partitioning
 
 - **Tenant isolation**: All queries scoped by `tenant_id` with composite indexes
@@ -599,9 +613,13 @@ Valid transitions:
 ### Queue Isolation
 
 - **Default queue**: API-triggered tasks (CRUD, small operations)
-- **Provision queue**: Range provisioning tasks (long-running, resource-intensive)
+- **Provision queue**: Range provisioning tasks (long-running, resource-intensive); the same worker also consumes `destroy`
 - **Scenario queue**: Scenario execution tasks (I/O-bound, telemetry generation)
-- **AI queue**: LLM inference requests (variable latency, rate-limited)
+- **Telemetry queue**: Telemetry ingestion tasks (bulk writes to OpenSearch)
+
+The queues are the five declared in `control-plane/worker/worker/contracts.py`:
+`default`, `provision`, `destroy`, `scenario`, `telemetry`. LLM inference is not a
+Celery queue — it is served by the AI Orchestrator over HTTP.
 
 ### Horizontal Scaling
 
@@ -616,9 +634,9 @@ graph TB
     end
 
     subgraph "Celery Pool (M workers)"
-        W1["Worker 1<br/>default + provision"]
-        W2["Worker 2<br/>scenario"]
-        W3["Worker M<br/>ai"]
+        W1["Worker 1<br/>provision + destroy"]
+        W2["Worker 2<br/>scenario + default"]
+        W3["Worker M<br/>telemetry"]
     end
 
     subgraph "Data Tier"
@@ -650,11 +668,11 @@ TrueNorth Range enforces tenant isolation at every layer of the stack:
 
 | Layer | Isolation Mechanism |
 |-------|-------------------|
-| **Authentication** | Keycloak realm per tenant (or shared realm with `tenant_id` claim) |
+| **Authentication** | Shared Keycloak realm (`truenorth`) with a `tenant_id` claim in the token |
 | **API** | All queries filtered by `user.tenant_id`; admin role bypasses |
 | **Database** | `tenant_id` FK on all core tables; composite indexes for performance |
-| **Object Storage** | MinIO bucket per tenant: `tn-{tenant_slug}-artifacts` |
-| **Telemetry** | OpenSearch index per range: `tn-range-{range_uuid}-*` |
+| **Object Storage** | MinIO shared buckets (`curriculum`, `ranges`, `tickets`); no per-tenant buckets |
+| **Telemetry** | OpenSearch index per range: `range-{range_id}` (and `range-{range_id}-*`) |
 | **Network** | VLAN segmentation per range in Proxmox |
 | **RBAC** | Fine-grained permissions mapped to 5 roles per tenant |
 | **Audit** | All actions logged with `tenant_id` and `user_id` |
@@ -692,21 +710,21 @@ graph TB
     end
 
     subgraph "Proxmox Cluster"
-        subgraph "Range A (VLAN 100-109)"
+        subgraph "Range A (its own VLAN, 100-4000)"
             A_DC["Domain Controller"]
             A_WS["Workstations (5)"]
             A_SRV["File Server"]
             A_FW["pfSense Firewall"]
         end
 
-        subgraph "Range B (VLAN 200-209)"
+        subgraph "Range B (its own VLAN, 100-4000)"
             B_DC["Domain Controller"]
             B_WS["Workstations (10)"]
             B_SRV["Web Server"]
             B_FW["pfSense Firewall"]
         end
 
-        subgraph "Management (VLAN 1)"
+        subgraph "Management (VLAN 10)"
             MGMT["Platform Services<br/>API, DB, Redis"]
         end
     end
@@ -743,28 +761,28 @@ The AI Orchestrator supports multiple LLM backends with intelligent routing:
 ```mermaid
 graph TB
     REQ["Incoming AI Request"]
-    FLEET["Fleet Router<br/>fleet.py"]
+    FLEET["Fleet Router<br/>ai-orchestrator/app/main.py"]
 
     subgraph "Backend Pool"
-        OAI["OpenAI<br/>gpt-4o, gpt-4o-mini"]
-        ANT["Anthropic<br/>claude-sonnet, claude-haiku"]
-        OLL["Ollama Fleet<br/>OLLAMA_NODES env"]
+        OAI["OpenAI-compatible<br/>AI_HEAVY_MODEL / AI_GENERAL_MODEL / AI_CODE_MODEL"]
+        ANT["Anthropic<br/>claude models"]
+        OLL["Ollama Fleet<br/>OLLAMA_NODES env (name=url pairs)"]
+        VLLM["vLLM<br/>OpenAI-compatible"]
         MOCK["Mock Backend<br/>Static responses"]
     end
 
     subgraph "Selection Strategy"
         TAG["Tag-based Selection<br/>capability tags"]
-        FB["Fallback Chain<br/>primary -> secondary -> mock"]
-        LB_AI["Load Balancing<br/>Round-robin across nodes"]
+        FB["Fallback Chain<br/>tag-priority candidates -> cloud fallback -> mock"]
     end
 
     REQ --> FLEET
     FLEET --> TAG
     FLEET --> FB
-    FLEET --> LB_AI
     TAG --> OAI
     TAG --> ANT
     TAG --> OLL
+    TAG --> VLLM
     FB --> MOCK
 ```
 
@@ -780,13 +798,14 @@ graph TB
 ### Ollama Fleet Configuration
 
 ```bash
-# Environment variable for multi-node Ollama fleet
-OLLAMA_NODES=http://gpu-node-1:11434,http://gpu-node-2:11434,http://gpu-node-3:11434
+# Environment variable for multi-node Ollama fleet: name=url pairs
+OLLAMA_NODES=gpu-node-1=http://gpu-node-1:11434,gpu-node-2=http://gpu-node-2:11434
 
-# Tag-based model selection
-OLLAMA_DETECTION_MODEL=codellama:7b
-OLLAMA_SCENARIO_MODEL=llama3:70b
-OLLAMA_AAR_MODEL=mixtral:8x7b
+# Tag-based model selection (defaults from compose.dev.yml / app defaults)
+AI_MODEL_BACKEND=ollama
+AI_HEAVY_MODEL=agent
+AI_GENERAL_MODEL=agent
+AI_CODE_MODEL=coder-fast
 ```
 
 ---
@@ -822,9 +841,9 @@ sequenceDiagram
 | Role | Key Permissions |
 |------|----------------|
 | **admin** | All permissions (full platform access) |
-| **instructor** | Range lifecycle, scenario CRUD, exercise management, AAR generation |
+| **instructor** | Range lifecycle, scenario create/read/update, exercise management, AAR generation |
 | **range_ops** | Infrastructure-focused: range CRUD, provisioning, templates |
-| **student** | Read ranges/templates/scenarios, start/complete exercises, view AARs |
+| **student** | Read ranges/templates/scenarios, submit detections, view AARs (no `exercise:start`/`exercise:complete`) |
 | **observer** | Read-only access to all resources plus telemetry |
 
-See `control-plane/api/app/rbac.py` for the complete 25-permission matrix.
+See `control-plane/api/app/rbac.py` for the complete 74-permission matrix.
