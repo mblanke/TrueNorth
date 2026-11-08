@@ -38,20 +38,23 @@ The local stack lives at `/data/ai-stack/` (vLLM 0.19.1 venv):
 | GPU | Model | Port | LiteLLM alias |
 |-----|-------|------|---------------|
 | 0 | Mistral 7B (bf16) | 8003 | `fast` |
-| 1 | Mistral Small 3 24B (bf16, multimodal) | 8004 | `agent` |
+| 1 | gpt-oss-120b | 8004 | `agent` |
 | — | bge embedding server (idle) | 8005 | `embed` |
+
+The code alias `coder-fast` (Qwen3-Coder-30B-A3B, `AI_CODE_MODEL`) is also part of
+the fleet; which GPU/port serves it is not recorded here.
 
 ### Target GPU layout (after Qwen 112B)
 | GPU | Model | Port | LiteLLM alias |
 |-----|-------|------|---------------|
 | 0 | **Qwen 112B-A10B FP8** (replaces Mistral 7B) | 8003 | `forge`, `fast` |
-| 1 | Mistral Small 3 24B (multimodal, fallback) | 8004 | `agent` |
+| 1 | gpt-oss-120b (fallback) | 8004 | `agent` |
 | — | bge-m3 embedding server | 8005 | `embed` |
 
 **VRAM math.** Qwen is a 112B-total / 10B-active **MoE** in FP8: ~112 GB of weights
 must be resident (all experts), but only ~10B params compute per token, so it's
 fast. ~112 GB fits on a single 144 GB H200 with ~30 GB left for KV cache — no
-tensor-parallel needed. Mistral 24B stays on GPU1. Staged artifacts:
+tensor-parallel needed. GPU1 keeps the current `agent` model (gpt-oss-120b). Staged artifacts:
 `/data/ai-stack/scripts/start-vllm-qwen.sh` and `/data/ai-stack/litellm/config.qwen.yaml`.
 
 ## How TrueNorth integrates
@@ -61,7 +64,7 @@ LiteLLM — one integration point, no Ollama:
 
 ```
 AI_MODEL_BACKEND=openai
-OPENAI_BASE_URL=${LLM_BASE_URL}   # e.g. http://llm.example.internal:4000/v1, or host.docker.internal:4000 in compose
+OPENAI_BASE_URL=${LLM_BASE_URL}   # e.g. http://llm.example.internal:4000/v1, or http://host.docker.internal:4000/v1 (compose dev default)
 OPENAI_API_KEY=${LLM_API_KEY}     # the LiteLLM master key; set in .env, never committed
 ```
 
@@ -72,17 +75,20 @@ models):
 |---------|-----------------|-----------|--------|
 | `AI_HEAVY_MODEL` | `agent` | `forge` | quiz, course, exercise, AAR, scenario, learning |
 | `AI_GENERAL_MODEL` | `agent` | `forge`/`agent` | general generation |
-| `AI_CODE_MODEL` | `agent` | `forge` | detection rules |
+| `AI_CODE_MODEL` | `coder-fast` | `forge` | detection rules |
 | `AI_EMBED_MODEL` | `embed` | `embed` | `/ai/embedding` |
 
 `OPENAI_TIMEOUT_S=600` covers long (6000-token) course drafts.
 
 ### Embeddings / RAG
 `/ai/embedding` routes through LiteLLM `embed` when `AI_EMBED_BACKEND=openai`
-(default). TrueNorth's curriculum index dimension is `EMBED_DIM` (default 1024 for
-bge-m3); **set it to match the served embed model** (bge-small-en-v1.5 = 384).
-Mismatched vectors are dropped and the chunk is indexed text-only (BM25 still
-works), so embeddings are best-effort but recommended for semantic retrieval.
+(default). TrueNorth's curriculum index width is resolved, not declared: the live
+index mapping wins, then a probe of the served model, then the `EMBED_DIM` pin
+(normally leave it unset), then `EMBED_DIM_FALLBACK` = 1024 (the bge-m3 width).
+Set `EMBED_DIM` only to force a width when the model is unreachable at startup —
+to the served embed model's width (bge-small-en-v1.5 = 384). Mismatched vectors
+are dropped and the chunk is indexed text-only (BM25 still works), so embeddings
+are best-effort but recommended for semantic retrieval.
 
 ## Connectivity: air-gapped
 
