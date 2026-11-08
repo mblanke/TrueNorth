@@ -31,11 +31,12 @@ SOON = (datetime.now(UTC) + timedelta(days=2)).replace(hour=13, minute=0, second
 
 @pytest.mark.audit443
 @pytest.mark.xfail(strict=True, reason="audit #443: Lab access token keeps working after the "
-                                        "Student's account is deactivated (control-plane/api/app/routers/lab_sessions.py:146)"
-                                        " — companion: the soft-deleted owner")
+                                        "Student's account is deactivated (control-plane/api/app/routers/lab_sessions.py:151"
+                                        " at the audit base) — companion: the soft-deleted owner")
 def test_a_lab_token_stops_working_when_its_owner_is_soft_deleted(lab, db_session, worker):  # noqa: F811
     """Companion to test_a_lab_token_stops_working_when_its_owner_is_deactivated (audit443
-    HIGH finding, control-plane/api/app/routers/lab_sessions.py:146): the boundary of the
+    HIGH finding, the ``_token_session`` path — control-plane/api/app/routers/lab_sessions.py:151
+    at the audit base): the boundary of the
     owner's account state the token path must consult — not only ``is_active=False`` but the
     other recorded deactivation, the soft delete (``deleted_at``, models.py:113-125), which
     leaves ``is_active`` True. The LTI session hand-off refuses both
@@ -125,10 +126,12 @@ def test_the_token_handed_out_during_teardown_still_opens_the_lab_page(lab, db_s
 
 @pytest.mark.audit443
 @pytest.mark.xfail(strict=True, reason="audit #443: A range whose destroy is still running holds "
-                                        "no capacity (control-plane/api/app/capacity/service.py:117) — companion: two tenants")
+                                        "no capacity (control-plane/api/app/capacity/service.py:125"
+                                        " at the audit base) — companion: two tenants")
 def test_destroying_ranges_of_two_tenants_still_commit(db_session, monkeypatch):
     """Companion to test_a_range_being_destroyed_still_counts_as_committed (audit443 LOW
-    finding, control-plane/api/app/capacity/service.py:117): the two-tenant matrix. A
+    finding, the ``running_ranges`` state filter — control-plane/api/app/capacity/service.py:125
+    at the audit base): the two-tenant matrix. A
     destroying range holds its VMs whatever tenant it belongs to, and ``running_ranges``
     counts no tenant at all — so until ``destroyed``, each tenant's destroying range must
     commit its template's size: two of them, 8 vCPU across the two tenants, not the zero the
@@ -157,9 +160,14 @@ def test_destroying_ranges_of_two_tenants_still_commit(db_session, monkeypatch):
         committed.append(ClusterCapacity(db_session).committed(db_session, SOON, SOON + timedelta(hours=2)))
     db_session.commit()
     # Each tenant's destroying range commits its own template's size, on its own and beside
-    # the other tenant's.
-    for c in committed:
-        assert (c.resources.vcpu, c.events, c.ranges) == (4, 0, 1), (c.resources.vcpu, c.events, c.ranges)
+    # the other tenant's. ClusterCapacity is cluster-wide — ``running_ranges`` has no tenant
+    # scope (capacity/service.py:112) and ``_sum`` adds every range it returned
+    # (scheduler/capacity.py:191-210) — so the second snapshot, taken with both destroying
+    # ranges in the db, reads both of them: 8 vCPU across the two tenants.
+    assert (committed[0].resources.vcpu, committed[0].events, committed[0].ranges) == (4, 0, 1), \
+        (committed[0].resources.vcpu, committed[0].events, committed[0].ranges)
+    assert (committed[1].resources.vcpu, committed[1].events, committed[1].ranges) == (8, 0, 2), \
+        (committed[1].resources.vcpu, committed[1].events, committed[1].ranges)
 
 
 @pytest.mark.audit443
