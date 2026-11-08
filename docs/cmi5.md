@@ -136,8 +136,8 @@ unless marked otherwise):
 
 `authority` and `stored` are the LRS's to set: an AU's values are dropped before forwarding
 (the body forwarded is the one checked, re-serialised). Every AU request also re-checks that
-the course is still published and the Student still enrolled on this release (two
-primary-key reads); otherwise 403, whatever the token's age.
+the course is still published and the Student still enrolled on this release (primary-key
+reads only); otherwise 403, whatever the token's age.
 
 Marking (`POST …/grade`) is attempt-limited per Student and AU; the handler takes the
 enrolment's row lock (a no-op `UPDATE`, which is also SQLite's write lock) before counting,
