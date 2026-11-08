@@ -11,6 +11,7 @@ and no network. One test per enforceable ADR decision; the docstring quotes the 
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import importlib.util
 import inspect
@@ -67,9 +68,9 @@ def _on_day(today: date, offset: int, hour: int = 12) -> datetime:
     return datetime.combine(today + timedelta(days=offset), time(hour), tzinfo=UTC)
 
 
-def _insert(db, when: datetime, action: str = "probe") -> None:
+def _insert(db, when: datetime, action: str = "probe", row_id: uuid.UUID | None = None) -> None:
     db.execute(audit_logs.insert().values(
-        id=uuid.uuid4(), timestamp=when, user_id=None, tenant_id=None, action=action,
+        id=row_id or uuid.uuid4(), timestamp=when, user_id=None, tenant_id=None, action=action,
         resource_type="probe", resource_id="x", detail=None,
     ))
     db.commit()
@@ -228,6 +229,68 @@ def test_decision_3_rows_that_commit_after_their_day_was_exported_go_into_a_supp
     assert "AUDIT_EXPORT_MISMATCH" in caplog.text
 
 
+def test_decision_3_the_public_key_is_written_to_keys_in_the_archive(db, archive, key):
+    """"The public key is written to `keys/<key_id>.pub.pem` in the archive." (the path
+    decision 5 names; the export is what puts it there, next to the manifests it signs)."""
+    today = datetime.now(UTC).date()
+    _insert(db, _on_day(today, -1, 12), "row")
+    audit_jobs.run_export(db, archive, key, today)
+    name = audit_export.key_name(key.key_id)
+    assert name == f"keys/{key.key_id}.pub.pem"
+    assert archive.get(name) == key.public_pem
+    assert len(key.key_id) == 16 and all(c in "0123456789abcdef" for c in key.key_id)
+
+
+def test_decision_3_all_three_files_are_read_back_and_verified_before_the_export_is_recorded(db, key, tmp_path):
+    """"All three are read back and verified before the `audit_exports` row is written." A
+    data file whose bytes no longer hash to the manifest's file_sha256 at read-back time
+    fails the verification, and then audit_exports records nothing."""
+
+    class _CorruptOnRead(FilesystemArchive):
+        """The real archive, except the data file decays between the put and the read-back:
+        fault injection into the collaborator, not a mock of the code under test."""
+
+        def get(self, name: str) -> bytes:
+            data = super().get(name)
+            if name.endswith(".jsonl.gz"):
+                return data[:-1] + bytes([data[-1] ^ 0xFF])
+            return data
+
+    archive = _CorruptOnRead(tmp_path / "decaying-archive")
+    day = datetime.now(UTC).date() - timedelta(days=1)
+    _insert(db, _on_day(day, 0, 12), "row")
+    with pytest.raises(audit_export.AuditExportError):
+        audit_export.write_export(db, archive, key, day, 0, audit_export.day_rows(db, day), None)
+    assert db.execute(sa.select(audit_exports)).first() is None
+    # the file, manifest and signature are all in the archive (kept as evidence) ...
+    assert archive.list() == [
+        audit_export.file_name(day, 0), audit_export.manifest_name(day, 0),
+        audit_export.manifest_name(day, 0) + ".sig", audit_export.key_name(key.key_id),
+    ]
+    # ... and the manifest verifies once the archive stops decaying: the failure was the
+    # read-back, and the recording is what was withheld.
+    good = FilesystemArchive(tmp_path / "decaying-archive")
+    assert audit_export.verify_manifest(good, audit_export.manifest_name(day, 0), key,
+                                        trusted={key.key_id})["row_count"] == 1
+
+
+def test_decision_3_the_export_file_has_every_column_ordered_by_timestamp_then_id(db, archive, key):
+    """"a gzipped JSON-lines file (every column, ordered by timestamp then id)". The export
+    reads every column of the table, and the lines come out in (timestamp, id) order even
+    though the rows were inserted in a different one."""
+    assert tuple(audit_logs.columns.keys()) == audit_export.COLUMNS
+    day = datetime.now(UTC).date() - timedelta(days=1)
+    ids = [uuid.UUID(int=n) for n in (1, 2, 3)]
+    _insert(db, _on_day(day, 0, 12), "b", ids[1])          # same timestamp, higher id first
+    _insert(db, _on_day(day, 0, 12), "a", ids[0])
+    _insert(db, _on_day(day, 0, 11), "c", ids[2])          # earlier timestamp, inserted last
+    audit_jobs.run_export(db, archive, key, datetime.now(UTC).date())
+    lines = [json.loads(line) for line in gzip.decompress(
+        archive.get(audit_export.file_name(day, 0))).splitlines() if line.strip()]
+    assert [line["id"] for line in lines] == [str(i) for i in (ids[2], ids[0], ids[1])]
+    assert [set(line) for line in lines] == [set(audit_export.COLUMNS)] * 3
+
+
 # ── Decision 4: archive behind an adapter ─────────────────────────────────────────
 def test_decision_4_the_archive_is_an_adapter_registry_with_a_write_once_filesystem_backend(tmp_path, monkeypatch):
     """"`worker/audit_archive/`, registry by `AUDIT_ARCHIVE_BACKEND`, default `filesystem`
@@ -249,6 +312,53 @@ def test_decision_4_the_archive_is_an_adapter_registry_with_a_write_once_filesys
     archive.put(name, b"rows")  # identical bytes: a no-op
     with pytest.raises(audit_export.AuditArchiveError):
         archive.put(name, b"other bytes")  # a name is never replaced with other content
+
+
+def test_decision_4_the_backup_verifies_the_archive_and_exits_6_when_it_does_not():
+    """"`backup.sh` copies the archive into every backup and verifies every signature and
+    hash with OpenSSL 3, walks the chain, and (when the database has `audit_exports`)
+    requires every recorded export in the archive with its exact hash and every signing key
+    to be one the database recorded; exit 6 otherwise, which the nightly job still uploads
+    and rotates, with a critical `AuditArchiveTampered` alert." Pinned structurally against
+    the scripts, the way the trigger decisions are pinned against the migration."""
+    backup = (ROOT / "scripts/backup/backup.sh").read_text()
+    lib = (ROOT / "scripts/backup/lib.sh").read_text()
+    # the copy and the one verifier behind it: Ed25519 with OpenSSL against the archive's
+    # own keys/<key_id>.pub.pem, the file hash, the chain, and audit_exports' exact hashes
+    assert "audit_archive_read" in backup and "audit_archive_verify" in backup
+    assert '"${OPENSSL:-openssl}" pkeyutl -verify -pubin -inkey "${dir}/keys/${key}.pub.pem" -rawin' in lib
+    assert "chain broken" in lib and "audit_exports lists" in lib
+    assert "which audit_exports never recorded" in lib
+    # a failed verification keeps the backup (it is still uploaded and rotated) ...
+    assert 'if (( AUDIT_FAILED )); then\n    exit 6' in backup
+    assert 'alert "backup ${BACKUP_NAME} completed, but the audit export archive does NOT verify' in backup
+    # ... and fires the critical alert, via the gauge the backup exports.
+    assert "truenorth_backup_audit_verified ${audit}" in lib
+    alerts = (ROOT / "infra/platform/docker/monitoring/prometheus/alerts.yml").read_text()
+    assert "- alert: AuditArchiveTampered" in alerts
+    assert "expr: truenorth_backup_audit_verified == 0" in alerts
+    assert "severity: critical" in alerts
+
+
+def test_decision_4_restore_restores_the_archive_first_and_quarantines_unlisted_exports():
+    """"`restore.sh` restores the archive before the databases and afterwards moves every
+    export the restored `audit_exports` does not list to `quarantine/<time>/` (kept,
+    recorded in `RESTORE.json` and an `audit.archive_quarantine` row), so the export
+    continues from the restored database. The restore drill re-verifies the chain and
+    exercises that quarantine."."""
+    src = (ROOT / "scripts/backup/restore.sh").read_text()
+    # the archive is copied back before the databases; the reconciliation runs only after
+    # they are restored (it judges the archive against the restored audit_exports)
+    assert src.index('CURRENT_STEP="audit-archive"') < src.index('CURRENT_STEP="postgres:globals"')
+    assert src.index('CURRENT_STEP="postgres:globals"') < src.index('CURRENT_STEP="audit-archive:reconcile"')
+    # every export the restored database does not list moves to quarantine/<stamp>/ ...
+    assert 'QDIR="${AUDIT_ARCHIVE_PATH}/quarantine/${QTS}"' in src
+    # ... kept (not deleted), recorded in RESTORE.json and as an audit.archive_quarantine row
+    assert "kept, not deleted" in src and "RESTORE.json" in src
+    assert "'audit.archive_quarantine'" in src
+    # the drill re-verifies the chain and exercises exactly that quarantine
+    drill = (ROOT / "scripts/backup/drill.sh").read_text()
+    assert "drill_audit_archive.py" in drill and "restore.sh did not quarantine" in drill
 
 
 # ── Decision 5: key handling ──────────────────────────────────────────────────────
