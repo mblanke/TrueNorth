@@ -1,7 +1,9 @@
 # Exercise Studio
 
-> Status: design (ADR 0016, 2026-10-28). Nothing here is built yet; this is the flow people
-> will see. Decisions and reasons: `docs/adr/0016-exercise-studio.md`.
+> Status: design (ADR 0016, 2026-10-28; amended by ADR 0020, 2026-11-03: instructors judge
+> team exercises). Nothing here is built yet; this is the flow people will see. Decisions
+> and reasons: `docs/adr/0016-exercise-studio.md` and
+> `docs/adr/0020-instructors-judge-team-exercises.md`.
 
 Exercise Studio does for **collective exercises** (teams, roles, one shared range) what ARC²
 does for courses: you describe what you want, it drafts everything in stages, checks it,
@@ -35,8 +37,8 @@ proves it runs, and an admin decides. It never touches courses or individual lab
 
 - **Review queue.** Each finished request shows: the outline, the generated material, the
   QA findings, the **dry-run report** (pass or fail: did the range build and certify as
-  isolated, did every inject fire, can every objective be scored, can a silent player score
-  nothing, did teardown finish clean), and the capacity report.
+  isolated, did every inject fire, does every objective's judging evidence appear for the
+  exemplary player and not for a silent one, did teardown finish clean), and the capacity report.
 - **Accept the preview, then Promote.** Two clicks, both audited. Nothing is created in the
   tenant before Promote, and Promote itself books and starts nothing.
 - **Live attacks need a second person.** If an exercise contains live inject scripts, a
