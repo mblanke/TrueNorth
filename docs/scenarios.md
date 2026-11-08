@@ -26,10 +26,10 @@
 
 Scenarios are the core training content in TrueNorth Range. Each scenario defines:
 
-1. **Timeline** — A sequence of attack events (injects) with timing and dependencies
+1. **Timeline** — A sequence of attack events (injects), each at a `t` timecode
 2. **Objectives** — What trainees must detect, respond to, or deliver
-3. **Validators** — Automated checks that verify objective completion
-4. **Metadata** — Name, difficulty, duration, MITRE ATT&CK mappings
+3. **Validators** — How each objective is judged (an automated query, or an instructor)
+4. **Metadata** — Name, version, the range template the scenario runs against, and optional `{{ variables }}` placeholders
 
 Scenarios are defined in YAML and stored in `content/scenarios/` or uploaded via the API. The Scenario Engine parses the YAML, executes timeline events using pluggable **injectors**, and validates objectives using **validators**.
 
@@ -41,201 +41,130 @@ Scenarios are defined in YAML and stored in `content/scenarios/` or uploaded via
 
 ```yaml
 # Required metadata
-id: string                    # Unique identifier (kebab-case)
 name: string                  # Display name
-version: string               # Semantic version (e.g., "1.0.0")
-description: string           # Human-readable description
+version: string               # Version string (e.g., "1.0")
+range_template: string        # Range template the scenario runs against (e.g., small-enterprise)
 
 # Optional metadata
-difficulty: beginner | intermediate | advanced | expert
-duration_minutes: integer     # Expected exercise duration
-author: string                # Scenario author
-tags: [string]                # Searchable tags
-mitre_attack: [string]        # MITRE ATT&CK technique IDs (e.g., T1566.001)
-
-# Prerequisites
-prerequisites:
-  range_template: string      # Required range template ID
-  min_vms: integer            # Minimum VMs in range
-  required_sensors: [string]  # Required sensors (sysmon, zeek, suricata)
+variables:                    # Values for {{ name }} placeholders used in objective queries
+  key: string | number | boolean
 
 # Attack timeline
 timeline:
-  - id: string                # Unique event identifier
-    type: string              # Injector type (see Injector Types)
-    delay_minutes: number     # Minutes after exercise start (or after depends_on)
-    depends_on: string        # Optional: event ID this depends on
-    condition: string         # Optional: condition expression
-    params:                   # Type-specific parameters
+  - t: "0:00"                 # Offset from exercise start, M:SS or HH:MM timecode
+    action: string            # Injector action name (see Injector Types)
+    params:                   # Action-specific parameters
       key: value
 
 # Training objectives
 objectives:
-  - ref_id: string            # Unique objective reference
-    title: string             # Display title
-    description: string       # Detailed description
-    type: detect | respond | report | contain | deliverable
-    points: integer           # Point value
-    required: boolean         # Whether required for exercise completion
-    validator:
-      type: string            # Validator type (see Validators)
-      params:                 # Type-specific parameters
-        key: value
-
-# Optional: inject pack references
-inject_packs:
-  - pack_id: string
-    offset_minutes: number    # Delay before pack starts
-
-# Optional: dataset references
-datasets:
-  - dataset_id: string
-    load_at_start: boolean    # Load into OpenSearch at exercise start
+  - id: string                # Unique objective reference
+    type: detection | response | deliverable
+    validator: string         # Validator name (see Validators): opensearch_query,
+                              # manual_ack, deliverable_check, user_disabled,
+                              # greyspace_breadcrumb
+    params:                   # Validator-specific parameters
+      key: value
+    points: integer           # Point value (>= 0)
 ```
+
+Source: `scenario-engine/schemas/scenario.schema.json`. The API's create/update
+(`control-plane/api/app/routers/scenarios.py`) enforces the objective rules of
+`scenario_engine.objective_catalogue.objective_errors` but not the full JSON Schema;
+`POST /scenarios/validate` enforces the full schema and is the contract for authored content.
 
 ### Field Validation Rules
 
 | Field | Type | Required | Constraints |
 |-------|------|----------|-------------|
-| `id` | string | Yes | kebab-case, unique, 3-100 chars |
-| `name` | string | Yes | 1-255 chars |
-| `version` | string | Yes | semver format (X.Y.Z) |
-| `difficulty` | enum | No | beginner, intermediate, advanced, expert |
-| `duration_minutes` | integer | No | 1-480 (max 8 hours) |
-| `timeline[].id` | string | Yes | Unique within scenario |
-| `timeline[].type` | string | Yes | Must match registered injector |
-| `timeline[].delay_minutes` | number | Yes | Non-negative |
-| `objectives[].ref_id` | string | Yes | Unique within scenario |
-| `objectives[].points` | integer | Yes | 1-1000 |
+| `name` | string | Yes | Display name |
+| `version` | string | Yes | Version string |
+| `range_template` | string | Yes | A range template ID (e.g., `small-enterprise`) |
+| `variables` | object | No | Keys `^[A-Za-z_][A-Za-z0-9_]*$`, values string/number/boolean |
+| `timeline[].t` | string | Yes | `M:SS` or `HH:MM` timecode |
+| `timeline[].action` | string | No | Must match a registered injector (else the event fails) |
+| `timeline[].params` | object | No | Action-specific parameters |
+| `objectives[].id` | string | Yes | Unique within scenario |
+| `objectives[].type` | enum | Yes | detection, response, deliverable |
+| `objectives[].validator` | string | Yes | Must be a known validator, not a refused one |
+| `objectives[].points` | integer | Yes | >= 0 |
+
+Objectives additionally cannot set platform-only params (`approved`, `submission`,
+`storage_path`, `window_start`, `window_end`) and cannot name refused validators
+(`firewall_rule`, `process_killed`, `network_isolated`) — `scenario_engine/objective_catalogue.py`.
 
 ---
 
 ## Timeline Format
 
-The timeline defines the sequence of attack events. Events are executed in order, respecting `delay_minutes` and `depends_on` constraints.
+The timeline is a list of events, each with a timecode `t` (offset from exercise start), an
+`action` (the injector to run) and `params`. Events are dispatched in list order; the `t`
+offset only positions them in exercise time. Both action dialects are accepted: the engine's
+`email_phish` and the authored-content spelling `inject.email_phish`
+(`scenario_engine.injectors.canonical_action`).
 
 ### Sequential Events
 
 ```yaml
 timeline:
-  - id: recon
-    type: dns_spike
-    delay_minutes: 0
+  - t: "0:00"
+    action: email_phish
+    params:
+      subject: "Q4 Financial Report"
+      sender: "cfo@corp.example.com"
+      recipient: "analyst01@corp.example.com"
+
+  - t: "0:05"
+    action: dns_spike
     params:
       domains: ["evil.com", "c2.attacker.net"]
       count: 100
 
-  - id: initial-access
-    type: email_phish
-    delay_minutes: 5
-    params:
-      subject: "Q4 Financial Report"
-      body_template: phishing/financial-report.html
-
-  - id: execution
-    type: simulated_execution
-    delay_minutes: 15
+  - t: "0:15"
+    action: simulated_execution
     params:
       technique: T1059.001
       process_name: powershell.exe
-      command_line: "powershell -enc SQBFAFgA..."
+      target: ws-01
 ```
 
-### Dependent Events
+An event with a missing or unknown `action`, non-mapping `params` or an unparseable `t` is
+recorded as failed, not run (`worker/exercise_run.py` `_parse_event`).
 
-Events with `depends_on` execute `delay_minutes` after their dependency completes:
+### Unsupported: dependencies and conditions
 
-```yaml
-timeline:
-  - id: initial-access
-    type: email_phish
-    delay_minutes: 0
-    params:
-      subject: "Invoice Attached"
-
-  - id: lateral-move
-    type: simulated_execution
-    delay_minutes: 10        # 10 minutes AFTER initial-access completes
-    depends_on: initial-access
-    params:
-      technique: T1570
-      description: "PsExec lateral movement to file server"
-
-  - id: exfiltration
-    type: http_burst
-    delay_minutes: 5         # 5 minutes AFTER lateral-move completes
-    depends_on: lateral-move
-    params:
-      target_url: "https://exfil.attacker.com/upload"
-      method: POST
-      count: 50
-```
-
-### Conditional Events
-
-```yaml
-timeline:
-  - id: escalation
-    type: identity_new_admin_user
-    delay_minutes: 20
-    condition: "not objective_achieved('obj-detect-phish')"
-    params:
-      username: backdoor_admin
-      action: create
-```
-
-### Parallel Events
-
-Events with the same `delay_minutes` and no dependencies execute in parallel:
-
-```yaml
-timeline:
-  - id: noise-dns
-    type: dns_spike
-    delay_minutes: 0
-    params:
-      count: 500
-
-  - id: noise-http
-    type: http_burst
-    delay_minutes: 0
-    params:
-      count: 200
-
-  - id: actual-attack
-    type: email_phish
-    delay_minutes: 0
-    params:
-      subject: "Urgent: Password Reset"
-```
+The engine has no `depends_on`, `condition`, or per-event identifiers: the scenario schema
+(`scenario-engine/schemas/scenario.schema.json`) accepts only `t`, `action` and `params`,
+and neither the standalone runner nor the worker's run loop evaluates dependencies or
+condition expressions. To stage activity, give each event a later `t`.
 
 ---
 
 ## Injector Types and Parameters
 
+Injectors build synthetic records; simulated injectors send no traffic and touch no host
+(`scenario_engine/injectors/`, auto-discovered registry). Every inject's telemetry carries
+its platform labels under `tn_ground_truth` — stored but not indexed, and refused by the
+detection query grammar, so a Student cannot score by querying the labels.
+
 ### `email_phish` — Phishing Email Simulation
 
-Generates phishing telemetry events in OpenSearch.
+Builds a synthetic phishing-email record; sends no mail.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `from_address` | string | No | `attacker@evil.com` | Sender email |
-| `to_address` | string | No | `user@corp.local` | Recipient email |
-| `subject` | string | Yes | -- | Email subject line |
-| `body_template` | string | No | -- | Path to HTML body template |
-| `has_attachment` | boolean | No | `true` | Whether email has attachment |
-| `attachment_name` | string | No | `document.docx` | Attachment filename |
-| `mitre_technique` | string | No | `T1566.001` | ATT&CK technique |
+| `sender` | string | No | `attacker@evil.com` | Sender email |
+| `recipient` | string | No | `victim@corp.com` | Recipient email |
+| `subject` | string | No | `Important Document` | Email subject line |
 
-**Generated Events:**
+**Record produced** (`injectors/email_phish.py`):
 ```json
 {
-  "event.action": "email_received",
-  "email.from": "attacker@evil.com",
-  "email.to": "user@corp.local",
-  "email.subject": "Q4 Financial Report",
-  "email.has_attachment": true,
-  "email.attachment.name": "document.docx"
+  "injector": "email_phish",
+  "sender": "attacker@evil.com",
+  "recipient": "victim@corp.com",
+  "subject": "Important Document",
+  "delivered": false
 }
 ```
 
@@ -243,71 +172,62 @@ Generates phishing telemetry events in OpenSearch.
 
 ### `dns_spike` — DNS Query Burst
 
-Generates a burst of DNS query events.
+Builds synthetic records of a burst of DNS queries; sends no queries.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `target_dns` | string | No | `dns01` | Target DNS server hostname |
 | `domains` | [string] | Yes | -- | Domain names to query |
-| `count` | integer | No | `100` | Total queries to generate |
-| `query_types` | [string] | No | `["A"]` | DNS query types (A, AAAA, TXT, MX) |
-| `source_hosts` | [string] | No | `["ws01"]` | Source workstations |
-
-**Generated Events:**
-```json
-{
-  "event.action": "dns_query",
-  "dns.question.name": "evil.com",
-  "dns.question.type": "A",
-  "source.ip": "10.10.100.10",
-  "destination.ip": "10.10.100.2"
-}
-```
+| `count` | integer | Yes | -- | Total queries to generate |
 
 ---
 
 ### `http_burst` — HTTP Traffic Generation
 
-Generates HTTP request/response events.
+Builds synthetic records of a burst of HTTP requests; sends no requests.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `target_url` | string | Yes | -- | Target URL |
+| `url` (or `target_url`) | string | Yes | -- | Target URL |
+| `count` | integer | No | `10` | Number of requests |
 | `method` | string | No | `GET` | HTTP method |
-| `count` | integer | No | `50` | Number of requests |
-| `interval_ms` | integer | No | `100` | Delay between requests (ms) |
-| `user_agents` | [string] | No | Random | Custom User-Agent strings |
-| `source_hosts` | [string] | No | `["ws01"]` | Source workstations |
 
 ---
 
 ### `simulated_execution` — Process/Malware Simulation
 
-Generates process execution telemetry.
+Builds a synthetic record of a technique executing on a target host.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `technique` | string | Yes | -- | MITRE ATT&CK technique ID |
-| `description` | string | No | -- | Human description of activity |
-| `process_name` | string | No | Varies | Process executable name |
-| `command_line` | string | No | Varies | Full command line |
-| `parent_process` | string | No | `explorer.exe` | Parent process name |
-| `host` | string | No | `ws01` | Target host |
-| `user` | string | No | `CORP\user1` | Executing user context |
+| `technique` | string | No | `T0000` | MITRE ATT&CK technique ID |
+| `process_name` | string | No | `unknown.exe` | Process executable name |
+| `target` | string | No | `localhost` | Target host |
 
 ---
 
 ### `identity_new_admin_user` — Identity Manipulation
 
-Generates identity and account creation events.
+Builds a synthetic record of a rogue privileged account; creates no account.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `username` | string | Yes | -- | Account name |
-| `action` | string | No | `create` | Action type: `create`, `elevate`, `modify` |
-| `domain` | string | No | `CORP` | Domain name |
-| `logon_type` | integer | No | `10` | Windows logon type |
-| `elevated_to` | string | No | `Domain Admins` | Group for elevation |
+| `username` | string | No | `rogue_admin` | Account name |
+| `target` | string | No | `dc-01` | Domain controller hostname |
+
+---
+
+### Other registered injectors
+
+Also registered and usable as `action` values (`scenario_engine/injectors/__init__.py`,
+`list_injectors()`):
+
+| Action | Required params | Description |
+|--------|-----------------|-------------|
+| `network_scan` | `scan_type`, `target_network` | Synthetic port-scan records |
+| `file_operation` | `operation`, `target_host` | Synthetic file-activity records |
+| `c2_beacon` | `c2_type`, `target_host` | Synthetic beacon records |
+| `ad_attack` | `attack_type`, `target_dc` | Synthetic Active Directory attack records |
+| `greyspace_breadcrumb` | `crumbs` (plant) or `ids` (remove) | Plants/removes Greyspace breadcrumbs (ADR 0007) |
 
 ---
 
@@ -317,116 +237,159 @@ Generates identity and account creation events.
 
 | Type | Description | Typical Validators |
 |------|-------------|-------------------|
-| `detect` | Trainee must detect the attack activity | `opensearch_query` |
-| `respond` | Trainee must perform a response action | `manual_ack`, `opensearch_query` |
-| `report` | Trainee must submit a written report | `deliverable_check` |
-| `contain` | Trainee must contain the threat | `opensearch_query`, `manual_ack` |
-| `deliverable` | Trainee must upload an artifact | `deliverable_check` |
+| `detection` | Trainee must detect the attack activity | `opensearch_query` |
+| `response` | Trainee must perform a response action | `manual_ack`, `user_disabled` |
+| `deliverable` | Trainee must submit an artifact or report | `deliverable_check` |
+
+`user_disabled` and `greyspace_breadcrumb` are also accepted validator names regardless of
+type (`scenario-engine/schemas/scenario.schema.json`, `objective_catalogue.SCENARIO_VALIDATORS`).
 
 ### Scoring Model
 
-Points are assigned per objective. Total score = sum of achieved objective points.
+In a team exercise the **instructor judges every objective** through the API (ADR 0020,
+`app/exercise_judging.py`); the worker never scores. The scoring engine
+(`scenario_engine/scoring/`) is what the CLI runner uses and what backs the instructor's
+judgement with evidence:
+
+- `opensearch_query` without `require_observed: true` (the default) is a detection objective:
+  the query is the instructor's look-for guidance, and Students' submitted detections are
+  recorded as evidence. The engine never credits it on its own — an inject's own synthetic
+  records would match the query.
+- `opensearch_query` with `require_observed: true` is scored by the engine from observed
+  telemetry only (events a range host or sensor produced, inside the exercise window).
+  Achieved at `threshold` matches; fewer is **unscored, never failed**.
+- `manual_ack` and `deliverable_check` are unscored until an instructor acts.
+- An objective that cannot be judged (store down, no window, no query) is reported **unscored**
+  with its reason — never as failed, and never silently passed.
 
 ```yaml
 objectives:
-  - ref_id: obj-1
-    title: "Detect phishing email"
-    type: detect
+  - id: detect-phish
+    type: detection
+    validator: opensearch_query
+    params:
+      query: "event_type:email AND subject:*Invoice*"
+      min_hits: 1
     points: 25
-    required: true
-    validator:
-      type: opensearch_query
-      params:
-        query: "event.action:email_received AND email.subject:*Invoice*"
-        min_hits: 1
 
-  - ref_id: obj-2
-    title: "Block malicious domain"
-    type: contain
+  - id: contain-host
+    type: response
+    validator: manual_ack
     points: 30
-    required: false
-    validator:
-      type: manual_ack
 
-  - ref_id: obj-3
-    title: "Submit incident report"
+  - id: disable-account
+    type: response
+    validator: user_disabled
+    params:
+      username: svc_backup
+    points: 30
+
+  - id: incident-report
     type: deliverable
+    validator: deliverable_check
+    params:
+      deliverable_type: incident_report
     points: 45
-    required: true
-    validator:
-      type: deliverable_check
-      params:
-        bucket: truenorth-artifacts
-        key_prefix: "exercises/{exercise_id}/reports/"
 ```
 
-### Scoring Tiers
+### Grading
 
-| Score Range | Rating | Description |
-|-------------|--------|-------------|
-| 90-100% | Excellent | Outstanding detection and response |
-| 75-89% | Good | Strong performance with minor gaps |
-| 60-74% | Satisfactory | Acceptable but room for improvement |
-| 40-59% | Needs Improvement | Significant gaps in detection/response |
-| 0-39% | Unsatisfactory | Critical training gaps identified |
+Letter grades come from `GradingCalculator.letter_grade`
+(`scenario_engine/scoring/grading.py`); thresholds are configurable, defaults below.
+
+| Score | Grade |
+|-------|-------|
+| >= 90% | A |
+| >= 80% | B |
+| >= 70% | C |
+| >= 60% | D |
+| < 60% | F |
 
 ---
 
 ## Validator Configuration
 
+The validator is a **string** on the objective (`validator: opensearch_query`), with the
+type-specific parameters under `params`. Refused validators (`firewall_rule`,
+`process_killed`, `network_isolated`) fail scenario validation outright.
+
 ### `opensearch_query` — Event Detection Validator
 
-Queries OpenSearch for expected events. Passes if the query returns at least `min_hits` results.
+Queries the event store for expected events. In an exercise this objective is judged by the
+instructor (Students' submitted detections are its evidence); with `require_observed: true`
+the scoring engine judges it from observed telemetry only.
 
 ```yaml
-validator:
-  type: opensearch_query
+- id: detect-phish
+  type: detection
+  validator: opensearch_query
   params:
-    query: "event.action:email_received AND email.subject:*Invoice*"
-    min_hits: 1
-    index_pattern: "tn-range-{range_id}-*"     # Optional: override default
-    time_range_minutes: 60                      # Optional: look-back window
+    query: "event_type:email AND subject:*Invoice*"   # Lucene string or query DSL dict
+    min_hits: 1                                        # or threshold; at least 1
+    require_observed: true                             # engine-scored: observed events only
+    index: "truenorth-*"                               # Optional: index pattern
 ```
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `query` | string | Yes | -- | OpenSearch query string |
-| `min_hits` | integer | No | 1 | Minimum matching documents |
-| `index_pattern` | string | No | Auto | OpenSearch index pattern |
-| `time_range_minutes` | integer | No | Unlimited | Time window for query |
+| `query` | string \| dict | Yes | -- | Lucene query string or query DSL; a missing query is unscored, never match-all |
+| `min_hits` (or `threshold`) | integer | No | 1 | Minimum matching documents (clamped to >= 1) |
+| `require_observed` | boolean | No | `false` | Must be `true` for the engine to score it |
+| `index` | string | No | `truenorth-*` (scoring engine) / `truenorth-events-*` (runner validator) | Index pattern |
 
-### `manual_ack` — Human Acknowledgment Validator
+The exercise window (`window_start`/`window_end`) is set by the platform from the exercise,
+not by content — only events ingested inside it count (`scoring/validators.py`).
 
-Requires a trainee to manually acknowledge the objective via the API or UI.
+### `manual_ack` — Instructor Acknowledgment Validator
 
-```yaml
-validator:
-  type: manual_ack
-  params: {}    # No parameters needed
-```
-
-An instructor calls `POST /exercises/{id}/objectives/{ref_id}/ack` (permission `objective:ack`) with optional evidence; a Student cannot acknowledge their own objective.
-
-### `deliverable_check` — Artifact Upload Validator
-
-Checks MinIO for an uploaded artifact (report, screenshot, PCAP, etc.).
+Unscored until an instructor acknowledges the objective. Content cannot pre-approve it
+(`params.approved` is a platform-only param and fails scenario validation).
 
 ```yaml
-validator:
-  type: deliverable_check
+- id: contain-host
+  type: response
+  validator: manual_ack
   params:
-    bucket: truenorth-artifacts
-    key_prefix: "exercises/{exercise_id}/reports/"
-    min_size_bytes: 1024               # Optional: minimum file size
-    allowed_extensions: [".pdf", ".docx", ".html"]  # Optional: file type filter
+    prompt: "Isolate host WS-02 (document steps)"
 ```
+
+An instructor calls `POST /exercises/{id}/objectives/{ref_id}/ack` (permission
+`objective:ack` — instructors and admins, never Students) with an optional note
+(`evidence`) and the detection submissions the judgement relies on (`cites`)
+(`control-plane/api/app/routers/exercises.py`).
+
+### `deliverable_check` — Deliverable Submission Validator
+
+Judged from the Student's submission record the platform hands to the engine; scenario
+content cannot name a file (`params.storage_path` and `params.submission` are platform-only).
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `bucket` | string | Yes | -- | MinIO bucket name |
-| `key_prefix` | string | Yes | -- | Object key prefix to check |
-| `min_size_bytes` | integer | No | 0 | Minimum artifact size |
-| `allowed_extensions` | [string] | No | Any | Allowed file extensions |
+| `deliverable_type` | string | No | `unknown` | e.g. `incident_report`, `ioc_list` |
+| `min_size_bytes` | integer | No | 100 | Minimum file size |
+| `required_fields` | [string] | No | `[]` | Fields that must be present (JSON files) |
+
+With no submission record the objective is unscored, and an instructor acknowledges it
+(`scoring/validators.py` `validate_deliverable`).
+
+### `user_disabled` — Account Disabled Validator
+
+Achieved when observed Windows Security **4725** (account disabled) for `username` is the
+latest such event inside the exercise window, with no later **4722** re-enable
+(`scoring/validators.py` `validate_user_disabled`).
+
+```yaml
+- id: disable-backdoor
+  type: response
+  validator: user_disabled
+  params:
+    username: svc_backup    # a plain account name; no query syntax
+```
+
+### `greyspace_breadcrumb` — Greyspace Token Validator
+
+Achieved when the answer a team submitted carries the exercise's breadcrumb token (ADR 0007).
+Requires `params.crumb_id`; the token is never put in the evidence.
 
 ---
 
@@ -437,63 +400,55 @@ Detection rules in TrueNorth Range use a Sigma-inspired format stored in `conten
 ### Rule Format
 
 ```yaml
-title: "PowerShell Encoded Command Execution"
-id: det-ps-encoded-001
-status: production
-description: "Detects execution of PowerShell with base64 encoded commands"
-author: TrueNorth Range Team
-date: 2026/01/15
-severity: high
+title: Suspicious PowerShell Download Cradle
+id: tn-detect-001
+status: stable
+description: Detects PowerShell commands commonly used for downloading and executing payloads
+author: TrueNorth Range
+date: 2024/03/15
 mitre_attack:
   - T1059.001
-
+  - T1105
 logsource:
-  product: windows
-  service: sysmon
   category: process_creation
-
+  product: windows
 detection:
   selection:
-    process.name: "powershell.exe"
-    process.command_line|contains:
-      - "-enc"
-      - "-EncodedCommand"
-      - "-e "
+    Image|endswith: "\\powershell.exe"
+    CommandLine|contains:
+      - "Invoke-WebRequest"
+      - "IWR"
   condition: selection
-
+level: high
 falsepositives:
-  - Legitimate automation scripts
-  - System management tools
-
-tags:
-  - attack.execution
-  - attack.t1059.001
-
-# TrueNorth-specific fields
-validator_query: "process.name:powershell.exe AND process.command_line:(*-enc* OR *-EncodedCommand*)"
-points: 15
+  - Legitimate software installations
+  - Admin scripts
 ```
+
+The severity field is `level` (`low`/`medium`/`high`/`critical`), not `severity`. There are
+no `validator_query` or `points` fields — linking a rule to scoring is done by the
+scenario's objectives, not by the rule. See `content/detections/powershell-download.yaml`
+for a complete shipped example.
 
 ### Rule Directory Structure
 
+Detection rules are flat YAML files directly under `content/detections/` (no
+subdirectories):
+
 ```
 content/detections/
-+-- initial-access/
-|   +-- det-phishing-attachment.yaml
-|   +-- det-phishing-link.yaml
-+-- execution/
-|   +-- det-powershell-encoded.yaml
-|   +-- det-wscript-execution.yaml
-+-- persistence/
-|   +-- det-new-admin-account.yaml
-|   +-- det-scheduled-task.yaml
-+-- lateral-movement/
-|   +-- det-psexec.yaml
-|   +-- det-wmi-remote.yaml
-+-- exfiltration/
-|   +-- det-large-dns-queries.yaml
-|   +-- det-http-exfil.yaml
++-- credential-dumping-lsass.yaml
++-- data-exfil-dns-tunnel.yaml
++-- defense-evasion-timestomp.yaml
++-- lateral-movement-psexec.yaml
++-- persistence-scheduled-task.yaml
++-- powershell-download.yaml
++-- rdp-brute-force.yaml
++-- suspicious-dns-dga.yaml
++-- vss-deletion.yaml
 ```
+
+Rules are loaded into the API by `scripts/load_content.py` (step 5, Sigma).
 
 ---
 
@@ -503,52 +458,45 @@ Inject packs are reusable collections of timeline events that can be referenced 
 
 ### Pack Structure
 
-```yaml
-# content/inject-packs/phishing-campaign/pack.yaml
-id: phishing-campaign
-name: "Phishing Campaign Pack"
-version: "1.0.0"
-description: "Multi-stage phishing campaign with follow-up exploitation"
-tags: ["phishing", "initial-access"]
-mitre_attack: ["T1566.001", "T1566.002"]
+Inject packs are flat YAML files directly under `content/inject-packs/`, each with `id`,
+`name`, `version`, `description`, `mitre_attack` and an `injects:` list. Each inject has
+`id`, `type` (an injector name), optional `delay_minutes` and `depends_on`, and `params`
+— the same parameter tables as the timeline above.
 
-events:
-  - id: phish-recon
-    type: dns_spike
+```yaml
+# content/inject-packs/phishing-campaign.yaml
+id: inject-phishing-campaign
+name: Phishing Campaign Inject Pack
+version: "1.0"
+description: |
+  Simulates a targeted spear-phishing campaign against an organization.
+mitre_attack:
+  - T1566.001
+
+injects:
+  - id: phish-email-delivery
+    type: email_phish
     delay_minutes: 0
     params:
-      domains: ["corp-login.evil.com"]
-      count: 10
+      subject: "URGENT: Updated Wire Transfer Instructions"
+      # ...
 
-  - id: phish-email
-    type: email_phish
-    delay_minutes: 2
-    depends_on: phish-recon
-    params:
-      subject: "Action Required: Password Expiration"
-      from_address: "it-support@corp-login.evil.com"
-      body_template: phishing/password-reset.html
-
-  - id: phish-callback
-    type: http_burst
+  - id: credential-harvest
+    type: simulated_execution
     delay_minutes: 5
-    depends_on: phish-email
+    depends_on: phish-email-delivery
     params:
-      target_url: "https://corp-login.evil.com/harvest"
-      method: POST
-      count: 3
+      technique: T1078
 ```
 
 ### Using Packs in Scenarios
 
-```yaml
-inject_packs:
-  - pack_id: phishing-campaign
-    offset_minutes: 0          # Start immediately
-
-  - pack_id: ransomware-deployment
-    offset_minutes: 30         # Start 30 minutes into exercise
-```
+**UNKNOWN — not wired up.** The scenario schema has no `inject_packs` field
+(`scenario-engine/schemas/scenario.schema.json`), and `scripts/load_content.py:19-21`
+states that `content/inject-packs/` and `content/datasets/` are not loaded: nothing in
+the API or the worker reads them yet (the worker reads a scenario's `inject_packs` list
+and discards it). Pack files are validated as YAML with `id`/`injects`/`mitre_attack` by
+`tests/scenario_engine/test_content_validation.py`, and are otherwise reference material.
 
 ---
 
@@ -558,35 +506,36 @@ Datasets provide pre-built telemetry events that can be loaded into OpenSearch a
 
 ### Dataset Structure
 
-```
-content/datasets/corporate-baseline/
-+-- dataset.yaml              # Metadata
-+-- events.ndjson             # Newline-delimited JSON events
-```
-
-**`dataset.yaml`:**
+Datasets are single flat YAML files under `content/datasets/` with an `events:` list. Each
+event has `timestamp`, `event_id`, `source`, `description` and a `fields` mapping.
 
 ```yaml
-id: corporate-baseline
-name: "Corporate Network Baseline"
-version: "1.0.0"
-description: "24 hours of normal corporate network activity"
-event_count: 50000
-time_range: "24h"
-sources:
-  - sysmon
-  - zeek
-  - dns
-tags: ["baseline", "normal-activity"]
+# content/datasets/windows-security-events.yaml
+# Sample Windows Security Event Logs
+# These can be replayed into OpenSearch for training exercises
+events:
+  - timestamp: "2024-03-15T14:23:01Z"
+    event_id: 4624
+    source: Security
+    description: "Successful logon"
+    fields:
+      LogonType: 10
+      TargetUserName: admin
+      TargetDomainName: CORP
+
+  - timestamp: "2024-03-15T14:25:00Z"
+    event_id: 1
+    source: Microsoft-Windows-Sysmon
+    description: "Process Create"
+    fields:
+      Image: "C:\\Windows\\System32\\cmd.exe"
+      CommandLine: "cmd.exe /c whoami /all"
 ```
 
-**`events.ndjson`:**
-
-```json
-{"timestamp": "2026-01-15T08:00:00Z", "event.action": "process_create", "process.name": "outlook.exe", "host.name": "ws01", "source": "sysmon"}
-{"timestamp": "2026-01-15T08:00:01Z", "event.action": "dns_query", "dns.question.name": "mail.corp.local", "source": "dns"}
-{"timestamp": "2026-01-15T08:00:02Z", "event.action": "network_connection", "destination.ip": "10.10.100.5", "destination.port": 443, "source": "zeek"}
-```
+Shipped datasets: `active-directory-events.yaml`, `linux-audit-events.yaml`,
+`network-traffic-samples.yaml`, `windows-security-events.yaml`. Like inject packs,
+datasets are validated by `tests/scenario_engine/test_content_validation.py` but not
+loaded by the API or worker (`scripts/load_content.py:19-21`).
 
 ---
 
@@ -609,187 +558,140 @@ tags: ["baseline", "normal-activity"]
 ### Step 3: Write the YAML
 
 ```yaml
-id: apt-full-chain
-name: "APT Full Attack Chain"
-version: "1.0.0"
-description: "Complete APT attack from spearphishing to exfiltration"
-difficulty: advanced
-duration_minutes: 90
-author: "TrueNorth Range Content Team"
-tags: ["apt", "full-chain", "advanced"]
-mitre_attack:
-  - T1566.001
-  - T1059.001
-  - T1136.001
-  - T1021
-  - T1048.002
+# content/scenarios/apt-full-chain/scenario.yaml
+name: apt-full-chain
+version: "1.0"
+range_template: medium-enterprise
 
-prerequisites:
-  range_template: medium-enterprise
-  min_vms: 8
-  required_sensors: ["sysmon", "zeek"]
+variables:
+  c2_domain: storage.attacker-infra.com
+  phish_user: finance_user
 
 timeline:
   # Phase 1: Initial Access
-  - id: phish-email
-    type: email_phish
-    delay_minutes: 0
+  - t: "0:00"
+    action: email_phish
     params:
-      from_address: "cfo@partner-corp.com"
-      to_address: "finance@corp.local"
+      sender: "cfo@partner-corp.com"
+      recipient: "finance@corp.local"
       subject: "Q4 Budget Review - URGENT"
-      has_attachment: true
-      attachment_name: "Q4_Budget_Review.docx"
 
   # Phase 2: Execution
-  - id: payload-exec
-    type: simulated_execution
-    delay_minutes: 8
-    depends_on: phish-email
+  - t: "0:08"
+    action: simulated_execution
     params:
       technique: T1059.001
       process_name: powershell.exe
-      command_line: "powershell -WindowStyle Hidden -enc SQBFAFgA..."
-      parent_process: WINWORD.EXE
-      host: ws03
-      user: "CORP\\finance_user"
+      target: ws03
 
   # Phase 3: Reconnaissance
-  - id: recon-dns
-    type: dns_spike
-    delay_minutes: 3
-    depends_on: payload-exec
+  - t: "0:11"
+    action: dns_spike
     params:
       domains: ["dc01.corp.local", "filesvr.corp.local", "exchange.corp.local"]
       count: 20
-      source_hosts: ["ws03"]
 
   # Phase 4: Privilege Escalation
-  - id: priv-esc
-    type: identity_new_admin_user
-    delay_minutes: 10
-    depends_on: recon-dns
+  - t: "0:21"
+    action: identity_new_admin_user
     params:
       username: svc_backup
-      action: create
-      elevated_to: "Domain Admins"
-      domain: CORP
+      target: dc-01
 
-  # Phase 5: Lateral Movement
-  - id: lateral-move
-    type: simulated_execution
-    delay_minutes: 5
-    depends_on: priv-esc
+  # Phase 5: Exfiltration
+  - t: "0:26"
+    action: http_burst
     params:
-      technique: T1021
-      process_name: psexec.exe
-      command_line: "psexec \\\\filesvr -u CORP\\svc_backup -p ... cmd.exe"
-      host: filesvr
-      user: "CORP\\svc_backup"
-
-  # Phase 6: Exfiltration
-  - id: exfiltration
-    type: http_burst
-    delay_minutes: 15
-    depends_on: lateral-move
-    params:
-      target_url: "https://storage.attacker-infra.com/upload"
+      target_url: "https://{{ c2_domain }}/upload"
       method: POST
       count: 25
-      source_hosts: ["filesvr"]
 
 objectives:
-  - ref_id: obj-detect-phish
-    title: "Detect spearphishing email"
-    description: "Identify the phishing email targeting the finance department"
-    type: detect
-    points: 15
-    required: true
-    validator:
-      type: opensearch_query
-      params:
-        query: "event.action:email_received AND email.subject:*Budget*"
-        min_hits: 1
-
-  - ref_id: obj-detect-exec
-    title: "Detect PowerShell execution"
-    description: "Identify the encoded PowerShell command spawned by Word"
-    type: detect
+  - id: detect-phish
+    type: detection
+    validator: opensearch_query
+    params:
+      query: "subject:*Budget*"
     points: 20
-    required: true
-    validator:
-      type: opensearch_query
-      params:
-        query: "process.name:powershell.exe AND process.parent.name:WINWORD.EXE"
-        min_hits: 1
 
-  - ref_id: obj-detect-admin
-    title: "Detect new admin account"
-    description: "Identify the creation of the svc_backup administrative account"
-    type: detect
+  - id: detect-admin
+    type: detection
+    validator: opensearch_query
+    params:
+      query: "username:svc_backup"
     points: 20
-    required: false
-    validator:
-      type: opensearch_query
-      params:
-        query: "event.action:user_created AND user.name:svc_backup"
-        min_hits: 1
 
-  - ref_id: obj-contain-lateral
-    title: "Contain lateral movement"
-    description: "Block or isolate the compromised file server"
-    type: contain
-    points: 25
-    required: false
-    validator:
-      type: manual_ack
+  - id: contain-lateral
+    type: response
+    validator: manual_ack
+    params:
+      prompt: "Isolate filesvr and disable svc_backup (document steps)"
+    points: 30
 
-  - ref_id: obj-incident-report
-    title: "Submit incident report"
-    description: "Upload a completed incident report documenting the full attack chain"
+  - id: disable-backdoor
+    type: response
+    validator: user_disabled
+    params:
+      username: svc_backup
+    points: 10
+
+  - id: incident-report
     type: deliverable
+    validator: deliverable_check
+    params:
+      deliverable_type: incident_report
+      min_size_bytes: 500
     points: 20
-    required: true
-    validator:
-      type: deliverable_check
-      params:
-        bucket: truenorth-artifacts
-        key_prefix: "exercises/{exercise_id}/reports/"
-        allowed_extensions: [".pdf", ".docx"]
 ```
 
 ### Step 4: Validate the Scenario
 
 ```bash
-# Validate YAML syntax and schema
-python tools/cli/forge.py template validate content/scenarios/apt-full-chain.yaml
-
-# Dry run (no actual injection)
+# Dry run (no actual injection): prints a JSON results summary
 python scenario-engine/runner/run.py \
-  --scenario content/scenarios/apt-full-chain.yaml \
+  content/scenarios/apt-full-chain/scenario.yaml \
   --dry-run
 
 # Check all injector types are registered
-python -c "from scenario_engine.injectors import get_registry; print(get_registry())"
+python -c "import sys; sys.path.insert(0, 'scenario-engine'); \
+  from scenario_engine.injectors import list_injectors; print(list_injectors())"
 ```
+
+`forge template validate <path>` validates a range **template** (against
+`scenario-engine/schemas/template.schema.json`), not a scenario. Scenario schema
+validation runs when the YAML is uploaded (`POST /scenarios/validate` enforces the full
+schema; create/update enforce objective errors) — see the YAML Schema Reference above.
 
 ### Step 5: Upload and Test
 
+The API requires authentication, and in dev it is reached directly on `127.0.0.1:8081` or
+through nginx on `:4200` (`/api/`) — not `:8080`.
+
 ```bash
-# Upload via API
-curl -X POST http://localhost:8080/scenarios \
+# Log in and store a token for the CLI
+# (TRUENORTH_API_URL defaults to http://localhost:8080 — set it to http://127.0.0.1:8081 for dev)
+TRUENORTH_API_URL=http://127.0.0.1:8081 python -m tools.cli.forge login
+
+# Upload via the API (auth required)
+curl -X POST http://127.0.0.1:8081/scenarios \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TRUENORTH_API_TOKEN" \
   -d "{
-    \"name\": \"APT Full Chain\",
-    \"version\": \"1.0.0\",
-    \"yaml\": \"$(cat content/scenarios/apt-full-chain.yaml | jq -Rs .)\",
+    \"name\": \"apt-full-chain\",
+    \"version\": \"1.0\",
+    \"yaml\": \"$(cat content/scenarios/apt-full-chain/scenario.yaml | jq -Rs .)\",
     \"is_public\": true
   }"
 
-# Create exercise and test
-python tools/cli/forge.py exercise create --name "APT Test" --range-id <uuid> --scenario-id <uuid>
-python tools/cli/forge.py exercise start <exercise-id>
+# CLI: list scenarios, start an existing exercise
+python -m tools.cli.forge scenario list
+python -m tools.cli.forge exercise list
+python -m tools.cli.forge exercise start <exercise-id>
 ```
+
+There is no `forge exercise create` — an exercise is created with
+`POST /exercises` (range, scenario and team configuration). Ranges are provisioned with
+`forge range batch-provision` (there is no `forge range provision`).
 
 ---
 
@@ -797,43 +699,47 @@ python tools/cli/forge.py exercise start <exercise-id>
 
 ```
 content/
-+-- ranges/
-|   +-- small-enterprise/
-|   |   +-- template.yaml        # 3 VMs: DC, workstation, server
-|   |   +-- README.md
-|   +-- medium-enterprise/
-|   |   +-- template.yaml        # 8 VMs: DC, 4 WS, 2 servers, FW
-|   |   +-- README.md
-|   +-- large-enterprise/
-|       +-- template.yaml        # 20+ VMs: full corporate environment
-|       +-- README.md
-+-- scenarios/
-|   +-- apt-breach.yaml
++-- ranges/                        # one template.yaml per directory
+|   +-- small-enterprise/          #   vm_count: 6
+|   +-- medium-enterprise/         #   Medium Enterprise Network
+|   +-- large-enterprise/          #   vm_count: 50
+|   +-- cloud-security/            #   vm_count: 16
+|   +-- greyspace-internet/        #   Small Office with Greyspace Internet
+|   +-- red-team/                  #   vm_count: 28
+|   +-- red-vs-blue/               #   vm_count: 40
+|   +-- soc-training/              #   vm_count: 23
++-- scenarios/                     # one scenario.yaml per directory
+|   +-- apt-nation-state/
+|   +-- cloud-breach/
+|   +-- ics-attack/
+|   +-- incident-response-drill/
+|   +-- insider-threat-advanced/
+|   +-- ransomware-lite/
++-- inject-packs/                  # flat YAML files (not loaded by the API/worker)
+|   +-- cloud-misconfiguration.yaml
 |   +-- insider-threat.yaml
-|   +-- supply-chain.yaml
-|   +-- ransomware-response.yaml
-|   +-- apt-full-chain.yaml
-+-- inject-packs/
-|   +-- phishing-campaign/
-|   |   +-- pack.yaml
-|   +-- ransomware-deployment/
-|   |   +-- pack.yaml
-|   +-- insider-exfil/
-|       +-- pack.yaml
-+-- datasets/
-|   +-- corporate-baseline/
-|   |   +-- dataset.yaml
-|   |   +-- events.ndjson
-|   +-- web-server-logs/
-|       +-- dataset.yaml
-|       +-- events.ndjson
-+-- detections/
-    +-- initial-access/
-    +-- execution/
-    +-- persistence/
-    +-- lateral-movement/
-    +-- exfiltration/
+|   +-- phishing-campaign.yaml
+|   +-- ransomware-simulation.yaml
+|   +-- supply-chain-attack.yaml
++-- datasets/                      # flat YAML files (not loaded by the API/worker)
+|   +-- active-directory-events.yaml
+|   +-- linux-audit-events.yaml
+|   +-- network-traffic-samples.yaml
+|   +-- windows-security-events.yaml
++-- detections/                    # flat Sigma-inspired YAML files
+    +-- credential-dumping-lsass.yaml
+    +-- data-exfil-dns-tunnel.yaml
+    +-- defense-evasion-timestomp.yaml
+    +-- lateral-movement-psexec.yaml
+    +-- persistence-scheduled-task.yaml
+    +-- powershell-download.yaml
+    +-- rdp-brute-force.yaml
+    +-- suspicious-dns-dga.yaml
+    +-- vss-deletion.yaml
 ```
+
+`scripts/load_content.py` loads ranges, scenarios and detections into a running API;
+inject packs and datasets are not loaded (`scripts/load_content.py:19-21`).
 
 ---
 
@@ -842,49 +748,52 @@ content/
 ### Dry Run Mode
 
 ```bash
-# Validates YAML, checks all injectors exist, simulates timeline
+# Validates against the JSON schema, logs each timeline event, no injection
 python scenario-engine/runner/run.py \
-  --scenario content/scenarios/apt-full-chain.yaml \
+  content/scenarios/apt-full-chain/scenario.yaml \
   --dry-run \
-  --verbose
-
-# Output:
-# [DRY RUN] Timeline: 6 events
-# [00:00] phish-email (email_phish) -- OK
-# [00:08] payload-exec (simulated_execution) depends_on:phish-email -- OK
-# [00:11] recon-dns (dns_spike) depends_on:payload-exec -- OK
-# [00:21] priv-esc (identity_new_admin_user) depends_on:recon-dns -- OK
-# [00:26] lateral-move (simulated_execution) depends_on:priv-esc -- OK
-# [00:41] exfiltration (http_burst) depends_on:lateral-move -- OK
-# Timeline valid. Total duration: ~41 minutes.
-# Objectives: 5 (100 points total)
+  --event-store null
 ```
+
+The runner takes the scenario path positionally, with `--range-id`, `--dry-run`,
+`--output <file>` and `--event-store opensearch|null` flags (`runner/run.py` `main()`).
+It logs one line per timeline event, then prints a JSON summary:
+
+```json
+{
+  "scenario": "apt-full-chain",
+  "range_id": "standalone-001",
+  "timeline": [{"t": "0:00", "action": "email_phish", "status": "dry_run"}],
+  "objectives": [],
+  "score": {"earned": 0, "max": 0, "unscored": 0}
+}
+```
+
+`--event-store null` scores nothing, for a dry run without a store; dev time compression
+is fixed at 10x (`offset * 0.1`, `runner/run.py:119`).
 
 ### Full Local Test
 
 ```bash
-# 1. Start infrastructure
+# 1. Start infrastructure (OpenSearch 127.0.0.1:9200, API 127.0.0.1:8081, web :4200)
 cd infra/platform/docker
 docker compose -f compose.dev.yml up -d
 
-# 2. Create a range and provision it
-python tools/cli/forge.py range create --name "Test Range" --template-id <uuid>
-python tools/cli/forge.py range provision <range-id>
+# 2. Create a range from a template
+python -m tools.cli.forge range create --name "Test Range" --template-id <uuid>
 
-# 3. Create exercise
-python tools/cli/forge.py exercise create \
-  --name "Scenario Test" \
-  --range-id <range-id> \
-  --scenario-id <scenario-id>
+# 3. Provision it (batch API; there is no single-range provision command)
+python -m tools.cli.forge range batch-provision <range-id>
 
-# 4. Start exercise (runs scenario)
-python tools/cli/forge.py exercise start <exercise-id>
+# 4. Start an exercise (created via POST /exercises; no `forge exercise create`)
+python -m tools.cli.forge exercise start <exercise-id>
 
-# 5. Check telemetry
-curl "http://localhost:9200/tn-range-<range-id>-*/_search?q=*&size=10" | python -m json.tool
+# 5. Check telemetry (dev binds OpenSearch to loopback)
+curl "http://127.0.0.1:9200/range-<range-id>*/_search?q=*&size=10" | python -m json.tool
 
 # 6. Query objectives
-curl http://localhost:8080/exercises/<exercise-id>/objectives | python -m json.tool
+curl -H "Authorization: Bearer $TRUENORTH_API_TOKEN" \
+  http://127.0.0.1:8081/exercises/<exercise-id>/objectives | python -m json.tool
 ```
 
 ### Content Validation Tests
@@ -893,59 +802,43 @@ curl http://localhost:8080/exercises/<exercise-id>/objectives | python -m json.t
 # Run content validation test suite
 pytest tests/scenario_engine/test_content_validation.py -v
 
-# Validates:
-# - All YAML files parse correctly
-# - All referenced injector types are registered
-# - All validator types are registered
-# - Objective ref_ids are unique
-# - Timeline event IDs are unique
-# - Dependency chains have no cycles
+# Checks:
+# - inject packs exist, parse, and have id, injects and mitre_attack
+# - detections exist and have title, detection and level
+# - range templates exist and have assets, nodes or network
+# - datasets exist and have events
 ```
+
+Schema conformance of every shipped scenario and range template against
+`scenario-engine/schemas/*.schema.json` is a separate corpus test:
+`pytest tests/scenario_engine/test_content_schema_conformance.py -v`.
 
 ---
 
 ## Advanced Topics
 
-### Custom Condition Expressions
+### Unsupported: condition expressions
 
-Timeline events support condition expressions that reference objective state:
-
-```yaml
-- id: escalation
-  type: identity_new_admin_user
-  delay_minutes: 30
-  condition: "not objective_achieved('obj-detect-phish')"
-  params:
-    username: escalation_account
-```
-
-Available functions:
-- `objective_achieved(ref_id)` — True if objective is achieved
-- `elapsed_minutes()` — Minutes since exercise start
-- `event_completed(event_id)` — True if timeline event completed
+Timeline events do not support condition expressions. There is no `condition` key, and no
+functions like `objective_achieved(ref_id)`, `elapsed_minutes()` or `event_completed()`
+exist anywhere in the engine — grep for them and you find only this document's history.
+A timeline runs sequentially from its `t` timecodes; see "Unsupported: dependencies and
+conditions" under Timeline Format.
 
 ### Timeline Compression
 
-For shorter exercises, timelines can be compressed:
+There is no `--time-compression` flag. Compression is fixed:
 
-```bash
-python scenario-engine/runner/run.py \
-  --scenario content/scenarios/apt-full-chain.yaml \
-  --time-compression 4x   # 4x speed: 90min scenario runs in ~22min
-```
+- **Runner (standalone):** 10x — each timeline minute waits 6 seconds
+  (`offset * 0.1`, `scenario-engine/runner/run.py:119`).
+- **Worker (exercises):** each timeline minute waits at most 1 second
+  (`min((offset or 0) * 0.01, 1)`, `control-plane/worker/worker/exercise_run.py:123`).
+
+Exercise duration is set when the exercise is created, not by the scenario YAML (there is
+no `duration_minutes` field in the schema).
 
 ### Multi-Team Scenarios
 
-Scenarios can be configured for multi-team exercises where each team gets isolated events:
-
-```yaml
-teams:
-  mode: isolated          # Each team gets their own event timeline
-  max_teams: 4
-  per_team_overrides:
-    - team_index: 0
-      timeline_override:
-        - id: phish-email
-          params:
-            to_address: "team1@corp.local"
-```
+The scenario YAML has no `teams` key and no `per_team_overrides` — teams are configured on
+the exercise, not in scenario content. ADR 0020: in team exercises every objective is
+judged by an instructor, and the worker never scores.
