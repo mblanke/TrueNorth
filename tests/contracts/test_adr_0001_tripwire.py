@@ -178,7 +178,9 @@ def test_registries_select_by_config_or_column_key(monkeypatch):
     ``LMS_BACKEND``, ``SEARCH_BACKEND``, ``VECTOR_BACKEND``, ``CALENDAR_BACKEND``); seams
     keyed on a DB column / row-carried key answer to that key (``hypervisor_type`` on a
     connection row, ``backend_type`` on an AI backend config, ``feed_type``, provisioner
-    ``backend``, notification channel name, event-store name). All in-process, offline.
+    ``backend``, notification channel name, event-store name). Every seam is pinned by
+    exact type/identity against its registry's entry for that key, so a factory that
+    ignored the key and returned one fixed backend would fail. All in-process, offline.
     """
     from app import auth_backends, lms, search_backends, vector_backends
 
@@ -202,31 +204,52 @@ def test_registries_select_by_config_or_column_key(monkeypatch):
     monkeypatch.setenv("CALENDAR_BACKEND", "null")
     calendar_backends.reset_calendar_backend()
     try:
-        assert calendar_backends.get_calendar_backend() is not None
+        # exact type, not just "not None": the factory must answer to the key
+        assert type(calendar_backends.get_calendar_backend()) is calendar_backends._REGISTRY["null"]
     finally:
         calendar_backends.reset_calendar_backend()
 
     # column/argument-keyed: the key a DB row carries selects the implementation.
+    from app import ai_backends, hypervisor_backends, threat_intel_backends
     from app.ai_backends import BaseAIEngine, get_ai_engine, known_engine_types
     from app.hypervisor_backends import BaseHypervisorBackend, get_hypervisor_backend, supported_hypervisor_types
+    from app.notifications import registry as notification_registry
     from app.notifications.base import NotificationChannel
     from app.notifications.registry import get_channel
     from app.threat_intel_backends import get_feed_backend
     from app.threat_intel_backends.base import BaseFeedBackend
+    from worker import feed_backends, provisioners
     from worker.feed_backends import get_feed_source
-    from worker.feed_backends.base import BaseFeedSource
     from worker.provisioners import get_provisioner
     from worker.provisioners.base import BaseProvisioner
 
-    assert isinstance(get_provisioner("mock"), BaseProvisioner)  # ranges.provisioner_backend
-    assert isinstance(get_feed_source("null"), BaseFeedSource)  # content feed config
-    assert isinstance(get_feed_backend("null"), BaseFeedBackend)  # feed.feed_type
+    # exact type, not just isinstance: a factory returning one fixed backend for every
+    # key would pass an isinstance check. (provisioner "mock" = ranges.provisioner_backend)
+    assert type(get_provisioner("mock")) is provisioners._REGISTRY["mock"], provisioners._REGISTRY["mock"]
+    assert isinstance(get_provisioner("mock"), BaseProvisioner)
+    # content feed config; feed.feed_type
+    assert type(get_feed_source("null")) is feed_backends._REGISTRY["null"]
+    assert type(get_feed_backend("null")) is threat_intel_backends._REGISTRY["null"]
+    assert isinstance(get_feed_backend("null"), BaseFeedBackend)
+    # AIBackendConfig.backend_type: registry values are instances, so pin by identity
     for key in known_engine_types():
-        assert isinstance(get_ai_engine(key), BaseAIEngine), key  # AIBackendConfig.backend_type
+        assert get_ai_engine(key) is ai_backends._REGISTRY[key], key
+        assert isinstance(get_ai_engine(key), BaseAIEngine), key
+    # HypervisorConnection.hypervisor_type: exact registered class per kind. The registry
+    # maps distinct classes, which is what makes the exact-type check key-sensitive.
+    registry_classes = set(hypervisor_backends._REGISTRY.values())
+    assert len(registry_classes) == len(hypervisor_backends._REGISTRY), "hypervisor kinds share a class"
     for kind in supported_hypervisor_types():
-        # HypervisorConnection.hypervisor_type
-        assert isinstance(get_hypervisor_backend(kind), BaseHypervisorBackend), kind
-    assert isinstance(get_channel("in_app"), NotificationChannel)  # notification channel name
+        backend = get_hypervisor_backend(kind)
+        assert type(backend) is hypervisor_backends._REGISTRY[kind], kind
+        assert isinstance(backend, BaseHypervisorBackend), kind
+    # notification channel name: exact registered class, distinct across two channels
+    assert len(set(notification_registry._registry.values())) == len(notification_registry._registry), (
+        "notification channels share a class"
+    )
+    assert type(get_channel("in_app")) is notification_registry._registry["in_app"]
+    assert isinstance(get_channel("in_app"), NotificationChannel)
+    assert type(get_channel("in_app")) is not type(get_channel("email"))
 
 
 def test_adapter_packages_keep_the_abc_registry_factory_shape():
