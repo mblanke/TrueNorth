@@ -13,7 +13,8 @@ is not on `main` (`git merge-base --is-ancestor`), before anything is built or s
 The old `deploy-dev.yml` and `deploy-prod.yml` were deleted on 2026-10-08. They could not
 have worked: dev triggered on a `develop` branch that does not exist, prod retagged a
 `:main` image that nothing pushed, wrote `$GITHUB_OUTPUT` on the remote host, ran
-migrations after `up -d`, and bound both blue/green slots to 80/443. Prod also kept the
+migrations after `up -d`, and bound blue/green to hard-coded ports (web 80/8081, api
+8080/8180). Prod also kept the
 production SSH key in a third-party action.
 
 Per-release notes (known limitations, staging record) live in `docs/release-notes/`,
@@ -26,8 +27,10 @@ For each of the five services, `api`, `worker`, `web`, `scenario-engine` and
 installer runs only with `tn_moodle_enabled`), release.yml:
 
 1. builds from the tagged commit with a fresh base image (`pull: true`) and no layer
-   cache, with `TN_VERSION=<tag>` as a build arg. The tag becomes the `TN_VERSION` env var
-   and the `org.opencontainers.image.version` label. The `revision` label holds the commit.
+   cache, with `TN_VERSION=<tag>` as a build arg. In the five service images the tag
+   becomes the `TN_VERSION` env var (the Moodle Dockerfile declares no `ARG TN_VERSION`);
+   the workflow sets the `org.opencontainers.image.version` label on all six. The
+   `revision` label holds the commit.
    BuildKit attaches **SLSA provenance** (`mode=max`) and an SBOM as attestations.
 2. pushes the image to `ghcr.io/mblanke/truenorth-<service>` **by digest only**. Nothing is
    tagged yet.
@@ -190,7 +193,7 @@ Rules for consumers:
 | Trivy binary | v0.74.0, Linux-64bit tarball SHA-256 `2ae6fe3e…8be4371a` (in `ci.yml` and `release.yml`) | `trivy_0.74.0_checksums.txt` verified with cosign against `aquasecurity/trivy/.github/workflows/reusable-release.yaml@refs/tags/v0.74.0` (OIDC issuer token.actions.githubusercontent.com); the tarball hash matches its line |
 | `aquasecurity/trivy-action` | `ed142fd0673e97e23eac54620cfb913e5ce36c25` (v0.36.0, 2026-04-22) | `gh api repos/aquasecurity/trivy-action/git/ref/tags/v0.36.0` → annotated tag `a9c7b0f…`, signature verified, target `ed142fd…`; the commit's signature is verified. Run with `skip-setup-trivy: true`, so the action's installer is not used |
 | `anchore/sbom-action` | `3ad7283483fc7af8ff2b4ea19663c2d5ca935e26` (v0.24.2; it pins syft v1.51.1) | tag resolved via the GitHub API; commit signature verified. v0.24.3 (2026-10-02) was too new |
-| other actions | full commit SHA, with a `# vX.Y.Z` comment | tag resolved via `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` (annotated tags dereferenced) |
+| other actions | full commit SHA, with a `# vX.Y.Z` comment — four stragglers are still on bare tags: `actions/checkout@v4` (ci.yml `packer-vsphere`, backup-drill), `actions/setup-python@v5` (ci.yml) and `actions/upload-artifact@v4` (backup-drill) | tag resolved via `gh api repos/<owner>/<repo>/git/ref/tags/<tag>` (annotated tags dereferenced) |
 | k6 (CI smoke) | `grafana/k6@sha256:23f22790…` (v1.8.1) | `docker buildx imagetools inspect grafana/k6:1.8.1` |
 
 Trivy's release channel was compromised on 2026-03-19 (CVE-2026-33634: a malicious
@@ -236,8 +239,9 @@ check the tag with `docker buildx imagetools inspect` against `docker.io` and
 Trivy. It prints a report of fixable HIGH/CRITICAL (never fails) and **fails the PR on a
 fixable CRITICAL**. A release also blocks on HIGH, so read the report before tagging.
 
-The Dockerfiles apply distro security updates at build time (`apt-get upgrade` /
-`apk upgrade`), because base-image tags lag them. On 2026-10-08 an un-upgraded build had
+The five service Dockerfiles apply distro security updates at build time (`apt-get
+upgrade` / `apk upgrade`), because base-image tags lag them; the Moodle image instead pins
+its base image by digest and applies no distro upgrade. On 2026-10-08 an un-upgraded build had
 fixable HIGH findings in pcre2 (all five images) and libexpat (web). After the upgrade
 step, all five images scanned clean locally (arm64 builds; CI builds amd64).
 
