@@ -1,6 +1,6 @@
 # TrueNorth Range — API Reference
 
-> API documentation for the TrueNorth Range Control Plane. Core endpoints with request/response examples, authentication, WebSocket protocol, and error handling. The complete machine-readable contract is [`docs/interfaces/openapi.json`](interfaces/openapi.json) — 465 paths / 2198 operations; this guide covers the core ones.
+> API documentation for the TrueNorth Range Control Plane. Core endpoints with request/response examples, authentication, WebSocket protocol, and error handling. The complete machine-readable contract is [`docs/interfaces/openapi.json`](interfaces/openapi.json) — 465 paths / 593 operations; this guide covers the core ones.
 
 ---
 
