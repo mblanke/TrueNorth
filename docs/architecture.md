@@ -602,6 +602,11 @@ Valid transitions:
 > measured source in the repository (unverified); the 1,200-user / 70,000-VM
 > targets are the compose sizing comment (`compose.dev.yml`), and the 10,000
 > WebSocket / 50 per-user limits are code defaults in `websocket_manager.py`.
+> The "Read replicas" bullet under Database Partitioning and the PostgreSQL
+> Replica / Redis Sentinel nodes in the Horizontal Scaling diagram are likewise
+> design intent: neither is instantiated in any compose file or Terraform module
+> (Redis Sentinel is supported in code via `REDIS_SENTINEL_HOSTS` in
+> `control-plane/api/app/redis_client.py`, but no sentinel service is deployed).
 
 ### Database Partitioning
 
@@ -744,11 +749,19 @@ graph TB
 
 | Rule | Source | Destination | Action | Purpose |
 |------|--------|-------------|--------|---------|
-| Management access | Platform VLAN | Range VLAN | Allow (SSH, WinRM) | Provisioning and telemetry |
+| Management access † | Platform VLAN | Range VLAN | Allow (SSH, WinRM) | Provisioning and telemetry — design intent, see note |
 | Range isolation | Range VLAN A | Range VLAN B | Deny | Prevent cross-range access |
 | Internet egress | Range VLAN | Internet | Configurable | Controlled internet access |
 | Sensor reporting | Range VLAN | OpenSearch | Allow (9200) | Telemetry shipping |
 | DNS resolution | Range VLAN | DNS Server | Allow (53) | Name resolution |
+
+> The "Management access" row is design intent: no SSH/WinRM allow rule is defined
+> anywhere in this repository. `infra/proxmox/terraform/modules/networking/firewall.tf`
+> contains only the default-deny, intra-range ICMP, DNS (53), NTP (123), monitoring
+> (9090/9100/3000/9200), established/related and egress-allowlist rules, and the pfSense
+> template (`infra/proxmox/packer/http/pfsense/config.xml`) has only "LAN to any" pass
+> rules. SSH/WinRM reach the VMs at the provisioning layer (cloud-init SSH keys,
+> Packer/Ansible with WinRM), not through a firewall rule tracked here.
 
 ---
 
@@ -801,7 +814,10 @@ graph TB
 # Environment variable for multi-node Ollama fleet: name=url pairs
 OLLAMA_NODES=gpu-node-1=http://gpu-node-1:11434,gpu-node-2=http://gpu-node-2:11434
 
-# Tag-based model selection (defaults from compose.dev.yml / app defaults)
+# Tag-based model selection. AI_MODEL_BACKEND=ollama is the app-level default
+# (ai-orchestrator/app/main.py, ai-orchestrator/app/backends/__init__.py);
+# compose.dev.yml overrides it to "openai" pointed at the local LiteLLM router.
+# The model names below are the compose.dev.yml defaults.
 AI_MODEL_BACKEND=ollama
 AI_HEAVY_MODEL=agent
 AI_GENERAL_MODEL=agent
