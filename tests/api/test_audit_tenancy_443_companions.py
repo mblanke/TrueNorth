@@ -116,6 +116,21 @@ class TestAIConfigPlatformAdminStillAllowed:
         with acting_as(UserRole.admin, tenant=OTHER_TENANT):
             assert client.get("/ai-config/backends").status_code == 403
 
+    def test_platform_admin_can_still_change_a_backend(self, client, db_session, monkeypatch):
+        """The write path, not only the read: the operator's PATCH goes through, and the
+        same PATCH from another tenant's admin changes nothing."""
+        _second_tenant(db_session)
+        backend = _platform_backend(db_session)
+        db_session.commit()
+        monkeypatch.setenv("PLATFORM_TENANT_ID", DEV_TENANT)
+        with acting_as(UserRole.admin, tenant=DEV_TENANT):
+            resp = client.patch(f"/ai-config/backends/{backend.id}", json={"notes": "operator edit"})
+            assert resp.status_code == 200, resp.text
+        with acting_as(UserRole.admin, tenant=OTHER_TENANT):
+            assert client.patch(f"/ai-config/backends/{backend.id}", json={"notes": "intruder"}).status_code == 403
+        db_session.expire_all()
+        assert db_session.get(AIBackendConfig, backend.id).notes == "operator edit"
+
     def test_admin_of_a_single_tenant_install_reaches_the_backends(self, client, db_session, monkeypatch):
         monkeypatch.delenv("PLATFORM_TENANT_ID", raising=False)
         _platform_backend(db_session)

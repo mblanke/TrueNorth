@@ -369,7 +369,9 @@
     that: tn_ai_backend_reg.rc == 0
     fail_msg: >-
       The AI endpoint was not registered as an AI backend (exit {{ tn_ai_backend_reg.rc }}; output above).
-      Exit 2: tn_bootstrap_admin_upn is not a TrueNorth user. Exit 1: the API refused it.
+      Exit 2: tn_bootstrap_admin_upn is not a TrueNorth user. Exit 1: the API refused it; one
+      cause is that only the platform administrator may configure the AI backend, so when
+      tn_platform_tenant_id names a tenant, the bootstrap administrator must belong to that tenant.
       Fix and re-run playbooks/80-seed.yml, or add it on the AI page and set
       tn_register_ai_backend: false.
     success_msg: "AI backend: registered (an unreachable endpoint above is a warning only)"

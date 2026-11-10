@@ -9,6 +9,14 @@ Everything switched on and working on staging: the full Moodle loop, cmi5 with c
 xAPI, Greyspace on vSphere (proven on vcsim and the T0 stack, not real vSphere), ARC² batch
 course production with a local-model fallback, and the cleanup of unsupported surfaces.
 
+### Security fixes from the #443 audit
+- **Only the platform administrator configures the AI backend.** `/ai-config` needed only
+  `ai_config:write`, which every tenant's administrator holds, so one tenant's admin could
+  repoint the platform-wide backend at a host they chose and have its sealed API key posted
+  there. The routes now also require the platform administrator: an admin of the
+  `PLATFORM_TENANT_ID` tenant, or of a single-tenant install. Another tenant's admin now
+  gets 403, and the AI settings page shows an error for them.
+
 ### Classes, roll-call onboarding and the calendars (ADR 0014, #277)
 How to use all of this: [administrator](docs/guides/03-admin-first-day.md),
 [instructor](docs/guides/04-instructor-guide.md), [Student](docs/guides/05-student-quick-start.md).
