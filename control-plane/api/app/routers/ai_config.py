@@ -7,8 +7,10 @@ Tenancy: AI configuration is platform-wide, not per tenant. There is one primary
 backend for the whole platform (``test_generate`` and ``set_primary_backend`` act
 across every row), fleet nodes and model routes carry no tenant at all, the seeded
 default backend has a NULL ``tenant_id`` and nothing here ever sets one. The whole
-router needs ``ai_config:write``, which only ``admin`` (the TN-Platform-Admins group)
-holds. ``AIBackendConfig.tenant_id`` is an unused column; reviewed 2026-10-07.
+router needs ``ai_config:write`` AND to be the platform administrator
+(``rbac.require_platform_admin``): ``ai_config:write`` alone is held by every tenant's
+``admin``, which is not the operator. ``AIBackendConfig.tenant_id`` is an unused column;
+reviewed 2026-10-07, corrected after audit #443.
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ from ..ai_backends import get_ai_engine
 from ..db import get_db
 from ..delete_guard import commit_delete
 from ..models import AIBackendConfig, AIFleetNode, AIModelRoute
-from ..rbac import Permission, require_permission
+from ..rbac import Permission, require_permission, require_platform_admin
 from ..schemas import (
     AIBackendConfigIn,
     AIBackendConfigOut,
@@ -48,7 +50,18 @@ logger = logging.getLogger("truenorth.api.ai_config")
 # Router-level authentication. AI backend endpoints, model routing and fleet nodes.
 #
 # Every route here was previously reachable with no credentials at all.
-router = APIRouter(prefix="/ai-config", tags=["AI Orchestrator"], dependencies=[Depends(require_permission(Permission.AI_CONFIG_WRITE))])
+#
+# ``ai_config:write`` is held by the ``admin`` role of EVERY tenant, so on its own it let
+# one tenant's administrator repoint the platform-wide backend and have its sealed API key
+# sent to a host they chose (audit #443). The platform administrator check is what makes
+# the router the operator's: an admin of the PLATFORM_TENANT_ID tenant, or of a
+# single-tenant install. It sits on the router so no route, ``test-generate`` included,
+# can be reached without it.
+router = APIRouter(
+    prefix="/ai-config",
+    tags=["AI Orchestrator"],
+    dependencies=[Depends(require_permission(Permission.AI_CONFIG_WRITE)), Depends(require_platform_admin())],
+)
 
 
 def _backend(db: Session, backend_id: uuid.UUID) -> AIBackendConfig:

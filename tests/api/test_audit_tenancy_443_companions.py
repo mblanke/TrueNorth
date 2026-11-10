@@ -99,13 +99,40 @@ def _platform_backend(db) -> AIBackendConfig:
     return b
 
 
+# ── ai_config.py:51 (high) — the operator is not locked out by the fix ────
+class TestAIConfigPlatformAdminStillAllowed:
+    """The platform administrator keeps the router. A gate that refused everyone would
+    satisfy every test above it, so these pin the other side: the operator's own tenant
+    admin, and the admin of a single-tenant install, still get through."""
+
+    def test_admin_of_the_named_platform_tenant_reaches_the_backends(self, client, db_session, monkeypatch):
+        _second_tenant(db_session)
+        backend = _platform_backend(db_session)
+        db_session.commit()
+        monkeypatch.setenv("PLATFORM_TENANT_ID", DEV_TENANT)
+        with acting_as(UserRole.admin, tenant=DEV_TENANT):
+            assert client.get("/ai-config/backends").status_code == 200
+            assert client.get(f"/ai-config/backends/{backend.id}").status_code == 200
+        with acting_as(UserRole.admin, tenant=OTHER_TENANT):
+            assert client.get("/ai-config/backends").status_code == 403
+
+    def test_admin_of_a_single_tenant_install_reaches_the_backends(self, client, db_session, monkeypatch):
+        monkeypatch.delenv("PLATFORM_TENANT_ID", raising=False)
+        _platform_backend(db_session)
+        db_session.commit()
+        with acting_as(UserRole.admin, tenant=DEV_TENANT):
+            assert client.get("/ai-config/backends").status_code == 200
+
+    def test_a_non_admin_role_is_refused_even_in_the_platform_tenant(self, client, db_session, monkeypatch):
+        _platform_backend(db_session)
+        db_session.commit()
+        monkeypatch.setenv("PLATFORM_TENANT_ID", DEV_TENANT)
+        with acting_as(UserRole.instructor, tenant=DEV_TENANT):
+            assert client.get("/ai-config/backends").status_code == 403
+
+
 # ── ai_config.py:51 (high) — companions for TestAIConfigPlatformBoundary ──
 class TestAIConfigPlatformBoundaryCompanions:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: any tenant's admin controls the platform-wide AI backend "
-        "and can exfiltrate its API key (ai_config.py:51) — companion",
-    )
     def test_both_tenants_admins_reach_a_platform_backend_by_id(self, client, db_session, monkeypatch):
         """Matrix companion for
         test_tenant_admin_cannot_reach_the_platform_backends: both tenants' admins on
@@ -123,12 +150,6 @@ class TestAIConfigPlatformBoundaryCompanions:
             assert client.get(f"/ai-config/backends/{backend.id}").status_code == 403
             assert client.delete(f"/ai-config/backends/{backend.id}").status_code == 403
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: any tenant's admin can rewrite the platform-wide AI backend "
-        "and have its sealed API key posted to a host they choose (ai_config.py:51) — "
-        "companion",
-    )
     def test_repointed_platform_backend_sends_the_platform_key_to_the_attacker(self, client, db_session, monkeypatch):
         """End-to-end companion for
         test_tenant_admin_cannot_exfiltrate_the_platform_key_via_test_generate: the
@@ -151,12 +172,6 @@ class TestAIConfigPlatformBoundaryCompanions:
                 assert resp.status_code == 403, resp.text
                 assert route.called is False, "the platform AI key was posted to the repointed URL"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: any tenant's admin can rewrite the platform-wide AI backend "
-        "and have its sealed API key posted to a host they choose (ai_config.py:51) — "
-        "companion",
-    )
     def test_registered_fleet_node_leaks_the_platform_key_to_its_url(self, client, db_session, monkeypatch):
         """Fleet-node companion for
         test_tenant_admin_cannot_mine_the_key_through_set_primary_or_discover: the
