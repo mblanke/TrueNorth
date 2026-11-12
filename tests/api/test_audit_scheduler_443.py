@@ -111,8 +111,6 @@ def test_staff_opening_the_console_does_not_touch_the_students_lab(lab, db_sessi
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Start lab during the lab's teardown hands the "
-                                        "browser an already-expired token (control-plane/api/app/routers/integrations.py:948)")
 def test_a_start_lab_during_teardown_hands_a_token_that_still_opens_the_page(lab, db_session, worker):  # noqa: F811 — the lab fixtures, imported from test_lab_sessions
     """audit443 LOW finding, control-plane/api/app/routers/integrations.py:948 (at the audit
     base; ``_launch_lab``'s token mint): "Start lab during the lab's teardown hands the

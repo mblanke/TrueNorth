@@ -94,9 +94,6 @@ def test_an_admin_opening_the_console_does_not_touch_the_students_lab(lab, db_se
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Start lab during the lab's teardown hands the "
-                                        "browser an already-expired token (control-plane/api/app/routers/integrations.py:948)"
-                                        " — companion: the page the token is handed to")
 def test_the_token_handed_out_during_teardown_still_opens_the_lab_page(lab, db_session, worker):  # noqa: F811
     """Companion to test_a_start_lab_during_teardown_hands_a_token_that_still_opens_the_page
     (audit443 LOW finding, control-plane/api/app/routers/integrations.py:948): the other side

@@ -168,11 +168,6 @@ def test_staff_opening_the_console_does_not_touch_the_students_lab(request, db_s
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: Moodle 'Start lab' during an expired lab's teardown hands the "
-    "Student an already-expired token (control-plane/api/app/routers/integrations.py:948)",
-)
 def test_start_lab_during_a_teardown_hands_a_token_the_lab_page_can_use(request, db_session):
     """A "Start lab" click while the Student's expired lab is being torn down resumes that
     still-non-terminal session and must hand the browser a token the lab page can use (or

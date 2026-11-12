@@ -175,11 +175,6 @@ def test_an_admin_opening_the_console_does_not_extend_the_students_idle_clock(
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: Moodle 'Start lab' during an expired lab's teardown hands the "
-    "Student an already-expired token (control-plane/api/app/routers/integrations.py:948) — companion",
-)
 def test_start_lab_during_a_teardown_hands_a_usable_token_at_the_just_expired_boundary(
     request, db_session
 ):
