@@ -49,7 +49,7 @@ from ..models import AuditLog, Course, User, UserRole
 from ..rbac import Permission, require_permission
 from ..scheduler import service as scheduler
 from ..tenancy import tenant_uuid
-from . import access, forfeit, service, sessions
+from . import access, forfeit, holds, service, sessions
 from .models import Class, ClassStaff, ClassStatus, RollCallEntry, RollCallSettings, RollCallStatus
 from .schemas import (
     AdditionDecisionOut,
@@ -349,18 +349,15 @@ def update_class(
     cls = _editable(db, class_id, user)
     if cls.status != ClassStatus.open.value:
         raise HTTPException(409, f"A {cls.status} class cannot be changed")
-    # An approved session's capacity hold runs to the class's last day (holds.py), so a later
-    # end_date silently takes capacity nobody approved (audit #443). The lead may not stretch
-    # it while sessions hold capacity; an admin, who approves holds, may.
-    if (
-        body.end_date > cls.end_date
-        and user.role != UserRole.admin
-        and sessions.approved_sessions(db, cls)
-    ):
+    # A class's capacity hold runs to its last day (holds.py), so a later end_date silently
+    # takes capacity nobody approved (audit #443). The lead may not stretch a hold; an
+    # admin may (an admin act: no capacity re-check happens on this path, see the PR).
+    if body.end_date > cls.end_date and user.role != UserRole.admin and holds.has_hold(db, cls):
         raise HTTPException(
             409,
-            "This class has approved sessions, so its end date cannot be moved later. "
-            "Add a session for the new dates and have it approved, or ask an administrator.",
+            "This class holds capacity for its approved sessions until its last day, so the end date "
+            "cannot be moved later. Add a session for the new dates and have it approved, or ask an "
+            "administrator.",
         )
     before = cls.lead_instructor_id
     service.apply(db, cls, body, user)

@@ -273,3 +273,17 @@ def test_the_lead_may_still_shorten_or_rename_a_class_with_approved_sessions(cli
         r = client.put(f"/classes/{world['class']['id']}",
                        json=_class_body(world, name="renamed", end_date=str(end.date())))
         assert r.status_code == 200, r.text
+
+
+def test_the_lead_may_not_extend_a_class_whose_approved_session_is_already_over(client, world, db_session):
+    """Review finding B1: a finished session still holds the class's ranges until its last
+    day, so the guard must not look only at upcoming sessions."""
+    ev = _book(client, world)
+    _approve(client, world, ev)
+    row = db_session.get(ScheduledEvent, uuid.UUID(ev["id"]))
+    row.state = "completed"
+    db_session.commit()
+    act_as(world["lead"])
+    r = client.put(f"/classes/{world['class']['id']}",
+                   json=_class_body(world, end_date=str((DAY + timedelta(days=9)).date())))
+    assert r.status_code == 409, r.text
