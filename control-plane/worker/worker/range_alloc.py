@@ -314,6 +314,12 @@ def build_outcome(result) -> tuple[str, str | None]:
     isolation verdict is not ``isolated`` (``result.isolation``, range_isolation.py) is
     ``failed`` the same way. In ``warn`` (the default) the verdict is only recorded."""
     names = list(getattr(result, "not_ready", None) or [])
+    if not names and getattr(result, "status", "ok") == "partial":
+        # A VM that failed to clone is in ``errors`` but in neither ``vms`` nor ``not_ready``;
+        # recorded ``ready`` it left a part-built range that Students could be given
+        # (audit #443). Recorded failed with what was built, like the not-ready case.
+        reasons = list(result.errors) or ["a VM failed to build"]
+        return "failed", f"Build incomplete ({len(result.vms)} VM(s) built): " + "; ".join(reasons)
     if not names:
         from .range_isolation import blocking
 
