@@ -940,7 +940,7 @@ def delete_snapshot(
     # The comment below was here without the call it describes, so any tenant could
     # delete any other tenant's snapshot given the two ids. That only flipped a row
     # while the worker's delete was broken; now it removes the hypervisor copy.
-    _changeable_range(db, range_id, user)
+    rng = _changeable_range(db, range_id, user)
     # tenant-safe: _tenant_range() above already 404s unless `range_id` belongs to the
     # caller, so filtering snapshots by that same range_id is transitively scoped.
     snap = (
@@ -957,6 +957,13 @@ def delete_snapshot(
         # The worker is still writing this row; deleting now let it come back `ready`
         # with nothing on the hypervisor, or left the hypervisor copy orphaned.
         raise HTTPException(409, f"Snapshot is {snap.snapshot_state}; delete it once that finishes")
+    # A restore's password rotation logs in with, and reverts to, the passwords this snapshot
+    # recorded; dropping them while it is pending left the change settling on nothing (audit
+    # #443). Same refusal as restoring over a pending change.
+    if range_credentials.any_pending(db, rng):
+        raise HTTPException(409, "Cannot delete the snapshot: a change of one of the range's passwords is "
+                                 "still being applied in the guests; delete it once that has settled "
+                                 "(or an admin force-settles it)")
     previous = snap.snapshot_state
     snap.snapshot_state = "deleted"
     # The passwords it recorded go now (the row itself is kept, marked deleted): sealed

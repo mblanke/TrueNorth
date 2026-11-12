@@ -442,6 +442,12 @@ def rotate(db: Session, rng: Range, row: RangeCredential, user: CurrentUser, rea
 
         if why := guest_change_refusal(rng, row, _machine_kinds(db, rng)):
             raise HTTPException(409, f"Cannot rotate this account in the running range: {why}")
+        if not row.applied:
+            # No build or rotation ever verified this account in the guest. If this change
+            # failed, the worker's settle would record the pre-rotation value as applied
+            # (audit #443), the way on_restore skips such rows.
+            raise HTTPException(409, "This account's password was never set in the guests, so it cannot be "
+                                     "rotated in the running range; rebuild the range to apply it")
         ops.refuse_while_in_flight(db, rng, "rotate a password")
         restoring = db.query(RangeSnapshot.id).filter(RangeSnapshot.range_id == rng.id,
                                                       RangeSnapshot.snapshot_state == "restoring").first()

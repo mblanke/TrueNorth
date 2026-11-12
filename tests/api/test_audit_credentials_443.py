@@ -71,7 +71,6 @@ def no_tasks(monkeypatch):
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Admin rotation of a never-applied account settles as applied=True with a password the guest never had (control-plane/api/app/range_credentials/service.py:450)")
 def test_rotation_of_a_never_applied_account_cannot_settle_as_applied(client, db_session, world, no_tasks):
     """#443-1 (high) — control-plane/api/app/range_credentials/service.py:450:
     "Admin rotation of a never-applied account: a failed guest change settles as applied=True
@@ -114,7 +113,6 @@ def test_rotation_of_a_never_applied_account_cannot_settle_as_applied(client, db
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Deleting a snapshot right after restoring it destroys the passwords the queued rotation needs (control-plane/api/app/routers/ranges.py:964)")
 def test_deleting_a_snapshot_while_its_restore_rotation_is_pending_is_refused(client, db_session, world, no_tasks):
     """#443-2 (high) — control-plane/api/app/routers/ranges.py:964:
     "Deleting a snapshot right after restoring it destroys the passwords the queued rotation
