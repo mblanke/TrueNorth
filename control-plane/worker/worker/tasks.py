@@ -227,9 +227,7 @@ def destroy_range(self, range_id: str):
 
         result = run_async(provisioner.destroy(range_id, prov_output))
         record_teardown(_db_session, range_id, result)  # S5: deleted by recorded id, what remains, unidentified
-        if result.status in ("failed", "partial"):  # partial: something survived (audit #443)
-            # Not recorded destroyed, and nothing released: the VLANs, uplink and MACs are still
-            # in use by what remains, and the stored teardown report names it.
+        if result.status in ("failed", "partial"):  # partial: something survived, release nothing (#443)
             raise RuntimeError("; ".join(result.errors) or "Destroy failed")
 
         if recorded := _update_range_state(range_id, "destroyed", only_from=("destroying",)):  # 0: abandoned/moved on
