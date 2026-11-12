@@ -24,6 +24,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Path, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -300,7 +301,11 @@ async def _proxied(
     params = dict(request.query_params)
     body = await request.body()
     try:
-        resp = lms.proxy(db, session, request.method, resource, params, body, dict(request.headers))
+        # lms.proxy is blocking (the LRS call, and the database work around it): on a thread, so
+        # one AU's slow LRS never stalls every other request on the loop (audit #443).
+        resp = await run_in_threadpool(
+            lms.proxy, db, session, request.method, resource, params, body, dict(request.headers)
+        )
     except RuleViolationError as v:  # refused before anything was written or forwarded
         return JSONResponse({"error": v.message, "violatedReqId": v.req}, status_code=v.status, headers=XAPI_VERSION)
     except (lms.Cmi5Error, content_mod.ContentError) as exc:  # the LRS failed before any write

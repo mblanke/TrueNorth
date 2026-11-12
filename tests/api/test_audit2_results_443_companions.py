@@ -119,11 +119,6 @@ def bundle_mode(monkeypatch):
 
 # ---- f30 companion --------------------------------------------------------------------------
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: cmi5 AU LRS proxy runs blocking httpx on the event loop while holding row "
-           "locks (control-plane/api/app/cmi5/router.py:303) — companion",
-)
 def test_f30_companion_an_independent_request_is_not_starved_behind_the_lrs_proxy(client, lrs, release, student):
     """Same finding, user-visible angle: while the proxy's backend LRS call is held in
     flight, a second, unrelated request on the same event loop must still complete."""
