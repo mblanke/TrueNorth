@@ -180,9 +180,6 @@ def _fill(db, tenant_id, start=MON, hours: float = 3, vcpu=80, name="someone els
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Lead instructor re-dates an open class "
-                                        "after approval; the class hold stretches to the new "
-                                        "end_date with no re-approval (classes/router.py:349)")
 def test_f1_redating_an_approved_class_may_not_stretch_its_hold(client, world):
     """classes/router.py:349 — Lead instructor re-dates an open class after approval.
 

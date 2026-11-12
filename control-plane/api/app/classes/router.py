@@ -45,7 +45,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
-from ..models import AuditLog, Course, User
+from ..models import AuditLog, Course, User, UserRole
 from ..rbac import Permission, require_permission
 from ..scheduler import service as scheduler
 from ..tenancy import tenant_uuid
@@ -349,6 +349,19 @@ def update_class(
     cls = _editable(db, class_id, user)
     if cls.status != ClassStatus.open.value:
         raise HTTPException(409, f"A {cls.status} class cannot be changed")
+    # An approved session's capacity hold runs to the class's last day (holds.py), so a later
+    # end_date silently takes capacity nobody approved (audit #443). The lead may not stretch
+    # it while sessions hold capacity; an admin, who approves holds, may.
+    if (
+        body.end_date > cls.end_date
+        and user.role != UserRole.admin
+        and sessions.approved_sessions(db, cls)
+    ):
+        raise HTTPException(
+            409,
+            "This class has approved sessions, so its end date cannot be moved later. "
+            "Add a session for the new dates and have it approved, or ask an administrator.",
+        )
     before = cls.lead_instructor_id
     service.apply(db, cls, body, user)
     detail = cls.name if before == cls.lead_instructor_id else f"{cls.name}; lead {before} -> {cls.lead_instructor_id}"
