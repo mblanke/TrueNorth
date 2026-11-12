@@ -301,6 +301,15 @@ def stored_output(backend: str, range_id: str, result, provisioner=None) -> dict
     return out
 
 
+def unbuilt_vm_errors(result) -> list[str]:
+    """The ``VM <name>: ...`` errors of a build for a VM that is not among ``result.vms``: one
+    that failed to clone. Other errors (a software install on a built VM, a missing noise
+    network, a mirror port) leave the range usable and are not counted."""
+    built = {str(v.get(k)) for v in (result.vms or []) if isinstance(v, dict) for k in ("name", "vm_id")}
+    return [e for e in (getattr(result, "errors", None) or [])
+            if e.startswith("VM ") and e[3:].split(":", 1)[0] not in built]
+
+
 def build_outcome(result) -> tuple[str, str | None]:
     """The state a finished (not ``failed``) build records, and its error: ``ready``, or
     ``failed`` when a VM was built but is not ready (``result.not_ready``; vSphere: its
@@ -314,16 +323,16 @@ def build_outcome(result) -> tuple[str, str | None]:
     isolation verdict is not ``isolated`` (``result.isolation``, range_isolation.py) is
     ``failed`` the same way. In ``warn`` (the default) the verdict is only recorded."""
     names = list(getattr(result, "not_ready", None) or [])
-    if not names and getattr(result, "status", "ok") == "partial":
+    unbuilt = unbuilt_vm_errors(result)
+    if unbuilt and not names:
         # A VM that failed to clone is in ``errors`` but in neither ``vms`` nor ``not_ready``;
         # recorded ``ready`` it left a part-built range that Students could be given
         # (audit #443). Recorded failed with what was built, like the not-ready case.
-        reasons = list(result.errors) or ["a VM failed to build"]
-        return "failed", f"Build incomplete ({len(result.vms)} VM(s) built): " + "; ".join(reasons)
+        return "failed", f"Build incomplete ({len(result.vms)} VM(s) built): " + "; ".join(unbuilt)
     if not names:
         from .range_isolation import blocking
 
         error = blocking(getattr(result, "isolation", None))
         return ("failed", error) if error else ("ready", None)
     reasons = [e for e in result.errors if any(e.startswith(f"VM {n}:") for n in names)] or names
-    return "failed", f"{len(names)} VM(s) built but not ready: " + "; ".join(reasons)
+    return "failed", f"{len(names)} VM(s) built but not ready: " + "; ".join([*reasons, *unbuilt])
