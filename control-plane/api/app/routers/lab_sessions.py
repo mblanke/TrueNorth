@@ -153,7 +153,8 @@ def _token_session(db: Session, session_id: uuid.UUID, token: str | None, *, act
     """The session a lab token is for, checked against the session as it is now, not only
     as it was when the token was minted (CR1-17): a token outlives a lab that ended and an
     enrollment that was withdrawn. Reading an ended lab (``act=False``) stays allowed, so the
-    page can say it ended; acting on it does not."""
+    page can say it ended; acting on it does not. A disabled or deleted owner is refused on
+    every route, reads included, as the signed-in path refuses them."""
     if not token:
         raise HTTPException(401, "X-Lab-Token is required")
     try:
