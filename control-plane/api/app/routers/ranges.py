@@ -960,10 +960,10 @@ def delete_snapshot(
     # A restore's password rotation logs in with, and reverts to, the passwords this snapshot
     # recorded; dropping them while it is pending left the change settling on nothing (audit
     # #443). Same refusal as restoring over a pending change.
-    if range_credentials.any_pending(db, rng):
-        raise HTTPException(409, "Cannot delete the snapshot: a change of one of the range's passwords is "
-                                 "still being applied in the guests; delete it once that has settled "
-                                 "(or an admin force-settles it)")
+    if range_credentials.restore_rotation_pending(db, rng, snap):
+        raise HTTPException(409, "Cannot delete the snapshot: the passwords changed by its restore are still "
+                                 "being applied in the guests; delete it once that has settled "
+                                 "(or an administrator force-settles it)")
     previous = snap.snapshot_state
     snap.snapshot_state = "deleted"
     # The passwords it recorded go now (the row itself is kept, marked deleted): sealed
