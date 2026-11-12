@@ -270,9 +270,17 @@ def get_range(
     range_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
-) -> Range:
+) -> Any:
     """Retrieve a single range.  **Permission: range:read**"""
-    return _readable_range(db, range_id, user)
+    rng = _readable_range(db, range_id, user)
+    # provisioner_output is the raw build record (vCenter endpoint, isolation probe targets,
+    # uplink, datastore paths, MoIDs, MACs). Only callers with infra:read get it; a Student
+    # or Observer holds range:read and gets it blanked (audit #443, schemas.py:147).
+    if user_has_permission(user, Permission.INFRA_READ):
+        return rng
+    out = RangeOut.model_validate(rng)
+    out.provisioner_output = None
+    return out
 
 
 @router.put("/{range_id}", response_model=RangeOut)
