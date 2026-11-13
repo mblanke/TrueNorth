@@ -1,6 +1,6 @@
 # COTE / CSTE: hardware and software to deploy TrueNorth
 
-**Status:** draft for planning, 2026-11-13. **Budget frame:** the minor-project PAD, which allocates
+**Status:** draft for planning, 2026-11-13. **Hardware purchases superseded** by `cote-gap-bom-with-mobile-kit.md` (the mobile kit is already owned); sizing and software lists here still apply. **Budget frame:** the minor-project PAD, which allocates
 $1,800,000 to hardware/software over FY 27/28–29/30 ($1.1M / $450K / $250K). Professional services
 ($400K/yr) are separate.
 
