@@ -119,11 +119,6 @@ def bundle_mode(monkeypatch):
 
 # ---- f30 companion --------------------------------------------------------------------------
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: cmi5 AU LRS proxy runs blocking httpx on the event loop while holding row "
-           "locks (control-plane/api/app/cmi5/router.py:303) — companion",
-)
 def test_f30_companion_an_independent_request_is_not_starved_behind_the_lrs_proxy(client, lrs, release, student):
     """Same finding, user-visible angle: while the proxy's backend LRS call is held in
     flight, a second, unrelated request on the same event loop must still complete."""
@@ -503,3 +498,31 @@ def test_f42_companion_a_bundle_refresh_must_not_rewrite_an_online_entrys_origin
         f"the bundle took ownership of the online-origin entry (origin is now {row.origin!r}); "
         f"the next bundle without that key would delete online-sourced knowledge"
     )
+
+
+# ---- f30 review: the commit after the LRS call -----------------------------------------------
+def test_f30_review_the_proxys_commit_does_not_run_on_the_event_loop(client, lrs, release, student, monkeypatch):
+    """The proxy's own database commit (it releases the row locks the call took) is a blocking
+    round trip too: it must run on the worker thread with the LRS call, not on the loop."""
+    import asyncio
+
+    from sqlalchemy.orm import Session
+
+    out = cmi5_launch(client, student, release)
+    au = AU(client, out["url"], student)
+    au.fetch()
+    on_loop: list[bool] = []
+    real_commit = Session.commit
+
+    def commit(self):
+        try:
+            asyncio.get_running_loop()
+            on_loop.append(True)
+        except RuntimeError:
+            on_loop.append(False)
+        return real_commit(self)
+
+    monkeypatch.setattr(Session, "commit", commit)
+    response = au.lrs("GET", "activities/state", params=au.state_params("LMS.LaunchData"))
+    assert response.status_code == 200
+    assert on_loop and not any(on_loop), "the proxy committed on the event loop"

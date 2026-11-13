@@ -120,11 +120,6 @@ def bundle_mode(monkeypatch):
 
 # ---- f30 ------------------------------------------------------------------------------------
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: cmi5 AU LRS proxy runs blocking httpx on the event loop while holding row "
-           "locks (control-plane/api/app/cmi5/router.py:303)",
-)
 def test_f30_lrs_proxy_keeps_the_event_loop_responsive(client, lrs, release, student):
     """While the proxy's backend LRS call is in flight, the event loop it runs on must stay
     responsive (or the call must not run on a loop at all)."""
