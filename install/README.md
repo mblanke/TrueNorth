@@ -238,8 +238,9 @@ tokens from `/srv/truenorth/config/prometheus/` (`PROMETHEUS_SECRETS_DIR`). The 
 healthcheck is `/health/ready`.
 
 `PLATFORM_TENANT_ID` names the operator's own tenant; its admins are the platform
-administrators (create tenants, approve into any tenant, platform-wide settings). Admins
-are per tenant. The installer sets it from `tn_platform_tenant_id`; empty (the default)
+administrators (create tenants, approve into any tenant, platform-wide settings such as the
+AI backend; `80-seed` registers it as the bootstrap administrator, so that administrator
+must belong to this tenant). Admins are per tenant. The installer sets it from `tn_platform_tenant_id`; empty (the default)
 means the bootstrap tenant (`tn_tenant_slug`): `80-seed` records its id in
 `/srv/truenorth/state/platform_tenant_id` once it exists, puts it in the env file,
 recreates the api, and every later `30-config` renders it. Set `tn_platform_tenant_id`

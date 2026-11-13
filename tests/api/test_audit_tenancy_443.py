@@ -96,11 +96,6 @@ def _platform_backend(db) -> AIBackendConfig:
 
 # ── ai_config.py:51 (high) — platform AI backend and its API key ─────────
 class TestAIConfigPlatformBoundary:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: any tenant's admin controls the platform-wide AI backend "
-        "and can exfiltrate its API key (ai_config.py:51)",
-    )
     def test_tenant_admin_cannot_reach_the_platform_backends(self, client, db_session, monkeypatch):
         """ai_config.py:51 (high): any tenant's admin controls the platform-wide AI
         backend. The router gates on AI_CONFIG_WRITE alone, which rbac.py:192 gives to
@@ -116,11 +111,6 @@ class TestAIConfigPlatformBoundary:
             )
             assert client.delete(f"/ai-config/backends/{backend.id}").status_code == 403
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: any tenant's admin controls the platform-wide AI backend "
-        "and can exfiltrate its API key (ai_config.py:51)",
-    )
     def test_tenant_admin_cannot_exfiltrate_the_platform_key_via_test_generate(
         self, client, db_session, monkeypatch
     ):
@@ -142,11 +132,6 @@ class TestAIConfigPlatformBoundary:
                 assert resp.status_code == 403, resp.text
                 assert route.called is False, "the platform AI key was posted to the repointed URL"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: any tenant's admin can rewrite the platform-wide AI backend "
-        "and have its sealed API key posted to a host they choose (ai_config.py:51)",
-    )
     def test_tenant_admin_cannot_mine_the_key_through_set_primary_or_discover(
         self, client, db_session, monkeypatch
     ):
