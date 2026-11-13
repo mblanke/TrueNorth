@@ -26,14 +26,12 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       # Same ruff as the DoD venv (scripts/dod.sh header); a newer one adds rules.
       - run: pip install "ruff==0.16.3"
-      # The same ratchet as scripts/dod.sh: breakage rules always fail, other findings
-      # may not rise above .dod-ruff-baseline.
+      # The same ratchets as scripts/dod.sh: breakage rules always fail, other findings
+      # may not rise above .dod-ruff-baseline, and only files listed in
+      # .dod-format-baseline may be unformatted.
       - run: bash scripts/ruff-gate.sh
         env:
           PY: python
-      # Report-only until the 44-file reformat lands; then drop continue-on-error.
-      - run: ruff format --check control-plane/ scenario-engine/ tools/ ai-orchestrator/
-        continue-on-error: true
 
   # The suite is split by test file across the shards (scripts/ci_shard.py): run serially it
   # took 30 to 36 minutes, and that wait was on every PR. Each shard has its own PostgreSQL
