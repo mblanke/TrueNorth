@@ -1,6 +1,6 @@
 # COTE: what is still missing, given the mobile kit already owned
 
-**Status:** draft, 2026-11-13. **Supersedes** the hardware purchase plan in
+**Status:** draft, 2026-11-13. **Budget superseded** by `cote-warehouse-kit-gap-analysis.md` (actual kit quotes); the diode requirements in §3 still apply. **Supersedes** the hardware purchase plan in
 `cote-hardware-software-bom.md`. That document's sizing, software list and site prerequisites
 still apply. **Budget frame:** the minor-project PAD: $1.8M hardware/software over FY 27/28–29/30
 ($1.1M / $450K / $250K), plus $400K/yr professional services.
