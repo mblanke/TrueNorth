@@ -9606,6 +9606,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tickets/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ticket Categories
+         * @description The fixed list of ticket categories (key and display name).
+         */
+        get: operations["list_ticket_categories_tickets_categories_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ticket Labels
+         * @description Labels in use across the tenant's tickets, most used first (for suggestions and filters).
+         */
+        get: operations["list_ticket_labels_tickets_labels_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tickets/queues": {
         parameters: {
             query?: never;
@@ -20700,6 +20740,13 @@ export interface components {
             /** Tickets */
             tickets: components["schemas"]["TicketListOut"][];
         };
+        /** TicketCategoryOut */
+        TicketCategoryOut: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+        };
         /** TicketCommentIn */
         TicketCommentIn: {
             /** Body */
@@ -20774,6 +20821,13 @@ export interface components {
              * @default incident
              */
             type?: string;
+        };
+        /** TicketLabelCountOut */
+        TicketLabelCountOut: {
+            /** Count */
+            count: number;
+            /** Label */
+            label: string;
         };
         /** TicketListOut */
         TicketListOut: {
@@ -39241,6 +39295,9 @@ export interface operations {
                 type?: string | null;
                 queue_id?: string | null;
                 range_id?: string | null;
+                category?: string | null;
+                /** @description staff only */
+                label?: string | null;
                 q?: string | null;
                 limit?: number;
             };
@@ -39412,6 +39469,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ticket_categories_tickets_categories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketCategoryOut"][];
+                };
+            };
+        };
+    };
+    list_ticket_labels_tickets_labels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketLabelCountOut"][];
                 };
             };
         };

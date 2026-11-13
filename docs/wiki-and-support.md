@@ -89,7 +89,16 @@ caller's own. In-app only for now: no email, and no live push (the WebSocket
 - **"Report a problem"** appears on the Exercises list, the exercise page and the Ranges
   list (for roles that may file tickets), and opens `/support/new` with the exercise and
   its range filled in.
-- **Labels and category** exist on tickets (search matches labels) but have no screen yet.
+- **Category** is one of a fixed list (`GET /tickets/categories`: range or lab, VM console
+  or access, network, account or sign-in, scoring, course content, TrueNorth itself,
+  something else). The reporter picks it when filing; staff can change it on the ticket.
+  Anyone can filter the list by it.
+- **Labels** are staff triage tags: lowercase, up to 10 per ticket, each up to 30
+  characters from `a-z 0-9 . _ : / -`, added and removed as chips on the ticket (with
+  suggestions from the labels already in use, `GET /tickets/labels`) and used to filter
+  the list and shown on board cards. **A reporter never sees them**: they are masked in
+  every response, left out of the reporter's search, refused as a filter, and their
+  history rows are hidden. Only staff can set them.
 
 ## Reviews
 
@@ -104,7 +113,7 @@ app-wide NaN/Infinity 422-turned-500 found along the way is fixed in
 
 ## Not in this version
 
-- Email notifications, and live push for the bell (it polls once a minute).
-- AI triage ("ask AI", "run diagnostics") from the March design.
-- Images inside wiki pages, and full-text search through OpenSearch (search is
-  title/body/tags matching in the database today).
+- Email notifications (#378), and live push for the bell (#377; it polls once a minute).
+- AI triage ("ask AI", "run diagnostics") from the March design (#381).
+- Images inside wiki pages (#379), and full-text search through OpenSearch (search is
+  title/body/tags matching in the database today, #380).

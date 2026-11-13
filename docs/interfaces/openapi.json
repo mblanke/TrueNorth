@@ -24558,6 +24558,24 @@
         "title": "TicketBoardColumn",
         "type": "object"
       },
+      "TicketCategoryOut": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "TicketCategoryOut",
+        "type": "object"
+      },
       "TicketCommentIn": {
         "properties": {
           "body": {
@@ -24710,6 +24728,24 @@
           "subject"
         ],
         "title": "TicketIn",
+        "type": "object"
+      },
+      "TicketLabelCountOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "count"
+        ],
+        "title": "TicketLabelCountOut",
         "type": "object"
       },
       "TicketListOut": {
@@ -55585,6 +55621,42 @@
           },
           {
             "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "description": "staff only",
+            "in": "query",
+            "name": "label",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 30,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "staff only",
+              "title": "Label"
+            }
+          },
+          {
+            "in": "query",
             "name": "q",
             "required": false,
             "schema": {
@@ -55881,6 +55953,68 @@
           }
         ],
         "summary": "Board",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/tickets/categories": {
+      "get": {
+        "description": "The fixed list of ticket categories (key and display name).",
+        "operationId": "list_ticket_categories_tickets_categories_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TicketCategoryOut"
+                  },
+                  "title": "Response List Ticket Categories Tickets Categories Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Ticket Categories",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/tickets/labels": {
+      "get": {
+        "description": "Labels in use across the tenant's tickets, most used first (for suggestions and filters).",
+        "operationId": "list_ticket_labels_tickets_labels_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TicketLabelCountOut"
+                  },
+                  "title": "Response List Ticket Labels Tickets Labels Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Ticket Labels",
         "tags": [
           "tickets"
         ]
