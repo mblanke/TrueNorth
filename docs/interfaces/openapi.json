@@ -38566,7 +38566,7 @@
     },
     "/exercises/{exercise_id}/complete": {
       "post": {
-        "description": "Complete an exercise and tally scores.  **Permission: exercise:complete**\n\nCompetency assessment, the LTI grade and the xAPI statement go to whoever completed it\nand to every Student who submitted a detection in this run (app/exercise_completion).",
+        "description": "Complete an exercise and tally scores.  **Permission: exercise:complete**\n\nCompetency assessment, the LTI grade and the xAPI statement go to the exercise's Students\n(its seat or its teams) and every Student who submitted a detection in this run, not to an\ninstructor who completes it (app/exercise_completion, #375).",
         "operationId": "complete_exercise_exercises__exercise_id__complete_post",
         "parameters": [
           {
