@@ -503,6 +503,27 @@ def test_failed_dials_do_not_spend_a_grants_connections(client, world, isolated_
         assert ws.receive_bytes() == RFB_GREETING
 
 
+def test_failed_dials_in_a_row_while_each_clean_up_is_still_running(client, world, isolated_db, monkeypatch):
+    # The client moves on as soon as it sees the close; the socket's ``finally`` gives the grant
+    # back once more on a worker thread. Held open here, that step overlaps the next socket's
+    # (CI: "no such savepoint", then PendingRollbackError, on the test above).
+    real = service.release
+
+    def slow_release(db, grant_id, holder):
+        db.query(ConsoleGrant.id).first()  # the step's savepoint is open
+        time.sleep(0.05)
+        real(db, grant_id, holder)
+
+    monkeypatch.setattr(service, "release", slow_release)
+    token = world.grant(world.ann)
+    MockConsole.dial_error = "no"
+    for _ in range(4):
+        assert _closed_with(client, token)[0] == 4502
+    MockConsole.dial_error = None
+    with _open(client, token) as ws:
+        assert ws.receive_bytes() == RFB_GREETING
+
+
 def test_a_user_holds_four_live_grants_at_most(world, db_session):
     for i in range(service.MAX_LIVE_GRANTS):
         world.grant(world.ann, vm_name=f"vm{i}")
@@ -764,8 +785,9 @@ def test_a_dial_whose_claim_lapsed_meanwhile_closes_4409(client, world, db_sessi
     monkeypatch.setattr(service, "record_dial", taken)
     code, reason = _closed_with(client, world.grant(world.ann))
     assert code == 4409 and "another window" in reason
-    db_session.expire_all()
-    assert db_session.query(ConsoleGrant).one().dials == 0  # nothing was counted
+    with _ONE_STATEMENT_AT_A_TIME:  # the closed socket's clean-up may still be running
+        db_session.expire_all()
+        assert db_session.query(ConsoleGrant).one().dials == 0  # nothing was counted
 
 
 def test_a_step_that_raises_is_rolled_back_not_committed(client, world, db_session, isolated_db, monkeypatch):
