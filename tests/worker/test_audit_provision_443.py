@@ -123,8 +123,6 @@ def _range_with_output(db_session, tenant_id) -> Range:
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Students can read the full provisioner_output "
-                                       "of any non-lab range in their tenant (schemas.py:147)")
 def test_a_student_cannot_read_a_range_provisioner_output(client, db_session):
     """Audit #443, high, control-plane/api/app/schemas.py:147 — "Students can read the full
     ``provisioner_output`` of any non-lab range in their tenant": vCenter endpoint,
@@ -145,8 +143,6 @@ def test_a_student_cannot_read_a_range_provisioner_output(client, db_session):
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Students can read the full provisioner_output "
-                                       "of any non-lab range in their tenant (schemas.py:147)")
 def test_an_observer_cannot_read_a_range_provisioner_output(client, db_session):
     """Audit #443, high, control-plane/api/app/schemas.py:147 — same finding, second role:
     an Observer holds ``RANGE_READ`` too (rbac.py), so the raw column reaches it as well.

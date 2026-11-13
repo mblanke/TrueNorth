@@ -172,8 +172,6 @@ def _range_in_state(db_session, tenant_id, state) -> Range:
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Students can read the full provisioner_output "
-                                       "of any non-lab range in their tenant (schemas.py:147) — companion")
 def test_a_student_cannot_read_a_failed_range_provisioner_output(client, db_session):
     """Companion to the schemas.py:147 finding (the oracle's input: a ``ready`` range).
     Boundary value of the state: a ``failed`` build is exactly the range with leftovers —
@@ -191,8 +189,6 @@ def test_a_student_cannot_read_a_failed_range_provisioner_output(client, db_sess
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Students can read the full provisioner_output "
-                                       "of any non-lab range in their tenant (schemas.py:147) — companion")
 def test_an_observer_cannot_read_a_failed_range_provisioner_output(client, db_session):
     """Companion to the schemas.py:147 finding for the Observer (the oracle's input: a
     ``ready`` range). Same boundary value of the state — a ``failed`` range's raw output
@@ -256,3 +252,35 @@ def test_reconcile_does_not_delete_a_lab_vm_by_name_prefix_alone(monkeypatch, le
     monkeypatch.setattr(lab_tasks, "_get_backend", lambda backend, *a, **kw: Prov())
     out = lab_tasks.reconcile_lab_vms.run(["bbbbbbbb-1111-2222-3333-444444444444"], "vsphere_api")
     assert destroyed == [], f"deleted on the name prefix alone: {out}"
+
+
+@pytest.mark.parametrize("role", [UserRole.admin, UserRole.range_ops])
+def test_infrastructure_roles_still_see_the_provisioner_output(client, db_session, role):
+    """Guard for the schemas.py:147 fix: the filter is ``infra:read``, so the other staff
+    roles that hold it (admin, range_ops) keep the output; only Student and Observer lose it."""
+    tenant = real_tenant(db_session)
+    user = real_user(db_session, role, tenant.id)
+    rng = _range_in_state(db_session, tenant.id, RangeState.ready)
+    act_as(user)
+    body = client.get(f"/ranges/{rng.id}")
+    assert body.status_code == 200, body.text
+    shown = body.json()["provisioner_output"]
+    assert shown is not None, "the infrastructure role lost the output"
+    assert "https://vcenter.site/" in shown
+
+
+def test_a_student_sees_no_raw_build_error_but_staff_do(client, db_session):
+    """Same boundary as the provisioner_output fix: ``error_message`` is the worker's raw
+    exception text (vCenter host, datastore, MoIDs). Student/Observer get a fixed
+    sentence from GET /ranges/{id} and the list; infra:read roles keep the text."""
+    tenant = real_tenant(db_session)
+    rng = _range_in_state(db_session, tenant.id, RangeState.failed)
+    rng.error_message = "Cannot find datastore esx03-local on vcenter.site (vm-4412)"
+    db_session.flush()
+    act_as(real_user(db_session, UserRole.student, tenant.id))
+    one = client.get(f"/ranges/{rng.id}").json()
+    listed = [r for r in client.get("/ranges").json() if r["id"] == str(rng.id)]
+    assert one["error_message"] and "vcenter.site" not in one["error_message"]
+    assert listed and "vcenter.site" not in (listed[0]["error_message"] or "")
+    act_as(real_user(db_session, UserRole.instructor, tenant.id))
+    assert "vcenter.site" in client.get(f"/ranges/{rng.id}").json()["error_message"]

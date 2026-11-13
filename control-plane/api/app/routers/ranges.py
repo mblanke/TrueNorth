@@ -166,6 +166,9 @@ def _hide_lab_ranges(db: Session, user: CurrentUser, ranges: list[Range]) -> lis
     return [r for r in ranges if r.id not in labs]
 
 
+# What a caller without infra:read sees in place of a build's raw error text.
+_BUILD_ERROR_HIDDEN = "The build failed. Ask an instructor or administrator for details."
+
 # Snapshot states in which a worker task still owns the row.
 _SNAPSHOT_BUSY = ("creating", "restoring")
 
@@ -229,7 +232,7 @@ def list_ranges(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
-) -> list[Range]:
+) -> list[RangeListOut]:
     """List ranges for the user's tenant.  **Permission: range:read**"""
     rows = (
         db.query(Range)
@@ -239,7 +242,11 @@ def list_ranges(
         .limit(limit)
         .all()
     )
-    return _hide_lab_ranges(db, user, rows)
+    outs = [RangeListOut.model_validate(r) for r in _hide_lab_ranges(db, user, rows)]
+    if not user_has_permission(user, Permission.INFRA_READ):
+        for o in outs:
+            o.error_message = _BUILD_ERROR_HIDDEN if o.error_message else None
+    return outs
 
 
 @router.get("/stats", response_model=RangeStatsOut)
@@ -270,9 +277,17 @@ def get_range(
     range_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
-) -> Range:
+) -> RangeOut:
     """Retrieve a single range.  **Permission: range:read**"""
-    return _readable_range(db, range_id, user)
+    out = RangeOut.model_validate(_readable_range(db, range_id, user))
+    # provisioner_output is the raw build record (vCenter endpoint, isolation probe targets,
+    # uplink, datastore paths, MoIDs, MACs) and error_message is the worker's raw exception
+    # text. Only callers with infra:read get either; a Student or Observer holds range:read
+    # and gets them blanked (audit #443, schemas.py:147).
+    if not user_has_permission(user, Permission.INFRA_READ):
+        out.provisioner_output = None
+        out.error_message = _BUILD_ERROR_HIDDEN if out.error_message else None
+    return out
 
 
 @router.put("/{range_id}", response_model=RangeOut)
@@ -355,7 +370,9 @@ def get_range_diagram(
     has a picture. ``source: none`` when the template declares no hosts.
     """
     rng = _readable_range(db, range_id, user)
-    return range_diagram.range_diagram(rng)
+    # The generated picture carries each built VM's address from the build record; only
+    # callers with infra:read get those (audit #443, schemas.py:147).
+    return range_diagram.range_diagram(rng, show_addresses=user_has_permission(user, Permission.INFRA_READ))
 
 
 @router.put("/{range_id}/diagram")
