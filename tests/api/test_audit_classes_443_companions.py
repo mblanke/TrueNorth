@@ -51,9 +51,6 @@ _DONOR_FIXTURES = (cluster, outbox, seats, sign_in, world)
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Lead instructor re-dates an open class "
-                                        "after approval; the class hold stretches to the new "
-                                        "end_date with no re-approval (classes/router.py:349) — companion")
 def test_companion_f1_redating_by_one_day_already_reaches_past_the_approved_plan(client, world):
     ev = _book(client, world)  # approved session DAY 09:00-12:00 UTC (shared template)
     _approve(client, world, ev)
@@ -244,3 +241,49 @@ def test_companion_f6_sign_in_on_the_last_site_day_admits_only_the_class_still_r
     assert [e.class_id for e in claimed] == [running.id], (
         "the sign-in joins the class still running on the site's day, never the one that ended"
     )
+
+
+# ── 1. Re-dating: what the fix must still allow ────────────────────────────
+
+
+def test_an_admin_may_still_extend_a_class_with_approved_sessions(client, world):
+    """Guard for the router.py:349 fix: the refusal is the lead's; an admin approves holds."""
+    ev = _book(client, world)
+    _approve(client, world, ev)
+    act_as(world["admin"])
+    r = client.put(f"/classes/{world['class']['id']}",
+                   json=_class_body(world, end_date=str((DAY + timedelta(days=9)).date())))
+    assert r.status_code == 200, r.text
+
+
+def test_the_lead_may_extend_a_class_that_has_no_approved_session(client, world):
+    """Guard: with nothing approved there is no hold to stretch, so the lead may re-date."""
+    act_as(world["lead"])
+    r = client.put(f"/classes/{world['class']['id']}",
+                   json=_class_body(world, end_date=str((DAY + timedelta(days=9)).date())))
+    assert r.status_code == 200, r.text
+
+
+def test_the_lead_may_still_shorten_or_rename_a_class_with_approved_sessions(client, world):
+    """Guard: only moving the end date later is refused; same-or-earlier and other edits land."""
+    ev = _book(client, world)
+    _approve(client, world, ev)
+    act_as(world["lead"])
+    for end in (DAY + timedelta(days=4), DAY + timedelta(days=3)):
+        r = client.put(f"/classes/{world['class']['id']}",
+                       json=_class_body(world, name="renamed", end_date=str(end.date())))
+        assert r.status_code == 200, r.text
+
+
+def test_the_lead_may_not_extend_a_class_whose_approved_session_is_already_over(client, world, db_session):
+    """Review finding B1: a finished session still holds the class's ranges until its last
+    day, so the guard must not look only at upcoming sessions."""
+    ev = _book(client, world)
+    _approve(client, world, ev)
+    row = db_session.get(ScheduledEvent, uuid.UUID(ev["id"]))
+    row.state = "completed"
+    db_session.commit()
+    act_as(world["lead"])
+    r = client.put(f"/classes/{world['class']['id']}",
+                   json=_class_body(world, end_date=str((DAY + timedelta(days=9)).date())))
+    assert r.status_code == 409, r.text
