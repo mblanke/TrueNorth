@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { AppNotification, NotificationsApiService } from '@core/services/notifications-api.service';
 import { NotificationBellComponent } from './notification-bell.component';
 
@@ -13,11 +13,13 @@ describe('NotificationBellComponent', () => {
   let api: jasmine.SpyObj<NotificationsApiService>;
 
   beforeEach(() => {
-    api = jasmine.createSpyObj('NotificationsApiService', ['unreadCount', 'list', 'markRead', 'markAllRead']);
+    api = jasmine.createSpyObj('NotificationsApiService', ['unreadCount', 'list', 'markRead', 'markAllRead', 'settings', 'saveSettings']);
     api.unreadCount.and.returnValue(of({ unread: 2 }));
     api.list.and.returnValue(of([note('1'), note('2', true)]));
     api.markRead.and.returnValue(of(note('1', true)));
     api.markAllRead.and.returnValue(of({ unread: 0 }));
+    api.settings.and.returnValue(of({ email_tickets: true, email_available: true }));
+    api.saveSettings.and.callFake(on => of({ email_tickets: on, email_available: true }));
     TestBed.configureTestingModule({
       imports: [NotificationBellComponent],
       providers: [provideRouter([]), { provide: NotificationsApiService, useValue: api }],
@@ -51,5 +53,49 @@ describe('NotificationBellComponent', () => {
     fixture.componentInstance.readAll();
     fixture.detectChanges();
     expect((fixture.nativeElement as HTMLElement).querySelector('.badge')).toBeNull();
+  });
+
+  describe('email switch (#378)', () => {
+    const open = () => {
+      const fixture = TestBed.createComponent(NotificationBellComponent);
+      fixture.detectChanges();
+      fixture.componentInstance.toggle();
+      fixture.detectChanges();
+      return fixture;
+    };
+    const box = (f: ReturnType<typeof open>) =>
+      (f.nativeElement as HTMLElement).querySelector('.foot input') as HTMLInputElement | null;
+
+    it('shows the checkbox, on by default, once the panel is open', () => {
+      const f = open();
+      expect(box(f)?.checked).toBeTrue();
+    });
+
+    it('turning it off saves the choice', () => {
+      const f = open();
+      box(f)!.click();
+      f.detectChanges();
+      expect(api.saveSettings).toHaveBeenCalledOnceWith(false);
+      expect(box(f)?.checked).toBeFalse();
+    });
+
+    it('puts the box back and says so when saving fails', () => {
+      api.saveSettings.and.returnValue(throwError(() => new Error('down')));
+      const f = open();
+      box(f)!.click();
+      f.detectChanges();
+      expect(f.componentInstance.settings()?.email_tickets).toBeTrue();
+      expect((f.nativeElement as HTMLElement).querySelector('.err')?.textContent).toContain('Could not save');
+    });
+
+    it('hides the switch when the install has no outgoing mail', () => {
+      api.settings.and.returnValue(of({ email_tickets: true, email_available: false }));
+      expect(box(open())).toBeNull();
+    });
+
+    it('hides it if the settings cannot be read', () => {
+      api.settings.and.returnValue(throwError(() => new Error('down')));
+      expect(box(open())).toBeNull();
+    });
   });
 });

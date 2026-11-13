@@ -16526,6 +16526,37 @@
         "title": "NotificationOut",
         "type": "object"
       },
+      "NotificationSettingsIn": {
+        "properties": {
+          "email_tickets": {
+            "title": "Email Tickets",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "email_tickets"
+        ],
+        "title": "NotificationSettingsIn",
+        "type": "object"
+      },
+      "NotificationSettingsOut": {
+        "properties": {
+          "email_available": {
+            "title": "Email Available",
+            "type": "boolean"
+          },
+          "email_tickets": {
+            "title": "Email Tickets",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "email_tickets",
+          "email_available"
+        ],
+        "title": "NotificationSettingsOut",
+        "type": "object"
+      },
       "NotificationUnreadCountOut": {
         "properties": {
           "unread": {
@@ -44482,6 +44513,77 @@
           }
         ],
         "summary": "Mark All Read",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/notifications/settings": {
+      "get": {
+        "operationId": "get_settings_notifications_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Settings",
+        "tags": [
+          "notifications"
+        ]
+      },
+      "put": {
+        "description": "Your own switch only: the row is keyed by the caller, never by anything in the request.",
+        "operationId": "put_settings_notifications_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Settings",
         "tags": [
           "notifications"
         ]

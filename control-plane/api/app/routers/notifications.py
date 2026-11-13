@@ -10,6 +10,8 @@ GET    /notifications                      signed in
 GET    /notifications/unread-count         signed in
 POST   /notifications/{id}/read            signed in (own only)
 POST   /notifications/read-all             signed in
+GET    /notifications/settings             signed in (own only)
+PUT    /notifications/settings             signed in (own only)
 =========================================  ==========================
 """
 
@@ -25,7 +27,9 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
-from ..notifications.models import UserNotification
+from ..models import User
+from ..notifications.models import NotificationPreference, UserNotification
+from ..notifications.smtp import smtp_settings
 from ..tenancy import tenant_uuid
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -44,6 +48,16 @@ class NotificationOut(BaseModel):
 
 class NotificationUnreadCountOut(BaseModel):
     unread: int
+
+
+class NotificationSettingsOut(BaseModel):
+    email_tickets: bool
+    # False when this install has no outgoing mail server; the switch then does nothing yet.
+    email_available: bool
+
+
+class NotificationSettingsIn(BaseModel):
+    email_tickets: bool
 
 
 def _mine(db: Session, user: CurrentUser):
@@ -100,6 +114,53 @@ def mark_all_read(
     )
     db.commit()
     return NotificationUnreadCountOut(unread=0)
+
+
+def _pref(db: Session, user: CurrentUser) -> NotificationPreference | None:
+    """The caller's own row (user and tenant both in the query)."""
+    return (
+        db.query(NotificationPreference)
+        .filter(
+            NotificationPreference.user_id == uuid.UUID(user.id), NotificationPreference.tenant_id == tenant_uuid(user)
+        )
+        .first()
+    )
+
+
+def _settings(db: Session, user: CurrentUser) -> NotificationSettingsOut:
+    row = _pref(db, user)
+    return NotificationSettingsOut(
+        email_tickets=True if row is None else row.email_tickets,
+        email_available=smtp_settings().configured,
+    )
+
+
+@router.get("/settings", response_model=NotificationSettingsOut)
+def get_settings(
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> NotificationSettingsOut:
+    return _settings(db, user)
+
+
+@router.put("/settings", response_model=NotificationSettingsOut)
+def put_settings(
+    body: NotificationSettingsIn,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> NotificationSettingsOut:
+    """Your own switch only: the row is keyed by the caller, never by anything in the request."""
+    uid = uuid.UUID(user.id)
+    account = db.query(User.id).filter(User.id == uid, User.tenant_id == tenant_uuid(user)).first()
+    if account is None:  # a token with no account row (development sign-in off)
+        raise HTTPException(404, "User not found")
+    row = _pref(db, user)
+    if row is None:
+        db.add(NotificationPreference(user_id=uid, tenant_id=tenant_uuid(user), email_tickets=body.email_tickets))
+    else:
+        row.email_tickets = body.email_tickets
+    db.commit()
+    return _settings(db, user)
 
 
 @router.post("/{notification_id}/read", response_model=NotificationOut)
