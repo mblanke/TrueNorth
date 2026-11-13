@@ -135,14 +135,26 @@ describe('MyProgressComponent', () => {
     expect(stats()).toEqual(['42', '2', '3', '77%']);
   });
 
-  it('renders transcript rows with grade, score or a dash', () => {
+  it('renders transcript rows with a Pass or Fail result, never a score or a letter', () => {
     create();
     const rows = Array.from(el.querySelectorAll('tr.mat-mdc-row'));
     expect(rows.length).toBe(2);
     expect(rows[0].textContent).toContain('Ransomware IR');
-    expect(rows[0].textContent).toContain('88%');
-    expect(rows[1].textContent).toContain('A');
+    expect(rows[0].querySelector('[data-result]')?.textContent?.trim()).toBe('Pass');
+    expect(rows[0].textContent).not.toContain('88%');
+    expect(rows[1].querySelector('[data-result]')?.textContent?.trim()).toBe('Pass');
     expect(rows[1].querySelector('.source-badge')?.getAttribute('data-source')).toBe('moodle');
+  });
+
+  it('decides Pass, Fail or no result from the grade and completion only', () => {
+    create();
+    expect(component.result({ grade: 'A', completed_at: null })).toBe('Pass');
+    expect(component.result({ grade: 'D', completed_at: '2026-11-09T00:00:00Z' })).toBe('Pass');
+    expect(component.result({ grade: 'F', completed_at: '2026-11-09T00:00:00Z' })).toBe('Fail');
+    expect(component.result({ grade: ' f ', completed_at: null })).toBe('Fail');
+    expect(component.result({ grade: null, completed_at: '2026-11-09T00:00:00Z' })).toBe('Pass');
+    expect(component.result({ grade: null, completed_at: null })).toBe('-');
+    expect(component.result({})).toBe('-');
   });
 
   it('builds the capability radar from three or more categories', () => {
