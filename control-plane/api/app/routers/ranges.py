@@ -204,7 +204,7 @@ def create_range(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_CREATE)),
 ) -> Range:
     """Create a new range.  **Permission: range:create**"""
-    tmpl = get_owned(db, Template, body.template_id, user, not_found="Template not found")
+    get_owned(db, Template, body.template_id, user, not_found="Template not found")
     rng = Range(
         name=body.name,
         template_id=body.template_id,
@@ -839,7 +839,7 @@ def list_snapshots(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
 ) -> list[SnapshotOut]:
-    rng = _readable_range(db, range_id, user)
+    _readable_range(db, range_id, user)
     return (
         db.query(RangeSnapshot)
         .filter(RangeSnapshot.range_id == range_id)

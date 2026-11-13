@@ -82,7 +82,7 @@ async def create_annotation(
     user: CurrentUser = Depends(get_current_user),
 ):
     """Create an analyst annotation and broadcast to ops channel."""
-    exercise = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
+    get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
 
     annotation = AnalystAnnotation(
         id=uuid.uuid4(),
