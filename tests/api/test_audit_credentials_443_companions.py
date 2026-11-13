@@ -108,10 +108,6 @@ def _range_for(client, db, world, tenant: str, yaml: str, state: RangeState | No
 
 # ── #443-1: a rotation of a never-applied account that fails in the guest ───────────────
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True,
-                   reason="audit #443: Admin rotation of a never-applied account settles as applied=True with a "
-                          "password the guest never had (control-plane/api/app/range_credentials/service.py:450) — "
-                          "companion")
 def test_the_same_never_applied_rotation_lies_in_both_tenants(client, db_session, world, no_tasks):
     """#443-1 companion (high) — control-plane/api/app/range_credentials/service.py:450,
     pinned from a two-tenant matrix: each tenant's own admin rotates the never-applied
@@ -129,7 +125,10 @@ def test_the_same_never_applied_rotation_lies_in_both_tenants(client, db_session
         db_session.commit()
         act_as(world[admin])
         resp = _rotate(client, rng, row)
-        assert resp.status_code == 202, resp.text  # a refusal of a not-applied row also fixes the finding
+        if resp.status_code != 202:  # a refusal of a not-applied row also fixes the finding
+            assert resp.status_code == 409, resp.text
+            rows[tenant] = _row(db_session, rng, "web01", "analyst")
+            continue
         operation = resp.json()["operation_id"]
         db_session.expire_all()
         row = _row(db_session, rng, "web01", "analyst")
@@ -147,9 +146,6 @@ def test_the_same_never_applied_rotation_lies_in_both_tenants(client, db_session
 
 # ── #443-2: a snapshot deleted over its pending restore rotation ────────────────────────
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True,
-                   reason="audit #443: Deleting a snapshot right after restoring it destroys the passwords the "
-                          "queued rotation needs (control-plane/api/app/routers/ranges.py:964) — companion")
 def test_an_instructor_cannot_delete_a_snapshot_over_a_pending_restore_rotation(client, db_session, world, no_tasks):
     """#443-2 companion (high) — control-plane/api/app/routers/ranges.py:964, pinned from a
     second role: the instructor holds ``range:destroy`` (app/rbac.py ROLE_PERMISSIONS) and
