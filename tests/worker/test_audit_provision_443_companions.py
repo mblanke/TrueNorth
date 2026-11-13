@@ -70,8 +70,6 @@ def task_env(monkeypatch, lease_always_free):
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Partial vSphere teardown is recorded as "
-                                       "`destroyed` (control-plane/worker/worker/tasks.py:230) — companion")
 def test_a_partial_destroy_that_keeps_the_port_group_is_not_recorded_destroyed_and_releases_nothing(
         task_env, monkeypatch):
     """Companion to the tasks.py:230 finding (the oracle's input: a VM whose power-off
@@ -118,8 +116,6 @@ def test_a_partial_destroy_that_keeps_the_port_group_is_not_recorded_destroyed_a
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: A partial build (a VM failed to clone) is "
-                                       "recorded `ready` with no error (tasks.py:168) — companion")
 def test_a_partial_build_persists_its_error_and_is_never_settled_ready(task_env, monkeypatch):
     """Companion to the tasks.py:168 finding (the oracle's input pins the greyspace half —
     greyspace must not run on a partly built range — and reads the task's return dict; the

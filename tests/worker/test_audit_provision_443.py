@@ -65,8 +65,6 @@ def task_env(monkeypatch, lease_always_free):
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Partial vSphere teardown is recorded as "
-                                        "`destroyed` (control-plane/worker/worker/tasks.py:230)")
 def test_a_partial_destroy_is_not_recorded_destroyed_and_releases_nothing(task_env, monkeypatch):
     """Audit #443, high, control-plane/worker/worker/tasks.py:230 — "Partial vSphere
     teardown is recorded as `destroyed`" (listed twice; the duplicate's title: "A partial
@@ -174,8 +172,6 @@ def test_staff_still_sees_the_provisioner_output(client, db_session):
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: A partial build (a VM failed to clone) is "
-                                       "recorded `ready` with no error (tasks.py:168)")
 def test_a_partial_build_is_not_settled_ready_without_a_persisted_error(task_env, monkeypatch):
     """Audit #443, high, control-plane/worker/worker/tasks.py:168 — "A partial build (a VM
     failed to clone) is recorded `ready` with no error; the errors are never persisted".
