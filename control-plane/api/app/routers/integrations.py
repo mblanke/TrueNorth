@@ -945,7 +945,19 @@ def _launch_lab(db: Session, user: User, rid: str) -> str:
         raise HTTPException(exc.status, str(exc)) from exc
     db.commit()
     labs.flush_outbox(db)
-    token = lab_tokens.mint(db, session.id, user.id, session.max_expires_at)
+    # A resume can land while an expired lab is still being torn down (#443): its maximum
+    # lifetime is already past, and a token minted from that 401s on the page's first read.
+    # Floor the lifetime so the page loads and shows the ended-lab state instead.
+    from datetime import UTC, datetime, timedelta
+
+    # Only for a lab already ending or ended: a READY/ACTIVE lab keeps its real expiry, or a
+    # token would outlive it and could reset it before the first page read ends it.
+    until = session.max_expires_at
+    if until is not None and (session.state in labs.ENDING or session.state in labs.TERMINAL):
+        if until.tzinfo is None:
+            until = until.replace(tzinfo=UTC)
+        until = max(until, datetime.now(UTC) + timedelta(seconds=lab_tokens.ENDED_GRACE_SECONDS))
+    token = lab_tokens.mint(db, session.id, user.id, until)
     return f"{WEB_BASE_URL}/labs/{session.id}?lti=1#token={token}"
 
 

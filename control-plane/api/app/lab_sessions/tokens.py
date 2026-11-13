@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 import jwt
 from cryptography.hazmat.primitives import serialization
@@ -21,6 +21,9 @@ from .. import lti13
 
 AUDIENCE = "truenorth-lab"
 MAX_SECONDS = 12 * 3600
+# A launch that resumes a lab already past its maximum lifetime (still being torn down)
+# gets a token this long, so the lab page can load and show the ended state (#443).
+ENDED_GRACE_SECONDS = 300
 
 
 class LabTokenError(ValueError):
@@ -29,6 +32,8 @@ class LabTokenError(ValueError):
 
 def mint(db: Session, session_id: uuid.UUID, user_id: uuid.UUID, expires_at: datetime | None) -> str:
     now = int(time.time())
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)  # the database hands back naive UTC; never read it as local time
     until = int(expires_at.timestamp()) if expires_at else now + MAX_SECONDS
     key = lti13.get_tool_key(db)
     claims = {
