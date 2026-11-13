@@ -25,6 +25,7 @@ from ..console_relay import service as relay
 from ..db import get_db
 from ..lab_sessions import capacity_gate, service, tokens
 from ..lab_sessions.models import LabSession
+from ..models import User
 from ..range_credentials import service as cred_service
 from ..range_credentials.router import RangeCredentialOut, RevealedCredentialOut, account_out
 from ..rbac import Permission, require_permission, user_has_permission
@@ -152,7 +153,8 @@ def _token_session(db: Session, session_id: uuid.UUID, token: str | None, *, act
     """The session a lab token is for, checked against the session as it is now, not only
     as it was when the token was minted (CR1-17): a token outlives a lab that ended and an
     enrollment that was withdrawn. Reading an ended lab (``act=False``) stays allowed, so the
-    page can say it ended; acting on it does not."""
+    page can say it ended; acting on it does not. A disabled or deleted owner is refused on
+    every route, reads included, as the signed-in path refuses them."""
     if not token:
         raise HTTPException(401, "X-Lab-Token is required")
     try:
@@ -164,6 +166,14 @@ def _token_session(db: Session, session_id: uuid.UUID, token: str | None, *, act
     s = db.get(LabSession, session_id)
     if s is None or claims.get("uid") != str(s.user_id):
         raise HTTPException(404, "lab session not found")
+    # The owner's account as it is now (audit #443): a deactivated (AD sync, admin) or
+    # soft-deleted Student keeps the enrolment, so the check below does not catch them. Every
+    # other entry point refuses them (auth.py account_disabled, the console relay policy, the
+    # LTI hand-off).
+    # tenant-safe: the session's own owner, whose tenant was fixed when the lab was launched.
+    owner = db.get(User, s.user_id)
+    if owner is None or not owner.is_active or owner.deleted_at is not None:
+        raise HTTPException(403, "this account is disabled")
     if service.enrollment_closed(db, s):
         raise HTTPException(403, "your enrollment in this course has closed")
     if act and s.state in (*service.ENDING, *service.TERMINAL):

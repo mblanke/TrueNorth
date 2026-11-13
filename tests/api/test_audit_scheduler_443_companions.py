@@ -30,9 +30,6 @@ SOON = (datetime.now(UTC) + timedelta(days=2)).replace(hour=13, minute=0, second
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Lab access token keeps working after the "
-                                        "Student's account is deactivated (control-plane/api/app/routers/lab_sessions.py:151"
-                                        " at the audit base) — companion: the soft-deleted owner")
 def test_a_lab_token_stops_working_when_its_owner_is_soft_deleted(lab, db_session, worker):  # noqa: F811
     """Companion to test_a_lab_token_stops_working_when_its_owner_is_deactivated (audit443
     HIGH finding, the ``_token_session`` path — control-plane/api/app/routers/lab_sessions.py:151
