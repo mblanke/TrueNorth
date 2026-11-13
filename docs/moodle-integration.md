@@ -5,8 +5,9 @@
 > verified job, with native Moodle quizzes and LTI lab links. This supersedes "Custom Moodle
 > PHP plugin? Not now" below. See `docs/adr/0004-moodle-course-publication.md`.
 
-> **Status:** design. The security fixes it depends on have been made (commit `25b4a89`). The
-> integration itself isn't built. Written 2026-09-23.
+> **Status:** Phase 1 and most of Phase 2 are built (see the dated notes below; the header
+> note at the top summarises what changed since). Written 2026-09-23 as design; the security
+> fixes it depends on landed in commit `25b4a89`.
 >
 > **Reference:** `docs/xAPI CMI5 Reference/xapi-cmi5-kb/` (the owner's knowledge pack). This doc
 > cites it by section (for example "KB §9.3") instead of repeating it. Check the pack's §19
@@ -62,8 +63,8 @@ cmi5 `moveOn` of `Passed` expresses, so the two agree without new logic.
 |---|---|---|
 | LTI 1.3 tool: OIDC login, JWKS, launch validation, Deep Linking, AGS push | `control-plane/api/app/lti13.py`, `routers/integrations.py` (`/lti/*`) | Built. Hardened and tested in `25b4a89` |
 | Platform registry and learning records | `ExternalPlatform`, `ExternalActivity`, `LTILaunch`, `LTINonce`, `LTIToolKey` (`models.py`) | Built |
-| xAPI emitter and pluggable LRS backend | `app/xapi.py`, `app/lms/` (`xapi_lrs`, `null`) | Built. **Not cmi5-conformant** (see below) |
-| Local Moodle for testing | `infra/platform/docker/compose.moodle.yml` (Moodle 4.4 on :8083) | Built |
+| xAPI emitter and pluggable LRS backend | `app/xapi.py`, `app/lms/` (`xapi_lrs`, `null`) | Built. Conformant since 2026-10-09 (see 2d below) |
+| Local Moodle for testing | `infra/platform/docker/compose.moodle.yml` (Moodle 5.2.3 on :8083) | Built |
 | Quiz export to Moodle | `GET /quizzes/{id}/export?format=gift\|moodlexml` | Built. The UI downloads it through `ApiService` (bearer token sent) |
 | Results back from Moodle | `app/moodle_results`, `local_truenorth` `pull_results` | Built 2026-10-09: completions and quiz grades signed by the Moodle's LTI key, recorded on enrolments, progress and quiz attempts (`docs/runbooks/moodle.md` section 4). M1 (2026-10-12): each fact keeps its release and Moodle attempt id; the Student sees them with Moodle's time and the sync state ("Grades and completion: two directions", above) |
 | cmi5 AU with no dependencies, tested 9/9 | KB `au/cmi5-au.js` | Reference code to adopt |
@@ -293,15 +294,18 @@ sequence is in KB §9.3.
 
 ### 2a. Course structure export
 
-`GET /courses/{id}/cmi5.xml` should return a Quartz course structure (KB §9.14, and
-`examples/cmi5.xml` in the pack):
+`GET /cmi5/releases/{id}/cmi5.xml` (built; per accepted release — status and routes:
+`docs/cmi5.md`) returns a Quartz course structure (KB §9.14, and `examples/cmi5.xml` in
+the pack):
 
 - One `<course>`. One `<block>` per module grouping if needed. One `<au>` per quiz or
   assessment exercise.
 - **Every `<url>` fully qualified.** A bare `cmi5.xml` with no ZIP must use fully qualified URLs
   (cmi5 spec §14).
-- `moveOn="Passed"` for assessments; `masteryScore = pass_threshold / 100`; `launchMethod="AnyWindow"`.
-- Publisher IDs under the MITE scheme, stable across minor revisions (KB §13.2). The LMS mints
+- `moveOn="Passed"` for assessments; `masteryScore = pass_threshold / 100`; as served,
+  `launchMethod="OwnWindow"` (TrueNorth refuses to be framed by another origin).
+- Publisher IDs under the MITE scheme, stable across minor revisions (KB §13.2) — ARC²'s
+  scheme until Standards binds courses to POs (see the 2d note). The LMS mints
   its own runtime activity IDs; never use the publisher ID as `object.id` at runtime.
 - Validate the output against `CourseStructure.xsd` in a test.
 

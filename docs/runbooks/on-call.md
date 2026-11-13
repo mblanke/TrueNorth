@@ -12,21 +12,24 @@
 
 | Signal | Source | Sev |
 |---|---|---|
-| API `/health/ready` failing > 5 min | Prometheus / blackbox | SEV1 |
-| PostgreSQL down, OpenSearch red | Prometheus alerts (`operations.md`) | SEV1 / SEV2 |
-| Backup exit ≠ 0, or no new backup in 26 h | `journalctl -t truenorth-backup`, `backup.log`, optional `BACKUP_WEBHOOK_URL` | SEV3 (SEV2 if two nights running or a datastore is degraded) |
+| API `/health/ready` failing > 5 min | api container healthcheck (`compose.prod.yml`: `curl /health/ready`; externally `/api/health/ready`) — no blackbox exporter or API-down alert ships | SEV1 |
+| PostgreSQL down (no alert ships — `dc ps postgres`), OpenSearch red (`OpenSearchClusterRed`) | Prometheus alerts (`operations.md`) | SEV1 / SEV2 |
+| Backup exit ≠ 0, or no new backup in 26 h | `journalctl -t truenorth-backup`, `backup.log`, Prometheus `BackupFailed` / `BackupStale`, optional `BACKUP_WEBHOOK_URL` | SEV3 (SEV2 if two nights running; SEV1 if a datastore is degraded) |
 | Backup drill failed | GitHub Actions `Backup drill` (nightly) | SEV3 — the scripts or the compose file changed under them |
 | Disk > 80 % on `/srv/truenorth` | node-exporter | SEV2 |
 
-Wire the backup signal into whatever pages you: the scripts already write to syslog with tag
-`truenorth-backup`, so a log-based alert (or the webhook) is enough.
+The backup signal is already in Prometheus: `backup.sh` writes `truenorth_backup.prom`, and
+`alerts.yml` fires `BackupFailed`, `BackupIncomplete`, `AuditArchiveTampered` and `BackupStale`
+(no good backup for 26 h). Delivery is Alertmanager's, and out of the box it routes everything to
+a null receiver — wire that into your paging. The scripts also write `[ALERT]` lines to syslog
+with tag `truenorth-backup` and, optionally, `BACKUP_WEBHOOK_URL`.
 
 ## Start of shift
 
 1. Read the previous handover note and any open incident.
 2. `ls -1d /srv/truenorth/backups/*/truenorth-backup-* | sort | tail -3` — last night's
    backup exists; `grep -c ALERT /srv/truenorth/logs/backup.log` did not grow.
-3. Grafana "Platform Overview": error rate, queue depth, disk.
+3. Grafana "TrueNorth Range — Overview": error rate, queue depth, disk.
 4. Confirm you can reach the host, the vault (installer secrets) and the escrow key custodian.
 
 ## During the shift

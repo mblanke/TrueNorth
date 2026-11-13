@@ -141,6 +141,13 @@ Rules:
 - The pool must not contain any of the site's own VLANs. If it does, list them in
   `tn_vsphere_reserved_vlans` so no range is ever given one. TrueNorth also reads the range
   vDS before every allocation and keeps off any VLAN something else already carries.
+- The installer learns the pool from `tn_vsphere_vlan_pool` (guide 02 §5.3). Its default is
+  **100–199** — the work site's values, not the example above. A switch trunked for a pool
+  the installer was not told about gets ranges on VLANs the trunk does not carry.
+- **[DECISION]** The MAC pool slice (`tn_vsphere_mac_pool`, guide 02 §5.3). Range NIC MACs
+  come from a slice of VMware's manual MAC range, and **each TrueNorth install on a shared
+  vCenter needs its own non-overlapping slice**: two installs on one slice hand out the same
+  MACs. Empty means the whole default (`00:50:56:3c:00:00`–`00:50:56:3f:ff:ff`).
 - No range template subnet may overlap a site subnet: the installer's
   `tn_range_reserved_cidrs` lists the management, out-of-band, AI and uplink subnets, and
   TrueNorth refuses templates that overlap them.
@@ -243,6 +250,11 @@ range VMs install software from at deploy time. It is optional:
   their WAN NIC there, and the only permitted connection is range firewall → depot on TCP
   `8081` (Nexus) and `3142` (apt-cacher-ng). The depot's own host firewall enforces the same
   (`install/lab/roles/tn_depot`). Building the depot is described in `install/lab/README.md`.
+- **The depot fetches upstream itself** — a client asking through it never touches the
+  internet — so it needs its own egress to fill its caches. That egress is a **prefetch
+  window, not standing egress**: the caches fetch only while the depot's egress NIC is
+  connected and switched online, and going online is refused while range VMs exist
+  (`install/lab/README.md`, `tn_depot_upstream_online`, `scripts/lab/depot-uplink.sh`).
 
 ---
 
@@ -322,6 +334,7 @@ to the internet for the online install, NTP, DNS). The flows TrueNorth needs are
 | Administrators | TrueNorth VM, backup target, GPU node | TCP 22 | Administration |
 | TrueNorth VM, **online install only** | `github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, `tuf-repo-cdn.sigstore.dev` (signature check), `ghcr.io`, `pkg-containers.githubusercontent.com`, `download.docker.com`, `registry-1.docker.io`, `auth.docker.io`, `production.cloudflare.docker.com`, `quay.io`, `cdn01.quay.io`, `gcr.io`, `archive.ubuntu.com`, `security.ubuntu.com`, `pypi.org`, `files.pythonhosted.org`, `galaxy.ansible.com` | TCP 443 (and 80 for Ubuntu's mirrors) | Release files, images, Docker, Ubuntu and Python packages, Ansible collections |
 | GPU AI node, **online install only** | `nvidia.github.io`, `huggingface.co` (and its CDN), `registry-1.docker.io`, `ghcr.io`, Ubuntu's mirrors | TCP 443 | Driver toolkit, model weights, vLLM and LiteLLM images |
+| Depot, **prefetch window only** (§3.3) | `community.chocolatey.org`, `pypi.org`, `registry-1.docker.io` (the `tn_depot_*_upstream` values), plus the Ubuntu and Rocky mirrors its guests' stock sources name | TCP 443 (and 80 for Ubuntu's mirrors) | The depot filling its own caches; no standing egress — the egress NIC is connected only for a window, never while range VMs exist |
 | TrueNorth VM (worker), **online feeds only** | `endoflife.date`, `www.cisa.gov`, `services.nvd.nist.gov` | TCP 443 | Daily content feeds (06 §7). GET requests only; no site data is sent |
 
 An air-gapped site needs none of the internet flows: guide 02 Appendix A.
@@ -346,7 +359,9 @@ The site DNS (normally AD-integrated) must hold, before the install:
 
 - [ ] `A` and `PTR`: `<tn-fqdn>` → `<tn-ip>`. TrueNorth is reached **by name only**; opening
       it by IP address loads an empty page, because sign-in redirects are bound to the name.
-- [ ] `A` and `PTR` for vCenter (`<vcenter-fqdn>`) and every ESXi host.
+- [ ] `A` and `PTR` for vCenter (`<vcenter-fqdn>`) and every ESXi host. The TrueNorth VM
+      resolves them too: the console relay dials the ESXi host name the vCenter ticket
+      names (§4.3).
 - [ ] `A` for each DC (`<dc-fqdn>`), and the AD SRV records (AD creates these).
 - [ ] Forwarders for internet names, for an online install.
 - [ ] Workstations that use TrueNorth resolve `<tn-fqdn>` through the same DNS.
@@ -371,6 +386,11 @@ The site CA (for example AD CS) provides:
       full chain, root excluded) and `truenorth.key` (the private key, unencrypted).
 - [ ] Each DC's **LDAPS certificate** must name the DC's FQDN (`<dc-fqdn>`); TrueNorth
       verifies the host name.
+- [ ] The **ESXi hosts' certificates** chain to a CA in the TrueNorth VM's trust store —
+      the same one it uses for vCenter: the site CA (`corp-root-ca.cer`), or VMCA's root —
+      and name the host the way vCenter knows it. TrueNorth verifies both when it relays a
+      console (§4.3); workstations never see a host certificate, so no browser trust is
+      needed for them.
 
 The installer can run with a self-signed certificate for a first bring-up
 (`tn_tls_mode: selfsigned`), but browsers warn and it is not for Students.
@@ -432,13 +452,20 @@ Rules the directory team must know:
 Names and roles only. Passwords and keys go into the installer's encrypted vault on the day
 (guide 02 §5.2) and never into a document, ticket or chat.
 
+**What a person types at the sign-in form is the AD `sAMAccountName`** (for example
+`jdoe`), not the UPN (`jdoe@example.corp`): the installer's AD federation imports users by
+`sAMAccountName` (`usernameLDAPAttribute`, `install/roles/tn_keycloak/defaults/main.yml`),
+so a UPN fails as if the
+password were wrong. The `<first-admin-login>` and `<smoke-login>` below are
+`sAMAccountName`s.
+
 | Account | Where | Role / rights | Used by |
 |---|---|---|---|
 | `<svc-truenorth>` (e.g. `svc-truenorth@vsphere.local`) | vCenter | Custom role `TrueNorth-Provision`, assigned at the **datacenter**, propagate on (guide 02 §3.2) | TrueNorth's workers, to build ranges |
 | `<vcenter-admin>` | vCenter | Administrator | The installer of the day: creating the role, porting golden templates |
 | `TrueNorth Keycloak Bind` (`<bind-dn>`) | AD, service accounts OU | Domain user, read-only, password does not expire (or a rotation plan) | Keycloak's LDAPS federation |
-| `<first-admin-upn>` | AD, users OU, in `TN-Platform-Admins` | Named person | The first AD administrator, approved by the local break-glass account after the install |
-| `<smoke-upn>` | AD, users OU, in `TN-Observers` only, no authenticator enrolled | Non-privileged test account | The installer's sign-in check (proves AD claims arrive) |
+| `<first-admin-login>` | AD, users OU, in `TN-Platform-Admins` | Named person | The first AD administrator, approved by the local break-glass account after the install |
+| `<smoke-login>` | AD, users OU, in `TN-Observers` only, no authenticator enrolled | Non-privileged test account | The installer's sign-in check (proves AD claims arrive); its `sAMAccountName` goes into `tn_smoke_username` (guide 02 §5.2) |
 | `tnadmin` | The TrueNorth VM (local Linux user) | sudo | The person running the installer |
 | Local break-glass administrator `<breakglass-upn>` | Keycloak (created by the installer, **outside** the AD domain, e.g. `tnadmin@<tn-vm-name>.local`) | TrueNorth platform administrator | Recovery when AD, LDAPS or the bind account fails |
 | `<bkp-user>` | The backup target VM (local Linux user) | Writes to the backup directory only | The nightly copy of backups |
@@ -468,7 +495,8 @@ Print this page and tick it off with the site's teams before install day.
 
 **Network**
 
-- [ ] VLAN plan recorded: management, out-of-band, vMotion, (AI), (range uplink), range pool `____–____`
+- [ ] VLAN plan recorded: management, out-of-band, vMotion, (AI), (range uplink), range pool `____–____` (recorded as `tn_vsphere_vlan_pool`; installer default `100-199`)
+- [ ] MAC pool slice chosen (`tn_vsphere_mac_pool`), not overlapping any other TrueNorth install on the same vCenter
 - [ ] Range pool trunked to every range host and the ISL; not to the firewall
 - [ ] No layer-3 interface on any pool VLAN (switch `show ip interfaces` checked)
 - [ ] MAC learning off on the pool, or per-range-host placement decided
@@ -485,6 +513,7 @@ Print this page and tick it off with the site's teams before install day.
 - [ ] `corp-root-ca.cer` exported
 - [ ] `truenorth.crt` (full chain, PEM) and `truenorth.key` (PEM) issued for `<tn-fqdn>`
 - [ ] DC LDAPS certificates name the DCs' FQDNs
+- [ ] ESXi host certificates chain to `corp-root-ca.cer` (or another CA in TrueNorth's trust store), named as vCenter knows each host
 
 **Active Directory**
 

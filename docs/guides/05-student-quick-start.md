@@ -3,10 +3,10 @@
 Everything you need to take a class or a self-serve lab on TrueNorth Range. Your instructor's
 side is in [04-instructor-guide.md](04-instructor-guide.md).
 
-Checked against `main` at `fd4f79a6` (2026-10-27, v1.2.0); the sign-out, welcome, My classes,
-Console and "Labs are busy" parts were reconciled with `main` at `353339c2` (2026-11-02), and
-the Console and lab-console parts with the source at `eec53906` (2026-11-05). The
-rest was not re-read end to end.
+Checked end to end against the source at `d5851f6d` (2026-11-07). Earlier checks: `main` at
+`fd4f79a6` (2026-10-27, v1.2.0); the sign-out, welcome, My classes, Console and "Labs are
+busy" parts reconciled at `353339c2` (2026-11-02); the Console and lab-console parts at
+`eec53906` (2026-11-05).
 
 ---
 
@@ -30,7 +30,8 @@ The **Sign out** button is in the top bar. Use it to end your session on a share
 Before anything else you see the **Rules of use**:
 
 1. Read them to the end. **I agree** stays greyed out until you scroll to the bottom.
-2. Press **I agree**, then **Continue**.
+2. Press **I agree**. The page moves on by itself. (If you had already signed and were only
+   re-reading, you see a **Continue** button instead.)
 
 You sign again when the rules change and once a year. The rules tell you that **your sessions
 may be observed**, including your live screens and consoles.
@@ -134,13 +135,13 @@ it. No lab runs longer than **7 days**. Work you submitted is kept either way.
 Name: ____________________   Class: ____________________   Site: ____________________
 
 [ ] Signed in with my domain account (Sign in with SSO)
-[ ] Read the Rules of use to the end → I agree → Continue
+[ ] Read the Rules of use to the end → I agree
 [ ] Learn → My classes: my class is listed; chips say Onboarded, Rules of use signed,
     Seat ready
 [ ] During the session: My classes → Console → my machine's screen (opens on the page, from
     just before it starts)
 [ ] EVERY session: My classes → Join (this records my attendance)
-[ ] Join greyed out? Read the reason: building / paused / shared range / failed
+[ ] Join greyed out? Read the reason: not built / building / paused / shared range / failed
 [ ] Self-serve lab: Moodle → Start lab → Lab page; used within 4 h, or it closes
 [ ] "Labs are busy, next free at HH:MM" (site time) → try again then
 [ ] Lost seat? → ask my instructor to reinstate me

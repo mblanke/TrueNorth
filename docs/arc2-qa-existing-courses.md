@@ -30,9 +30,10 @@ Output goes under `--out` (default `build/arc2-qa/`, ignored by git):
 | `<course>/02-content/`, `04-artifacts/instructor/`, `05-sensor/`, `manifest.json` | the staging layout ARC² reads. `manifest.json` is an adapter, not an ARC² run manifest |
 | `summary.md`, `summary.json` | batch only: course, checks run, failures, open human actions, needs-range-support count, lab hosts verified per range template |
 
-Held courses (`scripts/check_course.py` `HELD_CODES`) fail `taz.held`; `--no-held` skips that check.
-The catalogue code comes from `content/catalogue/production_register.csv` (by file name), else the
-course's own `course_code`, else `--catalogue-code`.
+Held courses (`scripts/check_course.py` `HELD_CODES` or `HELD_FILES`) fail `taz.held`; `--no-held` skips
+that check.
+The catalogue code is `--catalogue-code` when given, else the file's row in
+`content/catalogue/production_register.csv`, else the course's own `course_code`.
 
 ## What runs
 
@@ -45,7 +46,8 @@ ARC² code that runs (imported):
   quiz shape, duplicate stems across the library, miscited sources.
 - `arc2.qa.check_catalogue_identity`: the course is in the catalogue.
 - `arc2.qa.check_engine_scenario`: only when a `lab_range` names a scenario.
-- `arc2.qa.check_defang`: over the course file and the instructor pack.
+- `arc2.qa.check_defang`: over everything staged (`02-content/` course file, `04-artifacts/` instructor
+  pack, and the `05-sensor/` scenario copies when a `lab_range` names a scenario).
 - `arc2.check._check_trace`: `objective.observable_verb` and objective-to-module tracing.
 - `arc2.check._check_po`: bound POs exist in the crosswalk and may be bound. A claim by the course itself is not a rival.
 
@@ -90,7 +92,8 @@ The batch's `needs_range_support` column counts them; `report.json` lists module
 
 The checks are structural and rule-based. They do not judge whether a keyed answer is true, whether a lab is
 pedagogically sound, or whether a step works on the range; those stay with Claude's review and the SME.
-`taz.quiz_terms` and the host-use test are heuristics and say so. A pass here does not replace Standards and SME
+`taz.quiz_terms` and the host-use test are heuristics (the report says so for `taz.quiz_terms`). A pass here
+does not replace Standards and SME
 sign-off; the report always carries that as an open human action while `readiness` is not `sme_signed`.
 
 Tests: `tests/scripts/test_arc2_qa_course.py` (C105's committed ARC² bundle adapted to the TAZ shape is the positive

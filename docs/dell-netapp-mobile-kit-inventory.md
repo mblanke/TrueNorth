@@ -15,6 +15,15 @@ The design combines:
 
 > **Note:** Some exact SKU-level values should be verified against the final Dell / NetApp quote. This file captures the working inventory and known specs from the current planning thread.
 
+> **Claim-testing status (2026-11-08, checked against this repository's source):**
+> `docs/guides/01-site-prerequisites.md` §1.1 is the owner's current reference kit and states
+> (lines 70–72) that this file is an **earlier planning inventory** — NetApp arrays, a different
+> firewall model and 15U cases — and that where the two disagree, that table is the current design.
+> Marks used below: **[source: file:line]** = corroborated by repository source;
+> **[superseded — 01-site-prerequisites §1.1]** = contradicted by the current reference kit;
+> **[unverified — needs quote/datasheet]** = no repository source can confirm it;
+> **[live-only]** = can only be checked on the built kit, never from this repository.
+
 ---
 
 # 1. Executive Summary
@@ -26,9 +35,9 @@ The design combines:
 | AI / GPU Compute | 1 | Dell PowerEdge R7725 GPU Node | AI inference, training support, synthetic users, LLM workloads |
 | Virtualization Compute | TBD | Dell PowerEdge R6625 Servers | Hypervisor / cyber range workload hosts |
 | Storage | 2 | NetApp Storage Arrays | Shared storage, VM backing store, range data, telemetry |
-| Firewall | 1 | Palo Alto PA-3430 | Perimeter security, segmentation, VPN, traffic inspection |
-| Switching | 1 | Dell S5248F-ON or equivalent | 25/100GbE fabric for compute, storage, and firewall connectivity |
-| Rack Transport | TBD | Shock-mounted 15U rack cases | Mobile deployment, equipment protection |
+| Firewall | 1 | Palo Alto PA-3430 [superseded — 01-site-prerequisites §1.1:71 "a different firewall model"; the current design names no model] | Perimeter security, segmentation, VPN, traffic inspection |
+| Switching | 1 [superseded — current design has 2×, 01-site-prerequisites.md:61] | Dell S5248F-ON or equivalent [source: 01-site-prerequisites.md:61] | 25/100GbE fabric for compute, storage, and firewall connectivity |
+| Rack Transport | TBD | Shock-mounted 15U rack cases [superseded — the current reference kit is 9U, 01-site-prerequisites.md:50,72] | Mobile deployment, equipment protection |
 | Power | TBD | UPS / PDU components | Runtime protection and clean shutdown |
 
 ---
@@ -53,17 +62,17 @@ The R7725 is the high-end AI / GPU node in the kit. It is intended to act as the
 
 | Component | Specification |
 |---|---|
-| Platform | Dell PowerEdge R7725 GPU Node |
+| Platform | Dell PowerEdge R7725 GPU Node [source: docs/ai-fleet-sizing.md:18, docs/guides/01-site-prerequisites.md:60] |
 | Form Factor | Rack server |
-| CPU | AMD EPYC-class dual-socket platform, exact CPU to be verified |
-| GPU | 2 × NVIDIA H200 GPUs, based on current R7725 planning reference |
+| CPU | AMD EPYC-class dual-socket platform, exact CPU to be verified [source: docs/ai-fleet-sizing.md:22 — the deployed AI node is 2× AMD EPYC 9535, 256 threads] |
+| GPU | 2 × NVIDIA H200 GPUs, based on current R7725 planning reference [source: docs/ai-fleet-sizing.md:25 — 2× NVIDIA H200 NVL, 144 GB each] |
 | GPU Use Case | LLM inference, RAG acceleration, model serving, synthetic traffic, analytics |
-| Memory | To be verified from final quote |
-| Local Storage | To be verified from final quote |
+| Memory | To be verified from final quote [source: docs/ai-fleet-sizing.md:23 — the deployed node has 2.0 TiB RAM] |
+| Local Storage | To be verified from final quote [source: docs/ai-fleet-sizing.md:24 — the deployed node has 14 TB NVMe `/data`] |
 | Network | High-speed NICs / adapters to be verified from final quote |
 | Power | High-draw GPU server, requires server-room power/cooling |
-| OS Recommendation | Ubuntu Server LTS |
-| Remote Access | VPN-protected SSH, preferably through Palo Alto VPN / jump host / Tailscale where allowed |
+| OS Recommendation | Ubuntu Server LTS [source: docs/guides/01-site-prerequisites.md:60 — bare-metal Ubuntu 24.04] |
+| Remote Access | VPN-protected SSH, preferably through Palo Alto VPN / jump host / Tailscale where allowed [source: docs/arc2-course-studio.md:516 and install/README.md:946 — Tailscale is in use] |
 
 ## Recommended Software Baseline
 
@@ -71,25 +80,25 @@ The R7725 is the high-end AI / GPU node in the kit. It is intended to act as the
 |---|---|
 | Host OS | Ubuntu Server LTS |
 | GPU Runtime | NVIDIA Driver + CUDA Toolkit |
-| Containers | Docker Engine + NVIDIA Container Toolkit |
-| Model Serving | vLLM, Ollama, or TGI depending on model choice |
-| API Gateway | LiteLLM / OpenAI-compatible router |
-| UI | Open WebUI, optional |
-| Vector DB | Qdrant |
-| Monitoring | Prometheus, Grafana, NVIDIA DCGM exporter |
-| Remote Admin | SSH, Cockpit optional, VPN only |
-| Security | UFW / nftables, Palo Alto policy enforcement, restricted inbound access |
+| Containers | Docker Engine + NVIDIA Container Toolkit [source: docs/guides/02-install-guide.md:923-935] |
+| Model Serving | vLLM, Ollama, or TGI depending on model choice [source: docs/ai-fleet-sizing.md:27 — the deployed stack is vLLM behind LiteLLM, explicitly "not Ollama"; TGI unverified] |
+| API Gateway | LiteLLM / OpenAI-compatible router [source: docs/ai-fleet-sizing.md:31] |
+| UI | Open WebUI, optional [source: install/README.md:395, control-plane/api/app/ai_backends/base.py:28] |
+| Vector DB | Qdrant [unverified — the repository AI stack backs its RAG with pgvector (docs/ai-fleet-sizing.md:34); Qdrant appears nowhere else in source] |
+| Monitoring | Prometheus, Grafana, NVIDIA DCGM exporter [source: RESUME.md:157-166 — dcgm-exporter container with a Prometheus `dcgm` target; infra/platform/docker/compose.monitoring.yml] |
+| Remote Admin | SSH, Cockpit optional, VPN only [unverified — Cockpit appears nowhere in source] |
+| Security | UFW / nftables, Palo Alto policy enforcement, restricted inbound access [source: docs/deployment/vmware-site-runbook.md:203 — nftables; UFW unverified] |
 
 ## Candidate AI Workloads
 
 | Workload | Notes |
 |---|---|
-| Llama 3.1 / 3.3 70B-class | General cyber / PM / coding assistant |
-| Qwen Coder family | Coding-heavy agent workflows |
-| Mistral / Mixtral family | General reasoning and fast assistant workloads |
-| Vision model | Diagram/image interpretation if supported |
-| Embedding model | RAG search over docs, advisories, logs, artifacts |
-| Reranker model | Improves retrieval quality for threat hunt and project-doc workflows |
+| Llama 3.1 / 3.3 70B-class | General cyber / PM / coding assistant [source: ai-orchestrator/app/backends/vllm.py:11 — `meta-llama/Llama-3.3-70B-Instruct` example; docs/architecture.md:788] |
+| Qwen Coder family | Coding-heavy agent workflows [source: docs/taz-model-recommendation.md:9 — Qwen/Qwen3-Coder-Next; docs/ai-fleet-sizing.md:47 — Qwen 112B-A10B FP8 target] |
+| Mistral / Mixtral family | General reasoning and fast assistant workloads [source: docs/ai-fleet-sizing.md:40-41 — Mistral 7B, Mistral Small 3 24B; docs/architecture.md:789 — mixtral:8x7b] |
+| Vision model | Diagram/image interpretation if supported [source: docs/ai-fleet-sizing.md:41 — Mistral Small 3 24B is multimodal] |
+| Embedding model | RAG search over docs, advisories, logs, artifacts [source: docs/ai-fleet-sizing.md:42,49 — bge / bge-m3 embedding server] |
+| Reranker model | Improves retrieval quality for threat hunt and project-doc workflows [unverified — no reranker appears in source] |
 
 ---
 
@@ -117,10 +126,10 @@ The R6625 systems provide the main virtualization and cyber range compute layer.
 |---|---|
 | Platform | Dell PowerEdge R6625 |
 | Role | Control plane / management / orchestration |
-| CPU | AMD EPYC 9754-class, 96 cores, if using previously discussed control-plane option |
-| RAM | 512GB, if using previously discussed control-plane option |
-| Local Storage | Approx. 7.6TB NVMe, if using previously discussed control-plane option |
-| Hypervisor | VMware / vSphere, Proxmox, or other selected platform |
+| CPU | AMD EPYC 9754-class, 96 cores, if using previously discussed control-plane option [unverified — needs quote; source names the role only, docs/guides/01-site-prerequisites.md:58] |
+| RAM | 512GB, if using previously discussed control-plane option [unverified — needs quote] |
+| Local Storage | Approx. 7.6TB NVMe, if using previously discussed control-plane option [unverified — needs quote] |
+| Hypervisor | VMware / vSphere, Proxmox, or other selected platform [source: docs/guides/01-site-prerequisites.md:58 — ESXi 8.0; docs/architecture.md:39-48 — Proxmox provider] |
 | Notes | Best suited for management, orchestration, core services, and smaller supporting workloads |
 
 ### R6625 Hypervisor Plane Variant
@@ -129,10 +138,10 @@ The R6625 systems provide the main virtualization and cyber range compute layer.
 |---|---|
 | Platform | Dell PowerEdge R6625 |
 | Role | Main cyber range hypervisor host |
-| CPU | AMD EPYC 9654-class, 96 cores, if using previously discussed hypervisor option |
-| RAM | 1TB, if using previously discussed hypervisor option |
-| Local Storage | Approx. 15TB NVMe, if using previously discussed hypervisor option |
-| Hypervisor | VMware / vSphere preferred for SimSpace-style integration, Proxmox possible for lab use |
+| CPU | AMD EPYC 9654-class, 96 cores, if using previously discussed hypervisor option [source: docs/guides/01-site-prerequisites.md:57 — 2× AMD EPYC 9654] |
+| RAM | 1TB, if using previously discussed hypervisor option [source: docs/guides/01-site-prerequisites.md:57; docs/vm-build-sheet.md:217-218 — "1 TB RAM each in the hypervisor variant"] |
+| Local Storage | Approx. 15TB NVMe, if using previously discussed hypervisor option [source: docs/guides/01-site-prerequisites.md:57 — 15.36 TB NVMe] |
+| Hypervisor | VMware / vSphere preferred for SimSpace-style integration, Proxmox possible for lab use [source: docs/guides/01-site-prerequisites.md:57 — ESXi 8.0; docs/TrueNorth Range.md:236 — SimSpace reference] |
 | Notes | Best suited for dense VM workloads and range simulation nodes |
 
 ## Recommended Baseline Services
@@ -142,15 +151,21 @@ The R6625 systems provide the main virtualization and cyber range compute layer.
 | Hypervisor Manager | vCenter / vSphere or Proxmox cluster manager |
 | DNS / DHCP / NTP | Range infrastructure services |
 | Git / Registry | Local automation and image repository |
-| Telemetry Stack | Elastic / OpenSearch / HELK / Security Onion-style tooling |
-| Identity | Keycloak / AD / LDAP depending on range design |
-| Automation | Ansible, Terraform, Packer |
+| Telemetry Stack | Elastic / OpenSearch / HELK / Security Onion-style tooling [source: infra/platform/docker/compose.prod.yml:383-384 — OpenSearch; docs/README.md:122 + docs/TrueNorth Range.md:18 — HELK; CHANGELOG.md:490 — Security Onion per range] |
+| Identity | Keycloak / AD / LDAP depending on range design [source: .env.example:18-23 — Keycloak] |
+| Automation | Ansible, Terraform, Packer [source: install/roles/ (Ansible); docs/BUILD.md:471 + .github/workflows/terraform-plan.yml (Terraform); .github/workflows/packer-build.yml (Packer)] |
 | Jump Host | Controlled administrative entry point |
-| Logging | Syslog, OpenSearch, Velociraptor, Zeek, Suricata as required |
+| Logging | Syslog, OpenSearch, Velociraptor, Zeek, Suricata as required [source: content/ranges/large-enterprise/template.yaml:366-378,390-396 — Suricata and Velociraptor services; content/courses/instructor/up-net-03-network-monitoring-with-zeek-suricata.yaml — Zeek] |
 
 ---
 
 # 4. NetApp Storage Arrays
+
+> **[superseded — 01-site-prerequisites §1.1]** The owner's current reference kit
+> (docs/guides/01-site-prerequisites.md:55-64) has **no NetApp arrays**; range hosts carry one
+> local datastore each (line 59). This section survives as planning input: the greyspace plan
+> still references this inventory's NetApp figure (~600 TB, NFS read-only,
+> docs/greyspace-plan.md:36-37) and its storage-VLAN concept (docs/greyspace-corpus.md:131).
 
 ## Role
 
@@ -172,10 +187,10 @@ Primary uses:
 
 | Component | Specification |
 |---|---|
-| Vendor | NetApp |
-| Quantity | 2 arrays |
-| Capacity | Approx. 300TB each, based on previous kit planning |
-| Combined Raw / Nominal Capacity | Approx. 600TB before dedupe/compression assumptions |
+| Vendor | NetApp [source: docs/adr/0007-greyspace.md:30-31 — NetApp, NFS read-only] |
+| Quantity | 2 arrays [unverified — needs quote] |
+| Capacity | Approx. 300TB each, based on previous kit planning [unverified — needs quote; the ~600 TB combined figure is quoted as planning input in docs/greyspace-plan.md:37] |
+| Combined Raw / Nominal Capacity | Approx. 600TB before dedupe/compression assumptions [unverified — needs quote] |
 | Use Case | Shared cyber range storage and data platform |
 | Connectivity | High-speed Ethernet / storage fabric, exact ports to verify |
 | Protocols | NFS / iSCSI / SMB, final design dependent |
@@ -198,6 +213,11 @@ Primary uses:
 
 # 5. Palo Alto PA-3430 Firewall
 
+> **[superseded — 01-site-prerequisites §1.1]** The current design keeps a **Palo Alto** firewall
+> (docs/guides/01-site-prerequisites.md:63) but does **not** name the PA-3430; the guide's note
+> (line 71) lists "a different firewall model" as one of the ways this inventory differs from the
+> current design. The current reference firewall configuration is §4.2 of that guide.
+
 ## Role
 
 The Palo Alto firewall provides the secure boundary and segmentation layer for the kit.
@@ -218,9 +238,9 @@ Primary uses:
 | Component | Specification |
 |---|---|
 | Vendor | Palo Alto Networks |
-| Model | PA-3430 |
+| Model | PA-3430 [superseded — current design names no model, docs/guides/01-site-prerequisites.md:63,71] |
 | Role | NGFW / VPN / segmentation gateway |
-| Interfaces | 40/100GbE capable platform class, exact optic/interface layout to verify |
+| Interfaces | 40/100GbE capable platform class, exact optic/interface layout to verify [unverified — needs datasheet/quote] |
 | Use Case | Secure mobile cyber range perimeter |
 | Deployment Mode | Routed firewall preferred |
 | Management | Dedicated management interface / admin VLAN |
@@ -228,16 +248,23 @@ Primary uses:
 
 ## Suggested Zones
 
+> **[superseded — 01-site-prerequisites §2]** TrueNorth's isolation model is
+> `vlan_trunk_no_l3` (docs/guides/01-site-prerequisites.md:110-118): **no device has a layer-3
+> interface on any range VLAN**, and the site firewall **denies** all traffic to and from range
+> networks. The reference firewall has only four zones — TN-MGMT, TN-OOB, TN-AI,
+> TN-RANGE-UPLINK (lines 281-284). Range-blue/red/user zones on the firewall, as below, are not
+> part of the current design; range segmentation is per-range, inside the range.
+
 | Zone | Purpose |
 |---|---|
-| `MGMT` | Admin access, hypervisor management, NetApp management |
-| `RANGE-BLUE` | Blue team systems |
-| `RANGE-RED` | OPFOR / adversary systems |
-| `RANGE-USERS` | Synthetic users / student endpoints |
-| `SERVICES` | DNS, DHCP, Git, registry, monitoring |
-| `AI` | R7725 / model-serving network |
-| `STORAGE` | NetApp and datastore access |
-| `WAN` | Controlled uplink / external access |
+| `MGMT` | Admin access, hypervisor management, NetApp management [source: docs/guides/01-site-prerequisites.md:132 — management VLAN routed by the firewall] |
+| `RANGE-BLUE` | Blue team systems [superseded — range VLANs have no L3 anywhere, 01-site-prerequisites.md:114-118] |
+| `RANGE-RED` | OPFOR / adversary systems [superseded — as above] |
+| `RANGE-USERS` | Synthetic users / student endpoints [superseded — as above] |
+| `SERVICES` | DNS, DHCP, Git, registry, monitoring [unverified — no such zone in the current design] |
+| `AI` | R7725 / model-serving network [source: docs/guides/01-site-prerequisites.md:135,281-284 — TN-AI zone; only TCP 4000 (LiteLLM) allowed from management, line 260] |
+| `STORAGE` | NetApp and datastore access [superseded with §4 — no NetApp in the current kit; referenced only by the greyspace plan, docs/greyspace-corpus.md:131] |
+| `WAN` | Controlled uplink / external access [source: docs/guides/01-site-prerequisites.md:136,295-298 — TN-RANGE-UPLINK zone, deny-all in and out] |
 
 ---
 
@@ -252,15 +279,22 @@ The switch is the high-speed network fabric tying together servers, NetApp stora
 | Component | Specification |
 |---|---|
 | Vendor | Dell |
-| Model | S5248F-ON or equivalent |
+| Model | S5248F-ON or equivalent [source: docs/guides/01-site-prerequisites.md:61 — the current kit has 2× S5248F-ON (SONiC)] |
 | Role | Core / aggregation switch |
-| Access Ports | 48 × 25GbE class ports, based on discussed model |
-| Uplinks | 100GbE uplinks, based on discussed model |
+| Access Ports | 48 × 25GbE class ports, based on discussed model [unverified — needs datasheet; the guide's port map is consistent with it: host ports Ethernet0-5, ISL Ethernet48/52, firewall Ethernet56, docs/guides/01-site-prerequisites.md:198-200] |
+| Uplinks | 100GbE uplinks, based on discussed model [unverified — needs datasheet] |
 | Use Case | Compute-storage-firewall fabric |
-| OS | Dell OS10 / SONiC option, depending procurement |
+| OS | Dell OS10 / SONiC option, depending procurement [source: docs/guides/01-site-prerequisites.md:186-194 — SONiC; Dell Enterprise SONiC Klish CLI named for the trunk form] |
 | Notes | Ideal for dense 25Gb server links with 100Gb uplinks to firewall/storage/core |
 
 ## Suggested VLANs
+
+> **[superseded — 01-site-prerequisites §2.1]** The reference VLAN plan differs and collides
+> with this one: management 10, out-of-band 11, **vMotion 20**, **AI 30**, range uplink 40, and
+> range networks come from a **pool of 2000–2999** with no layer 3 anywhere
+> (docs/guides/01-site-prerequisites.md:130-137). Below, 20/30/40 mean different things and AI
+> is 80. The reference kit's switch configuration uses the guide's numbers
+> (docs/guides/01-site-prerequisites.md:201-203).
 
 | VLAN | Name | Purpose |
 |---:|---|---|
@@ -288,7 +322,7 @@ The kit is intended to be mobile or semi-mobile. The ruggedized rack system prot
 | Component | Specification |
 |---|---|
 | Rack Type | Shock-mounted 19-inch mobile rack |
-| Rack Size | 15U class, based on previous planning |
+| Rack Size | 15U class, based on previous planning [superseded — the current reference kit is 9U, docs/guides/01-site-prerequisites.md:50,72] |
 | Quantity | TBD |
 | Mobility | Removable casters / forklift-friendly case preferred |
 | Power | Rack PDU + UPS required |
@@ -424,6 +458,9 @@ Telemetry Tools          AAR Generation                RAG Corpus
 
 # 11. Minimum Operating Baseline
 
+> **[live-only]** Every checkbox below requires the built kit (hardware, network, storage or a
+> live model server). None of them can be verified from this repository.
+
 The kit should not be considered operational until the following work:
 
 ## Physical
@@ -498,7 +535,7 @@ These should be checked against the final quote / build sheet:
 
 # 13. One-Line Description
 
-A deployable Dell / NetApp cyber range and AI acceleration kit built around R6625 virtualization hosts, an R7725 2×H200 GPU node, dual high-capacity NetApp arrays, a Palo Alto PA-3430 firewall, and a 25/100GbE Dell switching fabric.
+A deployable Dell / NetApp cyber range and AI acceleration kit built around R6625 virtualization hosts, an R7725 2×H200 GPU node [source: docs/ai-fleet-sizing.md:25], dual high-capacity NetApp arrays [superseded — no NetApp in the current kit, docs/guides/01-site-prerequisites.md:59-64], a Palo Alto PA-3430 firewall [superseded — model not in the current design, docs/guides/01-site-prerequisites.md:63,71], and a 25/100GbE Dell switching fabric [25GbE per docs/guides/01-site-prerequisites.md:61; 100GbE unverified].
 
 ---
 

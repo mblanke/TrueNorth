@@ -21,17 +21,17 @@
 
 ## Overview
 
-The TrueNorth Range Content Library provides pre-built, tested, and versioned training content. All content is stored in the `content/` directory and can be uploaded via the API or CLI.
+The TrueNorth Range Content Library provides versioned training content. All content is stored in the `content/` directory and is loaded through the API's own endpoints by `scripts/load_content.py` (dev, over HTTP) or `scripts/load_content_inprocess.py` (installer, in-process).
 
 ### Content Types
 
 | Type | Location | Format | Description |
 |------|----------|--------|-------------|
-| Range Templates | `content/ranges/` | YAML + Packer/Terraform | VM blueprints and network topologies |
-| Scenarios | `content/scenarios/` | YAML | Attack timelines with injectors and objectives |
-| Detection Rules | `content/detections/` | YAML (Sigma-inspired) | Rules for validating trainee detections |
-| Inject Packs | `content/inject-packs/` | YAML | Reusable collections of timeline events |
-| Datasets | `content/datasets/` | YAML + NDJSON | Pre-built telemetry for background noise |
+| Range Templates | `content/ranges/<name>/template.yaml` | YAML | VM blueprints and network topologies (`render.py` renders the infrastructure) |
+| Scenarios | `content/scenarios/<name>/scenario.yaml` | YAML | Attack timelines with injectors and objectives |
+| Detection Rules | `content/detections/*.yaml` | YAML (Sigma-inspired) | Rules for validating trainee detections |
+| Inject Packs | `content/inject-packs/*.yaml` | YAML | Collections of timeline injects — **not loaded yet** (below) |
+| Datasets | `content/datasets/*.yaml` | YAML | Small hand-authored sample event lists — **not loaded yet** (below) |
 | Courses | `content/courses/` + `content/catalogue/` | YAML + CSV | Catalogue courses (drafts) and the programme they sit in |
 | Course releases | `content/releases/` | `.tar.gz` (ARC² release bundle) | Test fixtures only (below) |
 
@@ -39,12 +39,16 @@ The TrueNorth Range Content Library provides pre-built, tested, and versioned tr
 
 ## Courses
 
-`content/courses/` holds the 44 catalogue course files of the programme in
-`content/catalogue/cyber_operator_programme.csv` (tracked in
-`content/catalogue/production_register.csv`). Every one is `status: draft`: generated or
-unsourced courseware that Standards has not validated. Imports are always unpublished.
+`content/courses/` holds 104 course YAML files (plus `content/courses/instructor/` with
+the staff-only instructor packs, which the loader deliberately skips). The programme they
+sit in is `content/catalogue/cyber_operator_programme.csv` (44 course rows, tracked in
+`content/catalogue/production_register.csv`). Every course file is `status: draft`:
+generated or unsourced courseware that Standards has not validated. Imports are always
+unpublished.
 
-**Staging (`tn-staging`, v1.2.0-rc3) lists 45 courses.** It loads the shipped content with
+**Staging (`tn-staging`, v1.2.0-rc3) lists 45 courses** (live host; recorded here from
+[release-notes/v1.2.0.md](release-notes/v1.2.0.md), not verified against the host for this
+document). Staging loads the shipped content with
 `tn_publish_shipped_content` on, and the ARC² batch driver
 (`scripts/arc2_batch_inprocess.py`) has run the catalogue through the Course Studio there.
 Those releases are **TEST CONTENT**: the staging runner accepts the outline and preview
@@ -83,7 +87,9 @@ removed. `dry_run=true` is the default and only reports. Each change is audit-lo
 tenant). Running it again changes nothing and says so. It refuses (409) while a publication
 of the course is running, and stops a requested or stalled one (marked `failed`) so the
 startup resume cannot show the course again. Only the codes in `FIXTURE_CODES` (C105) are
-accepted. The API image must include this route (v1.2.0-rc6 or later).
+accepted. The API image must include this route
+(`control-plane/api/app/routers/course_publications.py`, `POST /admin/fixture-courses/{code}/withdraw`;
+which released image first carried it is not recorded here).
 
 On the host, as root, first the dry run and then the change (installer default paths):
 
@@ -109,136 +115,75 @@ done, so re-run once it is back); 2 means refused. `--tenant <id>` names another
 
 ### Template Catalog
 
-#### Small Enterprise (`small-enterprise`)
+All eight shipped templates live in `content/ranges/<name>/template.yaml` and validate
+against `scenario-engine/schemas/template.schema.json`
+(`python tools/cli/forge.py template validate <template.yaml>`). A template declares
+VLANs, nodes (each node's image, IP and NICs), firewall rules and accounts; `vm_count`
+is the VM count the nodes build (contract-tested in
+`tests/contracts/test_template_vm_count.py`). Templates carry no provisioning-time or
+host-requirement data.
 
-| Property | Value |
-|----------|-------|
-| **VMs** | 3 |
-| **Description** | Minimal corporate network |
-| **Provisioning Time** | 3-5 minutes |
-| **Host Requirements** | 8 vCPU, 16 GB RAM, 100 GB disk |
+#### Small Enterprise (`small-enterprise`) — v1.0, 6 VMs
 
-**VM Inventory:**
+| VLAN | Subnet | Purpose |
+|------|--------|---------|
+| mgmt | 10.0.1.0/24 | Management |
+| srv | 10.0.2.0/24 | Servers |
+| user | 10.0.3.0/24 | User LAN |
 
-| Hostname | OS | Role | IP | Installed Software |
-|----------|-----|------|-----|-------------------|
-| `dc01` | Windows Server 2022 | Domain Controller | 10.10.100.1 | AD DS, DNS, DHCP |
-| `ws01` | Windows 11 | Workstation | 10.10.100.10 | Office 365, Sysmon |
-| `svr01` | Ubuntu 24.04 | Web/File Server | 10.10.100.20 | Apache, Samba, auditd |
+| Node | Image | IP |
+|------|-------|----|
+| `jump-box` | ubuntu-2404 | 10.0.1.10 |
+| `dc-01` | windows-server-2022 | 10.0.2.10 |
+| `ws-01`…`ws-03` | windows-11 | 10.0.3.10–.12 |
+| `fw-01` | pfsense | 10.0.1.1 (one NIC per VLAN) |
 
-**Network Topology:**
-```
-[dc01] ─── VLAN 100 ─── [ws01]
-              │
-           [svr01]
-```
+#### Medium Enterprise (`medium-enterprise`) — v1.0, 8 nodes (no `vm_count`)
 
----
+| VLAN | Subnet | Purpose |
+|------|--------|---------|
+| corporate | 10.10.100.0/24 | User LAN |
+| servers | 10.10.200.0/24 | Servers |
+| dmz | 10.10.30.0/24 | DMZ |
+| management | 10.10.40.0/24 | Management |
 
-#### Medium Enterprise (`medium-enterprise`)
+| Node | Image | IP |
+|------|-------|----|
+| `dc01` | windows-server-2022 | 10.10.200.10 |
+| `fs01` | windows-server-2022 | 10.10.200.20 |
+| `web01` | ubuntu-2404 | 10.10.30.10 |
+| `mail01` | ubuntu-2404 | 10.10.30.20 |
+| `ws01`, `ws02` | windows-11 | 10.10.100.10, .11 |
+| `siem01` | ubuntu-2404 | 10.10.40.10 |
+| `fw01` | pfsense | 10.10.40.1 |
 
-| Property | Value |
-|----------|-------|
-| **VMs** | 8 |
-| **Description** | Mid-size corporate with segmented network |
-| **Provisioning Time** | 8-12 minutes |
-| **Host Requirements** | 16 vCPU, 64 GB RAM, 500 GB disk |
+#### Large Enterprise (`large-enterprise`) — v1.0, 50 VMs
 
-**VM Inventory:**
+Full corporate environment: the largest shipped template by VM count. See
+`content/ranges/large-enterprise/template.yaml` for the node list.
 
-| Hostname | OS | Role | IP | Installed Software |
-|----------|-----|------|-----|-------------------|
-| `dc01` | Windows Server 2022 | Domain Controller | 10.10.100.1 | AD DS, DNS, DHCP, GPO |
-| `ws01` | Windows 11 | Finance Workstation | 10.10.100.10 | Office 365, Sysmon |
-| `ws02` | Windows 11 | IT Admin Workstation | 10.10.100.11 | RSAT, Sysmon, PuTTY |
-| `ws03` | Windows 11 | HR Workstation | 10.10.100.12 | Office 365, Sysmon |
-| `ws04` | Windows 11 | General Workstation | 10.10.100.13 | Office 365, Sysmon |
-| `filesvr` | Windows Server 2022 | File Server | 10.10.100.20 | File shares, Sysmon |
-| `websvr` | Ubuntu 24.04 | Web Server | 10.10.200.10 | Nginx, PHP, auditd |
-| `fw01` | pfSense 2.7 | Firewall | 10.10.100.254/10.10.200.254 | Suricata IDS |
+#### Cloud Security Training Environment (`cloud-security`) — v1.0, 16 VMs
 
-**Network Topology:**
-```
-          [Internet]
-              │
-           [fw01]
-           /     \
-    VLAN 100     VLAN 200
-    (Corp LAN)   (DMZ)
-    ┌─────────┐   │
-    │  [dc01] │  [websvr]
-    │  [ws01] │
-    │  [ws02] │
-    │  [ws03] │
-    │  [ws04] │
-    │[filesvr]│
-    └─────────┘
-```
+Cloud-flavoured training environment (used by the `cloud-breach` scenario). See
+`content/ranges/cloud-security/template.yaml` for the node list.
 
----
+#### Red Team Operations Environment (`red-team`) — v1.0, 28 VMs
 
-#### Large Enterprise (`large-enterprise`)
+Red-team operations range. See `content/ranges/red-team/template.yaml`.
 
-| Property | Value |
-|----------|-------|
-| **VMs** | 20+ |
-| **Description** | Full corporate environment with SIEM |
-| **Provisioning Time** | 15-25 minutes |
-| **Host Requirements** | 32 vCPU, 128 GB RAM, 1 TB disk |
+#### Red vs Blue Cyber Exercise (`red-vs-blue`) — v2.0, 40 VMs
 
-**VM Inventory:**
+Red-vs-blue exercise range. See `content/ranges/red-vs-blue/template.yaml`.
 
-| Hostname | OS | Role | Subnet |
-|----------|-----|------|--------|
-| `dc01` | Win Server 2022 | Primary DC | 10.10.100.0/24 |
-| `dc02` | Win Server 2022 | Secondary DC | 10.10.100.0/24 |
-| `ws01-ws08` | Windows 11 | Workstations (8) | 10.10.100.0/24 |
-| `filesvr` | Win Server 2022 | File Server | 10.10.100.0/24 |
-| `exchange` | Win Server 2022 | Email Server | 10.10.100.0/24 |
-| `websvr01` | Ubuntu 24.04 | Public Web | 10.10.200.0/24 |
-| `websvr02` | Ubuntu 24.04 | Internal Web | 10.10.200.0/24 |
-| `dbsvr` | Ubuntu 24.04 | Database | 10.10.300.0/24 |
-| `siem` | Ubuntu 24.04 | SIEM (ELK) | 10.10.400.0/24 |
-| `fw01` | pfSense 2.7 | Edge Firewall | All subnets |
-| `fw02` | pfSense 2.7 | Internal Firewall | Internal only |
+#### SOC Analyst Training Environment (`soc-training`) — v1.0, 23 VMs
 
----
+SIEM-focused SOC analyst training environment (used by the
+`incident-response-drill` scenario). See `content/ranges/soc-training/template.yaml`.
 
-#### SOC Analyst Lab (`soc-analyst-lab`)
+#### Small Office with Greyspace Internet (`greyspace-internet`) — v1.0
 
-| Property | Value |
-|----------|-------|
-| **VMs** | 5 |
-| **Description** | SIEM-focused lab for SOC analyst training |
-| **Provisioning Time** | 5-8 minutes |
-| **Host Requirements** | 12 vCPU, 32 GB RAM, 200 GB disk |
-
-**VM Inventory:**
-
-| Hostname | OS | Role | IP |
-|----------|-----|------|-----|
-| `siem` | Ubuntu 24.04 | ELK Stack (Elasticsearch + Kibana) | 10.10.100.5 |
-| `zeek` | Ubuntu 24.04 | Zeek Network Monitor | 10.10.100.6 |
-| `ws01` | Windows 11 | Endpoint (Sysmon) | 10.10.100.10 |
-| `svr01` | Ubuntu 24.04 | Target Server | 10.10.100.20 |
-| `attacker` | Kali Linux | Attack Platform | 10.10.200.100 |
-
----
-
-#### Incident Response Lab (`incident-response`)
-
-| Property | Value |
-|----------|-------|
-| **VMs** | 10 |
-| **Description** | Pre-compromised network for IR exercises |
-| **Provisioning Time** | 10-15 minutes |
-| **Host Requirements** | 20 vCPU, 64 GB RAM, 500 GB disk |
-
-Includes forensic workstation with:
-- Autopsy, Volatility, YARA
-- Wireshark, NetworkMiner
-- Timeline Explorer
-- Pre-loaded disk images and memory dumps
+Small office with a greyspace internet segment; 4 nodes and no `vm_count` (the node
+list is the inventory). See `content/ranges/greyspace-internet/template.yaml`.
 
 ---
 
@@ -246,171 +191,140 @@ Includes forensic workstation with:
 
 ### Scenario Catalog
 
-#### APT Breach (`apt-breach`)
+Six shipped scenarios live in `content/scenarios/<name>/scenario.yaml` and validate
+against `scenario-engine/schemas/scenario.schema.json`. Run one with
+`python scenario-engine/runner/run.py <scenario.yaml> --dry-run` (positional scenario
+path; `--range-id`, `--output` and `--event-store` are optional).
+
+#### apt-nation-state — v1.0
 
 | Property | Value |
 |----------|-------|
-| **Difficulty** | Advanced |
+| **Difficulty** | hard |
 | **Duration** | 90 minutes |
-| **MITRE Techniques** | T1566.001, T1059.001, T1136.001, T1021, T1048.002 |
-| **Objectives** | 5 (100 points) |
-| **Required Template** | medium-enterprise |
-
-**Attack Narrative:** A sophisticated threat actor targets the organization through spearphishing. After gaining initial access via a malicious document, the attacker executes PowerShell payloads, creates a backdoor admin account, moves laterally to the file server using PsExec, and exfiltrates sensitive data via HTTPS.
-
-**Objectives:**
-1. Detect spearphishing email (15 pts)
-2. Detect PowerShell execution from Word (20 pts)
-3. Detect new admin account creation (20 pts)
-4. Contain lateral movement (25 pts)
-5. Submit incident report (20 pts)
-
----
-
-#### Insider Threat (`insider-threat`)
-
-| Property | Value |
-|----------|-------|
-| **Difficulty** | Intermediate |
-| **Duration** | 60 minutes |
-| **MITRE Techniques** | T1078, T1083, T1005, T1048.003 |
-| **Objectives** | 4 (80 points) |
-| **Required Template** | medium-enterprise |
-
-**Attack Narrative:** A disgruntled employee with legitimate credentials begins accessing files outside their normal scope. They enumerate sensitive directories, collect confidential documents, and attempt to exfiltrate data through DNS tunneling.
-
-**Objectives:**
-1. Detect unusual file access patterns (20 pts)
-2. Detect directory enumeration (20 pts)
-3. Detect DNS tunneling (25 pts)
-4. Submit incident report (15 pts)
-
----
-
-#### Supply Chain Compromise (`supply-chain`)
-
-| Property | Value |
-|----------|-------|
-| **Difficulty** | Expert |
-| **Duration** | 120 minutes |
-| **MITRE Techniques** | T1195.002, T1059.001, T1543.003, T1071.001, T1486 |
-| **Objectives** | 6 (150 points) |
 | **Required Template** | large-enterprise |
+| **Phases** | 12 |
+| **Objectives** | 8 (100 points, passing 70) |
+| **MITRE (enterprise)** | T1566.001, T1059.005, T1053.005, T1570, T1560.001, T1048.002, T1003.001, T1087.002, T1018, T1021.002, T1071.001, T1027 |
 
-**Attack Narrative:** A trusted software vendor's update mechanism is compromised. A malicious update installs a backdoor that establishes persistence via a Windows service, communicates with C2 infrastructure over HTTPS, and ultimately deploys ransomware across the network.
-
-**Objectives:**
-1. Detect suspicious software update (20 pts)
-2. Detect backdoor installation (25 pts)
-3. Detect new service creation (20 pts)
-4. Detect C2 communication (25 pts)
-5. Contain ransomware spread (35 pts)
-6. Submit full IR report with IOCs (25 pts)
+Advanced persistent threat simulation modeled after nation-state adversary tradecraft:
+a full kill chain from initial spearphishing to data exfiltration over HTTPS, across
+multiple network segments. Emphasizes detection engineering and threat hunting.
 
 ---
 
-#### Ransomware Response (`ransomware-response`)
+#### cloud-breach — v1.0
 
 | Property | Value |
 |----------|-------|
-| **Difficulty** | Intermediate |
+| **Difficulty** | hard |
 | **Duration** | 75 minutes |
-| **MITRE Techniques** | T1566.001, T1059.001, T1486, T1490 |
-| **Objectives** | 5 (100 points) |
-| **Required Template** | medium-enterprise |
+| **Required Template** | cloud-security |
+| **Phases** | 10 |
+| **Objectives** | 7 (100 points, passing 70) |
+| **MITRE (enterprise)** | T1530, T1552.005, T1078.004, T1098.003, T1584.007, T1562.008, T1087.004, T1580, T1537, T1190 |
 
-**Attack Narrative:** Ransomware arrives via phishing email. After execution, it encrypts files on the local workstation, attempts to delete shadow copies, and spreads to network shares.
-
-**Objectives:**
-1. Detect phishing email (15 pts)
-2. Detect ransomware execution (20 pts)
-3. Detect shadow copy deletion (20 pts)
-4. Isolate infected host (25 pts)
-5. Submit incident report (20 pts)
+Cloud infrastructure compromise: an attacker discovers an exposed S3 bucket, steals AWS
+credentials, escalates privileges through IAM misconfiguration, deploys a Lambda
+backdoor, and manipulates CloudTrail to cover tracks. Requires understanding of
+cloud-native attack patterns and detection mechanisms. Note: its `T1562.008` (Disable or
+Modify Cloud Logs) is **revoked** in the shipped MITRE catalogue
+(`content/mitre/enterprise-attack-techniques.json`, revoked by T1685.002) — the scenario
+YAML predates that.
 
 ---
 
-#### Data Exfiltration via Cloud Services (`cloud-exfil`)
+#### ics-attack — v1.0
 
 | Property | Value |
 |----------|-------|
-| **Difficulty** | Beginner |
-| **Duration** | 45 minutes |
-| **MITRE Techniques** | T1567.002, T1083, T1005 |
-| **Objectives** | 3 (60 points) |
+| **Difficulty** | expert |
+| **Duration** | 60 minutes |
+| **Required Template** | large-enterprise |
+| **Phases** | 8 |
+| **Objectives** | 6 (100 points, passing 75) |
+| **MITRE (ICS)** | T0886, T0843, T0821, T0842, T0856, T0831, T0880, T0826 |
+
+Industrial control system (ICS) attack targeting an OT/SCADA environment: the adversary
+moves from the IT network into the OT segment, modifies PLC programs, manipulates HMI
+displays, bypasses safety systems, and disrupts physical processes. Based on real-world
+ICS attack frameworks (TRITON/TRISIS, Industroyer). The scenario maps its phases to the
+Purdue model and uses `mitre_ics` techniques (not the enterprise ATT&CK matrix).
+
+---
+
+#### incident-response-drill — v1.0
+
+| Property | Value |
+|----------|-------|
+| **Difficulty** | medium |
+| **Duration** | 60 minutes |
+| **Required Template** | soc-training |
+| **Phases** | 6 |
+| **Objectives** | 7 (100 points, passing 65) |
+| **MITRE (enterprise)** | T1566.001, T1059.001, T1053.005, T1003.001, T1021.002, T1486, T1070.001 |
+
+A blue team incident response exercise with a **pre-staged compromised environment**:
+indicators of compromise are scattered across multiple log sources. Participants collect
+evidence, reconstruct timelines, and execute containment/eradication/recovery phases
+under time pressure. Scoring rewards thoroughness, accuracy, and speed.
+
+---
+
+#### insider-threat-advanced — v1.0
+
+| Property | Value |
+|----------|-------|
+| **Difficulty** | medium |
+| **Duration** | 60 minutes |
+| **Required Template** | medium-enterprise |
+| **Phases** | 8 |
+| **Objectives** | 6 (100 points, passing 60) |
+| **MITRE (enterprise)** | T1078, T1078.002, T1083, T1005, T1039, T1052.001, T1567.002, T1070.001, T1070.004, T1098 |
+
+An advanced insider threat: a disgruntled employee escalates privileges, accesses
+sensitive data, exfiltrates via USB and cloud storage, and attempts anti-forensic
+techniques to cover their tracks. Focuses on behavioral analytics, DLP monitoring, and
+insider threat detection patterns.
+
+---
+
+#### ransomware-lite — v0.1
+
+| Property | Value |
+|----------|-------|
 | **Required Template** | small-enterprise |
+| **Objectives** | 2 (25 + 25 points) |
+| **MITRE (enterprise)** | T1204 (timeline execution only; no `mitre_attack` list) |
 
-**Attack Narrative:** An attacker with compromised credentials accesses the network, browses file shares for sensitive data, and uploads files to an external cloud storage service.
-
-**Objectives:**
-1. Detect unauthorized file share access (20 pts)
-2. Detect cloud upload activity (25 pts)
-3. Submit incident summary (15 pts)
+A short introductory ransomware drill: phishing email, simulated dropper execution
+(T1204, User Execution) and a DNS spike. No `difficulty`, `duration_minutes` or
+`total_points` keys — the earliest and smallest shipped scenario.
 
 ---
 
 ## Detection Rules
 
-### Rule Catalog by MITRE Tactic
+### Rule Catalog
 
-#### Initial Access
+Nine shipped rules in `content/detections/*.yaml`, IDs `tn-detect-001`…`tn-detect-009`
+(Sigma-inspired: the four older rules carry `mitre_attack`/`level` keys, the five newer
+ones `mitre_technique`/`severity`/`status`). The loader reads `level`/`severity` and
+`mitre_technique`/`tags` (`scripts/load_content.py:213,228`, `load_detections`) — it does
+**not** read `mitre_attack`, so the four older rules upload with no technique list; the
+Technique(s) column below is what each YAML carries, not what the loader uploads.
 
-| Rule ID | Title | Technique | Severity |
-|---------|-------|-----------|----------|
-| `det-phish-attach-001` | Phishing Email with Attachment | T1566.001 | High |
-| `det-phish-link-001` | Phishing Email with Link | T1566.002 | High |
-| `det-ext-service-001` | Brute Force on External Service | T1110 | Medium |
-
-#### Execution
-
-| Rule ID | Title | Technique | Severity |
-|---------|-------|-----------|----------|
-| `det-ps-encoded-001` | PowerShell Encoded Command | T1059.001 | High |
-| `det-ps-download-001` | PowerShell Download Cradle | T1059.001 | High |
-| `det-wscript-001` | WScript/CScript Execution | T1059.005 | Medium |
-| `det-mshta-001` | MSHTA Execution | T1218.005 | Medium |
-
-#### Persistence
-
-| Rule ID | Title | Technique | Severity |
-|---------|-------|-----------|----------|
-| `det-new-admin-001` | New Admin Account Created | T1136.001 | High |
-| `det-schtask-001` | Scheduled Task Creation | T1053.005 | Medium |
-| `det-service-001` | New Service Installed | T1543.003 | Medium |
-| `det-runkey-001` | Registry Run Key Modified | T1547.001 | Medium |
-
-#### Discovery
-
-| Rule ID | Title | Technique | Severity |
-|---------|-------|-----------|----------|
-| `det-net-enum-001` | Network Share Enumeration | T1135 | Low |
-| `det-dir-enum-001` | Directory Enumeration | T1083 | Low |
-| `det-whoami-001` | Whoami Execution | T1033 | Low |
-
-#### Lateral Movement
-
-| Rule ID | Title | Technique | Severity |
-|---------|-------|-----------|----------|
-| `det-psexec-001` | PsExec Lateral Movement | T1570 | High |
-| `det-wmi-remote-001` | WMI Remote Execution | T1047 | High |
-| `det-rdp-lateral-001` | RDP Lateral Movement | T1021.001 | Medium |
-
-#### Exfiltration
-
-| Rule ID | Title | Technique | Severity |
-|---------|-------|-----------|----------|
-| `det-dns-tunnel-001` | DNS Tunneling | T1048.001 | High |
-| `det-http-exfil-001` | HTTP Data Exfiltration | T1048.002 | High |
-| `det-large-upload-001` | Unusually Large Upload | T1567 | Medium |
-| `det-cloud-upload-001` | Cloud Storage Upload | T1567.002 | Medium |
-
-#### Impact
-
-| Rule ID | Title | Technique | Severity |
-|---------|-------|-----------|----------|
-| `det-ransomware-001` | File Encryption Activity | T1486 | Critical |
-| `det-shadow-del-001` | Shadow Copy Deletion | T1490 | Critical |
-| `det-service-stop-001` | Security Service Stopped | T1489 | High |
+| Rule ID | File | Title | Technique(s) | Severity | Status |
+|---------|------|-------|--------------|----------|--------|
+| `tn-detect-001` | `powershell-download.yaml` | Suspicious PowerShell Download Cradle | T1059.001, T1105 | high | stable |
+| `tn-detect-002` | `vss-deletion.yaml` | Volume Shadow Copy Deletion | T1490 | critical | stable |
+| `tn-detect-003` | `suspicious-dns-dga.yaml` | Suspicious DNS Queries to Known DGA Patterns | T1568.002, T1071.004 | medium | experimental |
+| `tn-detect-004` | `rdp-brute-force.yaml` | RDP Brute Force Attempt | T1110.001, T1021.001 | high | stable |
+| `tn-detect-005` | `lateral-movement-psexec.yaml` | Lateral Movement via PsExec | T1570, T1021.002, T1569.002 | high | stable |
+| `tn-detect-006` | `credential-dumping-lsass.yaml` | Credential Dumping via LSASS Memory Access | T1003.001 | critical | stable |
+| `tn-detect-007` | `data-exfil-dns-tunnel.yaml` | Data Exfiltration via DNS Tunneling | T1048.003, T1071.004 | high | stable |
+| `tn-detect-008` | `persistence-scheduled-task.yaml` | Persistence via Scheduled Task Creation | T1053.005 | high | stable |
+| `tn-detect-009` | `defense-evasion-timestomp.yaml` | Defense Evasion via File Timestomping | T1070.006 | medium | stable |
 
 ---
 
@@ -418,78 +332,19 @@ Includes forensic workstation with:
 
 ### Pack Catalog
 
-#### Phishing Campaign Pack (`phishing-campaign`)
+**These packs are not loaded yet.** Per `scripts/load_content.py` (docstring): nothing in
+the API or the worker reads them — the worker reads a scenario's `inject_packs` list and
+discards it — so there is nowhere for them to appear.
 
-| Property | Value |
-|----------|-------|
-| **Events** | 3 |
-| **Duration** | ~7 minutes |
-| **Techniques** | T1566.001, T1566.002 |
+| Pack ID | File | Injects | Delay minutes | MITRE techniques |
+|---------|------|---------|---------------|------------------|
+| `inject-phishing-campaign` | `phishing-campaign.yaml` | 4 | 0, 5, 15, 20 | T1566.001, T1566.002, T1078, T1021.001 |
+| `inject-ransomware-simulation` | `ransomware-simulation.yaml` | 5 | 0, 2, 5, 8, 10 | T1566.001, T1059.001, T1486, T1490 |
+| `inject-insider-threat` | `insider-threat.yaml` | 5 | 0, 5, 15, 25, 30 | T1078, T1083, T1005, T1567.002 |
+| `inject-cloud-misconfiguration` | `cloud-misconfiguration.yaml` | 5 | 0, 10, 20, 30, 40 | T1530, T1078.004, T1610, T1098.003, T1580 |
+| `inject-supply-chain-attack` | `supply-chain-attack.yaml` | 5 | 0, 10, 20, 30, 40 | T1195.001, T1195.002, T1189, T1059.007, T1105 |
 
-**Events:**
-1. DNS reconnaissance of phishing domain (0 min)
-2. Phishing email delivery (2 min)
-3. HTTP callback to phishing infrastructure (5 min)
-
----
-
-#### Ransomware Deployment Pack (`ransomware-deployment`)
-
-| Property | Value |
-|----------|-------|
-| **Events** | 4 |
-| **Duration** | ~15 minutes |
-| **Techniques** | T1486, T1490, T1489 |
-
-**Events:**
-1. Ransomware binary execution (0 min)
-2. Shadow copy deletion (2 min)
-3. Security service termination (3 min)
-4. File encryption activity (5-15 min, continuous)
-
----
-
-#### Insider Data Collection Pack (`insider-exfil`)
-
-| Property | Value |
-|----------|-------|
-| **Events** | 3 |
-| **Duration** | ~20 minutes |
-| **Techniques** | T1083, T1005, T1567.002 |
-
-**Events:**
-1. Directory enumeration (0 min)
-2. File collection from sensitive shares (5 min)
-3. Upload to external cloud storage (15 min)
-
----
-
-#### C2 Beacon Pack (`c2-beacon`)
-
-| Property | Value |
-|----------|-------|
-| **Events** | 2 |
-| **Duration** | Continuous |
-| **Techniques** | T1071.001, T1573 |
-
-**Events:**
-1. Initial C2 DNS check-in (0 min)
-2. Periodic HTTPS callbacks (every 5 min)
-
----
-
-#### Credential Harvesting Pack (`credential-harvest`)
-
-| Property | Value |
-|----------|-------|
-| **Events** | 3 |
-| **Duration** | ~10 minutes |
-| **Techniques** | T1003.001, T1558.003, T1110 |
-
-**Events:**
-1. LSASS memory dump (0 min)
-2. Kerberoasting request (3 min)
-3. Password spray attempt (7 min)
+All five packs are version 1.0.
 
 ---
 
@@ -497,103 +352,115 @@ Includes forensic workstation with:
 
 ### Dataset Catalog
 
-#### Corporate Baseline (`corporate-baseline`)
+**These datasets are not loaded yet** — same as the inject packs: nothing in the API or
+the worker reads `content/datasets/` (`scripts/load_content.py`, docstring).
 
-| Property | Value |
-|----------|-------|
-| **Events** | 50,000 |
-| **Time Range** | 24 hours |
-| **Sources** | Sysmon, Zeek, DNS |
-| **Size** | ~25 MB |
+Four small, hand-authored YAML files of sample event lists, not bulk telemetry. They
+carry no event-count, size or time-range metadata; each is an `events:` list with a
+handful of representative entries (timestamps in early 2024 or 2026).
 
-Normal corporate activity including: email, web browsing, file access, print jobs, application launches, DNS queries, network connections.
-
----
-
-#### Web Server Logs (`web-server-logs`)
-
-| Property | Value |
-|----------|-------|
-| **Events** | 100,000 |
-| **Time Range** | 7 days |
-| **Sources** | Apache/Nginx access logs |
-| **Size** | ~50 MB |
-
-Normal web server traffic including GET/POST requests, status codes, user agents, referrers. Includes some 404 scanning noise.
-
----
-
-#### SOC Alert Baseline (`soc-alerts-baseline`)
-
-| Property | Value |
-|----------|-------|
-| **Events** | 5,000 |
-| **Time Range** | 30 days |
-| **Sources** | Suricata, SIEM alerts |
-| **Size** | ~5 MB |
-
-Mix of true positives and false positives for SOC triage training. Includes benign scan alerts, failed logon noise, and legitimate application alerts.
+| File | Contents |
+|------|----------|
+| `active-directory-events.yaml` | Kerberoasting, Golden Ticket, DCSync and GPO-modification indicators (Windows Security event IDs such as 4769) |
+| `linux-audit-events.yaml` | SSH brute force, privilege escalation, file integrity, process anomalies, cron manipulation (~23 `event_type` entries) |
+| `network-traffic-samples.yaml` | DNS and flow samples (4 `event_type` entries) |
+| `windows-security-events.yaml` | Windows Security logon events (e.g. 4624 with logon type 10), replayable into OpenSearch |
 
 ---
 
 ## MITRE ATT&CK Coverage Matrix
 
-### Techniques Covered by Scenarios
+### Techniques Exercised by Shipped Scenarios
 
-| Technique | ID | apt-breach | insider-threat | supply-chain | ransomware | cloud-exfil |
-|-----------|----|:----------:|:--------------:|:------------:|:----------:|:-----------:|
-| Spearphishing Attachment | T1566.001 | X | | | X | |
-| Supply Chain Compromise | T1195.002 | | | X | | |
-| Valid Accounts | T1078 | | X | | | |
-| PowerShell | T1059.001 | X | | X | X | |
-| New Admin Account | T1136.001 | X | | | | |
-| New Service | T1543.003 | | | X | | |
-| File and Directory Discovery | T1083 | | X | | | X |
-| Data from Local System | T1005 | | X | | | X |
-| Remote Services (PsExec) | T1021 | X | | | | |
-| Application Layer Protocol | T1071.001 | | | X | | |
-| DNS Tunneling | T1048.001 | | X | | | |
-| HTTP Exfiltration | T1048.002 | X | | | | |
-| Cloud Storage Upload | T1567.002 | | | | | X |
-| Data Encrypted for Impact | T1486 | | | X | X | |
-| Inhibit System Recovery | T1490 | | | | X | |
+Enterprise techniques from the five scenarios' `mitre_attack` lists, plus `ransomware-lite`'s
+timeline technique. `ics-attack` uses `mitre_ics` (T08xx) and sits outside this matrix.
+
+| ID | Technique | Tactic(s) | apt-nation-state | cloud-breach | incident-response-drill | insider-threat-advanced | ransomware-lite |
+|----|-----------|-----------|:---:|:---:|:---:|:---:|:---:|
+| T1003.001 | LSASS Memory | Credential Access | X | | X | | |
+| T1005 | Data from Local System | Collection | | | | X | |
+| T1018 | Remote System Discovery | Discovery | X | | | | |
+| T1021.002 | SMB/Windows Admin Shares | Lateral Movement | X | | X | | |
+| T1027 | Obfuscated Files or Information | Stealth | X | | | | |
+| T1039 | Data from Network Shared Drive | Collection | | | | X | |
+| T1048.002 | Exfiltration Over Asymmetric Encrypted Non-C2 Protocol | Exfiltration | X | | | | |
+| T1052.001 | Exfiltration Over USB | Exfiltration | | | | X | |
+| T1053.005 | Scheduled Task | Execution, Persistence, Priv. Esc. | X | | X | | |
+| T1059.001 | PowerShell | Execution | | | X | | |
+| T1059.005 | Visual Basic | Execution | X | | | | |
+| T1070.001 | Clear Windows Event Logs | Stealth | | | X | X | |
+| T1070.004 | File Deletion | Stealth | | | | X | |
+| T1071.001 | Web Protocols | Command and Control | X | | | | |
+| T1078 | Valid Accounts | Init. Access, Persistence, Priv. Esc., Stealth | | | | X | |
+| T1078.002 | Valid Accounts: Domain Accounts | Init. Access, Persistence, Priv. Esc., Stealth | | | | X | |
+| T1078.004 | Valid Accounts: Cloud Accounts | Init. Access, Persistence, Priv. Esc., Stealth | | X | | | |
+| T1083 | File and Directory Discovery | Discovery | | | | X | |
+| T1087.002 | Account Discovery: Domain Account | Discovery | X | | | | |
+| T1087.004 | Account Discovery: Cloud Account | Discovery | | X | | | |
+| T1098 | Account Manipulation | Persistence, Priv. Esc. | | | | X | |
+| T1098.003 | Account Manipulation: Additional Cloud Roles | Persistence, Priv. Esc. | | X | | | |
+| T1190 | Exploit Public-Facing Application | Initial Access | | X | | | |
+| T1204 | User Execution | Execution | | | | | X |
+| T1486 | Data Encrypted for Impact | Impact | | | X | | |
+| T1530 | Data from Cloud Storage | Collection | | X | | | |
+| T1537 | Transfer Data to Cloud Account | Exfiltration | | X | | | |
+| T1552.005 | Cloud Instance Metadata API | Credential Access | | X | | | |
+| T1560.001 | Archive via Utility | Collection | X | | | | |
+| T1566.001 | Spearphishing Attachment | Initial Access | X | | X | | |
+| T1562.008 | Disable or Modify Cloud Logs | Stealth | | X | | | |
+| T1567.002 | Exfiltration to Cloud Storage | Exfiltration | | | | X | |
+| T1570 | Lateral Tool Transfer | Lateral Movement | X | | | | |
+| T1580 | Cloud Infrastructure Discovery | Discovery | | X | | | |
+| T1584.007 | Compromise Infrastructure: Serverless | Resource Development | | X | | |
+
+Two scenario techniques are **revoked** in the shipped catalogue
+(`content/mitre/enterprise-attack-techniques.json`): `T1070.001` (revoked by T1685.005)
+and `T1562.008` (revoked by T1685.002). The scenario YAML predates those revocations.
 
 ### Coverage Summary
 
-| MITRE Tactic | Techniques Covered | Total Available | Coverage |
-|-------------|--------------------|----------------|---------|
-| Initial Access | 3 | 9 | 33% |
-| Execution | 3 | 12 | 25% |
-| Persistence | 3 | 19 | 16% |
-| Privilege Escalation | 1 | 13 | 8% |
-| Defense Evasion | 1 | 42 | 2% |
-| Credential Access | 3 | 17 | 18% |
-| Discovery | 4 | 31 | 13% |
-| Lateral Movement | 3 | 9 | 33% |
-| Collection | 2 | 17 | 12% |
-| Exfiltration | 4 | 9 | 44% |
-| Impact | 3 | 14 | 21% |
+Counts read from the shipped catalogue (858 technique entries, 149 revoked, tactic named
+per its `"tactics"` list; a technique counts in every tactic it maps to). The catalogue
+names TA0005 **"Stealth"** (not "Defense Evasion") and TA0112 "Defense Impairment".
+
+| Tactic | Catalogue ID | Catalogue active techniques | Exercised by shipped scenarios |
+|--------|--------------|----------------------------|--------------------------------|
+| Initial Access | TA0001 | 22 | T1078, T1078.002, T1078.004, T1190, T1566.001 |
+| Execution | TA0002 | 69 | T1059.001, T1059.005, T1053.005, T1204 |
+| Persistence | TA0003 | 117 | T1078, T1078.002, T1078.004, T1053.005, T1098, T1098.003 |
+| Privilege Escalation | TA0004 | 98 | T1078, T1078.002, T1078.004, T1053.005, T1098, T1098.003 |
+| Stealth | TA0005 | 151 | T1027, T1070.001, T1070.004, T1562.008, T1078, T1078.002, T1078.004 |
+| Credential Access | TA0006 | 67 | T1003.001, T1552.005 |
+| Discovery | TA0007 | 49 | T1018, T1083, T1087.002, T1087.004, T1580 |
+| Lateral Movement | TA0008 | 25 | T1021.002, T1570 |
+| Collection | TA0009 | 41 | T1005, T1039, T1530, T1560.001 |
+| Exfiltration | TA0010 | 19 | T1048.002, T1052.001, T1537, T1567.002 |
+| Command and Control | TA0011 | 47 | T1071.001 |
+| Impact | TA0040 | 33 | T1486 |
+| Resource Development | TA0042 | 50 | T1584.007 |
+| Reconnaissance | TA0043 | 46 | — |
+| Defense Impairment | TA0112 | 56 | — |
+
+35 unique enterprise techniques are exercised (plus 8 ICS techniques in `ics-attack`).
 
 ---
 
 ## Content Versioning
 
-### Version Scheme
+### Version Field
 
-All content follows semantic versioning (`MAJOR.MINOR.PATCH`):
-
-| Change Type | Version Bump | Example |
-|------------|-------------|---------|
-| Breaking changes (restructured objectives, removed events) | Major | 1.0.0 → 2.0.0 |
-| New features (added events, new objectives) | Minor | 1.0.0 → 1.1.0 |
-| Bug fixes (typos, timing tweaks) | Patch | 1.0.0 → 1.0.1 |
+Templates, scenarios and inject packs carry a free-form `version:` string — shipped values
+include `"1.0"`, `"2.0"` (`red-vs-blue` template) and `"0.1"` (`ransomware-lite`
+scenario). This is not strict `MAJOR.MINOR.PATCH` semantic versioning, and no shipped
+schema or loader enforces a version scheme; the loader passes the string through as-is
+(`scripts/load_content.py`, `load_yaml_items`, default `"1.0"`).
 
 ### Compatibility
 
-- Scenarios specify their minimum API version
-- Templates specify their minimum Terraform provider version
-- Detection rules specify their minimum OpenSearch version
-- Breaking changes are noted in `CHANGELOG.md`
+- Scenarios and templates are validated against `scenario-engine/schemas/scenario.schema.json`
+  and `template.schema.json` on load; neither schema carries minimum-API, Terraform-provider
+  or OpenSearch version fields.
+- Repository-wide changes are noted in the root `CHANGELOG.md`.
 
 ---
 
@@ -601,13 +468,18 @@ All content follows semantic versioning (`MAJOR.MINOR.PATCH`):
 
 ### Content Submission Process
 
-1. **Fork** the content repository
-2. **Create** your content following the schemas in the [Scenario Authoring Guide](scenarios.md)
+1. **Branch** this repository
+2. **Create** your content in its section directory — `content/ranges/<name>/template.yaml`,
+   `content/scenarios/<name>/scenario.yaml`, `content/detections/<name>.yaml` — following
+   the [Scenario Authoring Guide](scenarios.md)
 3. **Validate** using the CLI tools:
    ```bash
-   python tools/cli/forge.py template validate content/scenarios/my-scenario.yaml
-   python scenario-engine/runner/run.py --scenario content/scenarios/my-scenario.yaml --dry-run
+   python tools/cli/forge.py template validate content/ranges/my-range/template.yaml
+   python scenario-engine/runner/run.py content/scenarios/my-scenario/scenario.yaml --dry-run
    ```
+   `forge template validate` checks a **template** against
+   `scenario-engine/schemas/template.schema.json`; the scenario runner validates the
+   scenario against `scenario.schema.json` when it loads it.
 4. **Test** on a local instance with the Docker Compose dev stack
 5. **Submit** a pull request with:
    - Content files

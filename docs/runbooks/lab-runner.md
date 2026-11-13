@@ -15,8 +15,10 @@ this paragraph). Never on `push` or `pull_request`: a self-hosted runner execute
 whatever the workflow checks out, so it must not run code from forks or unreviewed
 branches. Keep it that way. One run at a time (`concurrency: lab-vsphere`).
 
-A skipped test is a failed job: the test skips itself when any variable below is missing,
-and `scripts/junit_require_pass.py` turns "zero passed" into exit 1.
+A skipped test is a failed job: the test skips itself when any required variable below is
+missing (`VSPHERE_CONTENT_LIBRARY` and `VSPHERE_VERIFY_SSL` are not in that check: the
+provisioner defaults them to empty and off), and `scripts/junit_require_pass.py` turns
+"zero passed" into exit 1.
 
 ## Network posture: outbound only
 
@@ -27,7 +29,7 @@ Nothing connects to it; it needs **no inbound port, no port forward, no public I
 |-----------------------------|------|--------------------------------------------------|
 | `github.com`, `api.github.com`, `*.actions.githubusercontent.com`, `codeload.github.com`, `objects.githubusercontent.com`, `pkg-containers.githubusercontent.com`, `results-receiver.actions.githubusercontent.com`, `*.blob.core.windows.net` | 443 | job polling, checkout, artifacts, logs |
 | `pypi.org`, `files.pythonhosted.org` | 443 | `pip install -r requirements-test.txt` |
-| Docker Hub (`registry-1.docker.io`, `auth.docker.io`, `production.cloudflare.docker.com`) | 443 | the disposable `postgres:16` |
+| `mirror.gcr.io` (Google's Docker Hub cache — the workflow names the image on it, not on Docker Hub) | 443 | the disposable `postgres:16` |
 | the vCenter (`VSPHERE_URL`) | 443 | the test itself |
 
 GitHub publishes the current hostname list at

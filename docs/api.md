@@ -1,6 +1,6 @@
 # TrueNorth Range — API Reference
 
-> Complete API documentation for the TrueNorth Range Control Plane. All 42 endpoints with request/response examples, authentication, WebSocket protocol, and error handling.
+> API documentation for the TrueNorth Range Control Plane. Core endpoints with request/response examples, authentication, WebSocket protocol, and error handling. The complete machine-readable contract is [`docs/interfaces/openapi.json`](interfaces/openapi.json) — 465 paths / 593 operations; this guide covers the core ones.
 
 ---
 
@@ -33,7 +33,7 @@
 
 | Environment | Base URL | Notes |
 |------------|----------|-------|
-| Development | `http://localhost:8080` | `AUTH_DISABLED=true` |
+| Development | `http://localhost:4200/api` | nginx front door (`/api/` → the API); `AUTH_DISABLED=true` in the dev compose. API direct: `http://127.0.0.1:8081` (`compose.dev.yml`) |
 | Staging | `https://staging.truenorth.local` | Keycloak auth required |
 | Production | `https://api.truenorth.example.com` | Keycloak auth required |
 
@@ -150,7 +150,7 @@ All errors return a consistent JSON structure:
 
 ## Pagination
 
-List endpoints support cursor-based pagination:
+List endpoints use limit/offset pagination:
 
 | Parameter | Type | Default | Max | Description |
 |-----------|------|---------|-----|-------------|
@@ -164,26 +164,34 @@ GET /ranges?limit=20&offset=40
 
 ---
 
-## Rate Limiting
+A sliding-window limiter (Redis, 60 s window, `app/middleware.py`) keys on the caller's
+token subject and address. There are no role tiers; limits are per route:
 
-| Tier | Limit | Window | Applies To |
-|------|-------|--------|-----------|
-| Standard | 100 requests | Per minute | All authenticated users |
-| Elevated | 500 requests | Per minute | Admin and instructor roles |
-| Burst | 20 requests | Per second | Write operations (POST/PUT/DELETE) |
-| AI | 10 requests | Per minute | AI Orchestrator endpoints |
+| Limit | Applies To |
+|-------|-----------|
+| 100 requests / min | Default for every authenticated route |
+| 200 requests / min | All `GET` endpoints |
+| 30 / min | `POST /ranges` |
+| 5 / min | `POST /ranges/batch-provision` |
+| 20 / min | `POST /ai/*` |
+| 30 / min | `POST /curricula/{id}/search`, `POST /curricula/{id}/generate-course` |
+| 10 / min | `POST /exercise-forge`, `POST /quizzes/generate`, AAR ai-enhance, MESL generate |
+| 30 / min | `POST /exercises/{id}/objectives/{ref}/detections` |
+| Unlimited | `GET /health` |
 
-Rate limit headers are included in every response:
+`X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` are on every
+rate-limited response:
 ```
 X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 95
 X-RateLimit-Reset: 1706000000
 ```
 
-When exceeded, returns `429 Too Many Requests`:
+When exceeded, returns `429 Too Many Requests` (retry window = the 60 s window):
 ```json
 {
-  "detail": "Rate limit exceeded. Retry after 45 seconds."
+  "detail": "Rate limit exceeded. Try again later.",
+  "retry_after": 60
 }
 ```
 
@@ -200,15 +208,21 @@ Returns platform health status. No authentication required.
 {
   "status": "ok",
   "version": "1.0.0",
-  "db": true
+  "app": "truenorth-range",
+  "db": true,
+  "redis": true
 }
 ```
 
+`503 Service Unavailable` with `"status": "unavailable"` when the database is down.
+
 | Field | Type | Description |
 |-------|------|-------------|
-| `status` | string | `ok` or `degraded` |
+| `status` | string | `ok` (200) or `unavailable` (503) |
 | `version` | string | API version |
+| `app` | string | Always `truenorth-range` |
 | `db` | boolean | Database connectivity |
+| `redis` | boolean | Redis connectivity |
 
 ---
 
@@ -332,7 +346,7 @@ Provision a new user. **Permission: `user:create`**
 | Field | Required | Description |
 |-------|----------|-------------|
 | `email` | Yes | Unique email address |
-| `display_name` | No | Defaults to email |
+| `display_name` | Yes | Display name (at least 1 character) |
 | `role` | No | One of: admin, instructor, student, observer, range_ops. Defaults to `student` |
 | `keycloak_id` | No | Auto-generated if omitted |
 
@@ -413,7 +427,7 @@ The courses you teach and the exercises you run (#200). **Permission:
 Withdraw a Student from a course; the enrolment is kept with status `withdrawn`
 (`POST /courses/{id}/enroll` by staff reopens it). **Permission: `user:update`**, or
 **`enrollment:manage_own`** for a Student on a course you teach. 404 for another tenant's
-course or person or no enrolment; 409 for a completed one. Audited.
+course or person or no enrolment; 409 for a completed or failed one. Audited.
 
 **Response `200 OK`:** the enrolment, `"status": "withdrawn"`.
 
@@ -452,7 +466,7 @@ Create a range template. **Permission: `template:create`**
 | Field | Required | Description |
 |-------|----------|-------------|
 | `name` | Yes | Template display name |
-| `version` | No | Semantic version, defaults to "0.1.0" |
+| `version` | No | Semantic version, defaults to "1.0" |
 | `yaml` | Yes | YAML definition of VMs, networks, sensors |
 | `is_public` | No | If true, visible to all tenants |
 
@@ -703,7 +717,7 @@ operation is in flight. vSphere's stop is a hard power-off, not a guest shutdown
 **Permission: `range:read`.** The range's operations, newest first, with their outcomes
 reconciled from its state:
 
-- `status` is `pending`, `dispatched`, `succeeded`, `failed` or `superseded`.
+- `status` is `pending`, `dispatched`, `held`, `succeeded`, `failed` or `superseded`.
 - `error.code` is `broker_unavailable`, `range_failed`, `no_outcome`, `abandoned` or
   `superseded`.
 
@@ -871,7 +885,7 @@ transaction (one refusal accepts none). `task_id` carries the operations' ids, c
 | Status | Condition |
 |--------|-----------|
 | `202` | Batch task dispatched |
-| `400` | One or more range IDs not found |
+| `404` | One or more range IDs not found (or another tenant's) |
 | `409` | One or more ranges in non-provisionable state |
 
 ---
@@ -1186,29 +1200,29 @@ Retrieve AAR as rendered HTML. **Permission: `aar:read`**
 
 ### `POST /telemetry/{range_id}/events`
 
-Ingest telemetry events into the range's OpenSearch index. Events are tagged with `range_id` and `tenant_id`.
+Ingest telemetry events into the range's index (`range-<range_id>`). **Permission:
+`telemetry:write`** (Students cannot write; another tenant's range is 404). The body is a
+**JSON array** of events. Each event is tagged with `range_id`, `tenant_id`, a
+`@timestamp` (now, if absent) and a `mitre_technique` list when one is known.
 
 **Request:**
 ```json
-{
-  "events": [
-    {
-      "timestamp": "2026-01-15T10:30:00Z",
-      "event.action": "process_create",
-      "process.name": "powershell.exe",
-      "process.command_line": "powershell -enc ...",
-      "host.name": "ws01",
-      "source": "sysmon"
-    }
-  ]
-}
+[
+  {
+    "timestamp": "2026-01-15T10:30:00Z",
+    "event.action": "process_create",
+    "process.name": "powershell.exe",
+    "process.command_line": "powershell -enc ...",
+    "host.name": "ws01",
+    "source": "sysmon"
+  }
+]
 ```
 
-**Response `201 Created`:**
+**Response `202 Accepted`:**
 ```json
 {
-  "indexed": 1,
-  "index": "tn-range-f6a7b8c9-events"
+  "accepted": 1
 }
 ```
 
@@ -1216,31 +1230,39 @@ Ingest telemetry events into the range's OpenSearch index. Events are tagged wit
 
 ### `GET /telemetry/{range_id}/search?q=*&size=50`
 
-Search telemetry events for a range using OpenSearch query syntax.
+Search telemetry events for a range. `q` is a small closed grammar
+(`app/search_backends/query.py`), never OpenSearch `query_string`: `field:value`,
+`field:"a phrase"`, `field:prefix*`, `field:*` (exists) and free text, ANDed — no regex,
+fuzzy, leading wildcards or `_`-prefixed fields; a query outside it is `422`. Platform
+label fields are not searchable for non-staff.
+
+**Permission:** staff with `telemetry:read` read their tenant's ranges; a Student reads
+only their own lab session's range or a running exercise they take part in
+(`app/telemetry_access.py`).
 
 **Parameters:**
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `q` | string | `*` | OpenSearch query string |
-| `size` | int | 50 | Max results |
-| `from_ts` | string | -- | Start timestamp (ISO 8601) |
-| `to_ts` | string | -- | End timestamp (ISO 8601) |
+| `q` | string | `*` | Query (grammar above) |
+| `size` | int | 50 | Max results (1–500) |
 
-**Response `200 OK`:**
+**Response `200 OK`:** the raw OpenSearch response (newest first):
 ```json
 {
-  "total": 1250,
-  "hits": [
-    {
-      "_id": "abc123",
-      "_source": {
-        "timestamp": "2026-01-15T10:30:00Z",
-        "event.action": "process_create",
-        "process.name": "powershell.exe"
+  "hits": {
+    "total": {"value": 1250},
+    "hits": [
+      {
+        "_id": "abc123",
+        "_source": {
+          "timestamp": "2026-01-15T10:30:00Z",
+          "event.action": "process_create",
+          "process.name": "powershell.exe"
+        }
       }
-    }
-  ]
+    ]
+  }
 }
 ```
 
@@ -1256,10 +1278,11 @@ Retrieve audit log entries. **Permission: `audit:read`**
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `limit` | int | 50 | Max results |
+| `limit` | int | 100 | Max results (max 500) |
 | `offset` | int | 0 | Pagination offset |
-| `resource_type` | string | -- | Filter by resource type |
-| `action` | string | -- | Filter by action |
+| `tenant_id` | uuid | -- | Filter by tenant (**platform admin only**) |
+
+There are no `resource_type` / `action` filter parameters (`routers/admin.py`).
 
 **Response `200 OK`:**
 ```json
@@ -1268,7 +1291,6 @@ Retrieve audit log entries. **Permission: `audit:read`**
     "id": "d0e1f2a3-b4c5-6789-3456-890123456789",
     "timestamp": "2026-01-15T10:30:00Z",
     "user_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-    "tenant_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "action": "create",
     "resource_type": "range",
     "resource_id": "f6a7b8c9-d0e1-2345-f012-456789012345",
@@ -1283,28 +1305,39 @@ Retrieve audit log entries. **Permission: `audit:read`**
 
 The AI Orchestrator runs as a separate service on port 6000. It provides LLM-powered capabilities.
 
+**Authentication:** every route except `GET /health` requires the service token —
+`Authorization: Bearer <AI_SERVICE_TOKEN>` or `X-Service-Token: <AI_SERVICE_TOKEN>` — checked
+constant-time (`ai-orchestrator/app/main.py`). Without `AI_SERVICE_TOKEN` set the service refuses
+to serve when `TN_ENV=production`.
+
+All four routes return the same **`GenerateResponse`** envelope:
+
+```json
+{
+  "task": "detection-rule",
+  "model_used": "llama3.1:70b-instruct-q5_K_M",
+  "node_used": "wile",
+  "backend": "ollama",
+  "output": "...",
+  "usage": {"prompt_tokens": 15, "completion_tokens": 120},
+  "cached": false,
+  "latency_ms": 812.4
+}
+```
+
 ### `POST /ai/generate`
 
-General-purpose text generation. **No authentication** (internal service).
+General-purpose text generation.
 
 **Request:**
 ```json
 {
+  "task": "general",
   "prompt": "Explain the MITRE ATT&CK technique T1566.001",
-  "model": "gpt-4o-mini",
-  "max_tokens": 500
-}
-```
-
-**Response `200 OK`:**
-```json
-{
-  "text": "T1566.001 (Spearphishing Attachment) is a technique where adversaries...",
-  "model": "gpt-4o-mini",
-  "usage": {
-    "prompt_tokens": 15,
-    "completion_tokens": 120
-  }
+  "system_prompt": "",
+  "context": {},
+  "model": "",
+  "max_tokens": 2000
 }
 ```
 
@@ -1312,90 +1345,51 @@ General-purpose text generation. **No authentication** (internal service).
 
 ### `POST /ai/detection-rule`
 
-Generate a Sigma-style detection rule from a threat description.
+Generate a detection rule (`sigma`, `opensearch` or `suricata`) for an ATT&CK technique.
 
 **Request:**
 ```json
 {
-  "description": "Detect PowerShell encoded command execution",
+  "technique": "T1059.001",
   "data_source": "sysmon",
-  "severity": "high"
+  "format": "sigma"
 }
 ```
 
-**Response `200 OK`:**
-```json
-{
-  "rule": "title: PowerShell Encoded Command\nstatus: experimental\nlogsource:\n  product: windows\n  service: sysmon\ndetection:\n  selection:\n    process.name: powershell.exe\n    process.command_line|contains: '-enc'\n  condition: selection\nlevel: high",
-  "model": "gpt-4o",
-  "mitre_techniques": ["T1059.001"]
-}
-```
+The generated rule text is in `output` of the `GenerateResponse` — there is no separate `rule` key.
 
 ---
 
 ### `POST /ai/scenario-suggest`
 
-Suggest modifications or variations to an existing scenario.
+Design a scenario from training objectives.
 
 **Request:**
 ```json
 {
-  "scenario_yaml": "id: apt-breach\ntimeline:\n  - id: event-1\n    type: email_phish\n    ...",
+  "objectives": ["Identify lateral movement via PsExec"],
   "difficulty": "advanced",
-  "focus": "lateral_movement"
+  "duration_minutes": 120
 }
 ```
 
-**Response `200 OK`:**
-```json
-{
-  "suggestions": [
-    {
-      "description": "Add lateral movement via PsExec after initial access",
-      "new_event": {
-        "id": "event-3",
-        "type": "simulated_execution",
-        "delay_minutes": 20,
-        "depends_on": "event-2",
-        "params": {
-          "technique": "T1570",
-          "description": "Lateral tool transfer via PsExec"
-        }
-      }
-    }
-  ],
-  "model": "gpt-4o"
-}
-```
+The scenario YAML is in `output` — there is no `suggestions` key.
 
 ---
 
 ### `POST /ai/aar-analysis`
 
-Analyze exercise data and generate narrative insights for the AAR.
+Analyze After-Action Report data and generate narrative insights.
 
 **Request:**
 ```json
 {
-  "exercise_id": "a7b8c9d0-e1f2-3456-0123-567890123456",
-  "scores": { "total": 75, "max": 100 },
-  "objectives": [...],
-  "telemetry_summary": { "total_events": 5000, "alerts_triggered": 12 }
+  "report_data": "{\"scores\": {\"total\": 75, \"max\": 100}, ...}",
+  "context": {}
 }
 ```
 
-**Response `200 OK`:**
-```json
-{
-  "analysis": "The team demonstrated strong initial detection capabilities, identifying the phishing email within 5 minutes. However, lateral movement activity went undetected for 25 minutes...",
-  "recommendations": [
-    "Improve endpoint monitoring for process creation events",
-    "Add detection rules for PsExec lateral movement"
-  ],
-  "model": "gpt-4o"
-}
-```
+The analysis is in `output` — there are no `analysis`/`recommendations` keys.
 
 ---
 
@@ -1405,47 +1399,79 @@ TrueNorth Range provides real-time updates via WebSocket connections. The WebSoc
 
 ### Connection
 
+The channel is part of the URL and the access token is the second **subprotocol**
+(`app/main.py`: `@app.websocket("/ws/{channel}")`, `app/ws_auth.py`):
+
+```js
+const ws = new WebSocket("ws://localhost:4200/ws/range.<range_id>", ["bearer", token]);
+// direct to the API container in dev: ws://127.0.0.1:8081/ws/<channel>
 ```
-ws://localhost:8080/ws?token=<jwt_token>
-```
+
+In development the web nginx upgrades only `/ws/` (its `/api/` location sends no
+`Upgrade` header — `control-plane/web/nginx.conf`), so the `:4200` URL above has no
+`/api` prefix. In production the edge strips `/api/` and upgrades
+(`infra/platform/nginx/conf.d/truenorth.conf`), so `wss://<site>/api/ws/<channel>`
+works there.
+
+A missing/invalid token, or a channel the user may not open, is closed with **1008**.
+
+**Channels:** `range.<id>`, `exercise.<id>`, `exercise.<id>.staff` (as `exercise.<id>`,
+for holders of `scenario:update` — full instructor-inject events go there),
+`tenant.<id>` (the user's tenant) and `system.*` (platform administrator only).
+Collaboration rooms are `room.<id>`, joined in-band rather than in the URL.
 
 ### Message Format
 
-All WebSocket messages use structured JSON:
+All server messages use a structured JSON envelope
+(`websocket_manager.py:_build_message`):
 
 ```json
 {
-  "type": "range_state",
-  "channel": "range:f6a7b8c9-d0e1-2345-f012-456789012345",
-  "seq": 42,
-  "timestamp": "2026-01-15T10:30:00.123Z",
-  "payload": {
-    "range_id": "f6a7b8c9-d0e1-2345-f012-456789012345",
-    "state": "ready",
-    "previous_state": "provisioning"
+  "type": "room_chat",
+  "channel": "room.f6a7b8c9",
+  "sequence": 42,
+  "timestamp": "2026-01-15T10:30:00.123456+00:00",
+  "data": {
+    "sender_user_id": "b2c3d4e5-...",
+    "text": "hello"
   }
 }
 ```
 
+`data` is the sending client's payload; the server stamps only `sender_user_id`
+(`app/main.py:707`) — a client cannot speak for another member.
+
 ### Message Types
 
-| Type | Description | Payload |
-|------|-------------|---------|
-| `range_state` | Range state transition | `range_id`, `state`, `previous_state` |
-| `exercise_update` | Exercise state or score change | `exercise_id`, `state`, `total_score` |
-| `scenario_event` | Scenario injector fired | `exercise_id`, `event_id`, `type` |
-| `system_notification` | System-wide announcement | `message`, `severity` |
-| `telemetry_stream` | Live telemetry event | `range_id`, `event` |
+| Type | Description | Data |
+|------|-------------|------|
+| `room_member_joined` | A user joined a collaboration room | `room_id`, `user_id`, `display_name`, `conn_id` |
+| `room_member_left` | A user left a collaboration room | `room_id`, `user_id`, `conn_id` |
+| `room_chat` | A chat message from another room member | `sender_user_id` plus the sender's payload |
+| `room_cursor` | Another member's cursor position | `sender_user_id` plus the sender's payload |
+| `room_members` | Reply to a `room_members` action | `members` list |
+| `annotation_created` | An analyst annotation was created (`POST /ops/exercises/{id}/annotations`) | `AnnotationOut` fields (`app/routers/ops_center.py`) |
+| `command_shared` | A command was shared (`POST /ops/exercises/{id}/commands`) | `SharedCommandOut` fields (`app/routers/ops_center.py`) |
+| `instructor_inject` | An instructor inject fired | On `exercise.<id>.staff` the full event; on `exercise.<id>` that it happened and, for a narrative inject, its text (`app/ws_auth.py:participant_inject_event`) |
+| `ping` / `pong` | Heartbeat | — |
+| `ack` / `error` | Reply frames (ack for unrecognised input, error details) | `data` / `detail` |
+
+`annotation_created`, `command_shared` and `instructor_inject` are broadcast on the
+exercise's `exercise.<id>` (and `exercise.<id>.staff`) channels today
+(`app/routers/ops_center.py`). Other domain events (`range.ready`, `exercise.started`,
+`scenario.inject.fired`, `system.alert`, … — dotted names in `app/events.py`) are
+published on the internal event bus; the WebSocket endpoint is not a live feed of those.
 
 ### Channel Subscription
 
-Subscribe to specific channels after connecting:
+The channel is fixed at connect time — there is no `subscribe` message. Once
+connected, a client collaborates in rooms with these actions:
 
 ```json
-{
-  "action": "subscribe",
-  "channels": ["range:f6a7b8c9", "exercise:a7b8c9d0"]
-}
+{"action": "join_room", "room_id": "a7b8c9d0", "display_name": "Alice"}
+{"action": "room_message", "room_id": "a7b8c9d0", "type": "room_chat", "data": {"text": "hello"}}
+{"action": "room_members", "room_id": "a7b8c9d0"}
+{"action": "leave_room", "room_id": "a7b8c9d0"}
 ```
 
 ### Heartbeat
@@ -1467,15 +1493,22 @@ The server sends a ping every 30 seconds. Clients must respond with a pong withi
 
 The auto-generated OpenAPI specification is available at:
 
-| Format | URL |
-|--------|-----|
-| Interactive (Swagger UI) | `http://localhost:8080/docs` |
-| ReDoc | `http://localhost:8080/redoc` |
-| Raw JSON | `http://localhost:8080/openapi.json` |
+| Format | Development (API direct, loopback only) | Production (edge, management networks only) |
+|--------|------------------------------------------|---------------------------------------------|
+| Interactive (Swagger UI) | `http://127.0.0.1:8081/docs` | `https://<site>/api/docs` |
+| ReDoc | `http://127.0.0.1:8081/redoc` | `https://<site>/api/redoc` |
+| Raw JSON | `http://127.0.0.1:8081/openapi.json` | `https://<site>/api/openapi.json` |
+
+The web container's nginx on `:4200` answers these with **404** in development —
+operator surfaces are not served through it (`control-plane/web/nginx.conf`, "Operator
+surfaces are not served through the web container"). In production the edge serves
+`/api/docs`, `/api/redoc` and `/api/openapi.json` restricted to management networks
+(`infra/platform/nginx/conf.d/truenorth.conf`). The published contract copy lives at
+`docs/interfaces/openapi.json`.
 
 ---
 
-## Complete Endpoint Summary
+## Endpoint Summary (core)
 
 | # | Method | Path | Permission | Description |
 |---|--------|------|-----------|-------------|
@@ -1527,14 +1560,15 @@ The auto-generated OpenAPI specification is available at:
 | 37 | `POST` | `/exercises/{id}/complete` | `exercise:complete` | Complete exercise |
 | 38 | `GET` | `/exercises/{id}/objectives` | `exercise:read` | List objectives |
 | 39 | `POST` | `/exercises/{id}/objectives/{ref}/ack` | `objective:ack` | Ack objective (instructor) |
+| 39a | `DELETE` | `/exercises/{id}/objectives/{ref}/ack` | `objective:ack` | Withdraw the ack (409 if exercise closed or not achieved) |
 | 40 | `POST` | `/exercises/{id}/aar/generate` | `aar:generate` | Generate AAR |
 | 41 | `GET` | `/exercises/{id}/aar` | `aar:read` | Get AAR JSON |
 | 42 | `GET` | `/exercises/{id}/aar/html` | `aar:read` | Get AAR HTML |
-| 43 | `POST` | `/telemetry/{range_id}/events` | `telemetry:read` | Ingest events |
-| 44 | `GET` | `/telemetry/{range_id}/search` | `telemetry:read` | Search events |
+| 43 | `POST` | `/telemetry/{range_id}/events` | `telemetry:write` | Ingest events (202) |
+| 44 | `GET` | `/telemetry/{range_id}/search` | `telemetry:read` | Search events (Students: own lab/participating exercise) |
 | 45 | `GET` | `/audit-log` | `audit:read` | Audit log |
-| 46 | `POST` | `/ai/generate` | Internal | AI text gen |
-| 47 | `POST` | `/ai/detection-rule` | Internal | Generate detection |
-| 48 | `POST` | `/ai/scenario-suggest` | Internal | Scenario suggest |
-| 49 | `POST` | `/ai/aar-analysis` | Internal | AAR analysis |
-| -- | `WS` | `/ws` | Authenticated | WebSocket |
+| 46 | `POST` | `/ai/generate` | Service token | AI text gen |
+| 47 | `POST` | `/ai/detection-rule` | Service token | Generate detection |
+| 48 | `POST` | `/ai/scenario-suggest` | Service token | Scenario suggest |
+| 49 | `POST` | `/ai/aar-analysis` | Service token | AAR analysis |
+| -- | `WS` | `/ws/{channel}` | Authenticated | WebSocket (token as subprotocol) |

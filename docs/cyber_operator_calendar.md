@@ -18,7 +18,7 @@
 
 ## How "DP 1" and "DP 2" are used here
 
-TrueNorth already defines DP1/DP2 in `control-plane/api/app/qsp_paths.py:44-72`, and
+TrueNorth already defines DP1/DP2 in `control-plane/api/app/qsp_paths.py:48-74`, and
 that definition is the authoritative one:
 
 | | `dp_order` | Rank | Qualifications (QSP) | Track |
@@ -32,7 +32,7 @@ competing meaning. DP1/DP2 here are **not** new tags: no course produced from th
 calendar introduces a `dp1`/`dp2` tag namespace, because `dp_order` on the existing
 `Qualification` rows already carries it.
 
-Note that `qsp_paths.py:57-64` deliberately leaves DP 3–5 rank labels blank because no
+Note that `qsp_paths.py:59-74` deliberately leaves DP 3–5 rank labels blank because no
 CAF source on-box establishes them — *"fabricated rank data must never reach CAF
 users."* This document is held to the same standard, which is why the header above
 exists.
@@ -138,8 +138,11 @@ College). All semesters assume a 15-week, 37.5 h / week schedule (5 days x 7.5 h
 ---
 
 *No course definitions from this calendar exist in the seed data. `seed.py` seeds
-reference data only (nations, coalitions, auth zones, infrastructure, AI backends)
-and deliberately seeds no courses. To load this proposal into a dev database, use
+reference data only (nations, coalitions, auth zones; no infrastructure hardware and
+no AI backend rows — `seed_infrastructure` only backfills `tenant_id` on rows that
+already exist, `control-plane/api/app/seed.py:176-227`, and `seed_ai_backends`
+inserts nothing, `seed.py:230-240`) and deliberately seeds no courses. To load this
+proposal into a dev database, use
 the programme catalogue CSV and its importer — see
 `content/catalogue/cyber_operator_programme.csv` and
 `POST /api/v1/courses/import-programme`. Everything it creates is unpublished.*
