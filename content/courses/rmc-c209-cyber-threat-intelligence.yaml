@@ -55,10 +55,13 @@ modules:
     - hosts: [dfir-ws01]
       action: Log on to dfir-ws01 over SSH as the analyst account the instructor assigned and open a terminal.
     - hosts: [dfir-ws01, v-dc01, v-fs01, v-web01, v-mail01, v-ws01, v-ws02, v-ws03, v-ws04]
-      action: From dfir-ws01, confirm which victim-network hosts answer and record every host with its role, from
-        the domain controller to the four workstations.
+      action: From dfir-ws01, confirm which victim-network hosts answer and record every host with its role — the
+        domain controller v-dc01, the file server v-fs01, the web application v-web01, the mail server
+        v-mail01 and the four workstations v-ws01, v-ws02, v-ws03 and v-ws04.
     - hosts: [dfir-ws01, siem01, misp01, thehive01]
-      action: From dfir-ws01, confirm which SOC platforms are reachable and record each platform with its role.
+      action: From dfir-ws01, confirm which SOC platforms are reachable and record each platform with its role —
+        the log platform on siem01, the threat intelligence platform on misp01 and the case management
+        platform on thehive01.
     - hosts: [dfir-ws01]
       action: Write five priority intelligence requirements for the victim organisation, each naming the decision
         the resulting intelligence would inform.

@@ -145,8 +145,8 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 and open an SSH session to the analysis host ansible01.
     - hosts: [ansible01]
-      action: Run a signature scan against the staged on-device image and record each section it reports with its
-        offset.
+      action: Run a signature scan on ansible01 against the staged on-device image and record each section it
+        reports with its offset.
     - hosts: [ansible01]
       action: Record the filesystem type the scan reports for the main content section and extract it under the
         lab directory.
@@ -236,8 +236,8 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 and open an SSH session to the analysis host ansible01.
     - hosts: [ansible01]
-      action: Identify the architecture and endianness of the staged service binary with the file tooling and
-        record both values.
+      action: Identify the architecture and endianness of the staged service binary with the file tooling on
+        ansible01 and record both values.
     - hosts: [ansible01]
       action: Disassemble the network input handler and record the functions it calls for reading input and for
         copying memory.
@@ -329,8 +329,8 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 and open an SSH session to the analysis host ansible01.
     - hosts: [ansible01]
-      action: Start the staged emulation profile for the device image and record any hardware error it reports
-        and what was stubbed for it.
+      action: Start the staged emulation profile for the device image on ansible01 and record any hardware error
+        it reports and what was stubbed for it.
     - hosts: [ansible01]
       action: Once the web service answers inside the emulator, record the address and port it listens on as the
         console shows.
@@ -423,8 +423,8 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 and open an SSH session to the analysis host ansible01.
     - hosts: [ansible01]
-      action: Locate the update handling script and configuration in the extracted filesystem and record the
-        address and protocol updates are fetched from.
+      action: Locate the update handling script and configuration in the extracted filesystem on ansible01 and
+        record the address and protocol updates are fetched from.
     - hosts: [ansible01]
       action: Record where in the update flow signature verification happens, whether before writing, after
         writing or not at all.
@@ -518,8 +518,8 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 and open an SSH session to the analysis host ansible01.
     - hosts: [ansible01]
-      action: Review the lab findings from the earlier modules and record the affected model, firmware version
-        and a one-sentence flaw summary for the advisory.
+      action: Review the lab findings from the earlier modules on ansible01 and record the affected model,
+        firmware version and a one-sentence flaw summary for the advisory.
     - hosts: [vuln01]
       action: Review the latest scan results on the vulnerability scanner vuln01 and record how many network
         hosts report the affected service.

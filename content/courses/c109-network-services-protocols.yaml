@@ -247,7 +247,7 @@ modules:
   lab_range:
     template: medium-enterprise
     steps:
-    - hosts: [ws01, mail01]
+    - hosts: [ws01]
       action: From ws01, open the suspicious exercise message in the mailbox your instructor assigned and
         display its full headers.
     - hosts: [ws01]
@@ -425,7 +425,7 @@ modules:
   lab_range:
     template: medium-enterprise
     steps:
-    - hosts: [ws01, dc01]
+    - hosts: [ws01]
       action: From ws01, record the clock synchronisation status and the time source the workstation is using.
     - hosts: [siem01]
       action: Log on to siem01 with the analyst account your instructor assigned and record siem01's own
