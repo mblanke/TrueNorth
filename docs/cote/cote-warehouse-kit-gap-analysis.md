@@ -1,6 +1,6 @@
 # COTE: the warehouse mobile kit against TrueNorth, and what is still missing
 
-**Status:** draft, 2026-11-13. **Supersedes** the budget tables in `cote-gap-bom-with-mobile-kit.md`
+**Status:** draft, 2026-11-13. **Role layout and budget superseded** by `cote-preprod-prod-plan.md` (kit is pre-production; production on DND hosting); the inventory and warehouse checks still apply. **Supersedes** the budget tables in `cote-gap-bom-with-mobile-kit.md`
 and `cote-hardware-software-bom.md`. Their software lists, sizing method and diode requirements
 still apply.
 
