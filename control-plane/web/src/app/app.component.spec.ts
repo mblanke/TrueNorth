@@ -1,12 +1,13 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { RouterTestingModule } from '@angular/router/testing';
-import { of } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import { AppComponent } from './app.component';
 import { AuthService, UserRole } from './core/services/auth.service';
 import { fakeAuth } from './core/auth/fake-auth';
 import { PAGE_ACCESS, roleHasAccess } from './core/auth/permissions';
 import { NotificationsApiService } from '@core/services/notifications-api.service';
+import { UserSocketService } from '@core/services/user-socket.service';
 import { EmailStatusService } from '@core/services/email-status.service';
 import { signal } from '@angular/core';
 
@@ -23,6 +24,7 @@ describe('AppComponent', () => {
       providers: [
         { provide: AuthService, useValue: auth },
         { provide: NotificationsApiService, useValue: { unreadCount: () => of({ unread: 0 }), list: () => of([]) } },
+        { provide: UserSocketService, useValue: { notifications$: new Subject(), opened$: new Subject(), connected: signal(false) } },
         // The banner's own spec covers it (shared/email-banner.component.spec.ts).
         { provide: EmailStatusService, useValue: { load: () => undefined, notConfigured: emailOff } },
       ],

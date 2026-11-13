@@ -33,6 +33,14 @@ MAX_MISSED_PONGS: int = 3
 MAX_CONNECTIONS_PER_USER: int = 50
 MAX_CONNECTIONS_TOTAL: int = 10_000
 
+# The Redis relay between API workers. A Redis that is slow, restarting or not up yet must
+# never stall startup or end the relay for good (see _redis_listener).
+REDIS_CONNECT_TIMEOUT_S: float = 2.0
+REDIS_SOCKET_TIMEOUT_S: float = 5.0
+REDIS_PUBLISH_TIMEOUT_S: float = 2.0
+REDIS_RETRY_MIN_S: float = 1.0
+REDIS_RETRY_MAX_S: float = 30.0
+
 
 # ── Message Types ──────────────────────────────────────────────────────
 class MessageType(str, Enum):
@@ -63,6 +71,19 @@ class WSConnection:
         return self.sequence
 
 
+async def _aclose(obj: Any) -> None:
+    """Close a redis client or pub/sub (aclose, or close on older redis-py); errors ignored."""
+    if obj is None:
+        return
+    closer = getattr(obj, "aclose", None) or getattr(obj, "close", None)
+    if closer is None:
+        return
+    with contextlib.suppress(Exception):
+        result = closer()
+        if asyncio.iscoroutine(result) or hasattr(result, "__await__"):
+            await result
+
+
 # ── Manager ────────────────────────────────────────────────────────────
 class WebSocketManager:
     """Manages WebSocket connections, channels, heartbeat, and Redis fan-out.
@@ -85,6 +106,10 @@ class WebSocketManager:
         self._user_connections: dict[str, set[str]] = {}
 
         self._redis_url = redis_url
+        # Who published a relayed message, so a worker ignores its own. Not id(self): that is
+        # a memory address, and two spawned workers can hold the manager at the same one,
+        # which would make each drop the other's messages.
+        self._origin = uuid.uuid4().hex
         self._redis: Any = None  # aioredis / redis.asyncio connection
         self._pubsub: Any = None
         self._tasks: list[asyncio.Task[Any]] = []
@@ -92,14 +117,16 @@ class WebSocketManager:
         self._lock = asyncio.Lock()
 
     # ── Lifecycle ──────────────────────────────────────────────────────
-    async def start(self) -> None:
+    async def start(self, *, heartbeat: bool = True) -> None:
         """Start background tasks (heartbeat, optional Redis listener)."""
         if self._running:
             return
         self._running = True
-        self._tasks.append(asyncio.create_task(self._heartbeat_loop()))
+        if heartbeat:
+            self._tasks.append(asyncio.create_task(self._heartbeat_loop()))
         if self._redis_url:
-            await self._connect_redis()
+            # The listener makes the connection itself, so a slow or absent Redis does not
+            # hold up startup, and keeps retrying until it answers.
             self._tasks.append(asyncio.create_task(self._redis_listener()))
         logger.info("WebSocketManager started (redis=%s)", "yes" if self._redis_url else "no")
 
@@ -123,10 +150,7 @@ class WebSocketManager:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks.clear()
-        # Close Redis
-        if self._redis:
-            with contextlib.suppress(Exception):
-                await self._redis.close()
+        await self._drop_redis()
         logger.info("WebSocketManager shut down")
 
     # ── Connect / Disconnect ───────────────────────────────────────────
@@ -344,19 +368,44 @@ class WebSocketManager:
             await self._force_disconnect(conn_id, reason="send_error")
 
     # ── Redis Pub/Sub ──────────────────────────────────────────────────
-    async def _connect_redis(self) -> None:
-        """Establish an async Redis connection (redis.asyncio / aioredis)."""
-        try:
-            import redis.asyncio as aioredis
+    async def _open_redis(self) -> tuple[Any, Any]:
+        """A Redis client and its pub/sub, subscribed to every relayed channel. Bounded:
+        no connect or read waits indefinitely (a blackholed address used to stall startup)."""
+        import redis.asyncio as aioredis
 
-            self._redis = aioredis.from_url(self._redis_url, decode_responses=True)
-            self._pubsub = self._redis.pubsub()
-            await self._pubsub.psubscribe("truenorth:ws:*")
-            logger.info("Redis pub/sub connected: %s", self._redis_url)
+        client = aioredis.from_url(
+            self._redis_url,
+            decode_responses=True,
+            socket_connect_timeout=REDIS_CONNECT_TIMEOUT_S,
+            socket_timeout=REDIS_SOCKET_TIMEOUT_S,
+            health_check_interval=30,
+        )
+        pubsub = client.pubsub()
+        try:
+            await pubsub.psubscribe("truenorth:ws:*")
+        except BaseException:
+            await _aclose(pubsub)
+            await _aclose(client)
+            raise
+        return client, pubsub
+
+    async def _connect_redis(self) -> bool:
+        """Connect the relay; False (local delivery only, for now) if Redis does not answer.
+        Never logs the URL: it can carry a password."""
+        try:
+            client, pubsub = await self._open_redis()
         except Exception as exc:
-            logger.warning("Redis unavailable — running local-only: %s", exc)
-            self._redis = None
-            self._pubsub = None
+            logger.warning("Redis unavailable — local delivery only for now: %s", type(exc).__name__)
+            return False
+        self._redis, self._pubsub = client, pubsub
+        logger.info("Redis relay connected")
+        return True
+
+    async def _drop_redis(self) -> None:
+        client, pubsub = self._redis, self._pubsub
+        self._redis = self._pubsub = None
+        await _aclose(pubsub)
+        await _aclose(client)
 
     async def _redis_publish(self, channel: str, message_type: str, data: dict[str, Any]) -> None:
         """Publish a message to Redis for cross-worker fan-out."""
@@ -367,47 +416,71 @@ class WebSocketManager:
                 "channel": channel,
                 "message_type": message_type,
                 "data": data,
-                "origin": id(self),  # ignore own messages
+                "origin": self._origin,  # ignore own messages
             }
         )
         try:
-            await self._redis.publish(f"truenorth:ws:{channel}", payload)
-        except Exception as exc:
-            logger.warning("Redis publish failed: %s", exc)
+            await asyncio.wait_for(
+                self._redis.publish(f"truenorth:ws:{channel}", payload), timeout=REDIS_PUBLISH_TIMEOUT_S
+            )
+        except Exception as exc:  # a hung Redis must not hold the task (and a burst of them) forever
+            logger.warning("Redis publish failed: %s", type(exc).__name__)
 
     async def _redis_listener(self) -> None:
-        """Background task: relay Redis pub/sub messages to local sockets."""
-        if not self._pubsub:
-            return
-        origin = id(self)
+        """Background task: relay Redis pub/sub messages to local sockets, while the manager runs.
+
+        Connects first, retrying with backoff while Redis is down or not up yet (all workers
+        often boot before it), and reconnects after any Redis error: a restart or failover
+        used to end this task for good while the sockets looked healthy. A bad message is
+        skipped, never fatal."""
+        delay = REDIS_RETRY_MIN_S
         try:
             while self._running:
-                msg = await self._pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-                if msg is None:
-                    await asyncio.sleep(0.05)
-                    continue
-                if msg["type"] not in ("pmessage", "message"):
-                    continue
+                if self._pubsub is None:
+                    if not await self._connect_redis():
+                        await asyncio.sleep(delay)
+                        delay = min(delay * 2, REDIS_RETRY_MAX_S)
+                        continue
+                    delay = REDIS_RETRY_MIN_S
                 try:
-                    payload = json.loads(msg["data"])
-                except (json.JSONDecodeError, TypeError):
-                    continue
-                # Skip messages we published ourselves
-                if payload.get("origin") == origin:
-                    continue
-                channel = payload.get("channel", "")
-                message_type = payload.get("message_type", "system_notification")
-                data = payload.get("data", {})
-                # Deliver to local subscribers only (no re-publish)
-                conn_ids = list(self.channels.get(channel, set()))
-                for cid in conn_ids:
-                    conn = self.connections.get(cid)
-                    if conn:
-                        await self._send(cid, conn, message_type, channel, data)
+                    await self._relay_messages()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger.warning("Redis relay lost (%s); reconnecting", type(exc).__name__)
+                    await self._drop_redis()
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, REDIS_RETRY_MAX_S)
         except asyncio.CancelledError:
             pass
-        except Exception as exc:
-            logger.error("Redis listener error: %s", exc)
+
+    async def _relay_messages(self) -> None:
+        while self._running and self._pubsub is not None:
+            msg = await self._pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if msg is None:
+                await asyncio.sleep(0.05)
+                continue
+            await self._deliver_relayed(msg)
+
+    async def _deliver_relayed(self, msg: Any) -> None:
+        """One message from Redis to this worker's sockets of that channel (never re-published)."""
+        try:
+            if not isinstance(msg, dict) or msg.get("type") not in ("pmessage", "message"):
+                return
+            payload = json.loads(msg["data"])
+            if not isinstance(payload, dict) or payload.get("origin") == self._origin:
+                return  # not ours to relay, or our own echo
+            channel = payload.get("channel")
+            message_type = payload.get("message_type", "system_notification")
+            data = payload.get("data", {})
+            if not isinstance(channel, str) or not isinstance(message_type, str) or not isinstance(data, dict):
+                return
+        except (ValueError, TypeError, KeyError):
+            return
+        for cid in list(self.channels.get(channel, set())):
+            conn = self.connections.get(cid)
+            if conn:
+                await self._send(cid, conn, message_type, channel, data)
 
     # ── Heartbeat ──────────────────────────────────────────────────────
     async def _heartbeat_loop(self) -> None:
