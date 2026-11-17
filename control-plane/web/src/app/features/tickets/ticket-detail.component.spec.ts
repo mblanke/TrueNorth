@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { signal } from '@angular/core';
-import { BehaviorSubject, of, throwError } from 'rxjs';
+import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import { AuthService, CurrentUser } from '@core/services/auth.service';
 import { NotificationService } from '@core/services/notification.service';
 import { Ticket, TicketsApiService } from '@core/services/tickets-api.service';
@@ -26,8 +26,12 @@ describe('TicketDetailComponent', () => {
   beforeEach(() => {
     params = new BehaviorSubject(convertToParamMap({ id: 'A' }));
     api = jasmine.createSpyObj('TicketsApiService', [
-      'get', 'update', 'comments', 'attachments', 'activity', 'assignees', 'queues',
+      'get', 'update', 'comments', 'attachments', 'activity', 'assignees', 'queues', 'categories', 'labels',
+      'triageAvailable', 'triage',
     ]);
+    api.triageAvailable.and.returnValue(of(false));
+    api.categories.and.returnValue(of([{ key: 'range', label: 'Range or lab' }, { key: 'other', label: 'Something else' }]));
+    api.labels.and.returnValue(of([{ label: 'boot', count: 3 }]));
     api.get.and.callFake((id: string) => of(ticket(id)));
     api.comments.and.returnValue(of([]));
     api.attachments.and.returnValue(of([]));
@@ -83,6 +87,174 @@ describe('TicketDetailComponent', () => {
     expect(c.canRemove({ ...file, uploaded_by: 'student-1' })).toBeTrue();
     expect(c.canRemove({ ...file, uploaded_by: 'staff-1' })).toBeFalse();
     user.set({ sub: 's', id: 'staff-1', email: 'e', display_name: 'n', role: 'instructor' });
+  });
+});
+
+describe('TicketDetailComponent labels and category (#376)', () => {
+  let api: jasmine.SpyObj<TicketsApiService>;
+  const user = signal<CurrentUser | null>({ sub: 's', id: 'staff-1', email: 'e', display_name: 'n', role: 'range_ops' });
+
+  function create(over: Partial<Ticket> = {}, role: CurrentUser['role'] = 'range_ops') {
+    user.set({ sub: 's', id: 'staff-1', email: 'e', display_name: 'n', role });
+    api = jasmine.createSpyObj('TicketsApiService', [
+      'get', 'update', 'comments', 'attachments', 'activity', 'assignees', 'queues', 'categories', 'labels',
+    ]);
+    api.get.and.callFake((id: string) => of(ticket(id, over)));
+    api.update.and.callFake((_id: string, body: any) => of(ticket('A', { ...over, ...body })));
+    for (const m of ['comments', 'attachments', 'activity', 'assignees', 'queues'] as const) {
+      (api[m] as jasmine.Spy).and.returnValue(of([]));
+    }
+    api.categories.and.returnValue(of([{ key: 'range', label: 'Range or lab' }, { key: 'other', label: 'Something else' }]));
+    api.labels.and.returnValue(of([{ label: 'boot', count: 3 }]));
+    TestBed.configureTestingModule({
+      imports: [TicketDetailComponent],
+      providers: [
+        provideRouter([]),
+        { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ id: 'A' })) } },
+        { provide: TicketsApiService, useValue: api },
+        { provide: AuthService, useValue: { user } },
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['error', 'success']) },
+      ],
+    });
+    const fixture = TestBed.createComponent(TicketDetailComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('lists the ticket labels as chips for staff and adds one through the API', () => {
+    const fixture = create({ labels: 'boot' });
+    const el: HTMLElement = fixture.nativeElement;
+    expect(Array.from(el.querySelectorAll('.tn-kb-chip')).map(c => c.textContent?.replace('×', '').trim())).toEqual(['boot']);
+
+    const input = el.querySelector('input[aria-label="Add a label"]') as HTMLInputElement;
+    input.value = 'esxi-03';
+    fixture.componentInstance.addLabel(fixture.componentInstance.ticket()!, input);
+    expect(api.update).toHaveBeenCalledWith('A', { labels: 'boot,esxi-03' });
+    expect(input.value).toBe('');
+  });
+
+  it('removes a label', () => {
+    const fixture = create({ labels: 'boot,esxi-03' });
+    fixture.componentInstance.removeLabel(fixture.componentInstance.ticket()!, 'boot');
+    expect(api.update).toHaveBeenCalledWith('A', { labels: 'esxi-03' });
+  });
+
+  it('changes the category through the select, and offers a legacy value the ticket already has', () => {
+    const fixture = create({ category: 'legacy-thing' });
+    const options = fixture.componentInstance.categoryOptions('legacy-thing').map(c => c.key);
+    expect(options).toEqual(['range', 'other', 'legacy-thing']);
+    const select = document.createElement('select');
+    for (const v of ['other', 'range']) {
+      const o = document.createElement('option');
+      o.value = v;
+      select.appendChild(o);
+    }
+    select.value = 'range';
+    fixture.componentInstance.patchField('category', select);
+    expect(api.update).toHaveBeenCalledWith('A', { category: 'range' });
+  });
+
+  it('shows a Student the category as text and offers no label controls', () => {
+    const fixture = create({ can_work: false, category: 'range' }, 'student');
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.textContent).toContain('Range or lab');
+    expect(el.querySelector('select[aria-label="Category"]')).toBeNull();
+    expect(el.querySelector('input[aria-label="Add a label"]')).toBeNull();
+    expect(api.labels).not.toHaveBeenCalled();
+  });
+
+  it('writes label and category changes in the history in plain words', () => {
+    const fixture = create();
+    const c = fixture.componentInstance;
+    const row = (field: string, o: string, n: string) =>
+      ({ id: 'x', actor_id: 'a', actor_name: 'Sam', field, old_value: o, new_value: n, created_at: '' });
+    expect(c.describe(row('labels', 'boot', 'boot,esxi-03'))).toBe('Sam changed labels from boot to boot, esxi-03');
+    expect(c.describe(row('category', 'other', 'range'))).toBe('Sam changed category from Something else to Range or lab');
+  });
+});
+
+describe('TicketDetailComponent AI triage (#381)', () => {
+  let api: jasmine.SpyObj<TicketsApiService>;
+  const user = signal<CurrentUser | null>({ sub: 's', id: 'staff-1', email: 'e', display_name: 'n', role: 'instructor' });
+  const suggestion = {
+    category: 'network', priority: 'high', labels: ['vpn', 'boot'], summary: 'VPN drops.', reply_hint: 'Ask which range.',
+    related_pages: [{ page_id: 'p1', space_slug: 'help', title: 'Fixing VPN' }], model: 'm1', backend: 'local',
+  };
+
+  function create(available = true, can_work = true) {
+    api = jasmine.createSpyObj('TicketsApiService', [
+      'get', 'update', 'comments', 'attachments', 'activity', 'assignees', 'queues', 'categories', 'labels',
+      'triageAvailable', 'triage',
+    ]);
+    api.categories.and.returnValue(of([{ key: 'network', label: 'Network or connectivity' }, { key: 'other', label: 'Something else' }]));
+    api.labels.and.returnValue(of([]));
+    api.get.and.callFake((id: string) => of(ticket(id, { labels: 'boot', can_work })));
+    api.update.and.callFake((_id: string, body) => of(ticket('A', { labels: 'boot', ...(body as object), can_work } as Partial<Ticket>)));
+    for (const m of [api.comments, api.attachments, api.activity, api.assignees, api.queues]) m.and.returnValue(of([]));
+    api.triageAvailable.and.returnValue(of(available));
+    api.triage.and.returnValue(of(suggestion));
+    TestBed.configureTestingModule({
+      imports: [TicketDetailComponent],
+      providers: [
+        provideRouter([]),
+        { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ id: 'A' })) } },
+        { provide: TicketsApiService, useValue: api },
+        { provide: AuthService, useValue: { user } },
+        { provide: NotificationService, useValue: jasmine.createSpyObj('NotificationService', ['error', 'success']) },
+      ],
+    });
+    const f = TestBed.createComponent(TicketDetailComponent);
+    f.detectChanges();
+    return f;
+  }
+  const text = (f: ReturnType<typeof create>) => (f.nativeElement as HTMLElement).textContent ?? '';
+
+  it('offers triage to staff only when an AI backend is set up', () => {
+    expect(text(create(true))).toContain('Suggest triage');
+    TestBed.resetTestingModule();
+    expect(text(create(false))).not.toContain('AI triage');
+    TestBed.resetTestingModule();
+    const asReporter = create(true, false);
+    expect(text(asReporter)).not.toContain('AI triage');
+    expect(api.triageAvailable).not.toHaveBeenCalled(); // a reporter never even asks
+  });
+
+  it('shows the suggestion without changing the ticket, and applies only what staff pick', () => {
+    const f = create();
+    f.componentInstance.suggest();
+    f.detectChanges();
+    expect(api.update).not.toHaveBeenCalled();
+    expect(text(f)).toContain('VPN drops.');
+    expect(text(f)).toContain('Fixing VPN');
+    f.componentInstance.applyCategory('network');
+    expect(api.update).toHaveBeenCalledWith('A', { category: 'network' });
+    f.componentInstance.applyLabels(f.componentInstance.ticket()!, ['vpn', 'boot']);
+    expect(api.update).toHaveBeenCalledWith('A', { labels: 'boot,vpn' }); // only the new one is added
+  });
+
+  it('says so when the AI cannot help, and lets staff dismiss a suggestion', () => {
+    const f = create();
+    api.triage.and.returnValue(throwError(() => ({ status: 502, error: { detail: 'The AI did not return a usable suggestion.' } })));
+    f.componentInstance.suggest();
+    f.detectChanges();
+    expect(text(f)).toContain('did not return a usable suggestion');
+    api.triage.and.returnValue(of(suggestion));
+    f.componentInstance.suggest();
+    f.componentInstance.suggestion.set(null);
+    f.detectChanges();
+    expect(text(f)).toContain('Suggest triage');
+  });
+
+  it('drops a suggestion that arrives after staff moved to another ticket', () => {
+    const f = create();
+    const late = new Subject<typeof suggestion>();
+    api.triage.and.returnValue(late.asObservable() as never);
+    f.componentInstance.suggest();
+    (f.componentInstance as unknown as { id: string }).id = 'B';
+    late.next(suggestion);
+    expect(f.componentInstance.suggestion()).toBeNull();
   });
 });
 

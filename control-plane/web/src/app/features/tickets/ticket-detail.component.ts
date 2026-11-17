@@ -14,12 +14,12 @@ import { MarkdownEditorComponent } from '@shared/markdown/markdown-editor.compon
 import { MarkdownViewComponent } from '@shared/markdown/markdown-view.component';
 import {
   Assignee, PRIORITIES, STATUSES, STATUS_LABELS, SupportQueue, TYPE_LABELS, Ticket, TicketActivity,
-  TicketAttachment, TicketComment, TicketUpdate, TicketsApiService,
+  TicketAttachment, TicketCategory, TicketComment, TicketLabelCount, TicketTriage, TicketUpdate, TicketsApiService, labelList,
 } from '@core/services/tickets-api.service';
 
 const FIELD_LABELS: Record<string, string> = {
   status: 'status', priority: 'priority', type: 'type', assignee_id: 'assignee', queue_id: 'queue', subject: 'subject',
-  range_id: 'range', exercise_id: 'exercise',
+  range_id: 'range', exercise_id: 'exercise', category: 'category', labels: 'labels',
 };
 
 @Component({
@@ -152,7 +152,32 @@ const FIELD_LABELS: Record<string, string> = {
                   </select>
                 } @else { {{ typeLabels[t.type] }} }
               </dd>
+              <dt>About</dt>
+              <dd>
+                @if (t.can_work) {
+                  <select #cat class="tn-kb-input" aria-label="Category" (change)="patchField('category', cat)">
+                    @for (c of categoryOptions(t.category); track c.key) {
+                      <option [value]="c.key" [selected]="c.key === t.category">{{ c.label }}</option>
+                    }
+                  </select>
+                } @else { {{ categoryLabel(t.category) }} }
+              </dd>
               @if (t.can_work) {
+                <dt>Labels</dt>
+                <dd>
+                  <div class="tn-kb-chips">
+                    @for (l of labelList(t.labels); track l) {
+                      <span class="tn-kb-chip">{{ l }}<button type="button" [attr.aria-label]="'Remove label ' + l"
+                                                              (click)="removeLabel(t, l)">×</button></span>
+                    }
+                  </div>
+                  <input #lab class="tn-kb-input" aria-label="Add a label" placeholder="Add a label" list="tk-label-options"
+                         autocomplete="off" maxlength="30" (keydown.enter)="addLabel(t, lab); $event.preventDefault()"
+                         (change)="addLabel(t, lab)">
+                  <datalist id="tk-label-options">
+                    @for (l of knownLabels(); track l.label) { <option [value]="l.label"></option> }
+                  </datalist>
+                </dd>
                 <dt>Queue</dt>
                 <dd>
                   <select #qu class="tn-kb-input" aria-label="Queue" (change)="patchField('queue_id', qu)">
@@ -180,6 +205,46 @@ const FIELD_LABELS: Record<string, string> = {
               }
               @if (t.resolved_at) { <dt>Resolved</dt><dd class="tn-kb-small">{{ t.resolved_at | date: 'short' }}</dd> }
             </dl>
+            @if (t.can_work && triageAvailable()) {
+              <section class="tn-kb-panel" style="margin-top:16px" aria-label="AI triage">
+                <strong>AI triage</strong>
+                <p class="tn-kb-small tn-kb-muted" style="margin:4px 0 8px">Suggests only; nothing changes until you apply it.
+                  The ticket text (no names, no internal notes) is sent to this install's AI backend.</p>
+                @if (!suggestion()) {
+                  <button mat-stroked-button type="button" [disabled]="triaging()" (click)="suggest()">
+                    {{ triaging() ? 'Thinking…' : 'Suggest triage' }}
+                  </button>
+                  @if (triageError()) { <p class="tn-kb-error" role="alert">{{ triageError() }}</p> }
+                } @else {
+                  @if (suggestion(); as s) {
+                    @if (s.summary) { <p class="tn-kb-small"><strong>Summary.</strong> {{ s.summary }}</p> }
+                    @if (s.category && s.category !== t.category) {
+                      <p class="tn-kb-small">Category: <strong>{{ categoryLabel(s.category) }}</strong>
+                        <button type="button" class="tn-kb-linkbtn" (click)="applyCategory(s.category)">Apply</button></p>
+                    }
+                    @if (s.priority && s.priority !== t.priority) {
+                      <p class="tn-kb-small">Priority: <strong>{{ s.priority }}</strong>
+                        <button type="button" class="tn-kb-linkbtn" (click)="applyPriority(s.priority)">Apply</button></p>
+                    }
+                    @if (newLabels(t, s.labels).length) {
+                      <p class="tn-kb-small">Labels: <strong>{{ newLabels(t, s.labels).join(', ') }}</strong>
+                        <button type="button" class="tn-kb-linkbtn" (click)="applyLabels(t, s.labels)">Add</button></p>
+                    }
+                    @if (s.reply_hint) { <p class="tn-kb-small"><strong>Reply hint.</strong> {{ s.reply_hint }}</p> }
+                    @if (s.related_pages.length) {
+                      <p class="tn-kb-small" style="margin-bottom:2px"><strong>Related pages</strong></p>
+                      <ul class="tn-kb-small" style="margin:0;padding-left:18px">
+                        @for (p of s.related_pages; track p.page_id) {
+                          <li><a [routerLink]="['/wiki', p.space_slug, p.page_id]">{{ p.title }}</a></li>
+                        }
+                      </ul>
+                    }
+                    <p class="tn-kb-small tn-kb-muted" style="margin:8px 0 0">By {{ s.model || 'the AI' }}. Check it before you rely on it.
+                      <button type="button" class="tn-kb-linkbtn" (click)="suggestion.set(null)">Dismiss</button></p>
+                  }
+                }
+              </section>
+            }
             @if (admin()) {
               <p style="margin:16px 0 0"><button mat-button color="warn" type="button" (click)="remove(t)">Delete ticket</button></p>
             }
@@ -213,7 +278,14 @@ export class TicketDetailComponent implements OnInit {
   readonly activity = signal<TicketActivity[]>([]);
   readonly assignees = signal<Assignee[]>([]);
   readonly queues = signal<SupportQueue[]>([]);
+  readonly categories = signal<TicketCategory[]>([]);
+  readonly knownLabels = signal<TicketLabelCount[]>([]);
+  readonly labelList = labelList;
   readonly missing = signal(false);
+  readonly triageAvailable = signal(false);
+  readonly suggestion = signal<TicketTriage | null>(null);
+  readonly triaging = signal(false);
+  readonly triageError = signal('');
   readonly sending = signal(false);
   readonly admin = computed(() => isAdminRole(this.auth.user()?.role));
   readonly isReporter = computed(() => this.ticket()?.reporter_id === this.auth.user()?.id);
@@ -247,12 +319,43 @@ export class TicketDetailComponent implements OnInit {
         }
         this.ticket.set(t);
         this.refreshSide();
+        if (!this.categories().length) {
+          this.api.categories().pipe(catchError(() => of([]))).subscribe(c => this.categories.set(c));
+        }
         if (t.can_work && !this.staffListsLoaded) {
           this.staffListsLoaded = true;
           this.api.assignees().pipe(catchError(() => of([]))).subscribe(a => this.assignees.set(a));
           this.api.queues().pipe(catchError(() => of([]))).subscribe(q => this.queues.set(q));
+          this.api.labels().pipe(catchError(() => of([]))).subscribe(l => this.knownLabels.set(l));
+          this.api.triageAvailable().pipe(catchError(() => of(false))).subscribe(a => this.triageAvailable.set(a));
         }
       });
+  }
+
+  suggest(): void {
+    const id = this.id;
+    this.triaging.set(true);
+    this.triageError.set('');
+    this.api.triage(id).subscribe({
+      next: s => {
+        this.triaging.set(false);
+        if (id === this.id) this.suggestion.set(s); // the user may have moved to another ticket meanwhile
+      },
+      error: err => {
+        this.triaging.set(false);
+        this.triageError.set(apiErrorMessage(err, 'The AI could not suggest anything just now.'));
+      },
+    });
+  }
+
+  applyCategory(category: string): void { this.patch({ category }); }
+  applyPriority(priority: string): void { this.patch({ priority } as TicketUpdate); }
+  newLabels(t: Ticket, suggested: string[]): string[] {
+    const have = labelList(t.labels);
+    return suggested.filter(l => !have.includes(l));
+  }
+  applyLabels(t: Ticket, suggested: string[]): void {
+    this.patch({ labels: [...labelList(t.labels), ...this.newLabels(t, suggested)].join(',') });
   }
 
   canRemove(a: TicketAttachment): boolean {
@@ -277,7 +380,7 @@ export class TicketDetailComponent implements OnInit {
   }
 
   /** A sidebar select changed. If the server refuses, put the select back to the saved value. */
-  patchField(field: 'status' | 'priority' | 'type' | 'queue_id' | 'assignee_id', el: HTMLSelectElement): void {
+  patchField(field: 'status' | 'priority' | 'type' | 'category' | 'queue_id' | 'assignee_id', el: HTMLSelectElement): void {
     const value = el.value;
     const body: TicketUpdate =
       field === 'assignee_id' ? (value ? { assignee_id: value } : { unassign: true }) : ({ [field]: value } as TicketUpdate);
@@ -349,6 +452,30 @@ export class TicketDetailComponent implements OnInit {
     return bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
   }
 
+  /** The categories to offer: the fixed list, plus a legacy value the ticket already holds. */
+  categoryOptions(current: string): TicketCategory[] {
+    const list = this.categories();
+    return list.some(c => c.key === current) ? list : [...list, { key: current, label: current }];
+  }
+
+  categoryLabel(key: string): string {
+    return this.categories().find(c => c.key === key)?.label ?? key;
+  }
+
+  /** Add the typed label(s) (comma separated); the API normalises and validates them. */
+  addLabel(t: Ticket, input: HTMLInputElement): void {
+    const typed = input.value.trim();
+    if (!typed) return;
+    input.value = '';
+    this.patch({ labels: [...labelList(t.labels), typed].join(',') }, () =>
+      this.api.labels().pipe(catchError(() => of([]))).subscribe(l => this.knownLabels.set(l)),
+    );
+  }
+
+  removeLabel(t: Ticket, label: string): void {
+    this.patch({ labels: labelList(t.labels).filter(l => l !== label).join(',') });
+  }
+
   describe(a: TicketActivity): string {
     const who = a.actor_name || 'Someone';
     if (a.field === 'created') return `${who} created ${a.new_value}`;
@@ -356,7 +483,13 @@ export class TicketDetailComponent implements OnInit {
     if (a.field === 'description') return `${who} edited the details`;
     const label = FIELD_LABELS[a.field] ?? a.field;
     // The API already turns assignee / queue ids into names.
-    const show = (v: string) => (!v ? 'none' : a.field === 'status' ? STATUS_LABELS[v as keyof typeof STATUS_LABELS] ?? v : v);
+    const show = (v: string) => {
+      if (!v) return 'none';
+      if (a.field === 'status') return STATUS_LABELS[v as keyof typeof STATUS_LABELS] ?? v;
+      if (a.field === 'category') return this.categoryLabel(v);
+      if (a.field === 'labels') return v.split(',').join(', ');
+      return v;
+    };
     return `${who} changed ${label} from ${show(a.old_value)} to ${show(a.new_value)}`;
   }
 
@@ -368,6 +501,8 @@ export class TicketDetailComponent implements OnInit {
     this.attachments.set([]);
     this.activity.set([]);
     this.editing.set(false);
+    this.suggestion.set(null);
+    this.triageError.set('');
     this.reply = '';
     this.internal = false;
   }
