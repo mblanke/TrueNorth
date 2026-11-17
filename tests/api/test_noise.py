@@ -31,6 +31,9 @@ TARGETS = {
     "ntp": ["dc01.corp.local"],
     "subnet": ["10.10.20.0/24"],
     "hosts": ["ws01.corp.local"],
+    "rdp": ["app01.corp.local"],
+    "ftp": ["drop01.corp.local"],
+    "print": ["print01.corp.local"],
 }
 
 
@@ -177,6 +180,19 @@ class TestPlanner:
         assert looks, "level 95 with flagged personas should produce some lookalikes"
         assert {a["persona"] for a in looks} <= flagged
         assert all(a["kind"] in dial.LOOKALIKES for a in looks)
+
+    def test_the_new_activities_are_planned_against_their_own_pools(self):
+        ctx = planner.PlanContext(seed=11, level=70, targets=TARGETS)
+        acts = planner.plan(ctx, _personas(40), MONDAY_10AM, 60)
+        new = {"icmp_ping": "hosts", "rdp_connect": "rdp", "ftp_session": "ftp", "print_status": "print"}
+        assert set(new) <= {a["kind"] for a in acts}, {a["kind"] for a in acts}
+        for a in acts:
+            if a["kind"] in new:
+                assert a["target"] in TARGETS[new[a["kind"]]]
+
+    def test_every_kind_has_a_pool_and_the_mix_is_whole(self):
+        assert set(planner.TARGET_POOL) >= dial.ACTIVITY_KINDS, dial.ACTIVITY_KINDS - set(planner.TARGET_POOL)
+        assert abs(sum(dial.BASE_MIX.values()) - 1.0) < 1e-9
 
     def test_no_target_no_action(self):
         acts = planner.plan(planner.PlanContext(seed=5, level=95, targets={"web": ["w"]}), _personas(), MONDAY_10AM, 60)

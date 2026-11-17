@@ -543,11 +543,12 @@ modules:
       - C) That the reviewer approved the proposal
       - D) That the references were checked
       answer: A
-    - question: "Across a cohort of last year's capstone proposals, the single most frequent failing an
-        assessor reported was:"
+    - question: Which revision-log entry best shows that a Student treated reviewer critique as evidence about
+        the plan?
       options:
-      - A) Too few references for a proposal of this size and ambition
-      - B) A scope too wide to complete and evaluate
-      - C) Too much technical detail
-      - D) Missing appendices
+      - A) Comment 3 dismissed; the reviewer misread the proposal
+      - B) Schedule changed after comment 4, because the risk analysis showed the original scope could not be
+        evaluated in time
+      - C) Section 2 edited
+      - D) Reviewer thanked for the comment
       answer: B

@@ -75,9 +75,10 @@ function sentenceCase(key: string): string {
 }
 
 /**
- * Evidence as a line a person reads. A credited detection (app/routers/detections.py
- * `_credit`) says who detected it and what their query found; other JSON becomes
- * "Label: value" pairs of its plain fields; text is shown as it is.
+ * Evidence as a line a person reads. An instructor's judgement (ADR 0020) says who judged
+ * it, their note and how many detections it cites; an older credited detection (ADR 0005)
+ * says who detected it and what their query found; other JSON becomes "Label: value" pairs
+ * of its plain fields; text is shown as it is.
  */
 export function evidenceText(raw: string | null | undefined): string {
   const text = (raw ?? '').trim();
@@ -90,6 +91,12 @@ export function evidenceText(raw: string | null | undefined): string {
   }
   if (!data || typeof data !== 'object' || Array.isArray(data)) return text;
   const d = data as Record<string, unknown>;
+  if (d['source'] === 'instructor') {
+    const who = String(d['by'] ?? '').trim() || 'an instructor';
+    const note = String(d['note'] ?? '').trim();
+    const cites = Array.isArray(d['cites']) ? d['cites'].length : 0;
+    return `Judged by ${who}${note ? ': ' + note : ''}${cites ? ' · cites ' + plural(cites, 'detection', 'detections') : ''}`;
+  }
   if (d['source'] === 'student_detection' || d['source'] === 'staff_detection') {
     const staff = d['source'] === 'staff_detection';
     const who = String((staff ? d['user'] : d['student']) ?? '').trim() || (staff ? 'staff' : 'a Student');

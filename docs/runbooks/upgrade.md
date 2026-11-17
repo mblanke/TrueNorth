@@ -24,7 +24,8 @@ dc() { docker compose -f /srv/truenorth/app/infra/platform/docker/compose.prod.y
   compose file and migrations match them. Use the installer from that same commit.
 - **Build mode** (labs): `tn_app_git_version` empty (the default) deploys the commit the
   installer itself is checked out at, so the installer and the app never drift apart. (It
-  used to be a pinned SHA in the inventory, which was 336 commits stale by v1.0.0.)
+  used to be a pinned SHA in the inventory, 340 commits stale when it was dropped, the day
+  before v1.0.0.)
 - Either way the app's `compose.prod.yml` must declare the installer's compatibility level
   (`x-truenorth-installer-compat` = `install/COMPAT`); `20-fetch-app` stops on a mismatch.
 
@@ -117,7 +118,7 @@ Everything written since the backup is lost — say so in the incident record.
 
 Schema downgrade (`alembic downgrade <rev>`) exists and is tested
 (`tests/api/test_migration_populated_upgrade.py`), but use it only on advice from whoever
-wrote the migration: e.g. `23df1b265fd2`'s downgrade **unseals** stored credentials back to
+wrote the migration: e.g. `f4b5c6d7e8a9`'s downgrade **unseals** stored credentials back to
 plain text.
 
 ## After

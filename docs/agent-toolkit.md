@@ -1,8 +1,10 @@
 # TrueNorth model toolkit
 
 This repository now has **15 task skills and 15 new specialist agent definitions**.
-The four existing Claude agent definitions are retained (19 total). The numbered
-files directly under `SKILLS/` remain the legacy operating guidance.
+The eleven other Claude agent definitions are retained (26 total), including
+`adversarial-reviewer`, `architect-cyber`, `scenario-engineer`, `test-engineer`
+and the seven `arc2-*` run roles. The numbered files directly under `SKILLS/`
+remain the legacy operating guidance.
 
 ## Locations and discovery
 
