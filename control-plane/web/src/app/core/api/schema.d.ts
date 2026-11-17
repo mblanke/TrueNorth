@@ -3642,8 +3642,10 @@ export interface paths {
          * Complete Exercise
          * @description Complete an exercise and tally scores.  **Permission: exercise:complete**
          *
-         *     Competency assessment, the LTI grade and the xAPI statement go to whoever completed it
-         *     and to every Student who submitted a detection in this run (app/exercise_completion).
+         *     Competency assessment, the LTI grade and the xAPI statement go to the exercise's Students
+         *     only (its seat or its teams, and on the roll call when it runs on a class range). They do
+         *     not go to whoever completes it, nor to a Student only because they submitted a detection
+         *     (app/exercise_completion, ADR 0020, #375).
          */
         post: operations["complete_exercise_exercises__exercise_id__complete_post"];
         delete?: never;
@@ -3661,7 +3663,8 @@ export interface paths {
         };
         /**
          * List Detections
-         * @description Detection attempts on an exercise: a Student's own; every attempt for staff.  **Permission: exercise:read**
+         * @description Detection submissions on an exercise: a Student's own; every submission for staff, who
+         *     judge the objectives.  **Permission: exercise:read**
          */
         get: operations["list_detections_exercises__exercise_id__detections_get"];
         put?: never;
@@ -3731,15 +3734,24 @@ export interface paths {
         put?: never;
         /**
          * Acknowledge Objective
-         * @description Acknowledge (achieve) an objective on a running or paused exercise in the caller's
-         *     tenant, recording who acknowledged it, and re-total the exercise score.
+         * @description Judge an objective achieved (ADR 0020: instructors judge team exercises), with a note
+         *     and optionally the Student detections relied on (``cites``), and re-total the score.
          *
          *     **Permission: objective:ack** (instructors and admins; never Students).
          *     404 if the exercise is not in the caller's tenant or the objective does not exist;
-         *     409 if the exercise is not running/paused or the objective is already achieved.
+         *     409 if the exercise is not running/paused or the objective is already achieved;
+         *     422 if a cited submission is not a recorded detection on this objective in this run.
          */
         post: operations["acknowledge_objective_exercises__exercise_id__objectives__ref_id__ack_post"];
-        delete?: never;
+        /**
+         * Withdraw Objective Ack
+         * @description Withdraw a judgement while the exercise is running or paused; the submissions it cited
+         *     are recorded again, and the score is re-totalled (ADR 0020).
+         *
+         *     **Permission: objective:ack**. 404 as for acknowledge; 409 if the exercise is closed or
+         *     the objective is not achieved.
+         */
+        delete: operations["withdraw_objective_ack_exercises__exercise_id__objectives__ref_id__ack_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3756,7 +3768,8 @@ export interface paths {
         put?: never;
         /**
          * Submit Detection
-         * @description Submit a detection for an objective; it is credited if it finds the attack.  **Permission: detection:submit**
+         * @description Record a detection for an objective as evidence for the instructor who judges it; it
+         *     credits nothing (ADR 0020).  **Permission: detection:submit**
          */
         post: operations["submit_detection_exercises__exercise_id__objectives__ref_id__detections_post"];
         delete?: never;
@@ -9564,6 +9577,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tickets/ai-triage/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Triage Status */
+        get: operations["triage_status_tickets_ai_triage_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tickets/assignees": {
         parameters: {
             query?: never;
@@ -9608,6 +9638,46 @@ export interface paths {
         };
         /** Board */
         get: operations["board_tickets_board_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ticket Categories
+         * @description The fixed list of ticket categories (key and display name).
+         */
+        get: operations["list_ticket_categories_tickets_categories_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ticket Labels
+         * @description Labels in use across the tenant's tickets, most used first (for suggestions and filters).
+         */
+        get: operations["list_ticket_labels_tickets_labels_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9738,6 +9808,26 @@ export interface paths {
          * @description Drag-and-drop on the board: change column and/or position within it.
          */
         post: operations["move_ticket_tickets__ticket_id__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticket_id}/triage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Triage Ticket
+         * @description A suggested category, priority, labels, summary and reply hint. Changes nothing.
+         */
+        post: operations["triage_ticket_tickets__ticket_id__triage_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11118,7 +11208,6 @@ export interface components {
          *
          *     - ``lab_fault``: the Student's lab is failed, expired or being cleaned up (not their doing)
          *     - ``lab_wait``: their lab is queued, building or resetting
-         *     - ``learning``: ``learning_signal_misses`` or more judged misses on one objective, no credit
          *     - ``not_seen``: no detection and no lab heartbeat for ``not_seen_minutes`` (neutral)
          */
         AttentionOut: {
@@ -11128,7 +11217,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "lab_fault" | "lab_wait" | "learning" | "not_seen";
+            kind: "lab_fault" | "lab_wait" | "not_seen";
             /** Objective Ref */
             objective_ref?: string | null;
             /** Since */
@@ -11892,8 +11981,8 @@ export interface components {
         };
         /**
          * ClassAttemptOut
-         * @description One detection attempt in this run. ``query`` and ``precision`` only for staff who may
-         *     see the answer key (``scenario:update``), as ``GET /exercises/{id}/detections``.
+         * @description One detection submission in this run (ADR 0020: evidence, never a grade). ``query`` only
+         *     for staff (``scenario:update``), as ``GET /exercises/{id}/detections``.
          */
         ClassAttemptOut: {
             /** Events Matched */
@@ -11905,8 +11994,6 @@ export interface components {
             id: string;
             /** Objective Ref */
             objective_ref: string;
-            /** Precision */
-            precision?: number | null;
             /** Query */
             query?: string | null;
             /** Submitted At */
@@ -12146,23 +12233,24 @@ export interface components {
         };
         /**
          * ClassObjectiveStateOut
-         * @description One objective as this Student stands on it, from their own attempts only.
+         * @description One objective as this Student stands on it: ``credited`` when the instructor's judgement
+         *     of it cites their detection (ADR 0020), else from their own submissions.
          */
         ClassObjectiveStateOut: {
             /** Credited At */
             credited_at?: string | null;
-            /**
-             * Misses
-             * @default 0
-             */
-            misses?: number;
             /** Ref Id */
             ref_id: string;
             /**
              * State
              * @enum {string}
              */
-            state: "credited" | "pending" | "missed" | "not_attempted";
+            state: "credited" | "pending" | "submitted" | "not_attempted";
+            /**
+             * Submissions
+             * @default 0
+             */
+            submissions?: number;
         };
         /** ClassOut */
         ClassOut: {
@@ -12366,12 +12454,13 @@ export interface components {
             attempts?: components["schemas"]["ClassAttemptOut"][];
             /**
              * Attempts Credited
+             * @description of those, the ones an instructor's judgement cites
              * @default 0
              */
             attempts_credited?: number;
             /**
              * Attempts Total
-             * @description judged or pending attempts in this run
+             * @description detection submissions in this run
              * @default 0
              */
             attempts_total?: number;
@@ -12412,7 +12501,7 @@ export interface components {
             objectives?: components["schemas"]["ClassObjectiveStateOut"][];
             /**
              * Score
-             * @description points of the objectives this Student's own detections were credited for
+             * @description points of the objectives whose judgement cites this Student's detection
              * @default 0
              */
             score?: number;
@@ -13679,11 +13768,11 @@ export interface components {
         };
         /**
          * DetectionOut
-         * @description One attempt. ``on_target`` and ``precision`` are shown only to staff who may see the key.
+         * @description One submission: ``recorded``, or ``cited`` once an instructor's acknowledgement relies on
+         *     it. Rows from before ADR 0020 keep their old verdicts. ``submissions_left`` is set on the
+         *     response to a submission.
          */
         DetectionOut: {
-            /** Attempts Left */
-            attempts_left?: number | null;
             /** Events Matched */
             events_matched: number | null;
             /**
@@ -13693,14 +13782,10 @@ export interface components {
             id: string;
             /** Objective Ref */
             objective_ref: string;
-            /** On Target */
-            on_target?: number | null;
-            /** Precision */
-            precision?: number | null;
             /** Query */
             query: string;
-            /** Reason */
-            reason?: string | null;
+            /** Submissions Left */
+            submissions_left?: number | null;
             /** Submitted At */
             submitted_at: string | null;
             /**
@@ -14272,8 +14357,6 @@ export interface components {
              * Format: date-time
              */
             generated_at: string;
-            /** Learning Signal Misses */
-            learning_signal_misses: number;
             /**
              * Max Score
              * @default 0
@@ -16132,6 +16215,19 @@ export interface components {
             started_at?: string | null;
             /** State */
             state?: string | null;
+        };
+        /** JudgementIn */
+        JudgementIn: {
+            /**
+             * Cites
+             * @description Detection submissions on this objective, in this run, that the judgement relies on
+             */
+            cites?: string[];
+            /**
+             * Evidence
+             * @description The instructor's note: what the team did
+             */
+            evidence?: string | null;
         };
         /** KitDefinitionIn */
         KitDefinitionIn: {
@@ -20029,7 +20125,7 @@ export interface components {
             decided_at?: string | null;
             /**
              * Detections Credited
-             * @description Never on an Unclassified deployment
+             * @description Detections an instructor cited in judging (ADR 0020); never on an Unclassified deployment
              */
             detections_credited?: number | null;
             /** Display Name */
@@ -20787,6 +20883,13 @@ export interface components {
             /** Tickets */
             tickets: components["schemas"]["TicketListOut"][];
         };
+        /** TicketCategoryOut */
+        TicketCategoryOut: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+        };
         /** TicketCommentIn */
         TicketCommentIn: {
             /** Body */
@@ -20861,6 +20964,13 @@ export interface components {
              * @default incident
              */
             type?: string;
+        };
+        /** TicketLabelCountOut */
+        TicketLabelCountOut: {
+            /** Count */
+            count: number;
+            /** Label */
+            label: string;
         };
         /** TicketListOut */
         TicketListOut: {
@@ -21178,6 +21288,60 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+        };
+        /** TriageOut */
+        TriageOut: {
+            /**
+             * Backend
+             * @default
+             */
+            backend?: string;
+            /** Category */
+            category?: string | null;
+            /**
+             * Labels
+             * @default []
+             */
+            labels?: string[];
+            /**
+             * Model
+             * @default
+             */
+            model?: string;
+            /** Priority */
+            priority?: string | null;
+            /**
+             * Related Pages
+             * @default []
+             */
+            related_pages?: components["schemas"]["TriageRelatedPage"][];
+            /**
+             * Reply Hint
+             * @default
+             */
+            reply_hint?: string;
+            /**
+             * Summary
+             * @default
+             */
+            summary?: string;
+        };
+        /** TriageRelatedPage */
+        TriageRelatedPage: {
+            /**
+             * Page Id
+             * Format: uuid
+             */
+            page_id: string;
+            /** Space Slug */
+            space_slug: string;
+            /** Title */
+            title: string;
+        };
+        /** TriageStatusOut */
+        TriageStatusOut: {
+            /** Available */
+            available: boolean;
         };
         /** TrustKeyCreate */
         TrustKeyCreate: {
@@ -29021,9 +29185,43 @@ export interface operations {
     };
     acknowledge_objective_exercises__exercise_id__objectives__ref_id__ack_post: {
         parameters: {
-            query?: {
-                evidence?: string | null;
+            query?: never;
+            header?: never;
+            path: {
+                exercise_id: string;
+                ref_id: string;
             };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JudgementIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObjectiveOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_objective_ack_exercises__exercise_id__objectives__ref_id__ack_delete: {
+        parameters: {
+            query?: never;
             header?: never;
             path: {
                 exercise_id: string;
@@ -29092,23 +29290,21 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description The query is outside the detection language or does not parse; nothing recorded */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
-            /** @description No attempts left for this objective */
+            /** @description The submission bound for this objective is reached */
             429: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description The event store could not answer; the attempt was not counted */
+            /** @description The event store could not answer; nothing recorded */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -39382,6 +39578,9 @@ export interface operations {
                 type?: string | null;
                 queue_id?: string | null;
                 range_id?: string | null;
+                category?: string | null;
+                /** @description staff only */
+                label?: string | null;
                 q?: string | null;
                 limit?: number;
             };
@@ -39440,6 +39639,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    triage_status_tickets_ai_triage_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriageStatusOut"];
                 };
             };
         };
@@ -39553,6 +39772,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ticket_categories_tickets_categories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketCategoryOut"][];
+                };
+            };
+        };
+    };
+    list_ticket_labels_tickets_labels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketLabelCountOut"][];
                 };
             };
         };
@@ -39954,6 +40213,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TicketListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    triage_ticket_tickets__ticket_id__triage_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriageOut"];
                 };
             };
             /** @description Validation Error */

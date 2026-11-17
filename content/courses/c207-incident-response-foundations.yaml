@@ -58,8 +58,8 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 over SSH or Guacamole, open the TheHive console and note the start time.
     - hosts: [jump01, thehive01]
-      action: From jump01, open the declared incident case the instructor designates and record the case
-        title, severity and the response tasks the case template created.
+      action: From jump01, open the declared incident case on thehive01 that the instructor designates and
+        record the case title, severity and the response tasks the case template created.
     - hosts: [thehive01]
       action: 'For each case task, record which lifecycle phase it belongs to: preparation, detection and
         analysis, containment, eradication, recovery or post-incident activity.'
@@ -331,8 +331,8 @@ modules:
       action: Log on to jump01 over SSH or Guacamole and open the network monitoring console at the address
         the instructor provides.
     - hosts: [seconion01, v-ws04]
-      action: From the console, query the connection logs for outbound traffic from v-ws04 and record each
-        external destination with the number of connections and the interval between them.
+      action: From the seconion01 console, query the connection logs for outbound traffic from v-ws04 and
+        record each external destination with the number of connections and the interval between them.
     - hosts: [seconion01, v-ws04]
       action: Open the DNS logs for v-ws04 and record the query volume and the longest subdomain length
         for each destination.
@@ -513,8 +513,8 @@ modules:
       action: Log on to jump01 over SSH or Guacamole and open the completed drill case the instructor names in
         TheHive.
     - hosts: [thehive01]
-      action: Read the case timeline and record two decisions that were delayed, missing or taken without the
-        authority the plan requires.
+      action: Read the case timeline on thehive01 and record two decisions that were delayed, missing or
+        taken without the authority the plan requires.
     - hosts: [thehive01]
       action: Write one inject for each of five response phases, each phrased as new information the exercise
         participants receive.

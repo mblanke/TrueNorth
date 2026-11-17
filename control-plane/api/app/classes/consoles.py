@@ -38,10 +38,11 @@ A console is asked for by the VM's name (unique in its range): a template node w
 signed in (``ws_auth``) and the API relays the hypervisor's stream, so the browser never reaches
 the hypervisor and never holds its ticket. The grant is the caller's, five minutes, one socket
 at a time, and asked again (``console_relay.policy``) while the socket is open. An observer's
-grant is ``view_only``. Until the relay itself drops an observer's input (S4, #369) an observer
-gets a console only where the adapter enforces view-only (``supports_view_only``); vSphere WebMKS
-cannot (its ticket carries no read-only mode), so there an observer is refused (403) rather
-than handed a console they can type into.
+grant is ``view_only``: the relay passes only the RFB messages on its allowlist
+(``console_relay/rfb_filter.py``, S4 #369) and drops key, pointer and clipboard input. An
+observer gets a console only where the adapter says its stream can be held view-only
+(``supports_view_only``; vSphere WebMKS now does, its ticket having no read-only mode of its
+own), else is refused (403) rather than handed a console they can type into.
 
 **Every grant issued is audited** (``range_console_open``): who, the range, machine and VM,
 why (``student``, ``observer`` or ``staff``), the class, the session, and how the Student takes
@@ -97,9 +98,9 @@ def _now() -> datetime:
 
 def observer_consoles_enabled() -> bool:
     """``CLASS_OBSERVER_CONSOLES`` (default off): whether observers get console tickets from
-    the live view. Off until a site's hypervisor can enforce view-only: a vSphere WebMKS
-    ticket cannot, so an observer could type into a Student's machine. Observers then get the
-    status grid only; the lead, assistants and admins keep consoles."""
+    the live view. Off by default (owner decision 2026-10-28; the relay's view-only allowlist,
+    #369, makes turning it on safe, but the owner decides). Observers then get the status
+    grid only; the lead, assistants and admins keep consoles."""
     return os.getenv(OBSERVER_CONSOLES_ENV, "").strip().lower() in ("1", "true", "yes", "on")
 
 
@@ -411,8 +412,9 @@ def staff_console(db: Session, user: CurrentUser, live: LiveSession, range_id: u
     if observer and machine_of(vm, rng.id) not in student_machines(db, rng):
         raise HTTPException(403, "Observers watch the Students' machines only")
     if observer and not view_only_supported(rng):
-        # S4 (#369) makes the relay itself drop an observer's input; until then an observer
-        # grant would be a console they can type into. Refused, as when consoles are off.
+        # The relay filters an observer's input (S4, #369) but only for an adapter that says
+        # its stream can be held view-only; otherwise the grant would be a console they can
+        # type into. Refused, as when consoles are off.
         raise HTTPException(403, "Observers see the live status only on this hypervisor: its consoles cannot be "
                                  "made view-only yet, so a console for an observer is not issued")
     ticket = _open(db, user, rng, vm, view_only=observer, ws_base=ws_base,

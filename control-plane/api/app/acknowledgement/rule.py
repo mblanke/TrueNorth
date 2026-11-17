@@ -41,7 +41,8 @@ are not forgotten):
   published (or before a signature expired) keeps opening its one lab session until it
   expires (at most the lab's own lifetime). New ones are minted only after signing.
 * **Open WebSockets.** The check runs at the handshake; a socket opened before a publish
-  stays open until its token expires (``ws_auth.close_expired``).
+  stays open until its token expires (``ws_auth.close_expired``); a console relay socket is the
+  exception: it outlives its token and ends with its session window or ``MAX_OPEN_SECONDS``.
 * **The calendar feed** (``/schedule/feed/{token}.ics``): calendar clients cannot sign;
   it serves only the token owner's own sessions, read-only.
 * Also outside it by design: noise-agent tokens (no user), cmi5 AU fetch and LRS calls

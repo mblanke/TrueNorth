@@ -59,7 +59,7 @@
         ],
         "detection": [
             "non-participant refused",
-            "participant's detection scored"
+            "participant's detection judged"
         ],
         "reporting-aar": [
             "complete the exercise, generate the AAR",

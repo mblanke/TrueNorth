@@ -218,8 +218,8 @@ class ScoringValidator:
         The method keeps its historical name because scenario content and objective rows
         say ``opensearch_query``; any ``BaseEventStore`` can serve it.
 
-        Without ``require_observed: true`` this is a detection objective, credited only from
-        a Student's submitted detection (ADR 0005, app/detections/credit.py): unscored here.
+        Without ``require_observed: true`` this is a detection objective, judged by an
+        instructor in a team exercise (ADR 0020, app/exercise_judging.py): unscored here.
         Scoring it from the store credited the inject's own synthetic records, full points
         with no Student action.
 

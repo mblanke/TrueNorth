@@ -635,7 +635,7 @@ def _scenario_yaml(po: PerformanceObjective, crit: list[str]) -> str:
     """Deterministic scenario from the PO — MITRE-tagged timeline + objectives + noise floor.
 
     Objectives use ref_id crit-1..N + deliverable-report (matching the Exercise's Objective rows),
-    so the mock runner (run_scenario_v2) walks the timeline and auto-achieves them. Points sum 100.
+    so the run (run_scenario_v2) walks the timeline and the instructor judges them (ADR 0020). Points sum 100.
     """
     deliverable_pts, per, remainder = _points(crit)
     lines = [
@@ -806,7 +806,7 @@ def generate_exercises(db: Session, tenant_id: str | None = None) -> dict:
         if exercise is None:
             exercise = Exercise(
                 name=ex_name, range_id=rng.id, scenario_id=scenario.id,
-                state=ExerciseState.pending, tenant_id=tenant_id,
+                state=ExerciseState.pending, tenant_id=tenant_id, max_score=100,  # the objectives below sum to 100
             )
             db.add(exercise)
             db.flush()

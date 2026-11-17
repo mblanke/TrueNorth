@@ -77,8 +77,9 @@ answer_key_notes:
     Executive pressure applied before verification risks unsafe shortcuts in the rebuild sequence; it does not
     improve customer reporting (C, D). Q3 D, M04-O02: The rebuild queue follows business criticality and
     dependency order; host name (A), team availability (B) and system age (C) are convenience ordering. Q4 A,
-    M04-O02: Trust comes from verified sources, new credentials and validated configuration; a single scan of
-    the old image establishes none of these, and renaming (C) is cosmetic. Q5 C, M04-O03: Heightened monitoring
+    M04-O02: Trust comes from verified sources, new credentials and validated configuration; a clean scan of
+    the old image (B) or a scan showing the image is current (D) establishes none of these, and renaming (C) is
+    cosmetic. Q5 C, M04-O03: Heightened monitoring
     after recovery watches for residual or repeat access attempts following eradication; configuration drift
     (A) and licence or backup housekeeping (B, D) are operational baselines, not post-incident watch.'
 - module: 5

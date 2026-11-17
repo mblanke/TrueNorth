@@ -44,11 +44,13 @@ the login page answers through the edge, Moodle's sign-in page hands people to T
 and TrueNorth's own publishing backend gets a signed answer from `local_truenorth`
 (`python -m app.moodle_backends.install_cli check`). A second run changes nothing.
 
-The platform's **Integrations → Test** button reports this Moodle as refused unless
-`INTEGRATION_ALLOW_PRIVATE_URLS` is on: it probes the internal address through
-`net_guard`. Publishing does not depend on it, and neither do grades sent back to this
-Moodle (cmi5 over LTI): `install_cli register` marks the node a TrueNorth farm node
-(`app/moodle_farm`), which may reach its private address and binds Students' farm accounts
+The platform's **Integrations → Test** button reaches this Moodle without a flag: it
+probes the internal address through `net_guard`, which allows a TrueNorth farm node's
+private address (`app/moodle_farm` `may_reach_private`); a Moodle nobody marked still
+needs `INTEGRATION_ALLOW_PRIVATE_URLS`. Publishing does not depend on it, and neither do
+grades sent back to this Moodle (cmi5 over LTI): `install_cli register` marks the node a
+TrueNorth farm node (`app/moodle_farm`), which may reach its private address and binds
+Students' farm accounts
 by their locked TrueNorth id (docs/moodle-integration.md, "Farm nodes"). A node registered
 before 2026-10-10 is marked on the installer's next run; one added with
 `scripts/moodle-farm.sh` is marked by the script (`install_cli manage`).

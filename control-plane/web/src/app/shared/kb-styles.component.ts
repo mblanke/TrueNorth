@@ -27,6 +27,10 @@ import { ChangeDetectionStrategy, Component, ViewEncapsulation } from '@angular/
     .tn-kb .tn-kb-linkbtn { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer; }
     .tn-kb .tn-kb-linkbtn:hover { text-decoration: underline; }
     .tn-kb .tn-kb-linkbtn.muted { color: var(--text-secondary); }
+    .tn-kb-chips { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+    .tn-kb-chip { display: inline-flex; align-items: center; gap: 2px; font-size: .74rem; padding: 0 4px 0 7px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-secondary, rgba(0,0,0,.03)); color: var(--text-primary); }
+    .tn-kb-chip button { background: none; border: 0; cursor: pointer; color: var(--text-secondary); font-size: .9rem; line-height: 1; padding: 0 3px; }
+    .tn-kb-chip button:hover { color: var(--alert); }
     .tn-kb-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
     .tn-kb-scroll { overflow-x: auto; }
     .tn-kb-banner { border: 1px solid var(--warning); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px; font-size: .88rem; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }

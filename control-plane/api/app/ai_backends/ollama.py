@@ -24,6 +24,7 @@ class OllamaEngine(BaseAIEngine):
         api_key: str | None = None,
         timeout: float = 30.0,
         model: str = "",
+        max_tokens: int = 256,
     ) -> dict:
         r = httpx.post(
             f"{base_url.rstrip('/')}/api/generate",

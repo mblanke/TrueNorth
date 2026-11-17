@@ -9,8 +9,9 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { interval } from 'rxjs';
 
 import { AuthService } from '@core/services/auth.service';
-import { CourseStudioApiService, LabConsole, LabSession } from '@core/services/course-studio-api.service';
+import { CourseStudioApiService, LabSession } from '@core/services/course-studio-api.service';
 import { NotificationService } from '@core/services/notification.service';
+import { TnVmConsoleComponent } from '../../shared/components/vm-console/tn-vm-console.component';
 import { RangeCredentialsComponent } from '../../shared/components/range-credentials/range-credentials.component';
 
 /** What each session state means to the student. */
@@ -47,7 +48,7 @@ const TOKEN_KEY = (id: string) => `tn-lab-token:${id}`;
     '(window:pointerdown)': 'markActive()',
     '(window:focus)': 'markActive()',
   },
-  imports: [DatePipe, MatButtonModule, MatCardModule, MatIconModule, MatProgressBarModule, RangeCredentialsComponent],
+  imports: [DatePipe, MatButtonModule, MatCardModule, MatIconModule, MatProgressBarModule, RangeCredentialsComponent, TnVmConsoleComponent],
   template: `
     <div class="lab">
       <mat-card class="panel">
@@ -73,11 +74,8 @@ const TOKEN_KEY = (id: string) => `tn-lab-token:${id}`;
               <button mat-stroked-button (click)="act('reset')"><mat-icon>restart_alt</mat-icon> Reset</button>
               <button mat-stroked-button color="warn" (click)="act('end')"><mat-icon>stop_circle</mat-icon> End lab</button>
             </div>
-            @if (console(); as c) {
-              <p class="console">
-                Console ticket for <b>{{ c.node }}</b> (valid {{ c.expires_in }}s):
-                <code>{{ c.url }}</code>
-              </p>
+            @if (consoleOpen()) {
+              <tn-vm-console machine="Lab machine" [open]="openGrant" (connected)="markActive()" />
             }
             <p class="muted">
               @if (s.ends_with_class) {
@@ -107,7 +105,6 @@ const TOKEN_KEY = (id: string) => `tn-lab-token:${id}`;
     .state { font-size: 1.05rem; margin: 0; }
     .state.bad, .error { color: var(--severity-high); }
     .buttons { display: flex; gap: 8px; flex-wrap: wrap; }
-    .console code { display: block; word-break: break-all; font-size: 0.8rem; margin-top: 4px; }
     .muted { color: var(--text-muted); margin: 0; }
     .small { font-size: 0.8rem; }
   `],
@@ -121,7 +118,7 @@ export class LabPageComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly session = signal<LabSession | null>(null);
-  readonly console = signal<LabConsole | null>(null);
+  readonly consoleOpen = signal(false);
   readonly problem = signal('');
   readonly waiting = computed(() => WAITING.has(this.session()?.state ?? ''));
   readonly usable = computed(() => USABLE.has(this.session()?.state ?? ''));
@@ -201,20 +198,22 @@ export class LabPageComponent implements OnInit {
     if (!window.confirm(question)) {
       return;
     }
-    this.console.set(null);
+    this.consoleOpen.set(false);
     this.api.labAction(this.id, action, this.token).subscribe({
       next: s => this.session.set(s),
       error: err => this.notify.error(err?.error?.detail ?? `Could not ${action} the lab`),
     });
   }
 
+  /** Shows the console. `tn-vm-console` asks for a one-time grant when it opens and on every
+   *  Reconnect (with the lab's own token when launched from Moodle). */
   openConsole(): void {
     this.markActive();
-    this.api.labConsole(this.id, this.token).subscribe({
-      next: c => this.console.set(c),
-      error: err => this.notify.error(err?.error?.detail ?? 'Could not open the console'),
-    });
+    this.consoleOpen.set(true);
   }
+
+  /** The grant `tn-vm-console` asks for; a field, so the component sees one stable function. */
+  readonly openGrant = () => this.api.labConsole(this.id, this.token);
 
   /** The launch token arrives in the fragment (#token=...); keep it for this tab only and
    *  take it out of the address bar so it is not bookmarked or shared. */

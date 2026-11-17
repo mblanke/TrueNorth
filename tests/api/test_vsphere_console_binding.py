@@ -31,7 +31,7 @@ class FakeMachine:
 @pytest.fixture
 def vcenter(monkeypatch):
     state = SimpleNamespace(machines={}, connect=MagicMock(return_value=SimpleNamespace(_stub=None)))
-    monkeypatch.setattr(console_mod, "SmartConnect", state.connect)
+    monkeypatch.setattr(console_mod, "Connect", state.connect)
     monkeypatch.setattr(console_mod, "Disconnect", MagicMock())
     monkeypatch.setattr(console_mod, "vim", SimpleNamespace(VirtualMachine=lambda vm_id, stub: state.machines[vm_id]))
     monkeypatch.setenv("VSPHERE_URL", "https://vc-platform.test")
@@ -99,6 +99,19 @@ def test_sdk_faults_reach_the_student_as_fixed_text_and_the_log_has_no_host(db_s
     shown = str(e.value) + caplog.text
     assert "secret.corp" not in shown and "10.9.8.7" not in shown and "ticket-T" not in shown
     assert "Exception" in caplog.text and "vm-1" in caplog.text  # the class and the VM id
+
+
+def test_the_login_is_bounded_and_does_not_probe_the_api_version(db_session, vcenter):
+    """A vCenter that does not answer must free the relay's dial thread: the version probe of
+    SmartConnect has no timeout, so the login names the version and a connection timeout."""
+    conn = _conn(db_session)
+    rng = _range(db_session, {"vms": [VM], "connection": {"id": str(conn.id), "host": "https://vc-a.test"}})
+    vcenter.machines["vm-1"] = FakeMachine("x-web", _tag(rng.id))
+    _open(db_session, rng, VM)
+    kw = vcenter.connect.call_args.kwargs
+    assert kw["httpConnectionTimeout"] == console_mod.CONNECT_TIMEOUT
+    assert kw["version"] == console_mod.API_VERSION
+    assert console_mod.CONNECT_TIMEOUT <= 15
 
 
 def test_the_database_transaction_ends_before_the_vcenter_is_called(db_session, vcenter, monkeypatch):

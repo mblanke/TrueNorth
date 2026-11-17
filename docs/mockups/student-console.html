@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
+<title>TrueNorth Student console mockup</title>
+<!--
+  My classes with an embedded console. Replaces the raw ticket URL in my-classes.component.ts. The viewer is rendered by TrueNorth's relay; the browser never reaches the range hosts.
+  Tokens follow the approved red/white look (assets/previews/development.html, --tn-*).
+  Fictional: people, classes, machines, times. Static; no scripts.
+-->
+<style>
+:root{--bg:#fff7f7;--surface:#fff;--ink:#292326;--muted:#655b60;--line:#eadbdd;--accent:#b5122b;--soft:#fcecef;--button:#bd1631;--ok:#2f6b1f;--okbg:#e8f3e0;--warn:#7a4a06;--warnbg:#fbeed8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+.top{display:flex;align-items:center;gap:16px;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--line)}
+.brand{font-weight:650;font-size:19px;letter-spacing:-.5px}.brand b{color:var(--accent)}.sp{margin-left:auto}
+.menu{display:flex;gap:6px;flex-wrap:wrap;padding:12px 24px;background:var(--surface);border-bottom:1px solid var(--line)}
+.menu a{padding:9px 15px;border-radius:8px;color:var(--ink);text-decoration:none}.menu a[aria-current=page]{background:var(--soft);color:var(--accent);font-weight:600}
+main{max-width:1040px;margin:0 auto;padding:26px 24px 60px}
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--accent)}
+h1{font-size:27px;line-height:1.2;margin:4px 0 14px;letter-spacing:-.6px}h2{font-size:18px;margin:0 0 8px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin-top:16px}
+.hero{background:var(--soft);border-radius:12px;padding:22px 24px}.hero h2{font-size:23px;margin:4px 0 2px}
+.btn{display:inline-block;border:1px solid var(--line);border-radius:8px;padding:10px 16px;background:var(--surface);color:var(--ink);text-decoration:none}
+.btn.p{background:var(--button);color:#fff;border-color:transparent;font-weight:600}.row{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}.muted{color:var(--muted)}.small{font-size:14px}.link{color:var(--accent);text-decoration:none}
+.chip{display:inline-block;padding:3px 9px;border-radius:6px;font-size:13px;background:var(--okbg);color:var(--ok)}.chip.w{background:var(--warnbg);color:var(--warn)}
+.bar{height:6px;border:1px solid var(--line);border-radius:3px;background:#fff;margin:8px 0 6px}.bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}.tabs span{padding:9px 15px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.tabs .on{background:var(--soft);color:var(--accent);font-weight:600;border-color:var(--accent)}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.dot{display:inline-block;width:9px;height:9px;border-radius:5px;background:#4c9a2a;margin-right:6px}
+.screen{border:2px solid var(--line);border-radius:10px;min-height:320px;display:flex;flex-direction:column;background:#fafafa}
+.screen .body{flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:30px;color:var(--muted)}
+.screen .bar2{border-top:1px solid var(--line);padding:9px 14px;display:flex;gap:18px;font-size:14px;color:var(--muted);background:#f3eeee;border-radius:0 0 8px 8px}
+table{width:100%;border-collapse:collapse}th{text-align:left;font-weight:500;color:var(--muted);padding:8px 6px}td{padding:10px 6px;border-top:1px solid var(--line)}
+.split{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}@media(max-width:820px){.split{grid-template-columns:1fr}}
+footer{max-width:1040px;margin:0 auto;padding:0 24px 30px;color:var(--muted);font-size:13px}
+</style></head><body>
+<div class="top"><span class="brand"><b>&#9650;</b> TrueNorth</span><span class="muted">My classes</span><span class="sp muted">Sign out</span></div>
+<nav class="menu" aria-label="Student"><a >Home</a><a aria-current="page">My classes</a><a >My learning</a><a>Exercises</a><a>Results</a><a class="sp muted">Support</a></nav>
+<main>
+<div class="eyebrow">My classes</div><h1>SOC Analyst 2 · Lab 4 <span class="chip">Live · ends 16:00</span></h1>
+<div class="tabs"><span class="on">analyst01</span><span>siem01</span><span>jump01</span></div>
+<section class="panel"><div class="toolbar"><b style="font-size:18px">analyst01</b><span><i class="dot"></i>Connected · 12 min</span>
+<span class="sp"></span><a class="btn">Ctrl-Alt-Del</a><a class="btn">Reconnect</a><a class="btn">Full screen</a></div>
+<div class="screen" style="margin-top:12px"><div class="body">The machine's desktop is drawn here, full width, by the viewer.<br>Your keyboard and mouse go to the machine while this has focus.</div><div class="bar2"><span>Start</span><span>Event Viewer</span><span>Wireshark</span><span style="margin-left:auto">13:47</span></div></div>
+<p class="small muted">Connected through TrueNorth. If the picture stops, press Reconnect. The console closes at 16:00. Opening it counts as your attendance.</p></section>
+<section class="panel"><h2>Your accounts</h2>
+<div class="row"><div><b>analyst01</b> <span class="muted">soc\jtremblay</span></div><a class="link">Show password</a></div>
+<div class="row"><div><b>siem01</b> <span class="muted">admin</span></div><a class="link">Show password</a></div></section>
+<section class="panel"><h2>If it does not connect</h2>
+<div class="row"><div>Outside your session window<div class="small muted">Opens 30 minutes before the start and closes at the end.</div></div></div>
+<div class="row"><div>The machine is not running<div class="small muted">Wait for the range to finish building, then Reconnect.</div></div></div>
+<div class="row"><div>The console service could not reach the machine<div class="small muted">Tell your instructor; this is logged.</div></div></div></section></main><footer>Mockup for review. Not the shipped screen.</footer></body></html>
