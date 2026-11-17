@@ -13,7 +13,7 @@
   looked); the audit on site is the first on-site job. Upgrade drill baseline is rc19 (rc20 never
   published); rc19 to rc21 has no Alembic migration.
 - **Owner decisions today:** credential rotation deferred until pre-prod or production; owner is
-  the author (headers and git identity, item 1.10; needs a choice of public commit email);
+  the author (headers and git identity, item 1.10; name only, empty email, set for new commits);
   versioning for docs now, in-app content history after GA.
 
 ## 2026-09-26 — navigation proposal and model toolkit
