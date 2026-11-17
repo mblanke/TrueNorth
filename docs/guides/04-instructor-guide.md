@@ -7,7 +7,8 @@ from creation to close-out. The site must already be set up by an administrator
 
 Checked against `main` at `fd4f79a6` (2026-10-27, v1.2.0); sections 1 to 9 and the exercise
 templates part of section 12 were reconciled with `main` at `353339c2` (2026-11-02), and
-sections 10, 11 and the rest of 12 were not re-read end to end. Words follow
+section 7's console parts with the source at `eec53906` (2026-11-05); sections 10, 11 and the
+rest of 12 were not re-read end to end. Words follow
 [GLOSSARY.md](../GLOSSARY.md). UI paths are written as **sidebar section → item → card →
 button**.
 
@@ -286,8 +287,10 @@ range's, only while a collective session is under way).
 
 - **Console.** On **My classes** each class has a **Console** button beside **Join**. It
   lists **Your machines**, only the machines the Student is handed accounts on. Pressing a
-  machine shows a one-time "Console ticket for <machine>" showing its address, valid for
-  a short time. Consoles open **during the session, from shortly before it starts** (the same lead
+  machine opens that machine's console on the page: a live picture of its screen, with the
+  Student's keyboard and mouse. The picture is relayed through TrueNorth; the Student's
+  browser never connects to the range's hosts, so the site needs no firewall route from
+  Students to them (guide 01 §4.3). Consoles open **during the session, from shortly before it starts** (the same lead
   time as the range build), not before; a shared range only once the session is under way.
   Opening one is recorded and counts for attendance
   like pressing **Join**. A Student on a collective session reaches the shared range's
@@ -317,9 +320,11 @@ machines (or their team and the shared range), the range's state, and **Last ope
 not screenshots.
 
 - **Lead, assistants and admins** get a button per machine, for **any** machine of the
-  session's ranges. The button gives a one-time console ticket and works only while the
-  session is under way (or in the lead time before it). Every ticket is audited (who, which
-  machine, why). Staff consoles never count as the Student's attendance.
+  session's ranges. The button opens the machine's console on the page (the same console
+  Students get) and works only while the session is under way (or in the lead time before
+  it). Every console opened this way is audited (who, which machine, and whether it was
+  opened as a Student, observer or staff console). Staff consoles
+  never count as the Student's attendance.
 - **Observers** (the class's own observer list, not every observer in the tenant) see the
   same grid. **By default they get the live status only**: the page says "Observers see the
   live status only: consoles are off for observers on this site". The owner has not yet
