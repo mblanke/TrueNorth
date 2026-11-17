@@ -50,6 +50,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import set_committed_value
 
+from .. import wiki_search
 from ..auth import CurrentUser
 from ..db import get_db
 from ..models import AuditLog, User
@@ -696,16 +697,9 @@ def _snippet(body: str, q: str, width: int = 160) -> str:
     return ("…" if start else "") + text + ("…" if start + width < len(body) else "")
 
 
-@router.get("/search", response_model=list[WikiSearchHit])
-def search(
-    q: str = Query(..., min_length=2, max_length=200),
-    limit: int = Query(25, ge=1, le=100),
-    db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_permission(Permission.WIKI_READ)),
-) -> list[WikiSearchHit]:
+def _search_base(db: Session, user: CurrentUser):
+    """Pages the caller may read, with their spaces: the one place search visibility is decided."""
     tid = tenant_uuid(user)
-    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    pattern = f"%{escaped}%"
     query = (
         db.query(WikiPage, WikiSpace)
         .join(WikiSpace, WikiSpace.id == WikiPage.space_id)
@@ -715,19 +709,48 @@ def search(
             WikiPage.deleted_at.is_(None),
             WikiSpace.deleted_at.is_(None),
             WikiSpace.is_archived.is_(False),
+        )
+    )
+    if not _staff(user):
+        query = query.filter(
+            WikiSpace.visibility == "all", WikiSpace.system_owned.is_(False), WikiPage.is_published.is_(True)
+        )
+    return query
+
+
+@router.get("/search", response_model=list[WikiSearchHit])
+def search(
+    q: str = Query(..., min_length=2, max_length=200),
+    limit: int = Query(25, ge=1, le=100),
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_READ)),
+) -> list[WikiSearchHit]:
+    """Ranked by the search backend when there is one (pages it names come first, best first),
+    then the plain substring matches. Visibility is always decided here, from the database."""
+    escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{escaped}%"
+    base = _search_base(db, user)
+    ranked_ids = wiki_search.ranked_ids(q, tenant_uuid(user), limit * 4) or []  # over-fetch: some may be hidden from this user
+    ranked: list = []
+    if ranked_ids:
+        by_id = {r[0].id: r for r in base.filter(WikiPage.id.in_(ranked_ids)).all()}
+        ranked = [by_id[i] for i in ranked_ids if i in by_id][:limit]
+    seen = {r[0].id for r in ranked}
+    plain = (
+        base.filter(
             or_(
                 WikiPage.title.ilike(pattern, escape="\\"),
                 WikiPage.body.ilike(pattern, escape="\\"),
                 WikiPage.tags.ilike(pattern, escape="\\"),
-            ),
+            )
         )
+        .order_by(WikiPage.updated_at.desc())
+        .limit(limit * 2)
+        .all()
     )
-    if not _staff(user):
-        query = query.filter(WikiSpace.visibility == "all", WikiSpace.system_owned.is_(False),
-                             WikiPage.is_published.is_(True))
-    rows = query.order_by(WikiPage.updated_at.desc()).limit(limit * 2).all()
     ql = q.lower()
-    rows.sort(key=lambda r: 0 if ql in r[0].title.lower() else 1)
+    plain = [r for r in plain if r[0].id not in seen]
+    plain.sort(key=lambda r: 0 if ql in r[0].title.lower() else 1)
     return [
         WikiSearchHit(
             page_id=p.id,
@@ -737,5 +760,26 @@ def search(
             snippet=_snippet(p.body, q),
             updated_at=p.updated_at,
         )
-        for p, s in rows[:limit]
+        for p, s in (ranked + plain)[:limit]
     ]
+
+
+class WikiReindexOut(BaseModel):
+    indexed: int
+
+
+@router.post("/search/reindex", response_model=WikiReindexOut)
+def reindex_search(
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.WIKI_ADMIN)),
+) -> WikiReindexOut:
+    """Index every page of this tenant in the search backend (for pages that predate it). Safe to repeat."""
+    if not wiki_search.enabled():
+        raise HTTPException(409, "Search indexing is not enabled on this install.")
+    try:
+        count = wiki_search.reindex(db, tenant_uuid(user))
+    except Exception as exc:  # noqa: BLE001 — the store being down is a 502, not a crash
+        raise HTTPException(502, "The search backend could not index the pages.") from exc
+    _audit(db, user, "wiki_search_reindex", "wiki_space", str(tenant_uuid(user)))
+    db.commit()
+    return WikiReindexOut(indexed=count)

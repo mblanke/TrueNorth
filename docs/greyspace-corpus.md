@@ -80,7 +80,9 @@ every build (`check-t0.sh`, step 11).
 python greyspace/scripts/corpus.py sample-warc --out build/greyspace/sample.warc.gz
 # 2. WARC -> sites/<fqdn>/... (200 responses only; paths confined to their site;
 #    "/" and "/dir/" become index.html), then manifest.json + checksums.sha256, and the
-#    WARCs kept under warc/ for provenance. --seeds gives each site's category and licence.
+#    WARCs kept under warc/ for provenance. --seeds gives each site's category and licence
+#    (seeds-lab.txt is written when the lab crawl happens; only greyspace/corpus/seeds-mac.txt
+#    exists today).
 python greyspace/scripts/corpus.py ingest --warc crawl1.warc.gz --warc crawl2.warc.gz \
     --out /staging/2026.11 --tier t2 --version 2026.11 --seeds greyspace/corpus/seeds-lab.txt
 # 3. Check and size it before it goes to the array.
@@ -109,7 +111,7 @@ the stack starts. That is the default (`GREYSPACE_CORPUS_NFS` empty).
 How the NFS path is meant to work once gs-core has that storage NIC: set
 `GREYSPACE_CORPUS_NFS` (`server:/export`) on the worker; each gs-core VM mounts it
 read-only at `/srv/greyspace/corpus` in its configure stage (`bin/gs corpus mount`,
-options `ro,nfsvers=4.1,nosuid,nodev,noexec`) and checks `manifest.json` is there. It does
+options `ro,nfsvers=4.1,noatime,nosuid,nodev,noexec`) and checks `manifest.json` is there. It does
 not re-hash an NFS corpus (a published NetApp snapshot was verified when it was
 published; re-hashing terabytes would hold the range for hours). The worker reads the
 tier's manifest from `GREYSPACE_MANIFEST_DIR/<tier>/manifest.json` to render the stack
@@ -156,8 +158,8 @@ T2 (~50 GB) = stage 1 + 2 + a 30 GB slice of 3 + 10 GB of 4.
   and are throttled by politeness, not bandwidth.
 - **T2** (~50 GB): ≈ 1–2 h of downloads plus 3–4 h of crawl/extract.
 - **T1** (5 GB): ≈ 1–3 h on home broadband with the script's 2 MB/s limit per site.
-- **Processing.** Extraction + hashing ≈ 200–400 MB/s per core on NVMe; Full ≈ 8–12 h on
-  a 16-core box. Copy to NetApp over 10/25 GbE ≈ 3–5 h, then `corpus.py verify`.
+- **Processing.** Extraction + hashing ≈ 200–400 MB/s on NVMe (aggregate); Full ≈ 8–12 h
+  on a 16-core box. Copy to NetApp over 10/25 GbE ≈ 3–5 h, then `corpus.py verify`.
 
 ## 7. Open items
 

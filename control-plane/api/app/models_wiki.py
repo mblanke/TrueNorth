@@ -84,3 +84,26 @@ class WikiRevision(TimestampMixin, Base):
     body: Mapped[str] = mapped_column(Text, default="")
     editor_id: Mapped[uuid.UUID] = mapped_column(GUID(), nullable=False)
     edit_summary: Mapped[str] = mapped_column(String(500), default="")
+
+
+class WikiImage(TimestampMixin, SoftDeleteMixin, Base):
+    """An image uploaded to a wiki page (issue #379).
+
+    Who may fetch it is decided by its **page** (published, space visible to the caller), never
+    by knowing the id. The bytes are in the ``wiki`` bucket under ``object_key``; the type is the
+    one found by looking at the bytes (app/wiki_images.py), not the one the browser sent.
+    """
+
+    __tablename__ = "wiki_images"
+    __table_args__ = (Index("ix_wiki_images_page", "page_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("tenants.id"), nullable=False)
+    page_id: Mapped[uuid.UUID] = mapped_column(GUID(), ForeignKey("wiki_pages.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    width: Mapped[int] = mapped_column(Integer, nullable=False)
+    height: Mapped[int] = mapped_column(Integer, nullable=False)
+    object_key: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(GUID(), nullable=False)

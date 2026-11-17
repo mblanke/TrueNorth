@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, map } from 'rxjs';
 import { environment } from '@env/environment';
 import type { components } from '../api/schema';
 
@@ -36,6 +36,8 @@ type Narrowed<T> = Omit<Required<T>, 'status' | 'priority' | 'type'> & {
 };
 export type TicketSummary = Narrowed<S['TicketListOut']>;
 export type Ticket = Narrowed<S['TicketOut']>;
+/** An AI suggestion for a ticket (POST /tickets/{id}/triage). Suggest-only: nothing is saved. */
+export type TicketTriage = Required<S['TriageOut']>;
 export type TicketCreate = Omit<S['TicketIn'], 'type' | 'priority'> & { type?: TicketType; priority?: TicketPriority };
 export type TicketUpdate = Omit<S['TicketUpdate'], 'status' | 'priority' | 'type'> & {
   status?: TicketStatus;
@@ -47,6 +49,13 @@ export type TicketAttachment = S['TicketAttachmentOut'];
 export type TicketActivity = Required<S['TicketActivityOut']>;
 export type SupportQueue = S['SupportQueueOut'];
 export type Assignee = S['TicketAssigneeOut'];
+export type TicketCategory = S['TicketCategoryOut'];
+export type TicketLabelCount = S['TicketLabelCountOut'];
+
+/** The labels on a ticket as a list (the API stores them comma-separated; staff only). */
+export function labelList(labels: string | null | undefined): string[] {
+  return (labels ?? '').split(',').map(l => l.trim()).filter(Boolean);
+}
 export interface BoardColumn {
   status: TicketStatus;
   tickets: TicketSummary[];
@@ -59,6 +68,8 @@ export interface TicketFilters {
   type?: TicketType;
   queue_id?: string;
   range_id?: string;
+  category?: string;
+  label?: string;
   q?: string;
 }
 
@@ -134,5 +145,20 @@ export class TicketsApiService {
   }
   assignees(): Observable<Assignee[]> {
     return this.http.get<Assignee[]>(`${this.base}/assignees`);
+  }
+  categories(): Observable<TicketCategory[]> {
+    return this.http.get<TicketCategory[]>(`${this.base}/categories`);
+  }
+  /** Labels in use, most used first. Staff only. */
+  labels(): Observable<TicketLabelCount[]> {
+    return this.http.get<TicketLabelCount[]>(`${this.base}/labels`);
+  }
+  /** Whether an AI backend is set up for triage. Staff only. */
+  triageAvailable(): Observable<boolean> {
+    return this.http.get<{ available: boolean }>(`${this.base}/ai-triage/status`).pipe(map(r => r.available));
+  }
+  /** Ask for a suggestion. Changes nothing; staff apply what they accept. */
+  triage(id: string): Observable<TicketTriage> {
+    return this.http.post<TicketTriage>(`${this.base}/${id}/triage`, {});
   }
 }

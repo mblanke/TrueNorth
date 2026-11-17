@@ -3642,8 +3642,10 @@ export interface paths {
          * Complete Exercise
          * @description Complete an exercise and tally scores.  **Permission: exercise:complete**
          *
-         *     Competency assessment, the LTI grade and the xAPI statement go to whoever completed it
-         *     and to every Student who submitted a detection in this run (app/exercise_completion).
+         *     Competency assessment, the LTI grade and the xAPI statement go to the exercise's Students
+         *     only (its seat or its teams, and on the roll call when it runs on a class range). They do
+         *     not go to whoever completes it, nor to a Student only because they submitted a detection
+         *     (app/exercise_completion, ADR 0020, #375).
          */
         post: operations["complete_exercise_exercises__exercise_id__complete_post"];
         delete?: never;
@@ -5748,6 +5750,27 @@ export interface paths {
         put?: never;
         /** Mark All Read */
         post: operations["mark_all_read_notifications_read_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Settings */
+        get: operations["get_settings_notifications_settings_get"];
+        /**
+         * Put Settings
+         * @description Your own switch only: the row is keyed by the caller, never by anything in the request.
+         */
+        put: operations["put_settings_notifications_settings_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -9554,6 +9577,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/tickets/ai-triage/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Triage Status */
+        get: operations["triage_status_tickets_ai_triage_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tickets/assignees": {
         parameters: {
             query?: never;
@@ -9598,6 +9638,46 @@ export interface paths {
         };
         /** Board */
         get: operations["board_tickets_board_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ticket Categories
+         * @description The fixed list of ticket categories (key and display name).
+         */
+        get: operations["list_ticket_categories_tickets_categories_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Ticket Labels
+         * @description Labels in use across the tenant's tickets, most used first (for suggestions and filters).
+         */
+        get: operations["list_ticket_labels_tickets_labels_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9728,6 +9808,26 @@ export interface paths {
          * @description Drag-and-drop on the board: change column and/or position within it.
          */
         post: operations["move_ticket_tickets__ticket_id__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tickets/{ticket_id}/triage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Triage Ticket
+         * @description A suggested category, priority, labels, summary and reply hint. Changes nothing.
+         */
+        post: operations["triage_ticket_tickets__ticket_id__triage_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9865,6 +9965,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/wiki/images/{image_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Image */
+        get: operations["get_image_wiki_images__image_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Image */
+        delete: operations["delete_image_wiki_images__image_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/wiki/pages/{page_id}": {
         parameters: {
             query?: never;
@@ -9886,6 +10004,30 @@ export interface paths {
          * @description Soft-delete the page and everything under it; revisions are kept.
          */
         delete: operations["delete_page_wiki_pages__page_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/pages/{page_id}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Images
+         * @description Every image uploaded to the page, so an editor can see and remove what it holds.
+         *
+         *     Removing the markdown that shows an image does not remove the image (older revisions still
+         *     point at it); removing it here does.
+         */
+        get: operations["list_images_wiki_pages__page_id__images_get"];
+        put?: never;
+        /** Upload Image */
+        post: operations["upload_image_wiki_pages__page_id__images_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -9956,10 +10098,34 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Search */
+        /**
+         * Search
+         * @description Ranked by the search backend when there is one (pages it names come first, best first),
+         *     then the plain substring matches. Visibility is always decided here, from the database.
+         */
         get: operations["search_wiki_search_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/wiki/search/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reindex Search
+         * @description Index every page of this tenant in the search backend (for pages that predate it). Safe to repeat.
+         */
+        post: operations["reindex_search_wiki_search_reindex_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11412,6 +11578,11 @@ export interface components {
              * File
              * @description The feed's content, e.g. a CSV
              */
+            file: string;
+        };
+        /** Body_upload_image_wiki_pages__page_id__images_post */
+        Body_upload_image_wiki_pages__page_id__images_post: {
+            /** File */
             file: string;
         };
         /** Body_upload_range_documents_ranges__range_id__documents_post */
@@ -17341,6 +17512,18 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** NotificationSettingsIn */
+        NotificationSettingsIn: {
+            /** Email Tickets */
+            email_tickets: boolean;
+        };
+        /** NotificationSettingsOut */
+        NotificationSettingsOut: {
+            /** Email Available */
+            email_available: boolean;
+            /** Email Tickets */
+            email_tickets: boolean;
+        };
         /** NotificationUnreadCountOut */
         NotificationUnreadCountOut: {
             /** Unread */
@@ -20700,6 +20883,13 @@ export interface components {
             /** Tickets */
             tickets: components["schemas"]["TicketListOut"][];
         };
+        /** TicketCategoryOut */
+        TicketCategoryOut: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+        };
         /** TicketCommentIn */
         TicketCommentIn: {
             /** Body */
@@ -20774,6 +20964,13 @@ export interface components {
              * @default incident
              */
             type?: string;
+        };
+        /** TicketLabelCountOut */
+        TicketLabelCountOut: {
+            /** Count */
+            count: number;
+            /** Label */
+            label: string;
         };
         /** TicketListOut */
         TicketListOut: {
@@ -21091,6 +21288,60 @@ export interface components {
              * Format: uuid
              */
             user_id: string;
+        };
+        /** TriageOut */
+        TriageOut: {
+            /**
+             * Backend
+             * @default
+             */
+            backend?: string;
+            /** Category */
+            category?: string | null;
+            /**
+             * Labels
+             * @default []
+             */
+            labels?: string[];
+            /**
+             * Model
+             * @default
+             */
+            model?: string;
+            /** Priority */
+            priority?: string | null;
+            /**
+             * Related Pages
+             * @default []
+             */
+            related_pages?: components["schemas"]["TriageRelatedPage"][];
+            /**
+             * Reply Hint
+             * @default
+             */
+            reply_hint?: string;
+            /**
+             * Summary
+             * @default
+             */
+            summary?: string;
+        };
+        /** TriageRelatedPage */
+        TriageRelatedPage: {
+            /**
+             * Page Id
+             * Format: uuid
+             */
+            page_id: string;
+            /** Space Slug */
+            space_slug: string;
+            /** Title */
+            title: string;
+        };
+        /** TriageStatusOut */
+        TriageStatusOut: {
+            /** Available */
+            available: boolean;
         };
         /** TrustKeyCreate */
         TrustKeyCreate: {
@@ -21430,6 +21681,34 @@ export interface components {
             /** Vms */
             vms?: components["schemas"]["InventoryVmOut"][];
         };
+        /** WikiImageOut */
+        WikiImageOut: {
+            /** Content Type */
+            content_type: string;
+            /** Filename */
+            filename: string;
+            /** Height */
+            height: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Page Id
+             * Format: uuid
+             */
+            page_id: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Url
+             * @default
+             */
+            url?: string;
+            /** Width */
+            width: number;
+        };
         /** WikiPageIn */
         WikiPageIn: {
             /**
@@ -21562,6 +21841,11 @@ export interface components {
             tags?: string | null;
             /** Title */
             title?: string | null;
+        };
+        /** WikiReindexOut */
+        WikiReindexOut: {
+            /** Indexed */
+            indexed: number;
         };
         /** WikiRestoreRequest */
         WikiRestoreRequest: {
@@ -32405,6 +32689,59 @@ export interface operations {
             };
         };
     };
+    get_settings_notifications_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettingsOut"];
+                };
+            };
+        };
+    };
+    put_settings_notifications_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationSettingsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettingsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     unread_count_notifications_unread_count_get: {
         parameters: {
             query?: never;
@@ -39241,6 +39578,9 @@ export interface operations {
                 type?: string | null;
                 queue_id?: string | null;
                 range_id?: string | null;
+                category?: string | null;
+                /** @description staff only */
+                label?: string | null;
                 q?: string | null;
                 limit?: number;
             };
@@ -39299,6 +39639,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    triage_status_tickets_ai_triage_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriageStatusOut"];
                 };
             };
         };
@@ -39412,6 +39772,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_ticket_categories_tickets_categories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketCategoryOut"][];
+                };
+            };
+        };
+    };
+    list_ticket_labels_tickets_labels_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketLabelCountOut"][];
                 };
             };
         };
@@ -39826,6 +40226,37 @@ export interface operations {
             };
         };
     };
+    triage_ticket_tickets__ticket_id__triage_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_users_users_get: {
         parameters: {
             query?: never;
@@ -40042,6 +40473,66 @@ export interface operations {
             };
         };
     };
+    get_image_wiki_images__image_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_image_wiki_images__image_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                image_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_page_wiki_pages__page_id__get: {
         parameters: {
             query?: never;
@@ -40125,6 +40616,72 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_images_wiki_pages__page_id__images_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiImageOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_image_wiki_pages__page_id__images_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_image_wiki_pages__page_id__images_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiImageOut"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -40271,6 +40828,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reindex_search_wiki_search_reindex_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiReindexOut"];
                 };
             };
         };

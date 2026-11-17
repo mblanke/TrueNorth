@@ -167,7 +167,12 @@ async def lifespan(app: FastAPI):
 
     # WebSocket heartbeat (no Redis): drops dead sockets and closes those whose token has
     # expired (app/ws_auth.py). Nothing started it before, so a socket outlived its user.
-    if _env_flag("WS_HEARTBEAT"):
+    # Redis relay between API workers (production runs several; a user's socket is on one):
+    # broadcasts, including notification pushes, reach sockets on the others. Needs
+    # REDIS_URL; an unreachable Redis falls back to this worker only (the bell polls).
+    if _env_flag("WS_REDIS_RELAY") and os.getenv("REDIS_URL"):
+        await app.state.ws_manager.start(heartbeat=_env_flag("WS_HEARTBEAT"))
+    elif _env_flag("WS_HEARTBEAT"):
         await app.state.ws_manager.start_local()
 
     yield
@@ -369,6 +374,10 @@ from .websocket_manager import WebSocketManager
 ws_manager = WebSocketManager(redis_url=os.getenv("REDIS_URL"))
 app.state.ws_manager = ws_manager
 
+from .notifications import push as notification_push  # noqa: E402
+
+notification_push.set_manager(ws_manager)  # a committed notification reaches its recipient's sockets
+
 # -- Routers (fine-grained RBAC via require_permission) --------------------
 from .acknowledgement.router import router as acknowledgement_router  # noqa: E402 (ADR 0014 §3; + its tables)
 from .ad_status_sync.router import router as ad_status_sync_router  # noqa: E402 (ADR 0014 §6; + its tables)
@@ -442,8 +451,10 @@ from .routers import (
     storage_router,
     templates_router,
     threat_intel_router,
+    ticket_triage_router,
     tickets_router,
     transcript_router,
+    wiki_images_router,
     wiki_router,
 )
 from .scheduler.approval_router import router as scheduling_approval_router  # noqa: E402
@@ -544,6 +555,8 @@ app.include_router(live_class_router)  # GET /ops/exercises/{id}/class (app/live
 app.include_router(greyspace_router)
 # Knowledge base, trouble tickets ("Support") and the in-app notification bell
 app.include_router(wiki_router)
+app.include_router(wiki_images_router)
+app.include_router(ticket_triage_router)  # before tickets: /tickets/ai-triage/status is not a ticket id
 app.include_router(tickets_router)
 app.include_router(notifications_router)
 

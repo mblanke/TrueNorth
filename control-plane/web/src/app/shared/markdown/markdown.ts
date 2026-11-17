@@ -17,6 +17,8 @@ import { marked } from 'marked';
  * `poster` are dropped for the same reason.
  */
 let hooked = false;
+/** Images whose src the viewer supplied (a blob URL it created); never anything from the page's own HTML. */
+const trusted = new WeakSet<Element>();
 
 /** A same-site path: `/wiki/x`, not `//evil.com` or `/\\evil.com` (browsers read both as off-site). */
 export const isAppPath = (href: string): boolean => /^\/(?![/\\])/.test(href);
@@ -32,11 +34,39 @@ export function isSameOrigin(url: string): boolean {
   }
 }
 
+/** A wiki image in a page: `/api/wiki/images/<id>`. It needs the user's token, so it is fetched, not linked. */
+const WIKI_IMAGE = /^(?:https?:\/\/[^/]+)?\/api(?:\/v1)?\/wiki\/images\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+/** Attribute that marks an <img> to be filled in with the fetched image (MarkdownViewComponent). */
+export const WIKI_IMAGE_ATTR = 'data-wiki-image';
+
+/**
+ * Set only while `renderMarkdown` runs: turns a wiki image id into the blob URL the viewer already
+ * fetched, so a re-render (every keystroke in the editor preview) keeps showing the picture instead
+ * of blanking it until the next fetch tick. Only the viewer supplies it, and only with URLs it made.
+ */
+let knownImage: ((id: string) => string | undefined) | null = null;
+
 function ensureHooks(): void {
   if (hooked) return;
   hooked = true;
   DOMPurify.addHook('afterSanitizeAttributes', node => {
-    if (node.hasAttribute('src') && !isSameOrigin(node.getAttribute('src') ?? '')) {
+    node.removeAttribute(WIKI_IMAGE_ATTR); // only this hook may set it, never the page's own HTML
+    if (node.tagName === 'IMG') {
+      const id = WIKI_IMAGE.exec((node.getAttribute('src') ?? '').trim())?.[1];
+      if (id) {
+        node.setAttribute(WIKI_IMAGE_ATTR, id.toLowerCase());
+        node.setAttribute('loading', 'lazy');
+        const ready = knownImage?.(id.toLowerCase());
+        if (ready) {
+          node.setAttribute('src', ready);
+          trusted.add(node);
+        } else {
+          node.removeAttribute('src'); // no unauthenticated request; the viewer fetches it
+        }
+      }
+    }
+    if (node.hasAttribute('src') && !trusted.has(node) && !isSameOrigin(node.getAttribute('src') ?? '')) {
       node.removeAttribute('src');
     }
     node.removeAttribute('srcset');
@@ -51,8 +81,20 @@ function ensureHooks(): void {
   });
 }
 
-export function renderMarkdown(source: string | null | undefined): string {
+export function renderMarkdown(
+  source: string | null | undefined,
+  imageUrl?: (id: string) => string | undefined,
+): string {
   ensureHooks();
+  knownImage = imageUrl ?? null;
+  try {
+    return render(source);
+  } finally {
+    knownImage = null;
+  }
+}
+
+function render(source: string | null | undefined): string {
   const html = marked.parse(source ?? '', { async: false, gfm: true, breaks: true }) as string;
   return DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },

@@ -68,7 +68,7 @@ _Avoid_: environment, lab (alone).
 **Range template**:
 The YAML design of a range: nodes, networks, images and declared accounts (`Template` in
 `models.py`; schema `scenario-engine/schemas/template.schema.json`). Shown in the UI under
-Create → Content.
+Create → Authoring Studio → Content.
 _Not to be confused with_: golden template. A range template names golden templates by
 catalogue id; it is not itself a VM image.
 
@@ -105,8 +105,10 @@ _Not to be confused with_: the golden template itself, which the copies are made
 **Role image**:
 A golden template with a server product's prerequisites and media preinstalled, whose
 domain-dependent setup runs at deploy time: `srv2022-exchange2019`,
-`srv2022-sharepointse`, `srv2022-mecm` (`infra/vsphere/packer/roles.pkr.hcl`,
-`control-plane/api/app/windows_roles.py`). Their catalogue rows stay disabled for now.
+`srv2022-sharepointse`, `srv2022-sharepoint2019`, `srv2022-mecm`
+(`infra/vsphere/packer/roles.pkr.hcl`; deploy setup
+`worker/provisioners/vsphere_products.py`). Their catalogue rows are enabled
+(`content/catalogue/vm_iso_catalogue.csv`; ADR 0012, "Exception to decision 1").
 _Not to be confused with_: a user role (`UserRole`), or a Windows role installed on a
 plain base image.
 
@@ -166,9 +168,11 @@ _Not to be confused with_: course (the content a class teaches), cohort (free te
 registration form, with no link to a class).
 
 **Roll call** (ADR 0014):
-The Students on a class, by email (`RollCallEntry`, `app/classes/models.py`; statuses invited,
-signed_in, ready, removed, pending: added after the sessions were approved with no room
-left, waiting for an approver, and forfeited: see **Seat forfeit**). Being on it is approval
+The Students on a class, by email (`RollCallEntry`, `app/classes/models.py`; statuses
+invited, signed_in, pending (added after the sessions were approved with no room left;
+waits for an approver), removed (taken off by the lead or an admin), and forfeited: see
+**Seat forfeit**. There is no `ready` status; ADR 0014's delivery slice 3 notes it was
+never written and is gone). Being on it is approval
 to join: a roll-call Student's first AD sign-in with a verified email admits them
 (`app/classes/onboarding.py`). A class is visible only to its roll call, instructors,
 observers and admins.
@@ -224,7 +228,10 @@ The rules of use everyone signs on first sign-in, whenever the version changes, 
 The platform administrator publishes numbered versions (a published version never changes;
 a correction is a new version). Until a user has signed the current version within 365
 days, every API route but `GET /auth/me`, `GET /acknowledgement/current` and
-`POST /acknowledgement/sign` answers 403 `acknowledgement_required`, after the MFA check.
+`POST /acknowledgement/sign` answers 403 `acknowledgement_required`, after the MFA check;
+a few token- and feed-based routes sit outside the check (lab access tokens issued earlier,
+open WebSockets, the calendar feed, noise-agent tokens, cmi5 AU/LRS, LTI endpoints —
+`acknowledgement/rule.py` lists them).
 The rules are in `control-plane/api/app/acknowledgement/rule.py`; the page is **Rules of use**.
 
 **Stale** (content, ADR 0014):
@@ -337,10 +344,16 @@ activity inside the range.
 
 ## Exercise Studio (ADR 0016)
 
+> **Design only.** ADR 0016 is a proposal with **Code: none** — the ADR, the glossary terms
+> here and `docs/exercise-studio.md` are the whole change. Every term below is design
+> language, and the paths it names (`tools/exstudio/`, `app/exercise_studio/`,
+> `build/exstudio/<slug>/`, `scale.yaml`, `exercise_sizing`) are the planned layout, not
+> shipped code.
+
 **Exercise Studio**:
 The module that turns a free-text exercise request into a staged, QA-checked, dry-run-proven
-bundle for a collective exercise that an admin promotes (`docs/exercise-studio.md`;
-`tools/exstudio/`, `app/exercise_studio/`). The same mechanics as ARC², for collective training.
+bundle for a collective exercise that an admin promotes (ADR 0016 §4;
+`docs/exercise-studio.md`). The same mechanics as ARC², for collective training.
 It never touches courses, course modules or `lab_range`.
 _Not to be confused with_: ARC² / Course Studio (individual training); Exercise Forge (one-shot
 generation from threat indicators, no review or dry run).
@@ -372,7 +385,8 @@ changeable until the range is built.
 
 **Scale rules** / **derived range template**:
 The rules in `scale.yaml` that say how shared machines (targets, domain controllers, sensors)
-grow with the sizing. A deterministic renderer (`tools/exstudio/sizing.py`) applies them to a
+grow with the sizing. A deterministic renderer (planned `tools/exstudio/sizing.py`, ADR 0016
+§7a) applies them to a
 range template and produces a **derived range template**: an ordinary, tenant-owned template
 recording its base and the sizing. The Studio never edits the base template.
 
@@ -389,11 +403,13 @@ _Not to be confused with_: a live instructor inject from Ops Center (`POST /ops/
 
 **Live action registry**:
 The reviewed, in-repository list of actions a live inject may call, each with typed bounded
-parameters, node-id targets, limits and a cleanup check (`app/exercise_studio/live_actions/`).
+parameters, node-id targets, limits and a cleanup check (ADR 0016 §6; planned
+`app/exercise_studio/live_actions/`).
 The generator never writes executable text.
 
 **Live approval** / **cleared admin**:
-A separate approval, by a different admin who holds `exercise_studio:approve_live`, of the
+A separate approval, by a different admin who holds the planned
+`exercise_studio:approve_live` permission (ADR 0016 §8), of the
 exact live scripts of an exercise, by digest. "Cleared" is that permission plus a signed
 attestation; ADR 0016 Q1 leaves the formal meaning to the owner.
 _Not to be confused with_: the preview gate, which approves the rest of the exercise.
@@ -422,8 +438,10 @@ approval and from acceptance of the preview gate.
 
 **Proven by dry run**:
 The Proven chip tier an exercise template earns from a passing dry run whose digests still
-match; **Proven in use** is the tier a closed class or completed exercise gives
-(`docs/content-port.md`).
+match; **Proven in use** is the tier a closed class or completed exercise gives (ADR 0016
+§10 and Q5). Today's content port computes one **Proven** chip from three conditions
+(range certified, used with passing evidence, not stale — `docs/content-port.md`); the
+tier split is part of this design.
 
 ## Courses and learning records
 

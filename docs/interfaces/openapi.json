@@ -2977,6 +2977,20 @@
         "title": "Body_upload_feed_threat_intel_feeds__feed_id__upload_post",
         "type": "object"
       },
+      "Body_upload_image_wiki_pages__page_id__images_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_image_wiki_pages__page_id__images_post",
+        "type": "object"
+      },
       "Body_upload_range_documents_ranges__range_id__documents_post": {
         "properties": {
           "files": {
@@ -16526,6 +16540,37 @@
         "title": "NotificationOut",
         "type": "object"
       },
+      "NotificationSettingsIn": {
+        "properties": {
+          "email_tickets": {
+            "title": "Email Tickets",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "email_tickets"
+        ],
+        "title": "NotificationSettingsIn",
+        "type": "object"
+      },
+      "NotificationSettingsOut": {
+        "properties": {
+          "email_available": {
+            "title": "Email Available",
+            "type": "boolean"
+          },
+          "email_tickets": {
+            "title": "Email Tickets",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "email_tickets",
+          "email_available"
+        ],
+        "title": "NotificationSettingsOut",
+        "type": "object"
+      },
       "NotificationUnreadCountOut": {
         "properties": {
           "unread": {
@@ -24558,6 +24603,24 @@
         "title": "TicketBoardColumn",
         "type": "object"
       },
+      "TicketCategoryOut": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "TicketCategoryOut",
+        "type": "object"
+      },
       "TicketCommentIn": {
         "properties": {
           "body": {
@@ -24710,6 +24773,24 @@
           "subject"
         ],
         "title": "TicketIn",
+        "type": "object"
+      },
+      "TicketLabelCountOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "count"
+        ],
+        "title": "TicketLabelCountOut",
         "type": "object"
       },
       "TicketListOut": {
@@ -25491,6 +25572,107 @@
           "user_id"
         ],
         "title": "TranscriptOut",
+        "type": "object"
+      },
+      "TriageOut": {
+        "properties": {
+          "backend": {
+            "default": "",
+            "title": "Backend",
+            "type": "string"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "labels": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Labels",
+            "type": "array"
+          },
+          "model": {
+            "default": "",
+            "title": "Model",
+            "type": "string"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "related_pages": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TriageRelatedPage"
+            },
+            "title": "Related Pages",
+            "type": "array"
+          },
+          "reply_hint": {
+            "default": "",
+            "title": "Reply Hint",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "title": "TriageOut",
+        "type": "object"
+      },
+      "TriageRelatedPage": {
+        "properties": {
+          "page_id": {
+            "format": "uuid",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "space_slug": {
+            "title": "Space Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page_id",
+          "space_slug",
+          "title"
+        ],
+        "title": "TriageRelatedPage",
+        "type": "object"
+      },
+      "TriageStatusOut": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "available"
+        ],
+        "title": "TriageStatusOut",
         "type": "object"
       },
       "TrustKeyCreate": {
@@ -26349,6 +26531,56 @@
         "title": "VmInventoryOut",
         "type": "object"
       },
+      "WikiImageOut": {
+        "properties": {
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "page_id": {
+            "format": "uuid",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "url": {
+            "default": "",
+            "title": "Url",
+            "type": "string"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "page_id",
+          "filename",
+          "content_type",
+          "size_bytes",
+          "width",
+          "height"
+        ],
+        "title": "WikiImageOut",
+        "type": "object"
+      },
       "WikiPageIn": {
         "properties": {
           "body": {
@@ -26626,6 +26858,19 @@
           "base_revision"
         ],
         "title": "WikiPageUpdate",
+        "type": "object"
+      },
+      "WikiReindexOut": {
+        "properties": {
+          "indexed": {
+            "title": "Indexed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "indexed"
+        ],
+        "title": "WikiReindexOut",
         "type": "object"
       },
       "WikiRestoreRequest": {
@@ -38566,7 +38811,7 @@
     },
     "/exercises/{exercise_id}/complete": {
       "post": {
-        "description": "Complete an exercise and tally scores.  **Permission: exercise:complete**\n\nCompetency assessment, the LTI grade and the xAPI statement go to whoever completed it\nand to every Student who submitted a detection in this run (app/exercise_completion).",
+        "description": "Complete an exercise and tally scores.  **Permission: exercise:complete**\n\nCompetency assessment, the LTI grade and the xAPI statement go to the exercise's Students\nonly (its seat or its teams, and on the roll call when it runs on a class range). They do\nnot go to whoever completes it, nor to a Student only because they submitted a detection\n(app/exercise_completion, ADR 0020, #375).",
         "operationId": "complete_exercise_exercises__exercise_id__complete_post",
         "parameters": [
           {
@@ -44482,6 +44727,77 @@
           }
         ],
         "summary": "Mark All Read",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
+    "/notifications/settings": {
+      "get": {
+        "operationId": "get_settings_notifications_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Settings",
+        "tags": [
+          "notifications"
+        ]
+      },
+      "put": {
+        "description": "Your own switch only: the row is keyed by the caller, never by anything in the request.",
+        "operationId": "put_settings_notifications_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Settings",
         "tags": [
           "notifications"
         ]
@@ -55585,6 +55901,42 @@
           },
           {
             "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 50,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "description": "staff only",
+            "in": "query",
+            "name": "label",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 30,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "staff only",
+              "title": "Label"
+            }
+          },
+          {
+            "in": "query",
             "name": "q",
             "required": false,
             "schema": {
@@ -55689,6 +56041,32 @@
           }
         ],
         "summary": "Create Ticket",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/tickets/ai-triage/status": {
+      "get": {
+        "operationId": "triage_status_tickets_ai_triage_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriageStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Triage Status",
         "tags": [
           "tickets"
         ]
@@ -55881,6 +56259,68 @@
           }
         ],
         "summary": "Board",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/tickets/categories": {
+      "get": {
+        "description": "The fixed list of ticket categories (key and display name).",
+        "operationId": "list_ticket_categories_tickets_categories_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TicketCategoryOut"
+                  },
+                  "title": "Response List Ticket Categories Tickets Categories Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Ticket Categories",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/tickets/labels": {
+      "get": {
+        "description": "Labels in use across the tenant's tickets, most used first (for suggestions and filters).",
+        "operationId": "list_ticket_labels_tickets_labels_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TicketLabelCountOut"
+                  },
+                  "title": "Response List Ticket Labels Tickets Labels Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Ticket Labels",
         "tags": [
           "tickets"
         ]
@@ -56531,6 +56971,55 @@
         ]
       }
     },
+    "/tickets/{ticket_id}/triage": {
+      "post": {
+        "description": "A suggested category, priority, labels, summary and reply hint. Changes nothing.",
+        "operationId": "triage_ticket_tickets__ticket_id__triage_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticket_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Ticket Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Triage Ticket",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
     "/users": {
       "get": {
         "description": "List users in the caller's tenant.  **Permission: user:read**",
@@ -57058,6 +57547,91 @@
         ]
       }
     },
+    "/wiki/images/{image_id}": {
+      "delete": {
+        "operationId": "delete_image_wiki_images__image_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Image Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Image",
+        "tags": [
+          "wiki"
+        ]
+      },
+      "get": {
+        "operationId": "get_image_wiki_images__image_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "image_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Image Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Image",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
     "/wiki/pages/{page_id}": {
       "delete": {
         "description": "Soft-delete the page and everything under it; revisions are kept.",
@@ -57198,6 +57772,115 @@
           }
         ],
         "summary": "Update Page",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/wiki/pages/{page_id}/images": {
+      "get": {
+        "description": "Every image uploaded to the page, so an editor can see and remove what it holds.\n\nRemoving the markdown that shows an image does not remove the image (older revisions still\npoint at it); removing it here does.",
+        "operationId": "list_images_wiki_pages__page_id__images_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WikiImageOut"
+                  },
+                  "title": "Response List Images Wiki Pages  Page Id  Images Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Images",
+        "tags": [
+          "wiki"
+        ]
+      },
+      "post": {
+        "operationId": "upload_image_wiki_pages__page_id__images_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "page_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Page Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_image_wiki_pages__page_id__images_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiImageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Image",
         "tags": [
           "wiki"
         ]
@@ -57387,6 +58070,7 @@
     },
     "/wiki/search": {
       "get": {
+        "description": "Ranked by the search backend when there is one (pages it names come first, best first),\nthen the plain substring matches. Visibility is always decided here, from the database.",
         "operationId": "search_wiki_search_get",
         "parameters": [
           {
@@ -57445,6 +58129,33 @@
           }
         ],
         "summary": "Search",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/wiki/search/reindex": {
+      "post": {
+        "description": "Index every page of this tenant in the search backend (for pages that predate it). Safe to repeat.",
+        "operationId": "reindex_search_wiki_search_reindex_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiReindexOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reindex Search",
         "tags": [
           "wiki"
         ]

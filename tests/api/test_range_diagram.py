@@ -240,3 +240,25 @@ def test_saving_the_generated_diagram_provisions_the_same_range(path):
     assert rendered[0]["vm_definitions"] == rendered[1]["vm_definitions"]
     assert rendered[0]["network_definitions"] == rendered[1]["network_definitions"]
     assert back["template"]["nodes"] == [{**n, "os": canonical_os(n["os"])} for n in original["nodes"]]
+
+
+def test_a_student_gets_the_picture_without_the_built_addresses(client, db_session):
+    """Audit #443 (schemas.py:147), second path: the generated picture copies each built
+    VM's address from the build record. A Student (range:read, no infra:read) sees which
+    VMs are built and their state, but no recorded address in the data or the label."""
+    from _shared import act_as, real_user
+    from app.models import UserRole
+
+    rng = _seed(db_session, _text("medium-enterprise"), state=RangeState.running, output={"vms": []})
+    prefix = str(rng.id)[:8]
+    rng.provisioner_output = json.dumps({"vms": [
+        {"node_id": "dc01", "name": f"{prefix}-dc01", "ip": "10.99.200.10",
+         "nics": [{"network": "tn-servers", "ip": "10.99.200.10"}]},
+    ]})
+    db_session.commit()
+    act_as(real_user(db_session, UserRole.student, DEV_TENANT))
+    body = client.get(f"/ranges/{rng.id}/diagram").json()
+    _, nodes, _ = _split(body["diagram_json"]["cells"])
+    dc = {n["id"]: n for n in nodes}["dc01"]
+    assert dc["nodeData"]["runtime"] == {"status": "running", "built": True}
+    assert "10.99.200.10" not in json.dumps(body)

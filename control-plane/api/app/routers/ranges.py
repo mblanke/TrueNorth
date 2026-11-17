@@ -166,6 +166,9 @@ def _hide_lab_ranges(db: Session, user: CurrentUser, ranges: list[Range]) -> lis
     return [r for r in ranges if r.id not in labs]
 
 
+# What a caller without infra:read sees in place of a build's raw error text.
+_BUILD_ERROR_HIDDEN = "The build failed. Ask an instructor or administrator for details."
+
 # Snapshot states in which a worker task still owns the row.
 _SNAPSHOT_BUSY = ("creating", "restoring")
 
@@ -229,7 +232,7 @@ def list_ranges(
     user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
     limit: int = Query(50, le=200),
     offset: int = Query(0, ge=0),
-) -> list[Range]:
+) -> list[RangeListOut]:
     """List ranges for the user's tenant.  **Permission: range:read**"""
     rows = (
         db.query(Range)
@@ -239,7 +242,11 @@ def list_ranges(
         .limit(limit)
         .all()
     )
-    return _hide_lab_ranges(db, user, rows)
+    outs = [RangeListOut.model_validate(r) for r in _hide_lab_ranges(db, user, rows)]
+    if not user_has_permission(user, Permission.INFRA_READ):
+        for o in outs:
+            o.error_message = _BUILD_ERROR_HIDDEN if o.error_message else None
+    return outs
 
 
 @router.get("/stats", response_model=RangeStatsOut)
@@ -270,9 +277,17 @@ def get_range(
     range_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.RANGE_READ)),
-) -> Range:
+) -> RangeOut:
     """Retrieve a single range.  **Permission: range:read**"""
-    return _readable_range(db, range_id, user)
+    out = RangeOut.model_validate(_readable_range(db, range_id, user))
+    # provisioner_output is the raw build record (vCenter endpoint, isolation probe targets,
+    # uplink, datastore paths, MoIDs, MACs) and error_message is the worker's raw exception
+    # text. Only callers with infra:read get either; a Student or Observer holds range:read
+    # and gets them blanked (audit #443, schemas.py:147).
+    if not user_has_permission(user, Permission.INFRA_READ):
+        out.provisioner_output = None
+        out.error_message = _BUILD_ERROR_HIDDEN if out.error_message else None
+    return out
 
 
 @router.put("/{range_id}", response_model=RangeOut)
@@ -355,7 +370,9 @@ def get_range_diagram(
     has a picture. ``source: none`` when the template declares no hosts.
     """
     rng = _readable_range(db, range_id, user)
-    return range_diagram.range_diagram(rng)
+    # The generated picture carries each built VM's address from the build record; only
+    # callers with infra:read get those (audit #443, schemas.py:147).
+    return range_diagram.range_diagram(rng, show_addresses=user_has_permission(user, Permission.INFRA_READ))
 
 
 @router.put("/{range_id}/diagram")
@@ -940,7 +957,7 @@ def delete_snapshot(
     # The comment below was here without the call it describes, so any tenant could
     # delete any other tenant's snapshot given the two ids. That only flipped a row
     # while the worker's delete was broken; now it removes the hypervisor copy.
-    _changeable_range(db, range_id, user)
+    rng = _changeable_range(db, range_id, user)
     # tenant-safe: _tenant_range() above already 404s unless `range_id` belongs to the
     # caller, so filtering snapshots by that same range_id is transitively scoped.
     snap = (
@@ -957,6 +974,13 @@ def delete_snapshot(
         # The worker is still writing this row; deleting now let it come back `ready`
         # with nothing on the hypervisor, or left the hypervisor copy orphaned.
         raise HTTPException(409, f"Snapshot is {snap.snapshot_state}; delete it once that finishes")
+    # A restore's password rotation logs in with, and reverts to, the passwords this snapshot
+    # recorded; dropping them while it is pending left the change settling on nothing (audit
+    # #443). Same refusal as restoring over a pending change.
+    if range_credentials.restore_rotation_pending(db, rng, snap):
+        raise HTTPException(409, "Cannot delete the snapshot: the passwords changed by its restore are still "
+                                 "being applied in the guests; delete it once that has settled "
+                                 "(or an administrator force-settles it)")
     previous = snap.snapshot_state
     snap.snapshot_state = "deleted"
     # The passwords it recorded go now (the row itself is kept, marked deleted): sealed

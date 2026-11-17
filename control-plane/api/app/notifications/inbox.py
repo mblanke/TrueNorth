@@ -12,10 +12,12 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Iterable
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
 from ..models import User, UserRole
+from . import push
 from .models import UserNotification
 
 STAFF_ROLES = (UserRole.admin, UserRole.instructor, UserRole.range_ops)
@@ -31,15 +33,42 @@ def notify(
     message: str = "",
     link: str | None = None,
     kind: str = "info",
+    extra: dict | None = None,
 ) -> int:
     """Queue a notification for each recipient except the actor; returns how many."""
-    data = json.dumps({"link": link, "kind": kind})
+    data = json.dumps({"link": link, "kind": kind, **(extra or {})})
     seen: set[uuid.UUID] = set()
     for uid in user_ids:
         if uid is None or uid == actor_id or uid in seen:
             continue
         seen.add(uid)
-        db.add(UserNotification(user_id=uid, tenant_id=tenant_id, title=title[:255], message=message, data_json=data))
+        # The id and time are set here, not at flush, so the live push (sent after the
+        # commit, app/notifications/push.py) carries exactly what the bell will list.
+        note = UserNotification(
+            id=uuid.uuid4(),
+            user_id=uid,
+            tenant_id=tenant_id,
+            title=title[:255],
+            message=message,
+            data_json=data,
+            created_at=datetime.now(UTC),
+        )
+        db.add(note)
+        push.queue(
+            db,
+            note,
+            uid,
+            {
+                "id": str(note.id),
+                "title": note.title,
+                "message": message,
+                "level": "info",
+                "read": False,
+                "link": link,
+                "kind": kind,
+                "created_at": note.created_at.isoformat(),
+            },
+        )
     return len(seen)
 
 
