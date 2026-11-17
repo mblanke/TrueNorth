@@ -707,6 +707,23 @@ def test_a_student_with_a_grant_is_cut_off_at_the_end_of_their_session_over_the_
     monkeypatch.setattr(service, "RENEW_SECONDS", 0.1)
     kc = world["ann"].keycloak_id
 
+    # The relay's threads and this test share one SQLite session (#477), and a Session is not
+    # thread-safe: a renewal overlapping the test's own commit raised IllegalStateChangeError and
+    # closed the socket without a reason. Production gives each step a session of its own, so
+    # only the test needs this: every use of the shared session takes the same lock.
+    import threading
+
+    from app.db import get_db
+    from app.main import app as fastapi_app
+
+    db_lock = threading.RLock()
+
+    def locked_db():
+        with db_lock:
+            yield db_session
+
+    fastapi_app.dependency_overrides[get_db] = locked_db  # the client fixture clears it
+
     def connect(who_kc):
         return client.websocket_connect(f"/ws/console/{token}", subprotocols=["bearer", f"good-{who_kc}"])
 
@@ -721,15 +738,17 @@ def test_a_student_with_a_grant_is_cut_off_at_the_end_of_their_session_over_the_
     # A grant the session cannot see for a moment (the relay thread and the test share one
     # SQLite connection, #477) is "not yet", not "gone": keep waiting, never read .live_by of None.
     while time.monotonic() < deadline:
-        held = _grant_of(db_session, world["ann"])
-        if held is not None and held.live_by is None:
-            break
-        db_session.expire_all()
+        with db_lock:
+            held = _grant_of(db_session, world["ann"])
+            if held is not None and held.live_by is None:
+                break
+            db_session.expire_all()
         time.sleep(0.02)
     with pytest.raises(WebSocketDisconnect) as e, connect(kc) as ws:
         assert ws.receive_bytes() == RFB_GREETING
-        evt.end_time = NOW - timedelta(minutes=1)
-        db_session.commit()
+        with db_lock:
+            evt.end_time = NOW - timedelta(minutes=1)
+            db_session.commit()
         ws.receive_bytes()
     assert e.value.code == 1008 and "session" in e.value.reason
     # And at connect, once the window is over, the grant opens nothing.
