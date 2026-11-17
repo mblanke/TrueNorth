@@ -159,7 +159,7 @@ class TestCompletion:
         ex = _exercise(db_session, world)
         _seat(db_session, world, ex, who=2)
         db_session.commit()
-        assert close(db_session, ex.id, _RunNow(), None) is not None
+        assert close(db_session, ex.id, _RunNow()) is not None
         assert _completed(recorded) == _ids(world, 2)
 
     def test_a_team_exercise_completes_for_every_participant(self, client, db_session, world, recorded):
@@ -169,3 +169,128 @@ class TestCompletion:
         act_as(world["instructor"])
         client.post(f"/exercises/{ex.id}/complete")
         assert _completed(recorded) == _ids(world, 0, 2)
+
+
+# -- the eligibility filter: the same rule for a seat, a team member and a cited Student --------
+def _cite(db, world, ex, who, ref: str = "OBJ-1") -> str:
+    """A recorded detection by *who* (a User) on the objective, inside the run; returns its id."""
+    from app.detections.models import RECORDED, DetectionSubmission
+
+    row = DetectionSubmission(
+        tenant_id=world["tenant"].id, exercise_id=ex.id, objective_ref=ref, user_id=uuid.UUID(who.id),
+        query="q", verdict=RECORDED, events_matched=1, window_start=NOW - timedelta(minutes=30),
+        window_end=NOW,
+    )
+    db.add(row)
+    db.flush()
+    return str(row.id)
+
+
+def _class_exercise(db, world):
+    """An exercise on a class's range (student 0's seat), so the roll call applies."""
+    ex = _exercise(db, world)
+    _seat(db, world, ex, who=0)
+    return ex
+
+
+class TestRollCallAppliesToTeamsAndCitations:
+    def test_a_forfeited_team_member_is_not_credited_for_an_objective(self, client, db_session, world, recorded):
+        ex = _class_exercise(db_session, world)
+        _team(db_session, world, ex, [1, 2])
+        world["entries"][1].status = "forfeited"
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/objectives/OBJ-1/ack")
+        assert {str(s["user_id"]) for s in _passed(recorded)} == _ids(world, 0, 2)
+
+    def test_a_removed_or_pending_team_member_is_not_credited_at_completion(self, client, db_session, world, recorded):
+        ex = _class_exercise(db_session, world)
+        _team(db_session, world, ex, [1, 2])
+        world["entries"][1].status = "removed"
+        world["entries"][2].status = "pending"
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/complete")
+        assert _completed(recorded) == _ids(world, 0)
+        assert {str(a[0]) for a in recorded["lti"]} == _ids(world, 0)
+        assert {a[2] for a in recorded["tasks"] if a[0] == "auto_assess_competency"} == _ids(world, 0)
+
+    def test_a_team_member_who_is_not_on_the_classs_roll_call_is_not_credited(self, client, db_session, world, recorded):
+        ex = _class_exercise(db_session, world)
+        stranger = real_user(db_session, UserRole.student, world["tenant"].id)
+        team = Team(name="t", tenant_id=world["tenant"].id, exercise_id=ex.id)
+        db_session.add(team)
+        db_session.flush()
+        db_session.add(TeamMembership(user_id=uuid.UUID(stranger.id), team_id=team.id))
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/complete")
+        assert _completed(recorded) == _ids(world, 0)
+
+    def test_a_cancelled_class_credits_no_one(self, client, db_session, world, recorded):
+        ex = _class_exercise(db_session, world)
+        _team(db_session, world, ex, [1])
+        world["cls"].status = "cancelled"
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/complete")
+        assert _completed(recorded) == set()
+
+    def test_a_cited_student_on_the_roll_call_is_credited(self, client, db_session, world, recorded):
+        ex = _class_exercise(db_session, world)
+        cite = _cite(db_session, world, ex, world["students"][2])
+        db_session.commit()
+        act_as(world["instructor"])
+        assert client.post(f"/exercises/{ex.id}/objectives/OBJ-1/ack", json={"cites": [cite]}).status_code == 200
+        assert {str(s["user_id"]) for s in _passed(recorded)} == _ids(world, 0, 2)
+
+    def test_a_cited_student_who_was_forfeited_is_not_credited(self, client, db_session, world, recorded):
+        ex = _class_exercise(db_session, world)
+        cite = _cite(db_session, world, ex, world["students"][1])
+        world["entries"][1].status = "forfeited"
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/objectives/OBJ-1/ack", json={"cites": [cite]})
+        assert {str(s["user_id"]) for s in _passed(recorded)} == _ids(world, 0)
+
+    def test_a_cited_user_who_is_no_longer_a_student_is_not_credited(self, client, db_session, world, recorded):
+        from app.models import User
+
+        ex = _class_exercise(db_session, world)
+        cite = _cite(db_session, world, ex, world["students"][1])
+        db_session.get(User, uuid.UUID(world["students"][1].id)).role = UserRole.instructor
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/objectives/OBJ-1/ack", json={"cites": [cite]})
+        assert {str(s["user_id"]) for s in _passed(recorded)} == _ids(world, 0)
+
+    def test_a_cited_user_who_was_deleted_is_not_credited(self, client, db_session, world, recorded):
+        from app.models import User
+
+        ex = _class_exercise(db_session, world)
+        cite = _cite(db_session, world, ex, world["students"][1])
+        db_session.get(User, uuid.UUID(world["students"][1].id)).deleted_at = NOW
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/objectives/OBJ-1/ack", json={"cites": [cite]})
+        assert {str(s["user_id"]) for s in _passed(recorded)} == _ids(world, 0)
+
+    def test_a_cited_student_of_another_tenant_is_not_credited(self, client, db_session, world, recorded):
+        ex = _class_exercise(db_session, world)
+        foreign = real_user(db_session, UserRole.student, real_tenant(db_session).id)
+        cite = _cite(db_session, world, ex, foreign)
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/objectives/OBJ-1/ack", json={"cites": [cite]})
+        assert {str(s["user_id"]) for s in _passed(recorded)} == _ids(world, 0)
+
+
+class TestNobodyToCredit:
+    def test_completing_an_exercise_with_no_students_says_so(self, client, db_session, world, recorded, caplog):
+        ex = _exercise(db_session, world)
+        db_session.commit()
+        act_as(world["instructor"])
+        with caplog.at_level("WARNING", logger="truenorth.api.exercise_completion"):
+            assert client.post(f"/exercises/{ex.id}/complete").status_code == 200
+        assert "no Students to credit" in caplog.text
+        assert _completed(recorded) == set()

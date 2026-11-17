@@ -6,8 +6,7 @@ competency auto-assessment, the LTI grade pass-back and the xAPI ``completed`` s
 
 The participants are the exercise's Students (its seat or its teams, ``classes.credit``).
 Submitting a detection does not add anyone: it is evidence, not credit (ADR 0020). Whoever
-closed it counts only if they are a Student: an instructor completing a class's exercise is
-not credited with it (#375).
+closes it is not credited with it, whatever their role (#375).
 
 The clock (``sweep_overdue``) runs in the API next to the lab sweep: a real-backend exercise
 stays running after its timeline, and ends when an instructor completes it or its scenario's
@@ -30,7 +29,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import safe_yaml
-from .models import Exercise, ExerciseState, Objective, Scenario, User, UserRole
+from .models import Exercise, ExerciseState, Objective, Scenario
 
 logger = logging.getLogger("truenorth.api.exercise_completion")
 SWEEP_SECONDS = float(os.getenv("EXERCISE_CLOCK_SECONDS", "60"))
@@ -93,30 +92,18 @@ def _run_time(ex: Exercise) -> timedelta | None:
     return end - start if end >= start else None
 
 
-def participants(db: Session, ex: Exercise, closer: Participant | None = None) -> list[Participant]:
-    """The exercise's Students, and the closer if (and only if) the closer is a Student.
+def participants(db: Session, ex: Exercise) -> list[Participant]:
+    """The exercise's Students, and no one else.
 
-    Submitting a detection is evidence, not credit (ADR 0020), so it does not make a user a
-    participant here."""
+    Whoever closes an exercise is staff and is never credited with it, and a Student is not
+    credited merely for closing or for submitting a detection (ADR 0020): only the exercise's
+    seat or teams, through ``classes.credit.eligible_students``."""
     from .classes.credit import exercise_students
 
-    out = {u.id: Participant(u.id, u.email or "", u.display_name or "") for u in exercise_students(db, ex)}
-    if closer is not None and _is_student(db, ex, closer.user_id):
-        out.setdefault(closer.user_id, closer)
-    return list(out.values())
+    return [Participant(u.id, u.email or "", u.display_name or "") for u in exercise_students(db, ex)]
 
 
-def _is_student(db: Session, ex: Exercise, user_id: uuid.UUID) -> bool:
-    """True if *user_id* is a Student of the exercise's tenant."""
-    return (
-        db.query(User.id)
-        .filter(User.id == user_id, User.tenant_id == ex.tenant_id, User.role == UserRole.student)
-        .first()
-        is not None
-    )
-
-
-def close(db: Session, exercise_id: uuid.UUID, background_tasks: Any, closer: Participant | None = None) -> Exercise | None:
+def close(db: Session, exercise_id: uuid.UUID, background_tasks: Any) -> Exercise | None:
     """Complete a running or paused exercise and queue its results. None if it was not open."""
     from .celery_client import dispatch
     from .routers.exercises import _push_exercise_lti_grade
@@ -129,7 +116,11 @@ def close(db: Session, exercise_id: uuid.UUID, background_tasks: Any, closer: Pa
     ex.state = ExerciseState.completed
     ex.completed_at = datetime.now(UTC)
     retotal(db, ex)
-    people = participants(db, ex, closer)
+    people = participants(db, ex)
+    if not people:
+        # Scored, but there is no seat or team to credit (e.g. a shared class range with no
+        # teams, or an exercise outside a class). Say so: nothing else records it.
+        logger.warning("Exercise %s completed with no Students to credit", ex.id)
     db.commit()
     db.refresh(ex)
     took = _run_time(ex)

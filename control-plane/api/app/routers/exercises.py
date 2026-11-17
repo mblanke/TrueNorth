@@ -414,14 +414,14 @@ async def complete_exercise(
     """Complete an exercise and tally scores.  **Permission: exercise:complete**
 
     Competency assessment, the LTI grade and the xAPI statement go to the exercise's Students
-    (its seat or its teams) and every Student who submitted a detection in this run, not to an
-    instructor who completes it (app/exercise_completion, #375).
+    only (its seat or its teams, and on the roll call when it runs on a class range). They do
+    not go to whoever completes it, nor to a Student only because they submitted a detection
+    (app/exercise_completion, ADR 0020, #375).
     """
-    from ..exercise_completion import Participant, close
+    from ..exercise_completion import close
 
     ex = get_owned(db, Exercise, exercise_id, user, not_found="Exercise not found")
-    closer = Participant(uuid.UUID(user.id), user.email or "", user.display_name)
-    closed = close(db, ex.id, background_tasks, closer)
+    closed = close(db, ex.id, background_tasks)
     if closed is None:
         db.refresh(ex)
         raise HTTPException(409, f"Exercise is {ex.state.value}, cannot complete")
@@ -516,12 +516,14 @@ async def acknowledge_objective(
     db.refresh(obj)
     if background_tasks is not None:
         # The exercise's Students (its seat or its teams) and any Student whose detection the
-        # judgement cites passed it; never the instructor, who is ``judged_by`` (#375).
-        # No Students: no statement.
-        from ..classes.credit import exercise_students
+        # judgement cites passed it; never the instructor, who is ``judged_by`` (#375). A cited
+        # Student goes through the same eligibility filter as a seat or a team member (tenant,
+        # role, not deleted, on the roll call). No Students: no statement.
+        from ..classes.credit import eligible_students, exercise_students
 
         cited = json.loads(obj.evidence).get("students") or []
-        for actor in dict.fromkeys([s.id for s in exercise_students(db, ex)] + [str(s) for s in cited]):
+        named = [s.id for s in exercise_students(db, ex)] + [s.id for s in eligible_students(db, ex, cited)]
+        for actor in dict.fromkeys(str(a) for a in named):
             emit_lifecycle(
                 background_tasks,
                 verb_key="passed",
