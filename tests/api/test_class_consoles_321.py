@@ -718,7 +718,12 @@ def test_a_student_with_a_grant_is_cut_off_at_the_end_of_their_session_over_the_
             pass
         assert e.value.code == 1008
     deadline = time.monotonic() + 3  # the relay gives the grant back after the browser has gone
-    while time.monotonic() < deadline and _grant_of(db_session, world["ann"]).live_by is not None:
+    # A grant the session cannot see for a moment (the relay thread and the test share one
+    # SQLite connection, #477) is "not yet", not "gone": keep waiting, never read .live_by of None.
+    while time.monotonic() < deadline:
+        held = _grant_of(db_session, world["ann"])
+        if held is not None and held.live_by is None:
+            break
         db_session.expire_all()
         time.sleep(0.02)
     with pytest.raises(WebSocketDisconnect) as e, connect(kc) as ws:
