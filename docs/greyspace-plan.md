@@ -26,15 +26,16 @@ Ranges today are no-egress islands. Students and red cells need a believable "in
 popular sites, search, webmail, video, root DNS, backbone routing, attacker infrastructure,
 and NPC users making noise. SimSpace sells this as "Greyspace" (rehosted sites, core routers
 + BGP, root DNS, user traffic). TrueNorth has none of it — only a `tgen01` node in
-`content/ranges/red-vs-blue/template.yaml:586`, todo catalogue rows `svc-emulators` /
-`usersim`, and GHOSTS suggested in `docs/vm-build-sheet.md:164`.
+`content/ranges/red-vs-blue/template.yaml:647`, todo catalogue rows `svc-emulators` /
+`usersim` (`content/catalogue/vm_iso_catalogue.csv:16`, `:19`), and GHOSTS suggested in
+`docs/vm-build-sheet.md:164`.
 
 Decisions taken with the user (2026-10-03):
 - v1 scope: **all four** — core routing + root DNS, rehosted sites, threat-actor infra, NPC traffic.
 - Integration: a **range template block** the Range Designer drops into any range,
   provisioned by the existing worker.
 - **Corpus is 10 TB+** of scraped pages and video → lives once on NetApp
-  (`docs/dell-netapp-mobile-kit-inventory.md:177`, ~600 TB, NFS), mounted **read-only**.
+  (`docs/dell-netapp-mobile-kit-inventory.md:178`, ~600 TB, NFS), mounted **read-only**.
 - Greyspace runtime is a **Docker stack** pointing at that data.
 - Exercises hide **breadcrumbs** in some sites → per-range writable overlay, never the corpus.
 - Deliverable of the 2026-10-03 session: this plan + a UI mockup (the build status is above).
@@ -85,28 +86,34 @@ Key design points:
 
 ## Delivery slices (each passes `bash scripts/dod.sh`)
 
-0. **Prerequisites the module cannot work without** (from exploration — current gaps):
-   - Worker has **no post-deploy step**: add a `configure_range` Celery stage after
-     `provision_range` (`control-plane/worker/worker/tasks.py:148`) that runs per-role
-     configurators (cloud-init user-data first; Ansible later). Greyspace needs this to
-     start the compose stack and mount NFS.
-   - **Single NIC** in `render.py:92` / Terraform `main.tf:67` and VLAN tags ignored by
-     `proxmox_api`/`vsphere_api`: the router between corp and greyspace VLANs must be
-     multi-homed. Add `nics[]` to vm_definitions (back-compat: one NIC from `vlan`).
-   - **Injector params are dropped**: `get_injector` does `cls()` with no params
-     (`scenario_engine/injectors/__init__.py:127`), `run_inject` never forwards `params`
-     (`:143-156`), and `runner/run.py:120` calls `execute(params, ctx)` against a
-     `BaseInjector.execute(context)` signature. Fix + regression test before slices 4–5,
-     which depend on injectors receiving site/path/domain params.
-   - **`RangeContext` has no network identity** (`__init__.py:33`): add `greyspace`
-     (fqdn→ip map, resolver ip, overlay handle) so injectors and the currently-unrendered
-     `{{ c2_domain }}` / `{{ attacker_ip }}` placeholders
-     (`content/scenarios/apt-nation-state/scenario.yaml:62`,
-     `content/inject-packs/phishing-campaign.yaml:24`) resolve to real Greyspace names.
+0. **Prerequisites the module cannot work without** (from exploration 2026-10-03; the
+   items below marked fixed are done — the Status table records what each slice kept):
+   - Worker had **no post-deploy step** (fixed for Greyspace): a `configure_range` Celery
+     stage now runs after `provision_range` (`provision_range` is
+     `control-plane/worker/worker/tasks.py:119`; the stage is worker/configure_tasks.py).
+     Greyspace needs this to start the compose stack and mount NFS.
+   - **Single NIC**: per-VM `nics[]` exists now — `render.py` renders one entry per NIC
+     from a node's `interfaces` (`_render_nics`, render.py:167) and `vsphere_api` applies
+     them (`provisioners/vsphere_api.py:785`; `proxmox_api` has no `nics[]` handling).
+     The Terraform clone (kept for reference only, ADR 0009) still declares a single
+     `network_interface` (`infra/vsphere/terraform/main.tf:100`). The router between corp
+     and greyspace VLANs must be multi-homed (back-compat: one NIC from `vlan`).
+   - **Injector params were dropped** (fixed before this branch): `get_injector` still
+     builds a registry injector with no params (`injectors/__init__.py:148`), but
+     `run_inject` takes `params`, builds the injector with them and forwards its result
+     (`injectors/__init__.py:254`, `:301`), and `runner/run.py:134` calls
+     `execute(params, ctx)` against the registry's `execute(params, ctx)` signature
+     (regression tests: `tests/scenario_engine/test_run_inject.py`).
+   - **`RangeContext` has no network identity** (`injectors/__init__.py:37`, still true):
+     add `greyspace` (fqdn→ip map, resolver ip, overlay handle) so injectors and the
+     still-unrendered-in-timeline-params `{{ c2_domain }}` / `{{ attacker_ip }}`
+     placeholders (`content/scenarios/apt-nation-state/scenario.yaml:69` — its
+     `variables:` at `:31` renders objective queries only;
+     `content/inject-packs/phishing-campaign.yaml:48`) resolve to real Greyspace names.
    - Mock provisioner stays the dev path (this box is mock by design).
 1. **Template block / composition.** Add `includes:` to template YAML
    (`- block: greyspace, version: 1, params: {...}`), expanded server-side before render
-   and before `diagram_to_template` (`range_topology.py:568`) so the designer round-trips
+   and before `diagram_to_template` (`range_topology.py:683`) so the designer round-trips
    it as one locked "Greyspace" zone. Block lives in `content/blocks/greyspace/block.yaml`.
    Extend `scenario-engine/schemas/template.schema.json` for `includes` + typed block params
    (corpus version, site packs, npc profile, threat infra on/off, public prefixes).
@@ -130,9 +137,10 @@ Key design points:
 6. **NPC traffic.** GHOSTS server container; client install in `usersim` image; timeline
    library `content/greyspace/npc-profiles/*.json`; range param selects profile.
 7. **UI.** Range Designer: the existing "Internet/Cloud" stencil
-   (`range-designer.component.ts:925`, today drawing-only via `_NON_VM_TYPES` in
-   `range_topology.py:402`) becomes the Greyspace block — dropping it emits the
-   `includes: greyspace` entry instead of nothing — with a properties panel; a Greyspace page per range (status, sites,
+   (`range-designer.component.ts:537`, when planned drawing-only via `_NON_VM_TYPES`,
+   now `range_topology.py:484`) became the Greyspace block — dropping it emits the
+   template's `greyspace:` block instead of nothing (Status slice 1: not `includes:`) —
+   with a properties panel; a Greyspace page per range (status, sites,
    breadcrumbs planted/found, NPC activity). Scenario editor: breadcrumb authoring +
    preview. Built against the approved mockup.
 8. **Corpus ops (offline).** Ingest CLI (WARC → static tree + manifest), corpus versioning
@@ -165,7 +173,7 @@ team). Styled per the LMS-preview direction (less is more, role menus).
 - Unit: block expansion, config generators (zones/vhosts/FRR) from a fixture manifest,
   breadcrumb injector plant/remove, schema validation.
 - API: tenant isolation tests for any new endpoint (404 for foreign range).
-- Mock provisioner end-to-end: create range with `includes: greyspace` → provision →
-  configure stage emits compose + configs.
+- Mock provisioner end-to-end: create range with the template's `greyspace:` block
+  (Status slice 1: not `includes:`) → provision → configure stage emits compose + configs.
 - On the demo env: `dig @root` resolves fake TLDs, `curl --resolve` hits a rehosted site
   with trusted cert, a planted breadcrumb is served and its fetch shows in OpenSearch.

@@ -198,13 +198,13 @@ modules:
       - C) Only after a reported incident
       - D) Once the penetration test is scheduled
       answer: B
-    - question: One threat is cheap to exploit through an internet-facing endpoint; another has high
-        impact but needs internal access. Which threat ranks first?
+    - question: Two threats would do comparable damage. One is cheap to exploit through an internet-facing
+        endpoint; the other needs internal access. Which threat ranks first?
       options:
       - A) The internal threat, because impact alone decides the ranking order
       - B) Neither first; ranking weighs only the cost of the mitigation
       - C) Both equal, because likelihood never changes how threats rank
-      - D) The internet-facing threat, because likelihood and impact both favour it
+      - D) The internet-facing threat, because its likelihood is higher and the impact is comparable
       answer: D
 - ordinal: 3
   title: Common Vulnerability Classes

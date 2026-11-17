@@ -57,7 +57,7 @@ modules:
     - hosts: [siem01]
       action: Log on to siem01 as the analyst account your instructor assigned, open a terminal and record the start time.
     - hosts: [siem01, dc01, fs01]
-      action: From siem01, identify the servers that hold sign-in and file services, and record each host with the service it provides.
+      action: From siem01, work out which of dc01 and fs01 holds the sign-in service and which holds the file service, and record each host with the service it provides.
     - hosts: [siem01, web01, mail01]
       action: From siem01, check the DMZ hosts web01 and mail01 and record the service each one exposes and its zone.
     - hosts: [siem01, dc01]

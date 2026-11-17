@@ -248,7 +248,7 @@ Current source anchors: `control-plane/web/src/app/app.routes.ts`; `features/tra
 
 ### Design verification performed
 
-- JavaScript syntax check with the native Node runtime passed. The HTML fragment renders through the bundled visualization renderer and uses local-only preview interactions.
+- JavaScript syntax check with the native Node runtime passed. The HTML fragment is a self-contained static asset (`control-plane/web/src/assets/previews/development.html`) rendered in a sandboxed iframe on the `/learning/previews` page (`learning-preview.component.ts`); its interactions are local-only (the fragment's CSP sets `connect-src 'none'`).
 - Browser checks verified member phase changes, course practice feedback, instructor submission review, mentor evidence review, programme stage selection, and handoff detail navigation.
 - Browser checks verified CTU sample evidence → debrief → development discussion; reviewed contribution detail; and simulated receiving acknowledgement/reset.
 - Mentor portfolio view excludes the member's private reflection. Its formal-record view states the separate access requirement. These are demonstrated UI rules, not tested production authorisation.
