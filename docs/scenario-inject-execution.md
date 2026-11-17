@@ -78,9 +78,10 @@ and leaves the exercise `running` (notification phase `timeline_complete`): a St
 earns detection credit only by submitting a detection to the API, judged against the
 range's telemetry inside the exercise window, until an instructor completes the exercise
 or its duration runs out (`app/exercise_completion.py`). An inject's own telemetry
-therefore credits nobody. On the mock backend `run_scenario_v2` still marks the exercise's
-objectives achieved without evidence and completes it: a demo convenience, flagged here,
-not an assessment. Scenario executions never score: their objectives are `unassessed`.
+therefore credits nobody. On the mock backend too the exercise stays `running` with nothing
+achieved: since ADR 0020 (2026-11-04) no backend marks objectives or completes the run
+here (the earlier demo convenience that achieved every objective on mock is gone).
+Scenario executions never score: their objectives are `unassessed`.
 
 ## Run-state rules
 
@@ -95,7 +96,8 @@ not an assessment. Scenario executions never score: their objectives are `unasse
   statement it sets `resume_from = next_seq`, so the new task continues the same run
   after the last event the old one claimed, and the old task, if still alive, stops at its
   next event (`halted`, state `superseded`). Every event fires once across a pause.
-- It completes only a `running` exercise and cancels (after the last retry) only a
+- It never completes an exercise (only an instructor or its duration does,
+  `app/exercise_completion.py`) and cancels (after the last retry) only a
   `pending`/`running` one, so it cannot overwrite a newer terminal state.
 - `run_id` (`exercise_runs.run_id`, issued by start and replay, kept by resume) is stable
   across retries and resumes: they skip the events the run already recorded. A replay

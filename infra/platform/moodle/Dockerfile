@@ -19,6 +19,13 @@ FROM ghcr.io/erseco/alpine-moodle:v5.2.3@sha256:75dc2b3934d51122313674fbacf99702
 # release.yml's scan blocks on. Nothing here runs it: the hooks use Moodle's own CLI.
 RUN rm -rf /opt/moosh /usr/local/bin/moosh
 
+# The base is Alpine 3.20, whose musl 1.2.5-r3 has a fixable HIGH (CVE-2026-107891, regcomp
+# integer overflow) that release.yml's scan blocks on (rc20). The 3.20 repo carries the fix
+# (1.2.5-r4); upgrade just these two packages so the base stays pinned by digest otherwise.
+USER root
+RUN apk upgrade --no-cache musl musl-utils
+USER nobody
+
 COPY --chown=nobody:nobody local_truenorth /opt/truenorth/local_truenorth
 COPY --chown=nobody:nobody bootstrap /opt/truenorth/bootstrap
 COPY --chown=nobody:nobody truenorth.scss /opt/truenorth/truenorth.scss

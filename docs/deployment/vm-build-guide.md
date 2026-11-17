@@ -15,9 +15,11 @@ variants (§5).
    that name. An image built under a different name (for example the existing
    `tmpl-ubuntu-2404`) needs a `PATCH /api/golden-images/{id}` that sets `template_name`.
 2. **Generic.** No domain join, no product key (Windows uses the public KMS client
-   key/GVLK, or eval media), no per-range users and no secrets. Windows is sysprepped
-   (`/generalize /oobe /shutdown`). Linux runs `cloud-init clean` and has its machine-id
-   truncated.
+   key/GVLK, or eval media), no per-range users and no secrets. Windows is **not**
+   generalized: the build's final `sysprep.ps1` step only scrubs build secrets and shuts
+   down (`files/windows/sysprep.ps1`); vSphere guest customization runs Sysprep on every
+   clone, and a template generalized at build time cannot be customized (2026-10-21,
+   win11-24h2). Linux runs `cloud-init clean` and has its machine-id truncated.
 3. **VMware guest bits baked in.**
    - Windows: VMware Tools (needed for the IP customization TrueNorth applies at deploy).
    - Linux: `open-vm-tools` and cloud-init with the `VMware` datasource (TrueNorth passes
@@ -48,7 +50,7 @@ which prints an ISO coverage table.
 | rocky | `Rocky-10.2-x86_64-dvd1.iso` | ✅ Rocky 10 |
 | debian13 | `debian-13.6.0-amd64-DVD-1.iso` | ✅ |
 | parrot | `Parrot-security-7.3_amd64.iso` | ✅ installer ignores preseed, so the build is partly manual |
-| win10-22h2, win10-ltsc, srv2019, srv2016, pfsense | on the datastore (reported 2026-10-03) | ✅ take the exact file names from the discovery ISO table. win10-ltsc's catalogue row stays `enabled=no` until it is built |
+| win10-22h2, win10-ltsc, srv2019, srv2016, pfsense | on the datastore (reported 2026-10-03) | ✅ take the exact file names from the discovery ISO table. win10-ltsc has no catalogue row of its own — it is only an alias of win10-22h2 in `content/catalogue/vm_iso_catalogue.csv` (a Packer source exists, `windows.pkr.hcl`) |
 | securityonion | `securityonion-2.4.211-20260407.iso` | ⬆ downloaded to `TrueNorth-Demo/ISO/` (15.5 GB, SHA256 checked); upload to `[esx01-local] ISO/` |
 | vyos | `vyos-2026.10.01-0035-rolling-generic-amd64.iso` | ⬆ downloaded to `TrueNorth-Demo/ISO/` (628 MB, minisign checked with the nightly key); upload to `[esx01-local] ISO/`. This is the free rolling build; 1.4 LTS images need a subscription |
 | win7-sp1 | — | ❌ licensed media only, so this needs procurement |
@@ -95,13 +97,13 @@ template. Re-run with `-force`; `build.sh` already passes it.
 
 | Image | Method | Expect |
 |---|---|---|
-| srv2022, srv2019, srv2016, win10-22h2, win10-ltsc | Autounattend on a CD, pvscsi from the Tools ISO, WinRM, `setup.ps1`, sysprep | Should work first time |
+| srv2022, srv2019, srv2016, win10-22h2, win10-ltsc | Autounattend on a CD, pvscsi from the Tools ISO, WinRM, `setup.ps1`, `sysprep.ps1` (scrub + shutdown, no generalize) | Should work first time |
 | ubuntu-lts, rocky | autoinstall (`cidata` CD) / kickstart (`OEMDRV` CD) | Should work first time |
-| kali, debian13 | preseed over Packer's HTTP server | Works if the build VM can reach TN-BUILD01 on the HTTP port |
+| kali, debian13 | preseed over Packer's HTTP server | Works if the build VM can reach the Packer host (TN-MGMT01) on the HTTP port |
 | win11-24h2, srv2025 | Autounattend, 4-partition GPT, LabConfig TPM bypass unless `win11_vtpm=true` | **Highest risk.** The new setup engine broke the earlier attempts. Have the manual path (§3) ready |
 | pfsense, securityonion, vyos | `boot_command` keystrokes | Fragile: timings may need tuning on site. Security Onion builds only the base OS; `so-setup` runs at deploy |
 | parrot | Calamares GUI installer | Mostly manual (§3) |
-| derived (remnux, sift, svc-emulators, ca-host, usersim, cloudlog-emu, c2-server, precomp-host, detonation-host) | `vsphere-clone` of the base template, plus role scripts | Needs the base built first. Some installers need internet, and build over the mgmt network's limited egress |
+| derived (remnux, sift, svc-emulators, ca-host, usersim, cloudlog-emu, greyspace-host, c2-server, precomp-host, detonation-host) | `vsphere-clone` of the base template, plus role scripts | Needs the base built first. Some installers need internet, and build over the mgmt network's limited egress |
 | variants (win10-office, win11-analyst, win11-dev, ubuntu-webstack, your own) | `vsphere-clone` of a base + packages + scripts (§5) | Needs the base built first. Windows depends on vSphere guest customization working on that base |
 
 ## 3. The manual path (fallback for any image)
@@ -131,11 +133,11 @@ cloned many times, so a manual build is a fine outcome.
    It enables WinRM and OpenSSH, sets the power plan, and installs the baseline apps
    (Chocolatey, from the depot when `depot_url` is set). Install Windows Updates now if
    the VM has internet.
-5. **Generalize.**
-   ```powershell
-   C:\Windows\System32\Sysprep\sysprep.exe /generalize /oobe /shutdown /unattend:C:\sysprep-unattend.xml
-   ```
-   Copy `files/windows/sysprep-unattend.xml` to `C:\` first. The VM powers off.
+5. **Scrub and shut down** (do **not** generalize: a generalized template cannot be
+   vSphere-customized — 2026-10-21, win11-24h2; see `files/windows/sysprep.ps1`).
+   Copy `files/windows/sysprep.ps1` to the VM and run it as Administrator: it removes the
+   build secrets (Packer env-var files, PowerShell logs and transcripts) and schedules the
+   shutdown. The VM powers off.
 6. **Template.** Remove both CDs. Right-click → **Template → Convert to Template**, and
    **rename it to the catalogue id**. Optionally, right-click → **Clone to Library** →
    `TrueNorth-Templates`, using the same name.
@@ -144,9 +146,10 @@ cloned many times, so a manual build is a fine outcome.
 **If guest customization fails on a Windows clone** (Sysprep error, customization timeout),
 the clone keeps the template's state: the generic build Administrator password
 (`windows_admin_password`, ADR 0012 decision 5) and WinRM with Basic auth from `setup.ps1`.
-The worker treats a failed customization as "not ready" only for VMs it installs software
-on (`vsphere_guest.GuestSession.wait_ready`, `TOOLSDEPLOYPKG_FAILED`); a range VM with no
-software to install is not checked yet (tracked as a follow-up). Until then, a range whose
+The worker reads every Windows VM's customization outcome after power-on
+(`vsphere_api.py` `_await_customization`), and a VM it installs software on additionally
+fails fast on the Tools-deploy package (`vsphere_guest.GuestSession.wait_ready`,
+`TOOLSDEPLOYPKG_FAILED`). Even so, a range whose
 Windows VMs show a customization error in vCenter (`guest.customizationInfo`) must be torn
 down, not used: its machines have the build password and Basic WinRM.
 
@@ -167,7 +170,8 @@ made:
 govc import.ova -ds esx01-local -options import-opts.json ubuntu-24.04-server-cloudimg-amd64.ova   # by esx01 IP
 ```
 Then mark it as a template **in vCenter**, never with `govc vm.markastemplate` against the
-host. Debian, Rocky and Kali ship `qcow2` cloud images: convert them on TN-BUILD01 with
+host. Debian, Rocky and Kali ship `qcow2` cloud images: convert them on the build host
+(TN-MGMT01) with
 `qemu-img convert -O vmdk -o subformat=streamOptimized`, then import.
 
 ISO path:
@@ -184,8 +188,8 @@ ISO path:
    `systemctl enable tn-ssh-hostkeys.service` (it regenerates the host keys cleanup.sh
    removes, if cloud-init does not). Then run `files/linux/require-cloud-init.sh`: it must
    print "template OK".
-5. Run `files/linux/cleanup.sh`. It cleans cloud-init, truncates the machine-id, removes
-   the SSH host keys and powers off.
+5. Run `files/linux/cleanup.sh`. It cleans cloud-init, truncates the machine-id and removes
+   the SSH host keys (it does not power the VM off).
 6. Convert to a template and name it after the catalogue id. Then register it (§7).
 
 ### pfSense
@@ -321,6 +325,7 @@ These are clones of a base with software layered on:
 | usersim | ubuntu-lts | GHOSTS server |
 | cloudlog-emu | ubuntu-lts | log emulation |
 | c2-server | ubuntu-lts | Sliver + Mythic. **Disabled** in the catalogue until instructor/Standards sign-off |
+| greyspace-host | ubuntu-lts | Docker Engine + compose, nfs-common, the pinned gs-core images (ADR 0007) |
 | precomp-host | win10-22h2 | staged artifacts |
 | detonation-host | win10-22h2 | no sensor, no egress ever |
 
@@ -330,7 +335,8 @@ These are clones of a base with software layered on:
 
 **By hand:**
 1. Clone the base template to a VM on `dPG-TN-BUILD`.
-2. Run the matching `files/linux/roles/<name>.sh`.
+2. Run the matching role script (`files/linux/roles/<name>.sh`; `files/windows/<name>.ps1`
+   for the Windows ones).
 3. Run `cleanup.sh`.
 4. Convert to a template with the catalogue name and register it.
 
@@ -395,9 +401,10 @@ cd infra/vsphere/packer
 
 `build.sh` checks that the base template exists in vCenter (when `govc` and `GOVC_URL` are
 set), then runs `packer build -var-file=variants/<name>.pkrvars.hcl`. A Windows variant
-clones the sysprepped base and gets WinRM back through vSphere guest customization.
+clones the base and gets WinRM back through vSphere guest customization.
 That is the same Sysprep customization TrueNorth applies at deploy. Packer then installs
-the packages, runs your scripts, reboots and sysprep-generalizes again, so the variant
+the packages, runs your scripts, reboots and finishes with `sysprep.ps1` (scrub build
+secrets and shut down — no generalize), so the variant
 is as clean a template as its base. A Linux variant SSHes in as the build user, installs,
 and runs `cleanup.sh`. Logs: `logs/variant-<name>-<timestamp>.log`.
 
@@ -438,15 +445,16 @@ are wrappers that download the vendor installer at install time (`googlechrome`,
 `firefoxesr`, `adobereader`, `vscode`, `powershell-core`, `vcredist140`,
 `sysinternals`); those would fail. TrueNorth replaces them with offline builds of the
 same id, from one small definition each in `content/choco/<id>.yaml`. The prefetch
-window builds them on TN-BUILD01 (`scripts/lab/choco-internalize.py`): the installer
+window builds them on the build host (TN-MGMT01 at the work site,
+`scripts/lab/choco-internalize.py`): the installer
 goes to the depot's raw repo `installers/<id>/<version>/`, and a package whose install
 script downloads it from there, checksum-verified, goes to `chocolatey-hosted` with a
 version that sorts above the community one (`<vendor version>.<revision>`).
 
 In the software catalogue each Windows entry carries `offline: true` when its install
 works with no internet (the package embeds its installer, or it is in `content/choco`).
-The Range Designer shows a warning on chips that are not offline-ready, and the worker
-logs a warning when it installs one.
+The worker logs a warning when it installs a package that is not offline-ready
+(`vsphere_api.py` `warn_not_offline`).
 
 **Add a package:** write `content/choco/<id>.yaml` (copy a similar one: vendor URL,
 `sha256` or `""`, `type`, `silent_args`), set `offline: true` on its catalogue entry,
@@ -483,9 +491,11 @@ templates exist.
 
 ## 7. Register in TrueNorth
 
-One time only:
+One time only (it uploads the catalogue CSV as the multipart `file` field, as
+`scripts/load_content.py` does):
 ```
-POST /api/golden-images/import-catalogue?hypervisor=vsphere
+curl -F file=@content/catalogue/vm_iso_catalogue.csv \
+  "$TN_API_URL/golden-images/import-catalogue?hypervisor=vsphere"
 ```
 
 For each image built:
@@ -513,4 +523,7 @@ your template.
 | 9 | srv2025, vyos, parrot | as needed | — |
 | 10 | derived images and variants, then role snapshots | — | days |
 
-With items 1–6 done, soc-training, red-team and small-enterprise ranges can deploy.
+With items 1–6 done, soc-training ranges can deploy. Red-team ranges also need `srv2019`
+(item 8): `content/catalogue/vm_iso_catalogue.csv` lists it in `srv2019`'s
+`used_by_ranges`. No catalogue row lists `small-enterprise` in `used_by_ranges`, so check
+that range's template before relying on this.

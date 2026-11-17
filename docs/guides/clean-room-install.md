@@ -30,7 +30,7 @@ Time each stage (start / end / elapsed). Tick only when the guide's own check pa
 |---|---|---|---|
 | 1 | Site prerequisites verified | [01](01-site-prerequisites.md) | its checklist is ticked |
 | 2 | Ubuntu VM built | [02 §1](02-install-guide.md) | `dig` forward and reverse answer; chrony synchronised |
-| 3 | Control node and vCenter prepared | [02 §2–3](02-install-guide.md) | `TrueNorth-Provision` role and both folders exist |
+| 3 | Control node and vCenter prepared | [02 §2–3](02-install-guide.md) | `TrueNorth-Provision` role and the `TrueNorth/Ranges` and `TrueNorth/Templates` folders exist |
 | 4 | Release fetched and verified | [02 §4](02-install-guide.md) | cosign `Verified OK` twice; `sha256sum -c` OK |
 | 5 | Installer configured | [02 §5](02-install-guide.md) | vault encrypted; LDAPS verifies |
 | 6 | Installer run, then run again | [02 §6](02-install-guide.md) | run 1 and run 2 both pass |
@@ -64,7 +64,8 @@ this table into the working copy of the log.
 3. A guide that needed a fix is not "checked against" the release until the fix is merged
    and the affected stage is re-read by someone who did not write it.
 4. Run [`tests/contracts/test_docs_claims.py`](../../tests/contracts/test_docs_claims.py)
-   after the fixes; it checks the UI names the guides use.
+   after the fixes; it checks that six named UI features exist. A pass here does **not**
+   mean the guides were re-read end to end.
 
 ## Pass criteria
 
