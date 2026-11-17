@@ -49,7 +49,7 @@ the value comes from — none is invented here:
 | `<vcenter-ip>` | `dig +short <vcenter-fqdn>` (§1.3), or the site's vCenter record | IPv4 |
 | `<enclave-id>` | Your choice (**[DECISION]** in §5.3) | 1-63 characters: lowercase letters, digits and hyphens, starting and ending with a letter or digit (preflight enforces this) |
 | `<organisation name>` | Your choice (**[DECISION]**); the site's name for this deployment | Becomes the tenant's display name |
-| `<smoke-account-password>` | Whoever created `<smoke-upn>` (guide 01 §7) holds it | The AD account's password; §5.2 puts it in `smoke.yml` |
+| `<smoke-account-password>` | Whoever created `<smoke-login>` (guide 01 §7) holds it | The AD account's password; §5.2 puts it in `smoke.yml` |
 
 The appendices add their own values (the depot, AI node, DC build); each appendix says
 where its placeholders come from. `tn_classification_level` (§5.3) must be `unclassified`,
@@ -445,7 +445,7 @@ head -1 inventory/group_vars/all/vault.yml     # must start with $ANSIBLE_VAULT
 To change a value later: `ansible-vault edit inventory/group_vars/all/vault.yml`.
 
 The installer's sign-in check (the claim contract) also needs a non-privileged AD account
-(`<smoke-upn>`, guide 01 §7). Keep its password in its own vaulted file:
+(`<smoke-login>`, guide 01 §7). Keep its password in its own vaulted file:
 
 ```bash
 cd ~/truenorth/install
@@ -458,7 +458,7 @@ invoked once with `--ask-vault-pass` and decrypts both files with that one passw
 In the editor that opens, write the two lines below, save and quit:
 
 ```yaml
-tn_smoke_username: <smoke-upn>
+tn_smoke_username: <smoke-login>
 tn_smoke_password: <smoke-account-password>
 ```
 
@@ -526,7 +526,7 @@ all:
           tn_provisioner_backend: vsphere_api
           tn_vcenter_host: <vcenter-fqdn>
           tn_vcenter_user: <svc-truenorth>
-          tn_vsphere_verify_ssl: true
+          tn_vsphere_verify_ssl: false   # open item until a site CA reaches api/worker; see the note below
           tn_fail_on_missing_vsphere_privs: true
           tn_vsphere_datacenter: <datacenter>
           tn_vsphere_cluster: <range-cluster>
@@ -542,7 +542,7 @@ all:
           tn_vsphere_reserved_vlans: "<site-vlans, e.g. 10,11,20,30,40>"
           # [DECISION] This install's own slice of VMware's manual MAC range. Every
           # TrueNorth install sharing a vCenter needs a different, non-overlapping slice.
-          tn_vsphere_mac_pool: "00:50:56:3c:00:00-00:50:56:3d:ff:ff"
+          tn_vsphere_mac_pool: "<mac-pool-start>-<mac-pool-end>"
           tn_range_reserved_cidrs:
             - <mgmt-subnet>/24
             - <oob-subnet>/24
@@ -805,7 +805,7 @@ recovery only.
 
 ### 7.2 The first AD administrator
 
-1. The person named as `<first-admin-upn>` (in `TN-Platform-Admins`) signs in with their AD
+1. The person named as `<first-admin-login>` (in `TN-Platform-Admins`) signs in with their AD
    account. They land on the registration form (not an error page): they fill it in and
    submit.
 2. The break-glass administrator opens **Approvals** in the left menu, finds the request,
@@ -969,7 +969,7 @@ New-ADUser -Name "<Given Surname>" -GivenName "<Given>" -Surname "<Surname>" `
 Add-ADGroupMember -Identity "TN-Platform-Admins" -Members "<sam>"
 ```
 
-Make `<smoke-upn>` the same way, in `TN-Observers` only.
+Make `<smoke-login>` the same way, in `TN-Observers` only.
 
 ### B.5 TrueNorth's certificate from this CA
 
@@ -1011,7 +1011,7 @@ The node is bare-metal Ubuntu, not a VM: vLLM serves the model, LiteLLM puts an
 OpenAI-compatible API with a key in front of it, and TrueNorth's AI orchestrator calls
 LiteLLM.
 
-**Model rule (owner):** no model from a Chinese developer, with the single exception of GLM.
+**Model rule:** use only models your site policy approves.
 **[DECISION]** the coder model, `<coder-model>` (its Hugging Face id `<coder-model-repo>`),
 served with a **128K** context (`--max-model-len 131072`). Check before you download that the
 model's weights, at that context, fit the node's GPU memory.
@@ -1246,7 +1246,7 @@ KMS server exists; until then ranges run unactivated (fully functional, with a w
 
 - [ ] Escrow key pair made off the VM; public half in `install/files/`; private half offline
 - [ ] Vault: bind, vCenter and both template build passwords set; encrypted; vault password stored
-- [ ] `smoke.yml` vaulted with `<smoke-upn>`
+- [ ] `smoke.yml` vaulted with `<smoke-login>`
 - [ ] `inventory/site.yml` written; every **[DECISION]** recorded
 - [ ] `corp-root-ca.cer`, `truenorth.crt`, `truenorth.key` in place; SAN and key match checked
 - [ ] LDAPS to the DC verifies (`Verify return code: 0`)

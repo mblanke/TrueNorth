@@ -13,7 +13,7 @@ busy" parts reconciled at `353339c2` (2026-11-02); the Console and lab-console p
 ## 1. Sign in
 
 1. Open `https://<your-site>/` and press **Sign in with SSO**.
-2. Sign in with your **normal domain account**. TrueNorth has no password of its own; change
+2. Sign in with your **normal domain account** (your username, not `user@domain`). TrueNorth has no password of its own; change
    your password the usual way for your domain.
 3. What happens next:
    - **Your instructor put you on a class roll call:** you go straight in. There is no form

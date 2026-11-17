@@ -78,7 +78,7 @@ to go **backwards** (an older release, or a database newer than the code) unless
 1. Read the release notes (`docs/release-notes/<vX.Y.Z>.md` in the new release) and
    `CHANGELOG.md`: new migrations, new required settings, known limitations. A release
    candidate ships no notes file of its own: read its target release's (`v1.2.0.md` for
-   `v1.2.0-rc17`), plus `CHANGELOG.md`.
+   `v1.2.0-rcN`), plus `CHANGELOG.md`.
 2. **[DECISION]** The window. In-flight range builds either finish (the default, `drain`:
    up to an hour for a large range) or are abandoned (`-e tn_upgrade_inflight=abandon`;
    interrupted ranges must be rebuilt). Tell instructors (`docs/runbooks/on-call.md`
@@ -652,7 +652,7 @@ How instructors and authors then use them: [04 — Instructor guide](04-instruct
 | The installer stops: a vault value differs from the persisted one | A first-start password was changed in the vault | Put the old value back (or empty it); to change it, `playbooks/rotate-secret.yml` (`docs/runbooks/key-rotation.md`) |
 | The installer stops: tables but no `alembic_version` | A database built outside migrations | Stop and ask the owner. Never stamp without a decision (`install/README.md` "The migration hazard") |
 | The installer refuses an older release or a newer database | A downgrade | Intended; §2.4 if you meant it |
-| Smoke test: no `groups` claim, or not from AD | The smoke account is in no TN-* group, or only through a nested group | Put `<smoke-upn>` **directly** in `TN-Observers` |
+| Smoke test: no `groups` claim, or not from AD | The smoke account is in no TN-* group, or only through a nested group | Put `<smoke-login>` **directly** in `TN-Observers` |
 | An AD user cannot sign in | Account disabled, not in the users OU, nested group only, or its email is also a local account's | Check AD; Keycloak refuses an email collision (`install/README.md` "AD on staging", behaviours table) |
 | Someone lost their authenticator | — | `docs/runbooks/break-glass.md` "Reset the second factor" |
 | Everyone is stuck on the Rules of use page | A text nobody can agree to | `docs/runbooks/break-glass.md` "Rules of use" |

@@ -5,7 +5,7 @@ installer has finished ([02-install-guide.md](02-install-guide.md)) and ends whe
 can run classes. Day-to-day upkeep (backups, upgrades, porting golden images, alerts) is in
 [06-operations-runbook.md](06-operations-runbook.md).
 
-Checked against tag `v1.2.0-rc17` (`dd98ace1`, the release under test, 2026-11-05): every
+Checked against tag `v1.2.0-rc17` (`dd98ace1`, 2026-11-05): every
 UI label, route and installer variable named below was verified in that tree. Sections 5 to
 8 and 11 were re-read label by label against the tag on 2026-11-05 (the modules behind them
 are unchanged since `dd98ace1`). Earlier reads:
@@ -74,7 +74,7 @@ in production.
   administrator is a **local** Keycloak account, never an AD account: preflight refuses a
   `tn_bootstrap_admin_upn` inside `tn_domain`, so the name can never match a directory
   account. You sign in with the generated secret `bootstrap_admin_password` under
-  `/srv/truenorth/config/secrets/` on TN-MGMT01, **not** a domain password. This is the
+  `/srv/truenorth/config/secrets/` on the TrueNorth VM, **not** a domain password. This is the
   **break-glass** account: it still signs in when AD, the bind account or LDAPS is down.
 - **With AD and `tn_keycloak_local_admin: false`**, the installer disables the local account
   and `tn_bootstrap_admin_upn` names an AD account instead: you sign in with that account's
