@@ -4,7 +4,9 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { ClassLive, ClassesApiService } from '@core/services/classes-api.service';
+import { AuthService } from '@core/services/auth.service';
 import { NotificationService } from '@core/services/notification.service';
+import { FakeRfbClient, provideFakeRfb } from '../../shared/components/vm-console/fake-rfb-client';
 import { ClassLiveComponent, LIVE_REFRESH_MS, observedNote } from './class-live.component';
 
 const SEAT = (id: string) => ({
@@ -37,17 +39,21 @@ describe('ClassLiveComponent', () => {
   let fixture: ComponentFixture<ClassLiveComponent>;
   let api: jasmine.SpyObj<ClassesApiService>;
   let notify: jasmine.SpyObj<NotificationService>;
+  let viewers: FakeRfbClient[];
 
   function make(live: ClassLive | null, error?: HttpErrorResponse): void {
     api = jasmine.createSpyObj<ClassesApiService>('ClassesApiService', ['sessionLive', 'openSessionConsole']);
     api.sessionLive.and.returnValue(error ? throwError(() => error) : of(live as ClassLive));
     api.openSessionConsole.and.returnValue(of({ range_id: 'g1', machine: 'ws1', vm: 'g1-ws1', kind: 'webmks',
-      url: 'wss://esx/ticket/t', expires_in: 60, view_only: false, observed: true }));
+      url: 'wss://tn.example/ws/console/g1', expires_in: 60, view_only: false, observed: true }));
     notify = jasmine.createSpyObj('NotificationService', ['error', 'success']);
+    viewers = [];
     TestBed.configureTestingModule({
       imports: [ClassLiveComponent, NoopAnimationsModule],
       providers: [
         provideRouter([]),
+        provideFakeRfb(viewers),
+        { provide: AuthService, useValue: { getToken: () => Promise.resolve('tok') } },
         { provide: ClassesApiService, useValue: api },
         { provide: NotificationService, useValue: notify },
       ],
@@ -71,7 +77,7 @@ describe('ClassLiveComponent', () => {
     expect(el().querySelector('.observed')?.textContent).toContain('marked observed');
   });
 
-  it('opens a console on a Student\'s machine and marks it observed; an observer cannot pick a staff machine', () => {
+  it('opens a console on a Student\'s machine and marks it observed; an observer cannot pick a staff machine', fakeAsync(() => {
     make(LIVE);
     const row = Array.from(el().querySelectorAll('tbody tr')[0].querySelectorAll('button')) as HTMLButtonElement[];
     const dc = row.find(b => b.textContent?.includes('dc'))!;
@@ -80,9 +86,14 @@ describe('ClassLiveComponent', () => {
     ws.click();
     fixture.detectChanges();
     expect(api.openSessionConsole).toHaveBeenCalledWith('c1', 'ev1', 'g1', 'g1-ws1');
-    expect(el().querySelector('.ticket')?.textContent).toContain('observed');
-    expect(el().querySelector('.ticket')?.textContent).toContain('wss://esx/ticket/t');
-  });
+    tick();
+    fixture.detectChanges();
+    expect(el().querySelector('tn-vm-console')?.textContent).toContain('observed');
+    expect(el().textContent).not.toContain('wss://');
+    expect(viewers[0].options?.url).toBe('wss://tn.example/ws/console/g1');
+    fixture.destroy();
+    discardPeriodicTasks();
+  }));
 
   it('outside the session window the console buttons wait', () => {
     make({ ...LIVE, live: false, consoles_open: false });

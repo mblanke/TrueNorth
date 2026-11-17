@@ -178,8 +178,8 @@ def test_two_students_build_reset_expire_and_clean_up(world, monkeypatch):
     _drive(db, a, "active", timeout=900)
     assert b.state == "ready"  # untouched by a's reset
 
-    console = service.console(db, b)
-    assert console["url"].startswith("wss://") and console["expires_in"] > 0
+    console = service.console(db, b, ws_base="wss://tn.test")
+    assert console["url"].startswith("wss://tn.test/ws/console/") and console["expires_in"] > 0
 
     b.max_expires_at = datetime.now(UTC) - timedelta(seconds=1)
     db.commit()

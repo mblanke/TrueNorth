@@ -575,9 +575,16 @@ def test_null_moodle(monkeypatch):
 
 def test_null_console(monkeypatch):
     console = _build(SEAMS["console"], SEAMS["console"].null_key, monkeypatch)
-    access = console.open({"vm_id": "vm-1", "name": "lab-analyst"})
-    assert access["kind"] == "mock" and access["url"].startswith("mock://console/vm-1") and access["expires_in"] > 0
-    assert console.open({"vm_id": "vm-1"})["url"] != access["url"]  # one-time, not a standing link
+    from app.console_backends import ConsoleError, DialGrant, DialTarget
+
+    relay = "wss://tn.test/ws/console/g1"
+    access = console.open({"vm_id": "vm-1", "name": "lab-analyst"}, relay_url=relay)
+    assert access == {"kind": "rfb-ws", "url": relay, "expires_in": 300}  # the browser only ever gets TrueNorth's URL
+    target = console.dial(DialGrant(id="g1", range_id="r1", vm_id="vm-1", vm_name="lab-analyst"))
+    assert isinstance(target, DialTarget) and target.url.startswith("ws://127.0.0.1:")
+    assert target.subprotocols == ("binary",)
+    with pytest.raises(ConsoleError):  # an open with no relay address has nothing to hand the browser
+        console.open({"vm_id": "vm-1"})
 
 
 def test_null_threat_intel(monkeypatch):

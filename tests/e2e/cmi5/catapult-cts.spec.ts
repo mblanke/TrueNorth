@@ -84,6 +84,9 @@ async function play(page: Page, launchUrl: string, picks: string[] | null): Prom
   if (await page.getByTestId('au-error').count()) {
     throw new Error(`the AU did not start: ${await page.getByTestId('au-error').innerText()}`);
   }
+  // "Tracked session" is set before the module's content is fetched: wait for the first page
+  // (or, for a module with no pages, the quiz) so the page-walk below never sees an empty AU.
+  await expect(page.getByTestId('au-page').or(page.getByTestId('au-quiz')).first()).toBeVisible({ timeout: 30_000 });
   const position = page.getByTestId('au-position');
   while (await position.count()) {
     const [at, of] = (await position.innerText()).split('/').map(s => Number(s.trim()));
@@ -92,7 +95,8 @@ async function play(page: Page, launchUrl: string, picks: string[] | null): Prom
     await expect(position).toContainText(`${at + 1} /`);
   }
   if (picks) {
-    await expect(page.getByTestId('au-quiz')).toBeVisible();
+    // The quiz opens after the AU reports `completed` to the LRS, a network round trip.
+    await expect(page.getByTestId('au-quiz')).toBeVisible({ timeout: 30_000 });
     for (const [i, letter] of picks.entries()) {
       await page.getByTestId(`au-q${i}-${letter}`).locator('input[type="radio"]').check();
     }

@@ -8,4 +8,4 @@ Standard library only, so it can be dropped onto an air-gapped image as-is (and 
 with PyInstaller for Windows).
 """
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"

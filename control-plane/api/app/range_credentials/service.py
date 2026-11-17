@@ -234,6 +234,16 @@ def restore_operation(snap: RangeSnapshot) -> str:
     return f"restore:{snap.id}"
 
 
+def restore_rotation_pending(db: Session, rng: Range, snap: RangeSnapshot) -> bool:
+    """Whether a password change this snapshot's restore queued is still being applied: the
+    rows tagged with its ``restore:<id>`` operation. It logs in with, and reverts to, the
+    passwords the snapshot recorded, so the snapshot may not be deleted until it settles."""
+    return db.query(RangeCredential.id).filter(
+        RangeCredential.range_id == rng.id, RangeCredential.tenant_id == rng.tenant_id,
+        RangeCredential.sealed_previous.is_not(None),
+        RangeCredential.pending_operation == restore_operation(snap)).first() is not None
+
+
 def any_pending(db: Session, rng: Range) -> bool:
     """Whether a change of any of the range's passwords is still being applied in the guests."""
     return db.query(RangeCredential.id).filter(RangeCredential.range_id == rng.id,
@@ -442,6 +452,13 @@ def rotate(db: Session, rng: Range, row: RangeCredential, user: CurrentUser, rea
 
         if why := guest_change_refusal(rng, row, _machine_kinds(db, rng)):
             raise HTTPException(409, f"Cannot rotate this account in the running range: {why}")
+        if not row.applied:
+            # No build or rotation ever verified this account in the guest. If this change
+            # failed, the worker's settle would record the pre-rotation value as applied
+            # (audit #443), the way on_restore skips such rows.
+            raise HTTPException(409, "This account's password has not been set in the guests yet (its machine may "
+                                     "still be setting up), so it cannot be rotated now; try again once the "
+                                     "machine is set up, or destroy and rebuild the range")
         ops.refuse_while_in_flight(db, rng, "rotate a password")
         restoring = db.query(RangeSnapshot.id).filter(RangeSnapshot.range_id == rng.id,
                                                       RangeSnapshot.snapshot_state == "restoring").first()

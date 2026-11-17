@@ -1229,8 +1229,28 @@ def sessions_in_window(
     return rows
 
 
-def console(db: Session, session: LabSession, node: str | None = None) -> dict[str, Any]:
+def enrollment_closed(db: Session, s: LabSession) -> bool:
+    """Every enrollment of the student in the lab's course is withdrawn or failed, as
+    release_for_student counts a closed enrollment. No enrollment (staff) is not closed."""
+    from ..course_releases.models import CourseRelease
+    from ..models import Enrollment, EnrollmentStatus
+
+    # tenant-safe: the release a session (already tenant- or token-checked) points at.
+    release = db.get(CourseRelease, s.release_id)
+    if release is None:
+        return False
+    mine = db.query(Enrollment).filter(Enrollment.user_id == s.user_id, Enrollment.course_id == release.course_id)
+    statuses = {e.status for e in mine}
+    return bool(statuses) and statuses <= {EnrollmentStatus.withdrawn, EnrollmentStatus.failed}
+
+
+def console(db: Session, session: LabSession, node: str | None = None, *, ws_base: str,
+            caller: Any) -> dict[str, Any]:
+    """A console grant for ``caller``, the signed-in user acting on the session (its Student, or
+    staff of the tenant), on one node (app/console_relay): ``kind`` ``rfb-ws`` and the ``url``
+    of TrueNorth's relay, which only that user can open. Asked again while the socket is open."""
     from ..console_backends import ConsoleError, get_console_backend
+    from ..console_relay import service as relay
 
     if session.state not in (READY, ACTIVE):
         raise LabRefusedError(f"the lab is {session.state}; the console opens once it is ready")
@@ -1244,7 +1264,13 @@ def console(db: Session, session: LabSession, node: str | None = None) -> dict[s
     if vm is None:
         raise LabRefusedError(f"{target} has no VM yet")
     try:
-        access = get_console_backend(session.backend).open(vm, db=db, rng=rng)  # the range's own vCenter
+        own = str(caller.id) == str(session.user_id)
+        access = relay.issue(db, get_console_backend(session.backend), user_id=uuid.UUID(str(caller.id)),
+                             tenant_id=session.tenant_id, rng=rng, vm=vm, view_only=False, observed=False,
+                             base=ws_base, audience=relay.STUDENT if own else relay.STAFF,
+                             lab_session_id=session.id)  # the range's own vCenter, at dial
+    except relay.GrantRefusedError as exc:
+        raise LabRefusedError(str(exc), exc.status) from exc
     except (ValueError, ConsoleError) as exc:
         raise LabRefusedError(str(exc), 502) from exc
     touch(db, session)

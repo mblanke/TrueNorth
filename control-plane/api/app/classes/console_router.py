@@ -15,8 +15,8 @@ POST /classes/{id}/sessions/{event_id}/live/console    as above, during the sess
 
 The rules are ``consoles.py``'s docstring. Another tenant's class or range, another Student's
 seat and a class the caller has no part in are 404; a Student asking for the live view is
-403. No endpoint here carries a credential: a console ticket is single-use and expires
-within a minute.
+403. No endpoint here carries a credential: a console is a grant on TrueNorth's own relay
+(``/ws/console/<grant>``, app/console_relay), five minutes and one socket at a time.
 """
 
 from __future__ import annotations
@@ -24,10 +24,11 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Request
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
+from ..console_relay import service as relay
 from ..db import get_db
 from ..models import Range, TeamMembership
 from ..rbac import Permission, require_permission
@@ -82,16 +83,18 @@ def list_my_range_consoles(
                502: {"description": "The hypervisor gave no console"}},
 )
 def open_my_range_console(
+    request: Request,
     range_id: uuid.UUID,
     vm: str = Path(..., pattern=MACHINE, description="The VM's name, as the list gives it"),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.CLASS_ATTEND)),
 ) -> ClassConsoleOut:
-    """A one-time console ticket on one of the Student's own machines, while a session of
+    """A console grant on one of the Student's own machines (``kind`` ``rfb-ws``, ``url`` the
+    ``wss://<tn>/ws/console/<grant>`` the browser opens signed in), while a session of
     the class using that range is live or within its provisioning lead. Audited
     (``range_console_open``, as ``student``), and counted as attendance evidence like opening
     the accounts.  **class:attend**"""
-    return ClassConsoleOut(**consoles.student_console(db, user, range_id, vm))
+    return ClassConsoleOut(**consoles.student_console(db, user, range_id, vm, relay.ws_base(request.headers)))
 
 
 # ── The live view (ADR 0014 §19) ─────────────────────────────────────────────
@@ -131,6 +134,10 @@ def get_class_session_live(
     range_ids = [r.id for r in seats.values()] + ([shared.id] if shared is not None else [])
     seen = consoles.last_seen(db, cls.tenant_id, [e.user_id for e in entries if e.user_id], range_ids,
                               as_utc(evt.start_time) - consoles.PROVISION_LEAD)
+    # An observer's console needs a hypervisor that enforces view-only (S4, #369, lifts this).
+    for_you = consoles.may_open_console(live.role) and (
+        live.role != consoles.ClassRole.observer
+        or any(consoles.view_only_supported(r) for r in [*seats.values(), *filter(None, [shared])]))
     students = []
     for e in entries:
         rng = seats.get(e.id) or shared
@@ -145,8 +152,8 @@ def get_class_session_live(
         class_id=cls.id, class_name=cls.name, event_id=evt.id, session_name=evt.name, start_time=start,
         end_time=end, range_mode=live.link.range_mode, role=live.role.value,
         live=evt.state in consoles.HOLDING and start <= now < end,
-        consoles_open=consoles.in_window(evt, now) and cls.status == "open" and consoles.may_open_console(live.role),
-        consoles_for_you=consoles.may_open_console(live.role),
+        consoles_open=consoles.in_window(evt, now) and cls.status == "open" and for_you,
+        consoles_for_you=for_you,
         view_only_consoles=any(consoles.view_only_supported(r) for r in [*seats.values(), *filter(None, [shared])]),
         shared_range=_range_out(db, shared) if shared is not None else None,
         students=students, generated_at=now,
@@ -162,6 +169,7 @@ def get_class_session_live(
                502: {"description": "The hypervisor gave no console"}},
 )
 def open_class_session_console(
+    request: Request,
     body: ClassConsoleIn,
     class_id: uuid.UUID,
     event_id: uuid.UUID,
@@ -174,4 +182,5 @@ def open_class_session_console(
     hypervisor enforces it, otherwise a normal console marked ``observed``.
     Audited (``range_console_open``, as ``observer`` or ``staff``)."""
     live = consoles.live_session(db, user, class_id, event_id)
-    return ClassConsoleOut(**consoles.staff_console(db, user, live, body.range_id, body.vm))
+    return ClassConsoleOut(**consoles.staff_console(db, user, live, body.range_id, body.vm,
+                                                    relay.ws_base(request.headers)))

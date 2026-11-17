@@ -39,9 +39,9 @@ Do not trust the `public_key` inside an export on its own: anyone can re-sign an
 document with their own key. Instead:
 
 1. Fetch the platform's keys from `GET /range-certification/signing-keys`
-   (`range:certification_read`). It lists every key that has ever signed an export, the
-   current one first (`current: true`). Retired keys stay listed, because their rows are
-   never deleted.
+   (`range:certification_read`). It lists every key that has ever signed an export, newest
+   first, the current one marked (`current: true`). Retired keys stay listed, because their
+   rows are never deleted.
 2. Record the current `key_id` out of band, as you do for the audit-log fingerprint in
    ADR 0011.
 3. Accept an export only if its `signature.key_id` is a key you trust and its signature

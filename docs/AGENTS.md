@@ -58,10 +58,10 @@ Output: concrete issues + recommended fixes + risk assessment.
 - Cite sources when generating documents from a knowledge base.
 
 ## Repo facts
-- Primary stack: Python (FastAPI, Celery, SQLAlchemy), Angular 17+ (Material M3), Terraform
+- Primary stack: Python (FastAPI, Celery, SQLAlchemy), Angular 21 (Material M3), Terraform
 - Package manager: pip (Python), npm (Angular)
 - Test command: pytest -q (Python), ng test (Angular)
-- Lint/format command: ruff check . && ruff format --check . (Python), ng lint (Angular)
+- Lint/format command: bash scripts/ruff-gate.sh (ruff check, baseline-ratcheted; ruff format --check is report-only in CI) (Python), ng lint (Angular)
 - Build command: docker compose -f infra/platform/docker/compose.dev.yml up --build
 - Deployment: Docker Compose (dev), Proxmox + Terraform (ranges)
 
@@ -76,7 +76,7 @@ Output: concrete issues + recommended fixes + risk assessment.
 - `.claude/agents/arc2-content-architect.md` — `01-blueprint/`: request, course, observable objectives, critical events. Binds a PO only when its crosswalk row is `todo`/`example` and no course already delivers it (otherwise `po_candidates` for Standards); crosswalk critical events are verbatim `;`-items of the row.
 - `.claude/agents/arc2-code-generator.md` — `02-content/`: course YAML, per-module `course-config.json` and learner pages; objective coverage is counted from its `files[]` entries.
 - `.claude/agents/arc2-range-engineer.md` — `03-range/`: a reused range or a new vSphere `range.tf` (fmt/validate only), and the defanged inject timeline with noise floor; offensive steps are `AUTHOR-REQUIRED`.
-- `.claude/agents/arc2-artifact-creator.md` — `04-artifacts/`: rubric, deliverable template, variant B, `xapi.json` (the only place NICE/DCWF identifiers go), instructor-only directory.
+- `.claude/agents/arc2-artifact-creator.md` — `04-artifacts/`: rubric, deliverable template, variant B, `xapi.json` (which, with the `01-blueprint/po_fit.md` crosswalk rows, is the only place NICE/DCWF identifiers go), instructor-only directory.
 - `.claude/agents/arc2-sensor-gateway.md` — `05-sensor/`: must-pass crit validators that fail on zero hits, a `manual_ack` summative that is never auto-scored, the engine scenario, the xAPI telemetry map.
 - `.claude/agents/arc2-qa-tester.md` — `06-qa/report.md` and the preview digest, from `check --dry-run`. `check` itself produces the findings and routes rework; the qa-tester owns no manifest keys.
 - `.claude/agents/arc2-package-builder.md` — `07-bundle/`: runs `arc2.cmi5 package` (the package is derived, never hand-written), lays out the TrueNorth bundle by destination, writes `PROMOTE.md`; only after QA pass and preview accept.
