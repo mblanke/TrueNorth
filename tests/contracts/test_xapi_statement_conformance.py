@@ -263,8 +263,14 @@ def _complete_and_capture(client, db_session, monkeypatch, *, max_score, points)
     # A Student on the exercise's team: results are about the Students, and an instructor
     # who completes it is not credited (#375), so with no Student there is no statement.
     tenant = db_session.get(Exercise, ex_id).tenant_id
-    student = User(id=uuid.uuid4(), keycloak_id=f"kc-{uuid.uuid4().hex[:6]}", email="s@example.org",
-                   display_name="Student", tenant_id=tenant, role=UserRole.student)
+    student = User(
+        id=uuid.uuid4(),
+        keycloak_id=f"kc-{uuid.uuid4().hex[:6]}",
+        email="s@example.org",
+        display_name="Student",
+        tenant_id=tenant,
+        role=UserRole.student,
+    )
     team = Team(id=uuid.uuid4(), name="Blue", tenant_id=tenant, exercise_id=ex_id)
     db_session.add_all([student, team])
     db_session.flush()

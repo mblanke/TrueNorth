@@ -39,9 +39,7 @@ TWO_VMS = "nodes:\n  - id: ws\n    os: win11\n    count: 2\n"  # 4 vCPU, 8 GB, 1
     reason="audit #443: tenant FIFO queue puts a class's own lab behind one self-serve lab "
     "waiting for site capacity (control-plane/api/app/lab_sessions/service.py:412)",
 )
-def test_a_class_own_lab_is_not_queued_behind_a_self_serve_lab_waiting_for_capacity(
-    request, db_session, monkeypatch
-):
+def test_a_class_own_lab_is_not_queued_behind_a_self_serve_lab_waiting_for_capacity(request, db_session, monkeypatch):
     """A Student on the roll call of a live class session draws on that session's hold
     (capacity_gate.own_booking) and is "not gated" (ADR 0014 §18): the class's capacity is
     already reserved. It must not wait its turn behind an older self-serve lab that is

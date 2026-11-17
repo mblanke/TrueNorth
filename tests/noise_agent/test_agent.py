@@ -295,8 +295,12 @@ def test_ftp_session_logs_in_anonymously_and_asks_where_it_is():
         for line in f:
             seen.append(line.strip().decode())
             cmd = seen[-1].split()[0].upper()
-            reply = {"USER": b"331 password please", "PASS": b"230 welcome", "PWD": b'257 "/pub" is current',
-                     "QUIT": b"221 bye"}.get(cmd, b"502 no")
+            reply = {
+                "USER": b"331 password please",
+                "PASS": b"230 welcome",
+                "PWD": b'257 "/pub" is current',
+                "QUIT": b"221 bye",
+            }.get(cmd, b"502 no")
             f.write(reply + b"\r\n")
             f.flush()
             if cmd == "QUIT":
@@ -331,7 +335,9 @@ def test_print_status_asks_over_ipp_and_submits_no_job():
         srv.server_close()
     body = seen["body"]
     assert seen["type"] == "application/ipp" and seen["path"] == "/ipp/print"
-    assert body[:2] == b"\x01\x01" and body[2:4] == b"\x00\x0b"  # IPP 1.1, Get-Printer-Attributes (not Print-Job 0x0002)
+    assert (
+        body[:2] == b"\x01\x01" and body[2:4] == b"\x00\x0b"
+    )  # IPP 1.1, Get-Printer-Attributes (not Print-Job 0x0002)
     assert body.endswith(b"\x03") and b"printer-uri" in body and b"attributes-charset" in body
 
 

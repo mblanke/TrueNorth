@@ -45,16 +45,29 @@ def lti_session_token(db_session, monkeypatch):
         db_session.add(Tenant(id=TENANT_A, name="t", slug="lti-ws"))
         db_session.flush()
     platform = ExternalPlatform(
-        id=uuid.uuid4(), name="Moodle", slug=f"moodle-{uuid.uuid4().hex[:6]}", platform_type="moodle",
-        base_url=ISSUER, auth_type=IntegrationAuthType.lti13, tenant_id=TENANT_A, lti_issuer=ISSUER,
-        lti_client_id="client-1", lti_deployment_id="dep-1", lti_auth_login_url=f"{ISSUER}/mod/lti/auth.php",
+        id=uuid.uuid4(),
+        name="Moodle",
+        slug=f"moodle-{uuid.uuid4().hex[:6]}",
+        platform_type="moodle",
+        base_url=ISSUER,
+        auth_type=IntegrationAuthType.lti13,
+        tenant_id=TENANT_A,
+        lti_issuer=ISSUER,
+        lti_client_id="client-1",
+        lti_deployment_id="dep-1",
+        lti_auth_login_url=f"{ISSUER}/mod/lti/auth.php",
         lti_jwks_url=f"{ISSUER}/mod/lti/certs.php",
     )
     db_session.add(platform)
     db_session.flush()
     student = User(
-        id=uuid.uuid4(), email="learner@lms.example.test", display_name="Learner", role=UserRole.student,
-        tenant_id=TENANT_A, keycloak_id=f"lti:{platform.id}:lms-7", is_active=True,
+        id=uuid.uuid4(),
+        email="learner@lms.example.test",
+        display_name="Learner",
+        role=UserRole.student,
+        tenant_id=TENANT_A,
+        keycloak_id=f"lti:{platform.id}:lms-7",
+        is_active=True,
     )
     db_session.add(student)
     db_session.commit()
@@ -74,14 +87,27 @@ def _grant(db, student) -> str:
     db.flush()
     vm = {"vm_id": "vm-1", "name": "abcdef12-ws1", "node_id": "ws1", "status": "running"}
     rng = Range(
-        id=uuid.uuid4(), name="r", template_id=tpl.id, tenant_id=TENANT_A, state=RangeState.ready,
-        provisioner_backend="mock", provisioner_output=json.dumps({"vms": [vm]}),
+        id=uuid.uuid4(),
+        name="r",
+        template_id=tpl.id,
+        tenant_id=TENANT_A,
+        state=RangeState.ready,
+        provisioner_backend="mock",
+        provisioner_output=json.dumps({"vms": [vm]}),
     )
     db.add(rng)
     db.commit()
     access = service.issue(
-        db, MockConsole(), user_id=student.id, tenant_id=TENANT_A, rng=rng, vm=vm, view_only=False,
-        observed=False, base=BASE, audience="student",
+        db,
+        MockConsole(),
+        user_id=student.id,
+        tenant_id=TENANT_A,
+        rng=rng,
+        vm=vm,
+        view_only=False,
+        observed=False,
+        base=BASE,
+        audience="student",
     )
     db.commit()
     assert access["kind"] == "rfb-ws"

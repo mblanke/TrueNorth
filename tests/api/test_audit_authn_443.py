@@ -81,14 +81,29 @@ def lti_world(db_session, monkeypatch):
     db_session.add(Tenant(id=TENANT, name="t-443", slug="t-443"))
     db_session.flush()
     platform = ExternalPlatform(
-        id=uuid.uuid4(), name="Moodle", slug=f"moodle-{uuid.uuid4().hex[:8]}", platform_type="moodle",
-        base_url=ISSUER, auth_type=IntegrationAuthType.lti13, tenant_id=TENANT, lti_issuer=ISSUER,
-        lti_client_id="client-1", lti_deployment_id="dep-1",
-        lti_auth_login_url=f"{ISSUER}/mod/lti/auth.php", lti_jwks_url=f"{ISSUER}/mod/lti/certs.php")
+        id=uuid.uuid4(),
+        name="Moodle",
+        slug=f"moodle-{uuid.uuid4().hex[:8]}",
+        platform_type="moodle",
+        base_url=ISSUER,
+        auth_type=IntegrationAuthType.lti13,
+        tenant_id=TENANT,
+        lti_issuer=ISSUER,
+        lti_client_id="client-1",
+        lti_deployment_id="dep-1",
+        lti_auth_login_url=f"{ISSUER}/mod/lti/auth.php",
+        lti_jwks_url=f"{ISSUER}/mod/lti/certs.php",
+    )
     db_session.add(platform)
     student = User(
-        id=uuid.uuid4(), email="lms-7@example.test", display_name="lms-7", role=UserRole.student,
-        tenant_id=TENANT, keycloak_id=f"lti:{platform.id}:lms-7", is_active=True)
+        id=uuid.uuid4(),
+        email="lms-7@example.test",
+        display_name="lms-7",
+        role=UserRole.student,
+        tenant_id=TENANT,
+        keycloak_id=f"lti:{platform.id}:lms-7",
+        is_active=True,
+    )
     db_session.add(student)
     db_session.commit()
     token = lti_session.mint_session_token(db_session, student, platform, 600)
@@ -98,8 +113,10 @@ def lti_world(db_session, monkeypatch):
 # ── Finding 1 — ws_auth.py:55: WebSocket handshake refuses LTI session tokens ─────────
 
 
-@pytest.mark.xfail(strict=True, reason="audit #443: WebSocket handshake refuses LTI session tokens "
-                                        "(control-plane/api/app/ws_auth.py:55)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: WebSocket handshake refuses LTI session tokens (control-plane/api/app/ws_auth.py:55)",
+)
 def test_ws_channel_accepts_an_lti_session_token(client, lti_world, db_session):
     """Audit #443 finding 1 (control-plane/api/app/ws_auth.py:55, medium): the WebSocket
     handshake refuses LTI session tokens — Moodle-launched Students cannot open any console
@@ -122,17 +139,22 @@ def test_ws_channel_accepts_an_lti_session_token(client, lti_world, db_session):
             ws.send_json({"action": "room_members", "room_id": "not-a-room"})
             assert ws.receive_json() == {"type": "error", "detail": "room not allowed"}
     except WebSocketDisconnect as e:
-        pytest.fail(f"the handshake refused the LTI session token: closed {e.code} {e.reason!r}; "
-                    f"the same token signs the Student in over HTTP")
+        pytest.fail(
+            f"the handshake refused the LTI session token: closed {e.code} {e.reason!r}; "
+            f"the same token signs the Student in over HTTP"
+        )
     assert student.keycloak_id.startswith("lti:")
 
 
 # ── Finding 2 — ws_auth.py:55: a console grant the relay can never accept ─────────────
 
 
-@pytest.mark.xfail(strict=True, reason="audit #443: an LTI-session Student can be issued a console "
-                                        "grant over HTTP that the relay WebSocket can never accept "
-                                        "(control-plane/api/app/ws_auth.py:55)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: an LTI-session Student can be issued a console "
+    "grant over HTTP that the relay WebSocket can never accept "
+    "(control-plane/api/app/ws_auth.py:55)",
+)
 def test_the_console_grant_an_lti_student_gets_opens(client, lti_world, db_session, monkeypatch):
     """Audit #443 finding 2 (control-plane/api/app/ws_auth.py:55, medium): an LTI-session
     Student can be issued a console grant over HTTP that the relay WebSocket can never
@@ -147,8 +169,15 @@ def test_the_console_grant_an_lti_student_gets_opens(client, lti_world, db_sessi
     db_session.add(tpl)
     db_session.flush()
     vm = {"vm_id": "vm-1", "name": "abcdef12-ws1", "node_id": "ws1", "status": "running"}
-    rng = Range(id=uuid.uuid4(), name="r", template_id=tpl.id, tenant_id=TENANT, state=RangeState.ready,
-                provisioner_backend="mock", provisioner_output=json.dumps({"vms": [vm]}))
+    rng = Range(
+        id=uuid.uuid4(),
+        name="r",
+        template_id=tpl.id,
+        tenant_id=TENANT,
+        state=RangeState.ready,
+        provisioner_backend="mock",
+        provisioner_output=json.dumps({"vms": [vm]}),
+    )
     db_session.add(rng)
     db_session.commit()
     monkeypatch.setattr(policy, "check", lambda db, grant, user: policy.Verdict(True))
@@ -156,13 +185,23 @@ def test_the_console_grant_an_lti_student_gets_opens(client, lti_world, db_sessi
     # HTTP: the dependency behind the console endpoints accepts the token ...
     from fastapi.security import HTTPAuthorizationCredentials
 
-    ident = asyncio.run(auth.get_token_identity(
-        HTTPAuthorizationCredentials(scheme="Bearer", credentials=token), db_session))
+    ident = asyncio.run(
+        auth.get_token_identity(HTTPAuthorizationCredentials(scheme="Bearer", credentials=token), db_session)
+    )
     assert ident.sub == student.keycloak_id
 
     # ... so the console it names must open with the same token, not close 1008.
-    access = service.issue(db_session, MockConsole(), user_id=student.id, tenant_id=TENANT, rng=rng, vm=vm,
-                           view_only=False, observed=False, base="wss://tn.test")
+    access = service.issue(
+        db_session,
+        MockConsole(),
+        user_id=student.id,
+        tenant_id=TENANT,
+        rng=rng,
+        vm=vm,
+        view_only=False,
+        observed=False,
+        base="wss://tn.test",
+    )
     db_session.commit()
     grant = access["url"].rsplit("/", 1)[1]
     from app.console_backends.mock import RFB_GREETING
@@ -171,16 +210,21 @@ def test_the_console_grant_an_lti_student_gets_opens(client, lti_world, db_sessi
         with client.websocket_connect(f"/ws/console/{grant}", subprotocols=["bearer", token]) as ws:
             assert ws.receive_bytes() == RFB_GREETING
     except WebSocketDisconnect as e:
-        pytest.fail(f"the relay refused the grant's own user: closed {e.code} {e.reason!r}; "
-                    f"the grant was issued to this very session over HTTP")
+        pytest.fail(
+            f"the relay refused the grant's own user: closed {e.code} {e.reason!r}; "
+            f"the grant was issued to this very session over HTTP"
+        )
 
 
 # ── Finding 3 — ws_auth.py:59: an IdP outage is reported as "not allowed" ─────────────
 
 
-@pytest.mark.xfail(strict=True, reason="audit #443: a Keycloak outage with a cold JWKS cache is "
-                                        "reported to WebSocket clients as 'not allowed' (1008) "
-                                        "instead of 'service unavailable' (control-plane/api/app/ws_auth.py:59)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: a Keycloak outage with a cold JWKS cache is "
+    "reported to WebSocket clients as 'not allowed' (1008) "
+    "instead of 'service unavailable' (control-plane/api/app/ws_auth.py:59)",
+)
 def test_an_idp_outage_is_not_reported_as_not_allowed(client, monkeypatch):
     """Audit #443 finding 3 (control-plane/api/app/ws_auth.py:59, low): a Keycloak outage
     with a cold JWKS cache is reported to WebSocket clients as 'not allowed' (1008) instead
@@ -195,13 +239,14 @@ def test_an_idp_outage_is_not_reported_as_not_allowed(client, monkeypatch):
 
     class IdpDown:
         async def validate_token(self, token):
-            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
-                                "Authentication service temporarily unavailable")
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Authentication service temporarily unavailable")
 
     monkeypatch.setattr(auth, "AUTH_DISABLED", False)
     monkeypatch.setattr(auth, "get_auth_backend", lambda: IdpDown())
-    with pytest.raises(WebSocketDisconnect) as e, client.websocket_connect(
-            f"/ws/tenant.{TENANT}", subprotocols=["bearer", "good-kc-a"]):
+    with (
+        pytest.raises(WebSocketDisconnect) as e,
+        client.websocket_connect(f"/ws/tenant.{TENANT}", subprotocols=["bearer", "good-kc-a"]),
+    ):
         pass
     assert e.value.code == 1013, f"an IdP outage closed as {e.value.code}, not 1013"
 
@@ -209,9 +254,12 @@ def test_an_idp_outage_is_not_reported_as_not_allowed(client, monkeypatch):
 # ── Finding 4 — rbac.py:413: require_tenant_access cannot see the path parameter ──────
 
 
-@pytest.mark.xfail(strict=True, reason="audit #443: require_tenant_access cannot see the path "
-                                        "parameter it checks; it passes every cross-tenant request "
-                                        "if ever used (control-plane/api/app/rbac.py:413)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: require_tenant_access cannot see the path "
+    "parameter it checks; it passes every cross-tenant request "
+    "if ever used (control-plane/api/app/rbac.py:413)",
+)
 def test_require_tenant_access_rejects_a_cross_tenant_request():
     """Audit #443 finding 4 (control-plane/api/app/rbac.py:413, low): require_tenant_access
     cannot see the path parameter it checks; it passes every cross-tenant request if ever
@@ -226,8 +274,9 @@ def test_require_tenant_access_rejects_a_cross_tenant_request():
 
     mine = "22222222-2222-2222-2222-222222222222"
     other = "11111111-1111-1111-1111-111111111111"
-    user = auth.CurrentUser(id="u1", email="i@example.test", display_name="i", role=UserRole.instructor,
-                            tenant_id=mine, keycloak_id="kc-i")
+    user = auth.CurrentUser(
+        id="u1", email="i@example.test", display_name="i", role=UserRole.instructor, tenant_id=mine, keycloak_id="kc-i"
+    )
 
     def _db():
         yield object()  # the instructor is no platform admin: is_platform_admin never reads it
@@ -242,5 +291,6 @@ def test_require_tenant_access_rejects_a_cross_tenant_request():
     app.dependency_overrides[rbac.get_db] = _db
     with TestClient(app) as c:
         r = c.get(f"/tenants/{other}/users")
-    assert r.status_code == status.HTTP_403_FORBIDDEN, \
+    assert r.status_code == status.HTTP_403_FORBIDDEN, (
         f"expected 403 for a cross-tenant request, got {r.status_code}: {r.text}"
+    )

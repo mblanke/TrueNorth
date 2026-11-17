@@ -106,14 +106,10 @@ class TestAIConfigPlatformBoundary:
         db_session.commit()
         with acting_as(UserRole.admin, tenant=OTHER_TENANT):
             assert client.get("/ai-config/backends").status_code == 403
-            assert (
-                client.patch(f"/ai-config/backends/{backend.id}", json={"base_url": ATTACKER}).status_code == 403
-            )
+            assert client.patch(f"/ai-config/backends/{backend.id}", json={"base_url": ATTACKER}).status_code == 403
             assert client.delete(f"/ai-config/backends/{backend.id}").status_code == 403
 
-    def test_tenant_admin_cannot_exfiltrate_the_platform_key_via_test_generate(
-        self, client, db_session, monkeypatch
-    ):
+    def test_tenant_admin_cannot_exfiltrate_the_platform_key_via_test_generate(self, client, db_session, monkeypatch):
         """ai_config.py:51 (high): the same admin repoints base_url at a host they choose
         and POSTs /ai-config/test-generate, which unseals the stored key (ai_config.py
         test_generate) and posts it as a Bearer header to that host
@@ -132,9 +128,7 @@ class TestAIConfigPlatformBoundary:
                 assert resp.status_code == 403, resp.text
                 assert route.called is False, "the platform AI key was posted to the repointed URL"
 
-    def test_tenant_admin_cannot_mine_the_key_through_set_primary_or_discover(
-        self, client, db_session, monkeypatch
-    ):
+    def test_tenant_admin_cannot_mine_the_key_through_set_primary_or_discover(self, client, db_session, monkeypatch):
         """ai_config.py:51 (high): the same missing platform-admin gate lets a tenant
         admin set their tenant's backend primary (redirecting every tenant's
         test-generate) and run fleet discovery, which probes an attacker-chosen URL with
@@ -361,6 +355,7 @@ class TestRequireTenantAccess:
         from app import rbac
         from fastapi import Depends, FastAPI
         from fastapi.testclient import TestClient
+
         who = CurrentUser(
             id=str(uuid.uuid4()),
             email="instructor@example.test",
