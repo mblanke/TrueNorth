@@ -1,15 +1,15 @@
 """A scenario's objectives, materialised as Objective rows on the exercise that runs it.
 
-The exercise's Objective rows are what it is scored on: the run sends them to the worker
-(``ref_id`` is what the mock runner marks achieved), a Student's detection is judged
-against them (ADR 0005, app/detections/credit.py), and the AAR reports them. An exercise
+The exercise's Objective rows are what it is scored on: an instructor judges each one
+(ADR 0020, app/exercise_judging.py), Students' detections are recorded against them as
+evidence (app/detections/evidence.py), and the AAR reports them. An exercise
 created through ``POST /exercises`` got none, so it scored 0/0 with an empty AAR (PR #28);
 only the forge and QSP paths made rows.
 
 ``parse`` reads the scenario YAML's ``objectives`` list (``id``, ``type``, ``validator``,
 ``params``, ``points``; see scenario-engine/examples/*.yaml) into row values. Validators are
 written in their canonical spelling (app/detections/names.py); params are kept as JSON so
-the answer key travels with the row. An entry that is not a mapping is skipped, one with
+the instructor's look-for guidance travels with the row. An entry that is not a mapping is skipped, one with
 no id gets ``obj-<n>``, a repeated id is skipped (scoring is by ``ref_id``), and an
 unknown type counts as a deliverable, so a scenario with a typo still runs.
 """

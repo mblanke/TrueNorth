@@ -75,8 +75,8 @@ def test_an_observed_objective_scores_against_the_range_index():
     assert store.indices == {"range-rx,range-rx-*"}
 
 
-def test_the_runner_searches_the_range_indices_credit_reads():
-    from app.detections.credit import range_index
+def test_the_runner_searches_the_range_indices_the_api_reads():
+    from app.detections.evidence import range_index
 
     scenario = _observed(yaml.safe_load((ROOT / "content/scenarios/apt-nation-state/scenario.yaml").read_text()), "detect_phish")
     store = _Recording([])

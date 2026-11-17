@@ -3,16 +3,17 @@
 Everything you need to take a class or a self-serve lab on TrueNorth Range. Your instructor's
 side is in [04-instructor-guide.md](04-instructor-guide.md).
 
-Checked against `main` at `fd4f79a6` (2026-10-27, v1.2.0); the sign-out, welcome, My classes,
-Console and "Labs are busy" parts were reconciled with `main` at `353339c2` (2026-11-02). The
-rest was not re-read end to end.
+Checked end to end against the source at `d5851f6d` (2026-11-07). Earlier checks: `main` at
+`fd4f79a6` (2026-10-27, v1.2.0); the sign-out, welcome, My classes, Console and "Labs are
+busy" parts reconciled at `353339c2` (2026-11-02); the Console and lab-console parts at
+`eec53906` (2026-11-05).
 
 ---
 
 ## 1. Sign in
 
 1. Open `https://<your-site>/` and press **Sign in with SSO**.
-2. Sign in with your **normal domain account**. TrueNorth has no password of its own; change
+2. Sign in with your **normal domain account** (your username, not `user@domain`). TrueNorth has no password of its own; change
    your password the usual way for your domain.
 3. What happens next:
    - **Your instructor put you on a class roll call:** you go straight in. There is no form
@@ -29,7 +30,8 @@ The **Sign out** button is in the top bar. Use it to end your session on a share
 Before anything else you see the **Rules of use**:
 
 1. Read them to the end. **I agree** stays greyed out until you scroll to the bottom.
-2. Press **I agree**, then **Continue**.
+2. Press **I agree**. The page moves on by itself. (If you had already signed and were only
+   re-reading, you see a **Continue** button instead.)
 
 You sign again when the rules change and once a year. The rules tell you that **your sessions
 may be observed**, including your live screens and consoles.
@@ -74,11 +76,16 @@ When **Join** is greyed out, the reason is shown:
 | "Your range could not be built. Your instructor can rebuild it." | Failed: tell your instructor |
 
 **Console.** Next to **Join** is **Console**. It lists **Your machines**, the machines you are
-given accounts on. Press a machine to get a one-time "Console ticket" with its address, valid
-for a short time; open that address in your browser. Consoles open **during your session, from shortly before it
-starts** (for a shared range, once the session is under way). Until then the buttons are
-greyed out and the page says "Your console opens during your session…". Like your accounts,
-opening a console is recorded and counts for your attendance.
+given accounts on. Press a machine and its console opens on the page: a live picture of the
+machine's screen, with your keyboard and mouse. The picture is relayed through TrueNorth —
+your browser never connects to the machines' hosts. The console link is good for **five
+minutes** to connect (the page counts it down); **Reconnect** asks for a fresh one, so press
+it if the picture does not come up. A console left idle for **ten minutes** closes; press
+**Reconnect** to open it again. The toolbar has **Send Ctrl-Alt-Del**, **Reconnect** and
+**Full screen**. Consoles open **during your session, from shortly before it starts** (for a
+shared range, once the session is under way). Until then the buttons are greyed out and the
+page says "Your console opens during your session…". Like your accounts, opening a console is
+recorded and counts for your attendance.
 
 **Lost seat.** If you hadn't signed in by **2 hours after your class's first session
 started**, you lose your seat, but only if you had been told to sign in (an onboarding or
@@ -93,8 +100,9 @@ Some modules have labs you start yourself, without a class:
 1. In your course on Moodle, open the activity **Start lab: <module>**. (In TrueNorth:
    **Learn → Learning → Courses → <course> → Open in Moodle**.)
 2. The **Lab** page opens. It shows **Building your lab…**, then **Your lab is ready.**
-3. Use **Open console**, **Reset** (back to the start; your changes in the lab are lost) or
-   **End lab**. Your accounts are on the same page.
+3. Use **Open console** — the machine's screen opens on the page, like a class console —
+   **Reset** (back to the start; your changes in the lab are lost) or **End lab**. Your
+   accounts are on the same page.
 
 **"Labs are busy, next free at HH:MM"** means the lab machines are all in use, by classes and
 other labs. Start the lab again from your course at that time. The time is in the site's time
@@ -127,12 +135,13 @@ it. No lab runs longer than **7 days**. Work you submitted is kept either way.
 Name: ____________________   Class: ____________________   Site: ____________________
 
 [ ] Signed in with my domain account (Sign in with SSO)
-[ ] Read the Rules of use to the end → I agree → Continue
+[ ] Read the Rules of use to the end → I agree
 [ ] Learn → My classes: my class is listed; chips say Onboarded, Rules of use signed,
     Seat ready
-[ ] During the session: My classes → Console → my machine (opens from just before it starts)
+[ ] During the session: My classes → Console → my machine's screen (opens on the page, from
+    just before it starts)
 [ ] EVERY session: My classes → Join (this records my attendance)
-[ ] Join greyed out? Read the reason: building / paused / shared range / failed
+[ ] Join greyed out? Read the reason: not built / building / paused / shared range / failed
 [ ] Self-serve lab: Moodle → Start lab → Lab page; used within 4 h, or it closes
 [ ] "Labs are busy, next free at HH:MM" (site time) → try again then
 [ ] Lost seat? → ask my instructor to reinstate me

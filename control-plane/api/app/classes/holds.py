@@ -62,6 +62,29 @@ def kind_of(mode: str) -> str:
     return ClassRangeKind.seat.value if mode == RangeMode.individual.value else ClassRangeKind.shared.value
 
 
+def has_hold(db: Session, cls: Class) -> bool:
+    """Whether the class holds capacity at all (the same sessions ``holds`` builds from: in
+    ``NEEDS_RANGES`` with a template, on a range of the class's own). Such a hold runs to the
+    class's last day, so moving ``end_date`` later stretches it."""
+    # tenant-safe: the class is already resolved in the caller's tenant; this reads its own rows.
+    rows = (
+        db.query(ScheduledEvent.range_id, ClassSession.range_mode)
+        .join(ClassSession, ClassSession.event_id == ScheduledEvent.id)
+        .filter(
+            ClassSession.class_id == cls.id,
+            ScheduledEvent.tenant_id == cls.tenant_id,
+            ScheduledEvent.state.in_(NEEDS_RANGES),
+            ScheduledEvent.template_id.isnot(None),
+        )
+        .all()
+    )
+    if not rows:
+        return False
+    owned = {rid for (rid,) in db.query(ClassRange.range_id).filter(
+        ClassRange.class_id == cls.id, ClassRange.range_id.isnot(None)).all()}
+    return any(mode == RangeMode.individual.value or rid is None or rid in owned for rid, mode in rows)
+
+
 def holds(db: Session, start: datetime, end: datetime) -> list[Hold]:
     """Every class hold that meets [start, end). Cluster-wide, like the bookings it replaces."""
     start, end = _aware(start), _aware(end)

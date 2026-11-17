@@ -24,7 +24,7 @@ describe('ExerciseDetailComponent detections', () => {
   });
   const attempts: Detection[] = [{
     id: 'd1', objective_ref: 'DET-1', user_id: 'u-1', query: 'q', submitted_at: null,
-    verdict: 'missed', events_matched: 4, on_target: 1, precision: 0.25,
+    verdict: 'recorded', events_matched: 4,
   }];
 
   async function render(role: string, state = 'running'): Promise<HTMLElement> {
@@ -137,11 +137,36 @@ describe('ExerciseDetailComponent detections', () => {
     });
   });
 
-  it('gives staff the full attempts table', async () => {
+  describe('judging (ADR 0020)', () => {
+    const ackButtons = (el: HTMLElement) =>
+      Array.from(el.querySelectorAll('tn-judge-objective button')).filter(b => b.textContent?.includes('Acknowledge'));
+
+    it('lets an instructor acknowledge each open objective while the exercise runs', async () => {
+      expect(ackButtons(await render('instructor')).length).toBe(2);
+    });
+
+    it('offers no judging to a Student or once the exercise has ended', async () => {
+      expect(ackButtons(await render('student')).length).toBe(0);
+      fixture.destroy();
+      TestBed.resetTestingModule();
+      expect(ackButtons(await render('instructor', 'completed')).length).toBe(0);
+    });
+
+    it('lists the objective\'s recorded submissions to cite', async () => {
+      const el = await render('instructor');
+      (ackButtons(el)[0] as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(el.querySelectorAll('tn-judge-objective mat-checkbox').length).toBe(1);
+    });
+  });
+
+    it('gives staff every submission with the Student who made it', async () => {
     const el = await render('instructor');
-    Array.from(el.querySelectorAll('button')).find(b => b.textContent?.includes('Attempts (1)'))!.click();
+    Array.from(el.querySelectorAll('button')).find(b => b.textContent?.includes('Submissions (1)'))!.click();
     fixture.detectChanges();
-    expect(el.querySelector('td.precision')?.textContent?.trim()).toBe('25%');
+    const headers = Array.from(el.querySelectorAll('.det-table th')).map(h => h.textContent?.trim());
+    expect(headers).toContain('Student');
+    expect(el.querySelector('td.v')?.textContent?.trim()).toBe('Recorded');
   });
 });
 

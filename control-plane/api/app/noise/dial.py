@@ -12,14 +12,18 @@ PRESETS: dict[str, int] = {"quiet": 10, "office": 40, "busy": 70, "chaos": 95}
 
 # Everyday activity kinds and their base share of traffic. Personas' habits multiply in.
 BASE_MIX: dict[str, float] = {
-    "web_browse": 0.32,
-    "dns_lookup": 0.18,
-    "email_send": 0.10,
-    "email_read": 0.12,
-    "file_share": 0.14,
+    "web_browse": 0.28,
+    "dns_lookup": 0.16,
+    "email_send": 0.09,
+    "email_read": 0.10,
+    "file_share": 0.12,
     "ad_logon": 0.06,
-    "ssh_admin": 0.04,
-    "ntp_sync": 0.04,
+    "ssh_admin": 0.03,
+    "ntp_sync": 0.03,
+    "icmp_ping": 0.04,  # somebody pings a server to see whether it is up
+    "rdp_connect": 0.03,  # an admin opens a remote desktop to a server
+    "ftp_session": 0.02,  # an old-school file drop
+    "print_status": 0.04,  # a workstation asks the print server what the queue looks like
 }
 
 # Benign actions that look like an attack. Only personas flagged for them perform them,
