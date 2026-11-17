@@ -2,6 +2,12 @@
 
 How TrueNorth's AI features are powered by the local, air-gapped GPU engine.
 
+> **Live-host state, not repository fact.** The model names, ports and GPU layout below
+> describe one site's GPU host and cannot be verified from this repository; the code only
+> reads `AI_*_MODEL` settings (default alias `agent`). Check the host before relying on any
+> row. The Qwen target layout and cutover are historical planning and are not approved for
+> new installs: approved models follow site policy (see guide 02, Appendix C).
+
 ## What the AI is for (and what it is NOT)
 
 The GPU engine is an **author-time content engine** used by a small number of

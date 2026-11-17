@@ -10,8 +10,8 @@ Releasing: `docs/release.md`.
   runs on PRs into it, and releases are tags on it. Local `main` and `github/main` have
   diverged before, so check `git rev-list --left-right --count main...github/main` before
   branching "from main". `feat/aar-pdf-designer-xapi` is an old line, not the base.
-- **Release status:** `v1.2.0` is not tagged yet (`v1.1.0` was released 2026-10-09). The
-  newest candidate is `v1.2.0-rc19` (tagged 2026-11-05 UTC, commit `d96f8074`). Verify with
+- **Release status:** `v1.2.0` is not tagged yet (`v1.1.0` was released 2026-10-09). Check the newest
+  candidate with
   `git for-each-ref --sort=-v:refname refs/tags | head`; do not copy a "newest" tag into
   prose without re-running it. The classes, approval and calendar work (ADR 0014, #277,
   #291–#312) are in `v1.2.0-rc18` and later candidates (`git merge-base --is-ancestor

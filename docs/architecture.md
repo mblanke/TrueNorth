@@ -673,12 +673,12 @@ TrueNorth Range enforces tenant isolation at every layer of the stack:
 
 | Layer | Isolation Mechanism |
 |-------|-------------------|
-| **Authentication** | Shared Keycloak realm (`truenorth`) with a `tenant_id` claim in the token |
+| **Authentication** | Shared Keycloak realm (`truenorth`); tenant and role come from the `users` row matched on `sub`, not from token claims |
 | **API** | All queries filtered by `user.tenant_id`; admin role bypasses |
 | **Database** | `tenant_id` FK on all core tables; composite indexes for performance |
 | **Object Storage** | MinIO shared buckets (`curriculum`, `ranges`, `tickets`); no per-tenant buckets |
 | **Telemetry** | OpenSearch index per range: `range-{range_id}` (and `range-{range_id}-*`) |
-| **Network** | VLAN segmentation per range in Proxmox |
+| **Network** | VLAN segmentation per range on vSphere (Proxmox support is legacy) |
 | **RBAC** | Fine-grained permissions mapped to 5 roles per tenant |
 | **Audit** | All actions logged with `tenant_id` and `user_id` |
 
@@ -715,21 +715,21 @@ graph TB
     end
 
     subgraph "Proxmox Cluster"
-        subgraph "Range A (its own VLAN, 100-4000)"
+        subgraph "Range A (its own VLAN from the pool, default 100-199)"
             A_DC["Domain Controller"]
             A_WS["Workstations (5)"]
             A_SRV["File Server"]
             A_FW["pfSense Firewall"]
         end
 
-        subgraph "Range B (its own VLAN, 100-4000)"
+        subgraph "Range B (its own VLAN from the pool, default 100-199)"
             B_DC["Domain Controller"]
             B_WS["Workstations (10)"]
             B_SRV["Web Server"]
             B_FW["pfSense Firewall"]
         end
 
-        subgraph "Management (VLAN 10)"
+        subgraph "Management (site VLANs, reserved 30-32)"
             MGMT["Platform Services<br/>API, DB, Redis"]
         end
     end
@@ -751,8 +751,7 @@ graph TB
 |------|--------|-------------|--------|---------|
 | Management access † | Platform VLAN | Range VLAN | Allow (SSH, WinRM) | Provisioning and telemetry — design intent, see note |
 | Range isolation | Range VLAN A | Range VLAN B | Deny | Prevent cross-range access |
-| Internet egress | Range VLAN | Internet | Configurable | Controlled internet access |
-| Sensor reporting | Range VLAN | OpenSearch | Allow (9200) | Telemetry shipping |
+| Internet egress | Range VLAN | Internet | Deny, except the depot (8081, 3142) | Nothing else leaves the range |
 | DNS resolution | Range VLAN | DNS Server | Allow (53) | Name resolution |
 
 > The "Management access" row is design intent: no SSH/WinRM allow rule is defined

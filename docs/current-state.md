@@ -1,9 +1,8 @@
 # TrueNorth — Current State
 
 **Header and the "Classes and calendars" row refreshed 2026-11-05 on `github/main`
-(`280a838b`, through #422); the other rows are from 2026-10-11 (`ce254a18`, #142).** The
-newest tag is `v1.2.0-rc19` (tagged 2026-11-05 UTC, `d96f8074`; re-check with
-`git for-each-ref --sort=-v:refname refs/tags | head` before quoting it). `v1.2.0-rc18`
+(`280a838b`, through #422); the other rows are from 2026-10-11 (`ce254a18`, #142).** Find the
+newest tag with `git for-each-ref --sort=-v:refname refs/tags | head` (do not quote one here). `v1.2.0-rc18`
 and later candidates contain ADR 0014 and the classes work
 (`git merge-base --is-ancestor 35c4cece v1.2.0-rc18`). `v1.2.0` is not tagged (`v1.1.0`
 was released 2026-10-09). How each role uses the product: `docs/guides/03-admin-first-day.md`,

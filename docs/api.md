@@ -1316,7 +1316,7 @@ All four routes return the same **`GenerateResponse`** envelope:
 {
   "task": "detection-rule",
   "model_used": "llama3.1:70b-instruct-q5_K_M",
-  "node_used": "wile",
+  "node_used": "gpu-node-1",
   "backend": "ollama",
   "output": "...",
   "usage": {"prompt_tokens": 15, "completion_tokens": 120},
