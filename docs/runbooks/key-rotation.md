@@ -18,7 +18,8 @@ Fernet). It is a comma-separated list: the **first** key seals, **every** key un
 1. Generate: `openssl rand -hex 32`.
 2. Put the new key first, keep the old one: `TN_SECRETS_KEY=<new>,<old>` — in the vault
    (`vault_secrets_key`) and the env file. The api and **every** worker must get the same value.
-3. Restart the services that read it: `dc up -d api worker-provision worker-scenario worker-telemetry`.
+3. Restart the services that read it: `dc up -d api worker-provision worker-scenario
+   worker-telemetry beat`.
    New and re-saved values are now sealed with `<new>`; old ones still open.
 4. Re-seal: re-save each credential (admin UI: hypervisor connections, AI engines), or run
    the one-off re-seal if the release has one. Check none is still sealed only with `<old>`:
@@ -40,9 +41,10 @@ need the old key: keep it in escrow until those backups have aged out.
 1. Keycloak admin → realm `truenorth` → Realm settings → Keys → Providers → add a new
    `rsa-generated` provider with a **higher priority** than the current one. Both keys are
    now published; new tokens are signed with the new one.
-2. The API caches the JWKS **per process and never refreshes it**, so it will reject tokens
-   signed with the new key until restarted: `dc restart api` (and anything else validating
-   tokens). Do this immediately after step 1.
+2. The API caches the JWKS per process and refreshes it on its own: when a token names an
+   unknown kid (at most once every 30 s, `JWKS_MIN_REFRESH_SECONDS`) or after 10 min
+   (`JWKS_CACHE_TTL_SECONDS`, `auth_backends/jwks_cache.py`). Tokens signed with the new key
+   verify without a restart; while a refresh fails, the cache keeps serving the keys it has.
 3. After the longest token/session lifetime (realm → Sessions/Tokens; default ≤ 10 h for SSO
    sessions), set the old provider to passive, then delete it a week later.
 
@@ -102,7 +104,7 @@ The API never holds the Keycloak master admin: it calls the Admin API (`/ad-sync
 | Secret | Where | How |
 |---|---|---|
 | `POSTGRES_PASSWORD`, `KEYCLOAK_DB_PASSWORD`, `LRS_DB_PASSWORD` | persisted secret (+ vault) | `playbooks/rotate-secret.yml` (above). By hand without the installer: `ALTER ROLE <role> PASSWORD '<new>'` via `dc exec -T postgres psql`, update env, `dc up -d` the dependants. |
-| `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | env + vault | root credentials: update env, `dc up -d minio api worker-*`. Backups read them from the env file, nothing else to change. |
+| `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | env + vault | root credentials: update env, `dc up -d minio api`. Backups read them from the env file, nothing else to change. |
 | `REDIS_PASSWORD` | env + vault | update env, `dc up -d redis api worker-* flower` (Redis content is transient). |
 | `JWT_SECRET`, `CSRF_SECRET` | env + vault | update env, `dc up -d api`; users are logged out. |
 | Backup escrow key pair | `BACKUP_ESCROW_PUBKEY` on the host; private key offline | new pair per backup-restore.md; switch the public key; keep the old private key until every backup sealed to it has aged out (the manifest's `recipient_sha256` says which). |
