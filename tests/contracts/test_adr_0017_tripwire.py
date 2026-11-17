@@ -76,18 +76,34 @@ def _tenant(db: Session) -> uuid.UUID:
 
 
 def _admin(db: Session, tenant: uuid.UUID) -> CurrentUser:
-    u = User(id=uuid.uuid4(), email=f"tw-{uuid.uuid4().hex[:8]}@example.test", display_name="Tripwire Admin",
-             role=UserRole.admin, tenant_id=tenant, keycloak_id=f"kc-{uuid.uuid4().hex[:8]}")
+    u = User(
+        id=uuid.uuid4(),
+        email=f"tw-{uuid.uuid4().hex[:8]}@example.test",
+        display_name="Tripwire Admin",
+        role=UserRole.admin,
+        tenant_id=tenant,
+        keycloak_id=f"kc-{uuid.uuid4().hex[:8]}",
+    )
     db.add(u)
     db.flush()
-    return CurrentUser(id=str(u.id), email=u.email, display_name=u.display_name, role=u.role,
-                       tenant_id=str(u.tenant_id), keycloak_id=u.keycloak_id)
+    return CurrentUser(
+        id=str(u.id),
+        email=u.email,
+        display_name=u.display_name,
+        role=u.role,
+        tenant_id=str(u.tenant_id),
+        keycloak_id=u.keycloak_id,
+    )
 
 
 def _range_template(db: Session, tenant: uuid.UUID, name: str) -> Template:
-    t = Template(id=uuid.uuid4(), name=name, version="1.0",
-                 yaml=f"name: {name}\nnodes:\n  - id: ws01\n    os: ubuntu-2404\n  - id: dc01\n    os: srv2022\n",
-                 tenant_id=tenant)
+    t = Template(
+        id=uuid.uuid4(),
+        name=name,
+        version="1.0",
+        yaml=f"name: {name}\nnodes:\n  - id: ws01\n    os: ubuntu-2404\n  - id: dc01\n    os: srv2022\n",
+        tenant_id=tenant,
+    )
     db.add(t)
     db.flush()
     return t
@@ -95,8 +111,13 @@ def _range_template(db: Session, tenant: uuid.UUID, name: str) -> Template:
 
 def _scenario(db: Session, tenant: uuid.UUID, tmpl: Template, *, by_name: bool = False) -> Scenario:
     ref = tmpl.name if by_name else str(tmpl.id)
-    s = Scenario(id=uuid.uuid4(), name=f"Tripwire scenario {uuid.uuid4().hex[:6]}", version="1.0",
-                 yaml=f"name: Tripwire scenario\nrange_template: {ref}\nobjectives: []\n", tenant_id=tenant)
+    s = Scenario(
+        id=uuid.uuid4(),
+        name=f"Tripwire scenario {uuid.uuid4().hex[:6]}",
+        version="1.0",
+        yaml=f"name: Tripwire scenario\nrange_template: {ref}\nobjectives: []\n",
+        tenant_id=tenant,
+    )
     db.add(s)
     db.flush()
     return s
@@ -111,36 +132,93 @@ def _range(db: Session, tenant: uuid.UUID, tmpl: Template) -> Range:  # noqa: F8
     return rng
 
 
-def _ex_template(db: Session, tenant: uuid.UUID, sc: Scenario | None, rt: Template | None, *,
-                 name: str = "Tripwire drill") -> ExerciseTemplate:
+def _ex_template(
+    db: Session, tenant: uuid.UUID, sc: Scenario | None, rt: Template | None, *, name: str = "Tripwire drill"
+) -> ExerciseTemplate:
     row = ExerciseTemplate(
-        id=uuid.uuid4(), name=name, description="Respond to the intrusion.", revision=1, tenant_id=tenant,
-        scenario_id=sc.id if sc is not None else None, range_template_id=rt.id if rt is not None else None,
+        id=uuid.uuid4(),
+        name=name,
+        description="Respond to the intrusion.",
+        revision=1,
+        tenant_id=tenant,
+        scenario_id=sc.id if sc is not None else None,
+        range_template_id=rt.id if rt is not None else None,
         teams=[{"name": "Blue", "side": "blue", "min_students": 2, "max_students": 6}],
-        objectives=[{"ref": "O1", "text": "Detect the phish", "moe": "within 15 minutes", "competency_code": "DCWF-1"},
-                    {"ref": "O2", "text": "Contain the host", "moe": "", "competency_code": ""}],
-        mesl=[{"serial": i, "phase": "D1", "scenario_time": f"D1 09{i}0", "title": f"Serial {i}", "description": "",
-               "objective_ref": "O1" if i == 1 else "", "attack_technique": "T1566" if i == 1 else "",
-               "delivery_method": "email" if i == 1 else "white_cell", "from_cell": "OPFOR",
-               "to_participant": "Blue", "expected_action": "Report it", "moe": ""} for i in (1, 2, 3)],
-        roles=[{"name": "Analyst", "description": "Triage alerts", "team": "Blue", "min_participants": 2,
-                "max_participants": 12, "default_count": 4, "vm_profile": [{"node_type": "ubuntu-2404", "count": 1}]}],
-        scaling_rules=[{"name": "Targets", "node_type": "srv2022", "kind": "per_participants", "count": 1, "per": 4,
-                        "role": "Analyst", "segment": ""}],
-        instructor_notes="The notes are the answer key.", tags=["DFIR"], created_by=None)
+        objectives=[
+            {"ref": "O1", "text": "Detect the phish", "moe": "within 15 minutes", "competency_code": "DCWF-1"},
+            {"ref": "O2", "text": "Contain the host", "moe": "", "competency_code": ""},
+        ],
+        mesl=[
+            {
+                "serial": i,
+                "phase": "D1",
+                "scenario_time": f"D1 09{i}0",
+                "title": f"Serial {i}",
+                "description": "",
+                "objective_ref": "O1" if i == 1 else "",
+                "attack_technique": "T1566" if i == 1 else "",
+                "delivery_method": "email" if i == 1 else "white_cell",
+                "from_cell": "OPFOR",
+                "to_participant": "Blue",
+                "expected_action": "Report it",
+                "moe": "",
+            }
+            for i in (1, 2, 3)
+        ],
+        roles=[
+            {
+                "name": "Analyst",
+                "description": "Triage alerts",
+                "team": "Blue",
+                "min_participants": 2,
+                "max_participants": 12,
+                "default_count": 4,
+                "vm_profile": [{"node_type": "ubuntu-2404", "count": 1}],
+            }
+        ],
+        scaling_rules=[
+            {
+                "name": "Targets",
+                "node_type": "srv2022",
+                "kind": "per_participants",
+                "count": 1,
+                "per": 4,
+                "role": "Analyst",
+                "segment": "",
+            }
+        ],
+        instructor_notes="The notes are the answer key.",
+        tags=["DFIR"],
+        created_by=None,
+    )
     db.add(row)
     db.flush()
     return row
 
 
-def _made_from(db: Session, et: ExerciseTemplate, tenant: uuid.UUID, *, score: int = 80,
-               state: ExerciseState = ExerciseState.completed) -> Exercise:
+def _made_from(
+    db: Session,
+    et: ExerciseTemplate,
+    tenant: uuid.UUID,
+    *,
+    score: int = 80,
+    state: ExerciseState = ExerciseState.completed,
+) -> Exercise:
     """A completed exercise made from ``et`` on a range built from its range template."""
     rt = db.get(Template, et.range_template_id)
     rng = _range(db, tenant, rt)
-    ex = Exercise(id=uuid.uuid4(), name=f"Made {uuid.uuid4().hex[:4]}", kind="collective", range_id=rng.id,
-                  scenario_id=et.scenario_id, state=state, tenant_id=tenant, total_score=score, max_score=100,
-                  completed_at=NOW)
+    ex = Exercise(
+        id=uuid.uuid4(),
+        name=f"Made {uuid.uuid4().hex[:4]}",
+        kind="collective",
+        range_id=rng.id,
+        scenario_id=et.scenario_id,
+        state=state,
+        tenant_id=tenant,
+        total_score=score,
+        max_score=100,
+        completed_at=NOW,
+    )
     db.add(ex)
     db.flush()
     db.add(ExerciseTemplateUse(exercise_id=ex.id, template_id=et.id, template_revision=et.revision, tenant_id=tenant))
@@ -149,9 +227,19 @@ def _made_from(db: Session, et: ExerciseTemplate, tenant: uuid.UUID, *, score: i
 
 
 def _review(db: Session, et: ExerciseTemplate) -> ContentReviewItem:
-    r = ContentReviewItem(id=uuid.uuid4(), tenant_id=et.tenant_id, item_type="exercise_template",
-                          item_id=str(et.id), title=et.name, theme_ids=[], stale=False, stale_reasons=[],
-                          retired=False, due_at=NOW + timedelta(days=60), last_reviewed_at=NOW - timedelta(days=5))
+    r = ContentReviewItem(
+        id=uuid.uuid4(),
+        tenant_id=et.tenant_id,
+        item_type="exercise_template",
+        item_id=str(et.id),
+        title=et.name,
+        theme_ids=[],
+        stale=False,
+        stale_reasons=[],
+        retired=False,
+        due_at=NOW + timedelta(days=60),
+        last_reviewed_at=NOW - timedelta(days=5),
+    )
     db.add(r)
     db.flush()
     return r
@@ -159,11 +247,25 @@ def _review(db: Session, et: ExerciseTemplate) -> ContentReviewItem:
 
 def _core_payload(**over):
     base: dict = {
-        "name": "Tripwire core", "description": "",
+        "name": "Tripwire core",
+        "description": "",
         "teams": [{"name": "Blue", "side": "blue", "min_students": 1, "max_students": 4}],
-        "roles": [{"name": "Analyst", "description": "", "team": "Blue", "min_participants": 1,
-                   "max_participants": 4, "default_count": 2, "vm_profile": [{"node_type": "ws", "count": 1}]}],
-        "scaling_rules": [], "objectives": [], "mesl": [], "instructor_notes": "", "tags": [],
+        "roles": [
+            {
+                "name": "Analyst",
+                "description": "",
+                "team": "Blue",
+                "min_participants": 1,
+                "max_participants": 4,
+                "default_count": 2,
+                "vm_profile": [{"node_type": "ws", "count": 1}],
+            }
+        ],
+        "scaling_rules": [],
+        "objectives": [],
+        "mesl": [],
+        "instructor_notes": "",
+        "tags": [],
     }
     base.update(over)
     return base
@@ -177,8 +279,19 @@ def test_the_record_holds_exactly_the_reusable_parts(db_session):
     sizing rules (9 below), the instructor's notes and tags."
     """
     columns = {c.name for c in ExerciseTemplate.__table__.columns}
-    assert {"name", "description", "objectives", "mesl", "scenario_id", "range_template_id", "teams", "roles",
-            "scaling_rules", "instructor_notes", "tags"} <= columns
+    assert {
+        "name",
+        "description",
+        "objectives",
+        "mesl",
+        "scenario_id",
+        "range_template_id",
+        "teams",
+        "roles",
+        "scaling_rules",
+        "instructor_notes",
+        "tags",
+    } <= columns
     # "the MESL (without delivery status)": the MESL entry schema has no status field at all
     import app.exercise_templates.schemas as schemas
 
@@ -192,11 +305,18 @@ def test_collective_only_no_kind_field_and_no_course_link(db_session):
     course's ``lab_range``."
     """
     assert "kind" not in {c.name for c in ExerciseTemplate.__table__.columns}
-    fk_targets = {fk.column.table.name for t in (ExerciseTemplate.__table__, ExerciseTemplateUse.__table__)
-                  for fk in t.foreign_keys}
+    fk_targets = {
+        fk.column.table.name
+        for t in (ExerciseTemplate.__table__, ExerciseTemplateUse.__table__)
+        for fk in t.foreign_keys
+    }
     assert fk_targets == {"tenants", "users", "scenarios", "templates", "exercises", "exercise_templates"}
-    referencing = {fk.parent.table.name for t in ExerciseTemplate.metadata.tables.values()
-                   for fk in t.foreign_keys if fk.column.table.name == "exercise_templates"}
+    referencing = {
+        fk.parent.table.name
+        for t in ExerciseTemplate.metadata.tables.values()
+        for fk in t.foreign_keys
+        if fk.column.table.name == "exercise_templates"
+    }
     assert referencing == {"exercise_template_uses"}
 
 
@@ -224,14 +344,17 @@ def test_creating_an_exercise_copies_objectives_and_mesl_and_records_the_revisio
     rng = _range(db_session, t, rt)
     who = _admin(db_session, t)
 
-    out = et_service.create_exercise(db_session, who, et.id,
-                                     ExerciseFromTemplateIn(name="New drill", range_id=rng.id, max_score=None))
+    out = et_service.create_exercise(
+        db_session, who, et.id, ExerciseFromTemplateIn(name="New drill", range_id=rng.id, max_score=None)
+    )
     ex = db_session.get(Exercise, out.id)
     assert ex is not None
     assert ex.kind == "collective"
     objectives = db_session.query(ExerciseObjective).filter_by(exercise_id=ex.id).order_by(ExerciseObjective.ordinal)
-    assert [(o.ref, o.text, o.ordinal) for o in objectives] == [("O1", "Detect the phish", 0),
-                                                                ("O2", "Contain the host", 1)]
+    assert [(o.ref, o.text, o.ordinal) for o in objectives] == [
+        ("O1", "Detect the phish", 0),
+        ("O2", "Contain the host", 1),
+    ]
     mesl = db_session.query(MeslEvent).filter_by(exercise_id=ex.id).order_by(MeslEvent.serial).all()
     assert [m.serial for m in mesl] == [1, 2, 3]
     assert {m.status for m in mesl} == {"planned"}
@@ -247,8 +370,15 @@ def test_an_exercise_made_by_hand_has_no_row(db_session):
     t = _tenant(db_session)
     rt = _range_template(db_session, t, "Hand lab")
     rng = _range(db_session, t, rt)
-    hand = Exercise(id=uuid.uuid4(), name="Hand made", kind="collective", range_id=rng.id, tenant_id=t,
-                    state=ExerciseState.pending, max_score=100)
+    hand = Exercise(
+        id=uuid.uuid4(),
+        name="Hand made",
+        kind="collective",
+        range_id=rng.id,
+        tenant_id=t,
+        state=ExerciseState.pending,
+        max_score=100,
+    )
     db_session.add(hand)
     db_session.flush()
     assert db_session.query(ExerciseTemplateUse).filter_by(exercise_id=hand.id).first() is None
@@ -271,13 +401,15 @@ def test_the_range_must_be_the_callers_and_built_from_the_templates_range_templa
     wrong_build = _range(db_session, t, stranger_rt)  # ours, but built from another template
 
     with pytest.raises(HTTPException) as refused:
-        et_service.create_exercise(db_session, who, et.id,
-                                   ExerciseFromTemplateIn(name="x", range_id=stranger_range.id, max_score=None))
+        et_service.create_exercise(
+            db_session, who, et.id, ExerciseFromTemplateIn(name="x", range_id=stranger_range.id, max_score=None)
+        )
     assert refused.value.status_code == 422
     assert "range not found" in refused.value.detail
     with pytest.raises(HTTPException) as mismatch:
-        et_service.create_exercise(db_session, who, et.id,
-                                   ExerciseFromTemplateIn(name="x", range_id=wrong_build.id, max_score=None))
+        et_service.create_exercise(
+            db_session, who, et.id, ExerciseFromTemplateIn(name="x", range_id=wrong_build.id, max_score=None)
+        )
     assert mismatch.value.status_code == 422
     assert "was not built from range template 'Proof lab'" in mismatch.value.detail
 
@@ -292,16 +424,21 @@ def test_editing_rises_the_revision_and_leaves_made_exercises_alone(db_session):
     et = _ex_template(db_session, t, sc, rt)
     who = _admin(db_session, t)
     rng = _range(db_session, t, rt)
-    out = et_service.create_exercise(db_session, who, et.id,
-                                     ExerciseFromTemplateIn(name="Drill", range_id=rng.id, max_score=None))
-    before_objectives = [(o.ref, o.text) for o in db_session.query(ExerciseObjective)
-                         .filter_by(exercise_id=out.id).order_by(ExerciseObjective.ordinal)]
+    out = et_service.create_exercise(
+        db_session, who, et.id, ExerciseFromTemplateIn(name="Drill", range_id=rng.id, max_score=None)
+    )
+    before_objectives = [
+        (o.ref, o.text)
+        for o in db_session.query(ExerciseObjective).filter_by(exercise_id=out.id).order_by(ExerciseObjective.ordinal)
+    ]
 
     et_service.update(db_session, who, et.id, ExerciseTemplateUpdate(name="Renamed drill"))
 
     assert et.revision == 2
-    assert [(o.ref, o.text) for o in db_session.query(ExerciseObjective).filter_by(exercise_id=out.id)
-            .order_by(ExerciseObjective.ordinal)] == before_objectives
+    assert [
+        (o.ref, o.text)
+        for o in db_session.query(ExerciseObjective).filter_by(exercise_id=out.id).order_by(ExerciseObjective.ordinal)
+    ] == before_objectives
     use = db_session.query(ExerciseTemplateUse).filter_by(exercise_id=out.id).one()
     assert use.template_revision == 1  # the revision the exercise came from
 
@@ -338,9 +475,11 @@ def test_another_tenants_private_template_is_a_404_and_never_changed_by_them(db_
     db_session.flush()
     stranger = _admin(db_session, other)
 
-    for call in (lambda: et_service.get_visible(db_session, stranger, et.id),
-                 lambda: et_service.update(db_session, stranger, et.id, ExerciseTemplateUpdate(name="hijacked")),
-                 lambda: et_service.delete(db_session, stranger, et.id)):
+    for call in (
+        lambda: et_service.get_visible(db_session, stranger, et.id),
+        lambda: et_service.update(db_session, stranger, et.id, ExerciseTemplateUpdate(name="hijacked")),
+        lambda: et_service.delete(db_session, stranger, et.id),
+    ):
         with pytest.raises(HTTPException) as e:
             call()
         assert e.value.status_code == 404
@@ -370,17 +509,31 @@ def test_every_endpoint_needs_exercise_create(db_session):
     """ADR 0017 §4: "All endpoints need ``exercise:create`` (admins, instructors), reads
     included, because the MESL and the notes are the answer key ... No new permission." """
     tree = ast.parse(ROUTER_SRC)
-    endpoints = [node for node in tree.body
-                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                 and any(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute)
-                         and isinstance(d.func.value, ast.Name) and d.func.value.id == "router"
-                         for d in node.decorator_list)]
+    endpoints = [
+        node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and any(
+            isinstance(d, ast.Call)
+            and isinstance(d.func, ast.Attribute)
+            and isinstance(d.func.value, ast.Name)
+            and d.func.value.id == "router"
+            for d in node.decorator_list
+        )
+    ]
     assert len(endpoints) >= 8, "the exercise-template router lost endpoints"
     for node in endpoints:
         defaults = node.args.defaults + [d for d in node.args.kw_defaults if d is not None]
-        guarded = [d for d in defaults if isinstance(d, ast.Call) and isinstance(d.func, ast.Name)
-                   and d.func.id == "Depends" and d.args and isinstance(d.args[0], ast.Name)
-                   and d.args[0].id == "_STAFF"]
+        guarded = [
+            d
+            for d in defaults
+            if isinstance(d, ast.Call)
+            and isinstance(d.func, ast.Name)
+            and d.func.id == "Depends"
+            and d.args
+            and isinstance(d.args[0], ast.Name)
+            and d.args[0].id == "_STAFF"
+        ]
         assert guarded, f"route {node.name} does not depend on _STAFF (exercise:create)"
     assert ROUTER_SRC.count("require_permission(") == 1, "a new permission appeared"
     assert "_STAFF = require_permission(Permission.EXERCISE_CREATE)" in ROUTER_SRC
@@ -395,13 +548,22 @@ def test_save_as_template_copies_a_collective_exercise(db_session):
     sc = _scenario(db_session, t, rt)
     who = _admin(db_session, t)
     rng = _range(db_session, t, rt)
-    ex = Exercise(id=uuid.uuid4(), name="Collective drill", kind="collective", range_id=rng.id, scenario_id=sc.id,
-                  tenant_id=t, state=ExerciseState.completed, max_score=100)
+    ex = Exercise(
+        id=uuid.uuid4(),
+        name="Collective drill",
+        kind="collective",
+        range_id=rng.id,
+        scenario_id=sc.id,
+        tenant_id=t,
+        state=ExerciseState.completed,
+        max_score=100,
+    )
     db_session.add(ex)
     db_session.flush()
     db_session.add(ExerciseObjective(exercise_id=ex.id, ref="O1", text="Detect the phish", ordinal=0))
-    db_session.add(MeslEvent(exercise_id=ex.id, serial=1, phase="D1", title="Serial 1", status="planned",
-                             delivery_method="email"))
+    db_session.add(
+        MeslEvent(exercise_id=ex.id, serial=1, phase="D1", title="Serial 1", status="planned", delivery_method="email")
+    )
     db_session.flush()
 
     saved = et_service.save_exercise(db_session, who, ex.id, ExerciseSaveAsTemplateIn(name="Saved drill"))
@@ -412,8 +574,15 @@ def test_save_as_template_copies_a_collective_exercise(db_session):
     assert [m["serial"] for m in saved.mesl] == [1]
     assert db_session.query(ExerciseTemplateUse).filter_by(template_id=saved.id).first() is None
 
-    lone = Exercise(id=uuid.uuid4(), name="Individual practical", kind="assessment", range_id=rng.id, tenant_id=t,
-                    state=ExerciseState.completed, max_score=100)
+    lone = Exercise(
+        id=uuid.uuid4(),
+        name="Individual practical",
+        kind="assessment",
+        range_id=rng.id,
+        tenant_id=t,
+        state=ExerciseState.completed,
+        max_score=100,
+    )
     db_session.add(lone)
     db_session.flush()
     with pytest.raises(HTTPException) as refused:
@@ -457,8 +626,17 @@ def test_used_means_made_from_the_current_revision_on_a_matching_range(db_sessio
     # an exercise merely on the same range proves nothing: no use row, no evidence
     rt2 = db_session.get(Template, et.range_template_id)
     rng = _range(db_session, t, rt2)
-    bystander = Exercise(id=uuid.uuid4(), name="Bystander", kind="collective", range_id=rng.id, tenant_id=t,
-                         state=ExerciseState.completed, total_score=80, max_score=100, completed_at=NOW)
+    bystander = Exercise(
+        id=uuid.uuid4(),
+        name="Bystander",
+        kind="collective",
+        range_id=rng.id,
+        tenant_id=t,
+        state=ExerciseState.completed,
+        total_score=80,
+        max_score=100,
+        completed_at=NOW,
+    )
     db_session.add(bystander)
     db_session.flush()
     assert proven.exercise_template_use(db_session, et, scope).met is False
@@ -468,12 +646,22 @@ def test_used_means_made_from_the_current_revision_on_a_matching_range(db_sessio
     # range template
     other_rt = _range_template(db_session, t, "Other proven lab")
     wrong_range = _range(db_session, t, other_rt)
-    wrong = Exercise(id=uuid.uuid4(), name="Wrong build", kind="collective", range_id=wrong_range.id, tenant_id=t,
-                     state=ExerciseState.completed, total_score=80, max_score=100, completed_at=NOW)
+    wrong = Exercise(
+        id=uuid.uuid4(),
+        name="Wrong build",
+        kind="collective",
+        range_id=wrong_range.id,
+        tenant_id=t,
+        state=ExerciseState.completed,
+        total_score=80,
+        max_score=100,
+        completed_at=NOW,
+    )
     db_session.add(wrong)
     db_session.flush()
-    db_session.add(ExerciseTemplateUse(exercise_id=wrong.id, template_id=et.id, template_revision=et.revision,
-                                       tenant_id=t))
+    db_session.add(
+        ExerciseTemplateUse(exercise_id=wrong.id, template_id=et.id, template_revision=et.revision, tenant_id=t)
+    )
     db_session.flush()
     assert proven.exercise_template_use(db_session, et, scope).met is False
 
@@ -516,9 +704,22 @@ def test_the_import_content_is_the_strict_model_plus_the_two_keys(db_session):
     assert content_fields == set(CORE_FIELDS) | {"scenario", "range_template"}
     assert not content_fields & {"tenant_id", "is_public", "revision", "created_by"}
     with pytest.raises(ValidationError):
-        ExerciseTemplateContent.model_validate(_core_payload(name="Too big", roles=[{
-            "name": "Crowd", "description": "", "team": "Blue", "min_participants": 0, "max_participants": 0,
-            "default_count": 400, "vm_profile": [{"node_type": "ws", "count": 3}]}]))  # 1200 VMs > the 1000 cap
+        ExerciseTemplateContent.model_validate(
+            _core_payload(
+                name="Too big",
+                roles=[
+                    {
+                        "name": "Crowd",
+                        "description": "",
+                        "team": "Blue",
+                        "min_participants": 0,
+                        "max_participants": 0,
+                        "default_count": 400,
+                        "vm_profile": [{"node_type": "ws", "count": 3}],
+                    }
+                ],
+            )
+        )  # 1200 VMs > the 1000 cap
 
 
 # ── decision 9: roles and sizing rules ───────────────────────────────────────────────
@@ -526,26 +727,45 @@ def test_roles_and_rules_are_consistent(db_session):
     """ADR 0017 §9: "The record only guarantees they are consistent (min <= default <= max,
     unique names, teams and roles referenced exist, a step size where one is needed)." """
     with pytest.raises(ValidationError):
-        ExerciseTemplateCore.model_validate(_core_payload(roles=[_core_payload()["roles"][0]
-                                                 | {"min_participants": 3, "default_count": 2}]))
+        ExerciseTemplateCore.model_validate(
+            _core_payload(roles=[_core_payload()["roles"][0] | {"min_participants": 3, "default_count": 2}])
+        )
     with pytest.raises(ValidationError):
-        ExerciseTemplateCore.model_validate(_core_payload(roles=[_core_payload()["roles"][0]
-                                                 | {"default_count": 5}]))  # default above max 4
+        ExerciseTemplateCore.model_validate(
+            _core_payload(roles=[_core_payload()["roles"][0] | {"default_count": 5}])
+        )  # default above max 4
     with pytest.raises(ValidationError, match="which the template lacks"):
         ExerciseTemplateCore.model_validate(_core_payload(roles=[_core_payload()["roles"][0] | {"team": "Red"}]))
     with pytest.raises(ValidationError, match="which the template lacks"):
-        ExerciseTemplateCore.model_validate(_core_payload(scaling_rules=[
-            {"name": "Targets", "node_type": "ws", "kind": "per_participants", "count": 1, "per": 2,
-             "role": "Nobody"}]))
+        ExerciseTemplateCore.model_validate(
+            _core_payload(
+                scaling_rules=[
+                    {
+                        "name": "Targets",
+                        "node_type": "ws",
+                        "kind": "per_participants",
+                        "count": 1,
+                        "per": 2,
+                        "role": "Nobody",
+                    }
+                ]
+            )
+        )
     with pytest.raises(ValidationError, match="a role is listed twice"):
         analyst = _core_payload()["roles"][0]
         ExerciseTemplateCore.model_validate(_core_payload(roles=[analyst, analyst | {"team": ""}]))
     with pytest.raises(ValidationError, match="needs per"):
-        ExerciseTemplateCore.model_validate(_core_payload(scaling_rules=[
-            {"name": "Targets", "node_type": "ws", "kind": "per_participants", "count": 1, "per": 0, "role": ""}]))
+        ExerciseTemplateCore.model_validate(
+            _core_payload(
+                scaling_rules=[
+                    {"name": "Targets", "node_type": "ws", "kind": "per_participants", "count": 1, "per": 0, "role": ""}
+                ]
+            )
+        )
     with pytest.raises(ValidationError, match="which the template lacks"):
-        ExerciseTemplateCore.model_validate(_core_payload(mesl=[
-            {"serial": 1, "title": "Serial 1", "objective_ref": "O9"}]))
+        ExerciseTemplateCore.model_validate(
+            _core_payload(mesl=[{"serial": 1, "title": "Serial 1", "objective_ref": "O9"}])
+        )
 
 
 def test_node_types_must_exist_in_the_range_template(db_session):
@@ -555,8 +775,17 @@ def test_node_types_must_exist_in_the_range_template(db_session):
     rt = _range_template(db_session, t, "Node lab")  # builds ubuntu-2404 and srv2022
     good = _ex_template(db_session, t, None, rt)
     bad = _ex_template(db_session, t, None, rt, name="Broken drill")
-    bad.roles = [{"name": "Analyst", "description": "", "team": "Blue", "min_participants": 1, "max_participants": 4,
-                  "default_count": 2, "vm_profile": [{"node_type": "gpu-box", "count": 1}]}]
+    bad.roles = [
+        {
+            "name": "Analyst",
+            "description": "",
+            "team": "Blue",
+            "min_participants": 1,
+            "max_participants": 4,
+            "default_count": 2,
+            "vm_profile": [{"node_type": "gpu-box", "count": 1}],
+        }
+    ]
 
     assert proven.sizing_problems(good, [rt]) == []
     problems = proven.sizing_problems(bad, [rt])
@@ -618,16 +847,19 @@ def test_writers_lock_the_template_row(db_session):
     (``SELECT ... FOR UPDATE``, read as it is now), so two writers never share a revision
     number." """
     tree = ast.parse(SERVICE_SRC)
-    functions = {node.name: ast.get_source_segment(SERVICE_SRC, node) for node in tree.body
-                 if isinstance(node, ast.FunctionDef)}
+    functions = {
+        node.name: ast.get_source_segment(SERVICE_SRC, node) for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
     lock = functions["lock_visible"]
     assert "with_for_update()" in lock and "populate_existing()" in lock
     for name in ("update", "delete", "create_exercise"):
         assert "lock_visible(" in functions[name], f"{name} does not lock the template row"
     importer_tree = ast.parse((API_DIR / "app/content_port/importer.py").read_text(encoding="utf-8"))
-    importer_functions = {node.name: ast.get_source_segment((API_DIR / "app/content_port/importer.py")
-                          .read_text(encoding="utf-8"), node) for node in importer_tree.body
-                          if isinstance(node, ast.FunctionDef)}
+    importer_functions = {
+        node.name: ast.get_source_segment((API_DIR / "app/content_port/importer.py").read_text(encoding="utf-8"), node)
+        for node in importer_tree.body
+        if isinstance(node, ast.FunctionDef)
+    }
     assert ".with_for_update()" in importer_functions["_write_exercise_template"]
 
 
@@ -637,14 +869,34 @@ def test_caps_are_counted_exactly_as_the_adr_says(db_session, monkeypatch):
     each participant's VMs are the sum of its VM profile counts ... **total VMs** is the worst
     case of the roles plus the scaling rules ... ``per_segment`` rule: ``count x
     MAX_SEGMENTS`` ... ``per_participants`` rule: ``count x ceil(people / per)``."""
-    crowd = {"name": "Crowd", "description": "", "team": "Blue", "min_participants": 0, "max_participants": 0,
-             "default_count": 6, "vm_profile": [{"node_type": "ws", "count": 1}]}  # unlimited: counts at 6
-    few = {"name": "Few", "description": "", "team": "Blue", "min_participants": 0, "max_participants": 2,
-           "default_count": 1, "vm_profile": [{"node_type": "srv", "count": 2}]}
-    sensor = {"name": "Sensor", "node_type": "srv", "kind": "per_segment", "count": 1, "per": 0, "role": "",
-              "segment": ""}
-    targets = {"name": "Targets", "node_type": "ws", "kind": "per_participants", "count": 1, "per": 4,
-               "role": "Crowd"}
+    crowd = {
+        "name": "Crowd",
+        "description": "",
+        "team": "Blue",
+        "min_participants": 0,
+        "max_participants": 0,
+        "default_count": 6,
+        "vm_profile": [{"node_type": "ws", "count": 1}],
+    }  # unlimited: counts at 6
+    few = {
+        "name": "Few",
+        "description": "",
+        "team": "Blue",
+        "min_participants": 0,
+        "max_participants": 2,
+        "default_count": 1,
+        "vm_profile": [{"node_type": "srv", "count": 2}],
+    }
+    sensor = {
+        "name": "Sensor",
+        "node_type": "srv",
+        "kind": "per_segment",
+        "count": 1,
+        "per": 0,
+        "role": "",
+        "segment": "",
+    }
+    targets = {"name": "Targets", "node_type": "ws", "kind": "per_participants", "count": 1, "per": 4, "role": "Crowd"}
 
     # people 6 + 2 = 8; per-participant VMs 1 and 2; roles 6*1 + 2*2 = 10; sensor 1*10; targets ceil(6/4)=2 → 22
     ExerciseTemplateCore.model_validate(_core_payload(roles=[crowd, few], scaling_rules=[sensor, targets]))
@@ -667,16 +919,30 @@ def test_caps_are_counted_exactly_as_the_adr_says(db_session, monkeypatch):
     monkeypatch.delenv("TN_EXERCISE_TEMPLATE_MAX_SEGMENTS")
     monkeypatch.delenv("TN_EXERCISE_TEMPLATE_MAX_VMS")
     # per_participants: whole steps of ``per`` — ceil(2/4) = 1 step, not 0
-    small = {"name": "Crowd", "description": "", "team": "Blue", "min_participants": 0, "max_participants": 0,
-             "default_count": 2, "vm_profile": [{"node_type": "ws", "count": 1}]}
+    small = {
+        "name": "Crowd",
+        "description": "",
+        "team": "Blue",
+        "min_participants": 0,
+        "max_participants": 0,
+        "default_count": 2,
+        "vm_profile": [{"node_type": "ws", "count": 1}],
+    }
     ExerciseTemplateCore.model_validate(_core_payload(roles=[small], scaling_rules=[targets]))
     monkeypatch.setenv("TN_EXERCISE_TEMPLATE_MAX_VMS", "2")  # roles 2 + targets 1 = 3
     with pytest.raises(ValidationError, match="add up to 3 VMs; the limit is 2"):
         ExerciseTemplateCore.model_validate(_core_payload(roles=[small], scaling_rules=[targets]))
     monkeypatch.delenv("TN_EXERCISE_TEMPLATE_MAX_VMS")
     # the default total-VM cap is 1000, and 1000 is allowed
-    full = {"name": "Full", "description": "", "team": "Blue", "min_participants": 0, "max_participants": 500,
-            "default_count": 500, "vm_profile": [{"node_type": "ws", "count": 2}]}
+    full = {
+        "name": "Full",
+        "description": "",
+        "team": "Blue",
+        "min_participants": 0,
+        "max_participants": 500,
+        "default_count": 500,
+        "vm_profile": [{"node_type": "ws", "count": 2}],
+    }
     ExerciseTemplateCore.model_validate(_core_payload(roles=[full]))  # 500 * 2 = 1000 = the default cap
     assert limit("MAX_VMS", 1000) == 1000
 
@@ -689,15 +955,27 @@ def test_an_import_rechecks_that_the_relinks_still_agree(db_session):
     beta = _range_template(db_session, t, "Beta lab")
     sc = _scenario(db_session, t, alpha, by_name=True)
     content = {
-        "name": "Imported drill", "description": "", "teams": [], "roles": [], "scaling_rules": [],
-        "objectives": [], "mesl": [], "instructor_notes": "", "tags": [],
-        "scenario": f"scenario:{sc.id}", "range_template": f"range_template:{alpha.id}",
+        "name": "Imported drill",
+        "description": "",
+        "teams": [],
+        "roles": [],
+        "scaling_rules": [],
+        "objectives": [],
+        "mesl": [],
+        "instructor_notes": "",
+        "tags": [],
+        "scenario": f"scenario:{sc.id}",
+        "range_template": f"range_template:{alpha.id}",
     }
-    item = importer.BundleItem(item_type="exercise_template", key=f"exercise_template:{uuid.uuid4()}",
-                               origin_id=uuid.uuid4().hex, content_sha256="a" * 64, content=content,
-                               proof=ProofSummary(proven=False, conditions=[]))
-    plan = importer.PlanItem(item=item, action="create", conflict=None, local=None,
-                             link=None, reasons=[], notes=[])
+    item = importer.BundleItem(
+        item_type="exercise_template",
+        key=f"exercise_template:{uuid.uuid4()}",
+        origin_id=uuid.uuid4().hex,
+        content_sha256="a" * 64,
+        content=content,
+        proof=ProofSummary(proven=False, conditions=[]),
+    )
+    plan = importer.PlanItem(item=item, action="create", conflict=None, local=None, link=None, reasons=[], notes=[])
     keymap = {f"scenario:{sc.id}": str(sc.id), f"range_template:{alpha.id}": str(beta.id)}
     assert importer._write_exercise_template(db_session, plan, t, False, keymap, None) is None
     assert plan.reasons and "runs on range template 'Alpha lab', not 'Beta lab'" in plan.reasons[0]

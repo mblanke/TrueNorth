@@ -86,7 +86,7 @@ def frame(stream: bytes) -> list[tuple[int, bytes]]:
         else:
             raise AssertionError(f"type {kind} reached the hypervisor")
         assert i + n <= len(stream), "a truncated message reached the hypervisor"
-        out.append((kind, stream[i:i + n]))
+        out.append((kind, stream[i : i + n]))
         i += n
     return out
 
@@ -133,8 +133,19 @@ def test_clientinit_is_forced_to_shared_so_an_observer_cannot_evict_the_student(
     assert f.feed(bytes([shared])) == [b"\x01"]
 
 
-@pytest.mark.parametrize("version", [b"RFB 003.003\n", b"RFB 003.889\n", b"RFB 004.001\n", b"RFB 003.008 ",
-                                     b"rfb 003.008\n", b"\x00" * 12, KEY + POINTER, b"x" * 12])
+@pytest.mark.parametrize(
+    "version",
+    [
+        b"RFB 003.003\n",
+        b"RFB 003.889\n",
+        b"RFB 004.001\n",
+        b"RFB 003.008 ",
+        b"rfb 003.008\n",
+        b"\x00" * 12,
+        KEY + POINTER,
+        b"x" * 12,
+    ],
+)
 def test_an_unsupported_or_malformed_version_closes_1008(version):
     f = ViewOnlyFilter()
     f.feed_server(VERSION)
@@ -322,8 +333,9 @@ def test_clientinit_waits_for_a_zero_security_result_and_a_failed_one_closes():
         f.feed(b"\x01")
 
 
-@pytest.mark.parametrize("greeting", [b"RFB 003.003\n", b"RFB 003.889\n", b"RFB 004.000\n", b"HTTP/1.1 200 ",
-                                      b"\x00" * 12])
+@pytest.mark.parametrize(
+    "greeting", [b"RFB 003.003\n", b"RFB 003.889\n", b"RFB 004.000\n", b"HTTP/1.1 200 ", b"\x00" * 12]
+)
 def test_a_server_version_other_than_3_7_or_3_8_is_a_violation(greeting):
     f = ViewOnlyFilter()
     with pytest.raises(Violation) as e:
@@ -373,7 +385,7 @@ def test_server_messages_are_framed_as_a_stream_whatever_the_websocket_messages_
         # one byte per server message, interleaved with the client as a real peer would
         for chunk, answer in zip(wire, [*client, None], strict=True):
             for i in range(0, len(chunk), cuts):
-                f.feed_server(chunk[i:i + cuts])
+                f.feed_server(chunk[i : i + cuts])
             if answer is not None:
                 assert b"".join(f.feed(answer)) in (answer, b"\x01")
         assert f.handshaken
@@ -488,7 +500,7 @@ def test_a_stream_cut_at_every_single_position_forwards_the_same_bytes():
 
 def test_a_stream_fed_one_byte_at_a_time_forwards_the_same_bytes():
     f = ready()
-    assert feed_all(f, [STREAM[i:i + 1] for i in range(len(STREAM))]) == EXPECTED
+    assert feed_all(f, [STREAM[i : i + 1] for i in range(len(STREAM))]) == EXPECTED
 
 
 def test_a_stream_cut_in_three_at_every_pair_of_positions_forwards_the_same_bytes():
@@ -569,7 +581,7 @@ def test_cut_text_is_counted_off_and_discarded_without_buffering():
     stream = cut(b"A" * 100_000) + FBUR
     out = []
     for i in range(0, len(stream), 1000):
-        out += f.feed(stream[i:i + 1000])
+        out += f.feed(stream[i : i + 1000])
         assert f.held <= 1000
     assert out == [FBUR]
 
@@ -644,7 +656,7 @@ def _random_stream(rng: random.Random) -> bytes:
         elif pick == 7:  # raw noise
             parts.append(rng.randbytes(rng.randrange(1, 12)))
         else:
-            parts.append(KEY[:rng.randrange(1, 8)])  # truncated input
+            parts.append(KEY[: rng.randrange(1, 8)])  # truncated input
     return b"".join(parts)
 
 
@@ -680,14 +692,16 @@ def test_whatever_a_client_sends_and_however_it_is_cut_the_hypervisor_reads_only
 # ── SetEncodings: pseudo-encodings that switch on refused client messages are stripped ─────
 
 
-@pytest.mark.parametrize("code", [-258, -259, -305, -308, -309, -310, -312, -313, -1063131698,
-                                  0x574D5600, 0x574D5664, 0x574D56FF])
+@pytest.mark.parametrize(
+    "code", [-258, -259, -305, -308, -309, -310, -312, -313, -1063131698, 0x574D5600, 0x574D5664, 0x574D56FF]
+)
 def test_a_pseudo_encoding_that_enables_a_refused_client_message_is_stripped(code):
     assert ready().feed(setenc(0, code, 1)) == [setenc(0, 1)]
 
 
-@pytest.mark.parametrize("code", [0, 1, 5, 7, 16, -223, -224, -239, -240, -257, -314, -32, -247, -1,
-                                  0x574D55FF, 0x574D5700])
+@pytest.mark.parametrize(
+    "code", [0, 1, 5, 7, 16, -223, -224, -239, -240, -257, -314, -32, -247, -1, 0x574D55FF, 0x574D5700]
+)
 def test_the_encodings_a_viewer_needs_are_kept(code):
     assert ready().feed(setenc(code)) == [setenc(code)]
 
@@ -808,8 +822,9 @@ class RefServer:
                     return
                 assert rx[0] == 1, "ClientInit was not forced to shared"
                 del rx[:1]
-                self.say(struct.pack(">HH", 640, 480) + bytes(16) + struct.pack(">I", self.name_len)
-                         + b"n" * self.name_len)
+                self.say(
+                    struct.pack(">HH", 640, 480) + bytes(16) + struct.pack(">I", self.name_len) + b"n" * self.name_len
+                )
                 self.stage = "messages"
             else:
                 self._message()
@@ -825,7 +840,7 @@ class RefServer:
             n = 4 + 4 * int.from_bytes(rx[2:4], "big")
             assert len(rx) >= n, "a truncated SetEncodings reached the server"
             for i in range(4, n, 4):
-                assert int.from_bytes(rx[i:i + 4], "big", signed=True) not in FORBIDDEN_ENCODINGS
+                assert int.from_bytes(rx[i : i + 4], "big", signed=True) not in FORBIDDEN_ENCODINGS
         else:
             n = 20 if kind == 0 else 10
             assert len(rx) >= n, "a truncated message reached the server"
@@ -843,12 +858,35 @@ def _units(rng: random.Random, srv: RefServer, mutate: bool) -> list[bytes]:
         units.append(rng.randbytes(16))
     units.append(bytes([rng.randrange(256)]))
     for _ in range(rng.randrange(0, 8)):
-        units.append(rng.choice([SETPF, FBUR, setenc(0, 1, -223), setenc(-312, 7, -313), setenc(-1063131698),
-                                 KEY, POINTER, cut(b"clip"), cut(b"")]))
+        units.append(
+            rng.choice(
+                [
+                    SETPF,
+                    FBUR,
+                    setenc(0, 1, -223),
+                    setenc(-312, 7, -313),
+                    setenc(-1063131698),
+                    KEY,
+                    POINTER,
+                    cut(b"clip"),
+                    cut(b""),
+                ]
+            )
+        )
     if not mutate:
         return units
-    smuggle = [KEY, POINTER, cut(b"AB"), KEY * 2, KEY + POINTER, FBUR, bytes([4]), bytes([255]) + bytes(10),
-               b"RFB 003.003\n", b"RFB 003.889\n"]
+    smuggle = [
+        KEY,
+        POINTER,
+        cut(b"AB"),
+        KEY * 2,
+        KEY + POINTER,
+        FBUR,
+        bytes([4]),
+        bytes([255]) + bytes(10),
+        b"RFB 003.003\n",
+        b"RFB 003.889\n",
+    ]
     for _ in range(rng.randrange(1, 4)):
         i = rng.randrange(len(units) + 1)
         how = rng.randrange(6)
@@ -863,7 +901,7 @@ def _units(rng: random.Random, srv: RefServer, mutate: bool) -> list[bytes]:
         elif how == 4 and 0 < i < len(units):
             units[i - 1], units[i] = units[i], units[i - 1]  # reordered
         elif i < len(units):
-            units[i] = units[i][:rng.randrange(len(units[i]) + 1)]  # truncated
+            units[i] = units[i][: rng.randrange(len(units[i]) + 1)]  # truncated
     return units
 
 
@@ -952,11 +990,25 @@ def test_garbage_from_a_hostile_server_never_makes_the_filter_pass_more_than_fra
     for _ in range(rng.randrange(1, 30)):
         try:
             if rng.random() < 0.5:
-                f.feed_server(rng.choice([VERSION, VERSION_37, b"\x01\x01", b"\x01\x02", CHALLENGE, RESULT_OK,
-                                          SERVER_INIT, rng.randbytes(rng.randrange(0, 50)), bytes(5000)]))
+                f.feed_server(
+                    rng.choice(
+                        [
+                            VERSION,
+                            VERSION_37,
+                            b"\x01\x01",
+                            b"\x01\x02",
+                            CHALLENGE,
+                            RESULT_OK,
+                            SERVER_INIT,
+                            rng.randbytes(rng.randrange(0, 50)),
+                            bytes(5000),
+                        ]
+                    )
+                )
             else:
-                f.feed(rng.choice([VERSION, b"\x01", b"\x02", RESPONSE, KEY, FBUR,
-                                   rng.randbytes(rng.randrange(0, 30))]))
+                f.feed(
+                    rng.choice([VERSION, b"\x01", b"\x02", RESPONSE, KEY, FBUR, rng.randbytes(rng.randrange(0, 30))])
+                )
         except Violation:
             dead = True
             break

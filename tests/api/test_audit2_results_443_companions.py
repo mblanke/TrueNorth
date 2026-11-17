@@ -174,7 +174,7 @@ def test_f30_companion_an_independent_request_is_not_starved_behind_the_lrs_prox
 @pytest.mark.xfail(
     strict=True,
     reason="audit #443: unguarded server-side fetches to tenant-admin-controlled platform URLs "
-           "bypass net_guard (control-plane/api/app/lti13.py:233) — companion",
+    "bypass net_guard (control-plane/api/app/lti13.py:233) — companion",
 )
 def test_f32_companion_a_second_tenants_loopback_jwks_url_is_refused_before_any_fetch(db_session, monkeypatch):
     """Same finding, two-tenant matrix and boundary value: a platform registered by another
@@ -213,7 +213,7 @@ def test_f32_companion_a_second_tenants_loopback_jwks_url_is_refused_before_any_
 @pytest.mark.xfail(
     strict=True,
     reason="audit #443: a withdrawn Student keeps launch/content/grade; only the LRS proxy checks "
-           "withdrawal (control-plane/api/app/cmi5/lms.py:211) — companion",
+    "withdrawal (control-plane/api/app/cmi5/lms.py:211) — companion",
 )
 def test_f33_companion_a_student_withdrawn_after_their_first_launch_cannot_relaunch(
     client, db_session, lrs, release, student
@@ -234,7 +234,7 @@ def test_f33_companion_a_student_withdrawn_after_their_first_launch_cannot_relau
 @pytest.mark.xfail(
     strict=True,
     reason="audit #443: two concurrent first results for the same attempt both land; no uniqueness "
-           "on attempt (control-plane/api/app/result_transfer/service.py:285) — companion",
+    "on attempt (control-plane/api/app/result_transfer/service.py:285) — companion",
 )
 def test_f34_companion_the_database_itself_refuses_a_second_first_result_for_one_attempt(db_session, monkeypatch):
     """Same finding, behavioural angle: the schema introspection of the oracle says a unique
@@ -271,7 +271,7 @@ def test_f34_companion_the_database_itself_refuses_a_second_first_result_for_one
 @pytest.mark.xfail(
     strict=True,
     reason="audit #443: no AU launch limit; one student can flood the LRS "
-           "(control-plane/api/app/cmi5/lms.py:340) — companion",
+    "(control-plane/api/app/cmi5/lms.py:340) — companion",
 )
 def test_f36_companion_a_student_cannot_flood_the_lrs_across_two_aus(client, lrs, release, student):
     """Same finding, boundary of the cap's scope: the limit has to be per student, not per
@@ -292,7 +292,7 @@ def test_f36_companion_a_student_cannot_flood_the_lrs_across_two_aus(client, lrs
 @pytest.mark.xfail(
     strict=True,
     reason="audit #443: cross-tenant package_id reuse ends in an unhandled IntegrityError "
-           "(control-plane/api/app/result_transfer/service.py:252) — companion",
+    "(control-plane/api/app/result_transfer/service.py:252) — companion",
 )
 def test_f38_companion_the_reversed_cross_tenant_package_id_reuse_is_a_mapped_refusal(db_session, monkeypatch):
     """Same finding, the other diagonal of the two-tenant matrix: the other enclave imports
@@ -363,7 +363,7 @@ def test_f38_companion_the_reversed_cross_tenant_package_id_reuse_is_a_mapped_re
 @pytest.mark.xfail(
     strict=True,
     reason="audit #443: concurrent bundle imports race the check-then-insert store in _store; unhandled "
-           "IntegrityError (control-plane/api/app/content_feeds/service.py:235) — companion",
+    "IntegrityError (control-plane/api/app/content_feeds/service.py:235) — companion",
 )
 def test_f39_companion_three_concurrent_bundle_imports_neither_crash_nor_lose(monkeypatch, tmp_path):
     """Same finding, boundary value: three racers instead of two — the loser(s) of the
@@ -433,7 +433,7 @@ def test_f39_companion_three_concurrent_bundle_imports_neither_crash_nor_lose(mo
 @pytest.mark.xfail(
     strict=True,
     reason="audit #443: first cmi5 launch races to a PK-collision 500 "
-           "(control-plane/api/app/cmi5/lms.py:228) — companion",
+    "(control-plane/api/app/cmi5/lms.py:228) — companion",
 )
 def test_f41_companion_another_students_first_launch_racing_another_does_not_500(
     client, db_session, lrs, release, student, monkeypatch
@@ -470,7 +470,7 @@ def test_f41_companion_another_students_first_launch_racing_another_does_not_500
 @pytest.mark.xfail(
     strict=True,
     reason="audit #443: bundle takes ownership of online-origin entries and the next bundle deletes "
-           "them (control-plane/api/app/content_feeds/service.py:243) — companion",
+    "them (control-plane/api/app/content_feeds/service.py:243) — companion",
 )
 def test_f42_companion_a_bundle_refresh_must_not_rewrite_an_online_entrys_origin(client, db_session, bundle_mode):
     """Same finding, the mechanism itself rather than its delete consequence: a bundle may
@@ -493,9 +493,7 @@ def test_f42_companion_a_bundle_refresh_must_not_rewrite_an_online_entrys_origin
     )
     db_session.commit()
     with feeds_acting_as(db_session, UserRole.admin):
-        r = feed_upload(
-            client, feed_sign(feed_bundle(datetime.now(UTC), entries=[feed_bundle()["entries"][0]]))
-        )
+        r = feed_upload(client, feed_sign(feed_bundle(datetime.now(UTC), entries=[feed_bundle()["entries"][0]])))
         assert r.status_code == 200, r.text
     row = db_session.query(ContentFeedEntry).filter(ContentFeedEntry.entry_key == "eol:ubuntu:20.04").one()
     assert row.origin == "online", (

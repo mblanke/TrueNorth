@@ -34,10 +34,13 @@ def _tagged(vc, vm_id: str, range_id: str | None, name: str | None = None) -> Fa
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: a recorded VM that vCenter no longer has under its moid is "
-                                       "counted as deleted when a connection is recorded, even though it may have "
-                                       "been re-registered and still run (control-plane/worker/worker/"
-                                       "provisioners/vsphere_api.py:3211)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: a recorded VM that vCenter no longer has under its moid is "
+    "counted as deleted when a connection is recorded, even though it may have "
+    "been re-registered and still run (control-plane/worker/worker/"
+    "provisioners/vsphere_api.py:3211)",
+)
 def test_a_re_registered_vm_still_running_is_counted_as_deleted(vc):
     """A recorded moid vCenter lacks is counted as deleted ("gone counts as deleted",
     vsphere_api.py:3211) as soon as the range's connection is recorded, which also skips
@@ -56,4 +59,5 @@ def test_a_re_registered_vm_still_running_is_counted_as_deleted(vc):
     # makes resources_removed == 1 and the destroy "ok". Fails on this assertion.
     assert "vm-new" not in vc.vms or result.resources_removed == 0, (
         f"the VM is still registered in this vCenter (moid vm-new) but the destroy counted "
-        f"{result.resources_removed} resource(s) removed with status {result.status!r}")
+        f"{result.resources_removed} resource(s) removed with status {result.status!r}"
+    )

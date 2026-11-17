@@ -92,8 +92,7 @@ def test_deleting_a_user_retires_the_row():
     a faithful move to ``target.soft_delete()`` must not trip this wire, a hard delete must."""
     assert issubclass(m.User, m.SoftDeleteMixin)
     src = inspect.getsource(admin_router.delete_user)
-    retires = ("is_active = False" in src
-               or "soft_delete()" in src or "deleted_at" in src)
+    retires = "is_active = False" in src or "soft_delete()" in src or "deleted_at" in src
     assert retires, "the user DELETE handler no longer retires the row"
     assert "db.delete(" not in src, "the user DELETE handler deletes the row"
 
@@ -120,9 +119,7 @@ def test_pure_dependents_are_deleted_in_code_before_the_parent():
         src = inspect.getsource(handler)
         in_code = re.search(rf"db\.query\({dependent}\)[\s\S]*?\.delete\(", src)
         assert in_code, f"{handler.__name__} no longer deletes {dependent} in code"
-        assert in_code.start() < src.index(parent), (
-            f"{handler.__name__} deletes {dependent} after the parent row"
-        )
+        assert in_code.start() < src.index(parent), f"{handler.__name__} deletes {dependent} after the parent row"
         assert "go with" in src, f"{handler.__name__} docstring no longer says the dependents go with the parent"
 
 

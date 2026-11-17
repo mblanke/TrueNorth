@@ -71,7 +71,8 @@ def task_env(monkeypatch, lease_always_free):
 
 @pytest.mark.audit443
 def test_a_partial_destroy_that_keeps_the_port_group_is_not_recorded_destroyed_and_releases_nothing(
-        task_env, monkeypatch):
+    task_env, monkeypatch
+):
     """Companion to the tasks.py:230 finding (the oracle's input: a VM whose power-off
     timed out — only free-text ``errors``, nothing else distinguishes its input). Second
     input, the other half of the duplicate's title — "port groups kept": every VM and the
@@ -85,22 +86,35 @@ def test_a_partial_destroy_that_keeps_the_port_group_is_not_recorded_destroyed_a
     the report to ``record_teardown`` (worker/tasks.py:229, before the status gate)."""
     released: list[str] = []
     teardown_reports: list = []
-    report = {"remaining": [],
-              "unidentified": [{"kind": "portgroup", "moid": "dpg-9", "name": "dPG-TN-v150",
-                                "key": "dvportgroup-9", "vlan": 150, "marks": ["owner_mark"]}],
-              "not_checked": []}
+    report = {
+        "remaining": [],
+        "unidentified": [
+            {
+                "kind": "portgroup",
+                "moid": "dpg-9",
+                "name": "dPG-TN-v150",
+                "key": "dvportgroup-9",
+                "vlan": 150,
+                "marks": ["owner_mark"],
+            }
+        ],
+        "not_checked": [],
+    }
 
     class Prov:
         async def destroy(self, range_id, output):
-            return DestroyResult(status="partial", resources_removed=5, teardown=report,
-                                 errors=["Port group dPG-TN-v150: destroy task timed out"])
+            return DestroyResult(
+                status="partial",
+                resources_removed=5,
+                teardown=report,
+                errors=["Port group dPG-TN-v150: destroy task timed out"],
+            )
 
     def record(session_factory, range_id, result):
         teardown_reports.append(result.teardown)
         return None  # the real record never raises; its storage is its own test's subject
 
-    monkeypatch.setattr(tasks.range_alloc, "release_after_destroy",
-                        lambda *a: released.append("released") or 0)
+    monkeypatch.setattr(tasks.range_alloc, "release_after_destroy", lambda *a: released.append("released") or 0)
     monkeypatch.setattr(tasks, "record_teardown", record)
     monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None, **kw: Prov())
     monkeypatch.setattr(tasks, "_last_attempt", lambda task: True)  # final: no retry
@@ -132,8 +146,9 @@ def test_a_partial_build_persists_its_error_and_is_never_settled_ready(task_env,
 
     class Prov:
         async def provision(self, range_id, template, allocations):
-            return ProvisionResult(status="partial", vms=vms,
-                                   errors=["VM r-win01: Cannot create clone: cannot migrate vm"])
+            return ProvisionResult(
+                status="partial", vms=vms, errors=["VM r-win01: Cannot create clone: cannot migrate vm"]
+            )
 
     monkeypatch.setattr(tasks.range_alloc, "reserve_for_build", lambda *a: {})
     monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None, **kw: Prov())
@@ -146,8 +161,9 @@ def test_a_partial_build_persists_its_error_and_is_never_settled_ready(task_env,
         # prefers recorded, tasks.py:176); either shape must persist the reason, asserted below.
     assert out["status"] != "ready" and out.get("error"), f"partial build settled {out}"
     assert "ready" not in [s for s, _ in task_env["states"]]
-    assert any(s == "failed" and kw.get("error") for s, kw in task_env["states"]), \
+    assert any(s == "failed" and kw.get("error") for s, kw in task_env["states"]), (
         f"the partial build's error was never persisted: {task_env['states']}"
+    )
 
 
 # -- high, schemas.py:147 — provisioner_output readable by Student and Observer --------
@@ -159,9 +175,15 @@ def _range_in_state(db_session, tenant_id, state) -> Range:
     template = Template(id=uuid.uuid4(), name="t", yaml="id: t\n", tenant_id=tenant_id)
     db_session.add(template)
     db_session.flush()
-    rng = Range(id=uuid.uuid4(), name="team exercise range", template_id=template.id,
-                tenant_id=tenant_id, state=state, provisioner_backend="vsphere_api",
-                provisioner_output=json.dumps(SECRETS))
+    rng = Range(
+        id=uuid.uuid4(),
+        name="team exercise range",
+        template_id=template.id,
+        tenant_id=tenant_id,
+        state=state,
+        provisioner_backend="vsphere_api",
+        provisioner_output=json.dumps(SECRETS),
+    )
     db_session.add(rng)
     db_session.flush()
     return rng
@@ -204,9 +226,12 @@ def test_an_observer_cannot_read_a_failed_range_provisioner_output(client, db_se
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: ensure_dvs_portgroup reuses a same-named port "
-                                       "group without re-checking its VLAN or owner mark "
-                                       "(vsphere_infra.py:313) — companion")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: ensure_dvs_portgroup reuses a same-named port "
+    "group without re-checking its VLAN or owner mark "
+    "(vsphere_infra.py:313) — companion",
+)
 def test_ensure_dvs_portgroup_refuses_a_same_named_port_group_marked_by_another_range():
     """Companion to the vsphere_infra.py:313 finding (the oracle's input: the right name
     on the wrong VLAN). Boundary value the other way round: the port group carries
@@ -215,8 +240,10 @@ def test_ensure_dvs_portgroup_refuses_a_same_named_port_group_marked_by_another_
     range's VMs are wired to a port group another range owns. Same secure behaviour: the
     live recheck refuses it, the way the snapshot check does (vsphere_vlans.conflict)."""
     dvs = FakeDVS()
-    foreign = FakePortgroup(dvs, infra.dvs_portgroup_spec(f"tn-{R8}-v150", 150, False,
-                                                          live.owner_mark("99999999-1111-2222-3333-444444444444")))
+    foreign = FakePortgroup(
+        dvs,
+        infra.dvs_portgroup_spec(f"tn-{R8}-v150", 150, False, live.owner_mark("99999999-1111-2222-3333-444444444444")),
+    )
     dvs.portgroup.append(foreign)
     with pytest.raises(live.PortgroupConflictError):
         infra.ensure_dvs_portgroup(dvs, f"tn-{R8}-v150", 150, False, lambda t: t, live.owner_mark(RANGE_ID))
@@ -227,8 +254,11 @@ def test_ensure_dvs_portgroup_refuses_a_same_named_port_group_marked_by_another_
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: reconcile_lab_vms deletes VMs by annotation/"
-                                       "name alone, outside the S5 recorded-ID rule (lab_tasks.py:60) — companion")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: reconcile_lab_vms deletes VMs by annotation/"
+    "name alone, outside the S5 recorded-ID rule (lab_tasks.py:60) — companion",
+)
 def test_reconcile_does_not_delete_a_lab_vm_by_name_prefix_alone(monkeypatch, lease_always_free):
     """Companion to the lab_tasks.py:60 finding (the oracle's input: a VM that matches by
     the range's annotation). Second input, the match's other leg: a VM built before the
