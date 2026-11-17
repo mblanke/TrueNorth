@@ -220,29 +220,30 @@ AC-8 below).
 
 ### API JWT Validation
 
-The Control Plane API validates every incoming JWT:
+The Control Plane API validates every incoming JWT
+(`control-plane/api/app/auth.py`, `control-plane/api/app/auth_backends/keycloak_oidc.py`):
 
 1. **Signature verification** — RS256 using Keycloak's JWKS endpoint
-2. **Issuer check** — Must match configured Keycloak realm URL
-3. **Audience check** — Must include `truenorth-api`
+2. **Issuer check** — Must match `KEYCLOAK_ISSUER` when set; production refuses to start without it
+3. **Audience check** — Must include `KEYCLOAK_AUDIENCE` (the installer sets `truenorth-api`); production refuses to start without it
 4. **Expiration check** — Token must not be expired
-5. **Role extraction** — Roles mapped from `realm_access.roles`
-6. **Tenant extraction** — `tenant_id` claim for multi-tenant isolation
+5. **User resolution** — the `sub` claim is looked up as `users.keycloak_id`; **role and tenant come from that database row**, never from token claims (`realm_access.roles` / `tenant_id` in the token are not the auth source)
+6. **MFA check** — a privileged database role whose token shows no second factor is refused (`mfa_policy`)
+
+A valid token naming an identity with no user row is a **403** that distinguishes
+`registration_pending`, `registration_rejected` and `registration_required`
+(`auth._unregistered_error`) — not a 401.
 
 ```python
-# Simplified JWT validation flow (see control-plane/api/app/rbac.py)
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    payload = jwt.decode(
-        token,
-        key=jwks_client.get_signing_key(token).key,
-        algorithms=["RS256"],
-        audience="truenorth-api",
-        issuer=settings.KEYCLOAK_ISSUER,
-    )
-    user = await get_user_by_sub(payload["sub"])
-    if not user:
-        raise HTTPException(401, "User not found")
-    return user
+# Actual flow: control-plane/api/app/auth.py
+#   (get_token_identity -> get_signed_in_user) and
+#   control-plane/api/app/auth_backends/keycloak_oidc.py
+#   (RS256 via JWKS; issuer/audience from KEYCLOAK_ISSUER / KEYCLOAK_AUDIENCE).
+identity = await get_auth_backend().validate_token(credentials)  # 401 on any token problem
+user = db.query(User).filter(User.keycloak_id == identity.sub).first()
+if user is None:
+    raise _unregistered_error(db, identity)  # 403: pending / rejected / unregistered
+# CurrentUser.role and CurrentUser.tenant_id come from the users row.
 ```
 
 ---
@@ -263,16 +264,18 @@ TrueNorth Range implements fine-grained Role-Based Access Control defined in `co
 
 ### Permission Categories
 
-Permissions follow the pattern `resource:action`:
+Permissions follow the pattern `resource:action` (74 of them; `Permission` in
+`control-plane/api/app/rbac.py` is the full list — the table below shows the sections
+most often asked about):
 
 | Category | Permissions |
 |----------|------------|
 | **Range** | `range:create`, `range:read`, `range:update`, `range:delete`, `range:provision`, `range:destroy`, `range:batch_provision`, `range:lease_force_release`, `range:credentials_read`, `range:certification_read`, `range:admin` |
 | **Template** | `template:create`, `template:read`, `template:update`, `template:delete` |
 | **Scenario** | `scenario:create`, `scenario:read`, `scenario:update`, `scenario:delete` |
-| **Exercise** | `exercise:create`, `exercise:read`, `exercise:update`, `exercise:delete`, `exercise:control` |
+| **Exercise** | `exercise:create`, `exercise:read`, `exercise:start`, `exercise:complete`, `exercise:pause` |
 | **User** | `user:create`, `user:read`, `user:update`, `user:delete` |
-| **Tenant** | `tenant:create`, `tenant:read`, `tenant:update`, `tenant:delete` |
+| **Tenant** | `tenant:create`, `tenant:read`, `tenant:update` |
 | **Audit** | `audit:read` |
 | **Telemetry** | `telemetry:read` |
 | **Stats** | `stats:read` |
@@ -283,52 +286,84 @@ Permissions follow the pattern `resource:action`:
 
 ## Permissions Matrix
 
-Complete role-to-permission mapping as defined in `rbac.py`:
+The complete role-to-permission mapping as defined in `rbac.py`
+(`ROLE_PERMISSIONS`; 74 permissions over 5 roles):
 
 | Permission | admin | instructor | student | observer | range_ops |
 |------------|:-----:|:----------:|:-------:|:--------:|:---------:|
 | `range:create` | X | X | | | X |
 | `range:read` | X | X | X | X | X |
 | `range:update` | X | X | | | X |
-| `range:delete` | X | X | | | X |
+| `range:delete` | X | | | | X |
 | `range:provision` | X | X | | | X |
 | `range:destroy` | X | X | | | X |
-| `range:batch_provision` | X | | | | X |
+| `range:batch_provision` | X | X | | | X |
 | `range:lease_force_release` | X | | | | |
 | `range:credentials_read` (ADR 0012; Students read only accounts handed to them on ranges they take part in, without it) | X | X | | | X |
 | `range:certification_read` (ADR 0013 §6: the Range Certification Record and its signed exports) | X | X | | | X |
 | `range:admin` (ADR 0013 §7: maintenance windows, and emergency teardown inside one) | X | | | | |
-| `template:create` | X | X | | | |
+| `range:credentials_rotate` (ADR 0012) | X | | | | |
+| `template:create` | X | X | | | X |
 | `template:read` | X | X | X | X | X |
-| `template:update` | X | X | | | |
-| `template:delete` | X | X | | | |
+| `template:update` | X | | | | X |
+| `template:delete` | X | | | | |
 | `scenario:create` | X | X | | | |
-| `scenario:read` | X | X | X | X | |
+| `scenario:read` | X | X | X | X | X |
 | `scenario:update` | X | X | | | |
-| `scenario:delete` | X | X | | | |
+| `scenario:delete` | X | | | | |
+| `detection:submit` | X | X | X | | |
+| `objective:ack` | X | X | | | |
 | `exercise:create` | X | X | | | |
-| `exercise:read` | X | X | X | X | |
-| `exercise:update` | X | X | | | |
-| `exercise:delete` | X | X | | | |
-| `exercise:control` | X | X | | | |
+| `exercise:read` | X | X | X | X | X |
+| `exercise:start` | X | X | | | |
+| `exercise:complete` | X | X | | | |
+| `exercise:pause` | X | X | | | |
 | `user:create` | X | | | | |
 | `user:read` | X | X | | | |
 | `user:update` | X | | | | |
 | `user:delete` | X | | | | |
+| `registration:read` | X | | | | |
+| `registration:approve` | X | | | | |
 | `enrollment:manage_own` (#200: enrol/withdraw Students on a course you teach) | X | X | | | |
 | `team:manage_own` (#200: create/edit teams of an exercise you run; Students only) | X | X | | | |
+| `infra:read` | X | X | | | X |
+| `infra:write` | X | | | | X |
+| `infra:control` | X | | | | X |
+| `ai_config:read` | X | X | | | X |
+| `ai_config:write` | X | | | | |
+| `integration:read` | X | X | | | |
+| `integration:write` | X | | | | |
+| `learning_record:read` | X | X | | | |
+| `learning_record:write` | X | X | | | |
+| `course:author` | X | X | | | |
+| `course:release` | X | X | | | |
+| `content_review:read` | X | X | | | X |
+| `content_review:review_own` | X | X | | | |
+| `content_review:admin` | X | | | | |
+| `class:create` | X | X | | | |
+| `class:read` | X | X | | X | |
+| `readiness:read` | X | X | | X | |
+| `class:attend` | X | X | X | | |
 | `tenant:create` | X | | | | |
 | `tenant:read` | X | | | | |
 | `tenant:update` | X | | | | |
-| `tenant:delete` | X | | | | |
 | `audit:read` | X | | | | |
-| `telemetry:read` | X | X | X | X | |
-| `stats:read` | X | X | | X | X |
+| `telemetry:read` | X | X | | X | X |
+| `telemetry:write` | X | X | | | X |
+| `stats:read` | X | X | | | X |
 | `aar:generate` | X | X | | | |
 | `aar:read` | X | X | X | X | |
+| `noise:read` | X | X | | | |
+| `noise:control` | X | X | | | |
+| `wiki:read` | X | X | X | X | X |
+| `wiki:edit` | X | X | | | X |
+| `wiki:admin` | X | | | | |
+| `ticket:create` | X | X | X | | X |
+| `ticket:work` | X | X | | | X |
+| `ticket:admin` | X | | | | |
 | `schedule:read` | X | X | | X | X |
 | `schedule:write` | X | X | | | |
-| `schedule:admin` | X (platform tenant only when `PLATFORM_TENANT_ID` is set) | | | | |
+| `schedule:admin` (any admin; the over-capacity policy `PUT /scheduler/policy` and the manual clock `POST /scheduler/tick` are additionally platform-admin only, `rbac.require_platform_admin`) | X | | | | |
 | `schedule:approve` (ADR 0014 §14: approve, reject or propose a time for class sessions) | X | | | | X |
 
 **An instructor's own class (#200).** `enrollment:manage_own` and `team:manage_own` are
@@ -431,37 +466,29 @@ flowchart TB
         INET[Internet]
     end
 
-    subgraph DMZ - VLAN 10
-        LB[Load Balancer]
-        WAF[WAF]
+    subgraph Edge
+        LB[nginx edge]
     end
 
-    subgraph App Zone - VLAN 20
-        API[API Servers]
+    subgraph Platform Services - compose services on the host container network
+        API[API]
         WRK[Workers]
         AI[AI Orchestrator]
-    end
-
-    subgraph Data Zone - VLAN 30
         DB[(PostgreSQL)]
         CACHE[(Redis)]
         SEARCH[(OpenSearch)]
         STORE[(MinIO)]
-    end
-
-    subgraph Auth Zone - VLAN 40
         KC[Keycloak]
     end
 
-    subgraph Range Zone - VLAN 100-999
+    subgraph Range Zone - one VLAN per range from the pool, default 100-199
         R1[Range 1 VMs]
         R2[Range 2 VMs]
         RN[Range N VMs]
     end
 
     INET --> LB
-    LB --> WAF
-    WAF --> API
+    LB --> API
     API --> DB
     API --> CACHE
     API --> SEARCH
@@ -469,64 +496,62 @@ flowchart TB
     API --> KC
     WRK --> DB
     WRK --> CACHE
+    WRK --> SEARCH
     WRK -.-> R1
     WRK -.-> R2
 
     style Public Zone fill:#f8d7da
-    style DMZ - VLAN 10 fill:#fff3cd
-    style App Zone - VLAN 20 fill:#d4edda
-    style Data Zone - VLAN 30 fill:#cce5ff
-    style Auth Zone - VLAN 40 fill:#d4edda
-    style Range Zone - VLAN 100-999 fill:#e2e3e5
+    style Edge fill:#fff3cd
+    style Platform Services - compose services on the host container network fill:#cce5ff
+    style Range Zone - one VLAN per range from the pool, default 100-199 fill:#e2e3e5
 ```
+
+The platform's own services are not split across zone VLANs by the repository: as shipped
+they are `compose.prod.yml` services on the host's container network. Which VLANs carry
+them is the operator's deployment decision. What the source does fix: the site's own VLANs
+30-32 (management 30, build 31, services 32) are reserved and never handed to a range
+(`tn_vsphere_reserved_vlans`, ADR 0012 / 0013).
 
 ### VLAN Isolation
 
-| VLAN | Name | Purpose |
+| VLANs | Name | Purpose |
 |------|------|---------|
-| 10 | DMZ | Load balancers, WAF |
-| 20 | Application | API servers, workers, AI |
-| 30 | Data | PostgreSQL, Redis, OpenSearch, MinIO |
-| 40 | Authentication | Keycloak |
-| 100-999 | Range VLANs | Individual range environments (isolated per range) |
+| 30-32 | Site (reserved) | Management, build and service networks; never allocated to a range |
+| 100-199 | Range VLANs (default pool) | One or more per provisioned range, allocated from `VSPHERE_VLAN_POOL` (installer `tn_vsphere_vlan_pool`; configurable, validated 1-4094) |
 
 ### Firewall Rules
 
+Isolation is enforced by each range's **own edge firewall** — a VyOS (or pfSense) router VM
+rendered by the worker — not by zone ACLs on a core firewall
+(`control-plane/worker/worker/vyos_config.py`, `pfsense_config.py`):
+
 ```
-# DMZ -> Application
-ALLOW VLAN10 -> VLAN20:8080 (HTTPS to API)
-ALLOW VLAN10 -> VLAN20:443  (WebSocket)
+# Per-range edge router, forward filter: default drop
+ALLOW established/related                    (replies)
+ALLOW range zones -> depot                   (TN_DEPOT on ports 8081, 3142; only with an uplink and a depot)
+ALLOW the template's network.firewall_rules  (in template order; with none, every zone to every zone *inside the range*; dst "*" never means the internet)
 
-# Application -> Data
-ALLOW VLAN20 -> VLAN30:5432 (PostgreSQL)
-ALLOW VLAN20 -> VLAN30:6379 (Redis)
-ALLOW VLAN20 -> VLAN30:9200 (OpenSearch)
-ALLOW VLAN20 -> VLAN30:9000 (MinIO)
-
-# Application -> Auth
-ALLOW VLAN20 -> VLAN40:8443 (Keycloak)
-
-# Application -> Range (provisioning only)
-ALLOW VLAN20 -> VLAN100-999:22   (SSH for provisioning)
-ALLOW VLAN20 -> VLAN100-999:5985 (WinRM)
-
-# Range Isolation
-DENY  VLAN100 -> VLAN200  (Range-to-range blocked)
-DENY  VLAN100 -> VLAN30   (Range-to-data blocked)
-ALLOW VLAN100 -> VLAN20:9200 (Telemetry to OpenSearch only)
+# Uplink input filter: replies only (nothing reaches the router from the WAN)
 
 # Default
 DENY ALL
 ```
 
+So nothing leaves a range but depot traffic: no route to the platform's data services and
+no range-to-range path (each range sits on its own VLAN(s)). Telemetry does **not** egress
+from the range: range VMs send it to the API (`POST /telemetry/{range_id}/events`), and the
+worker ingests it into the range's OpenSearch index (`range-{range_id}`).
+
 ### Range VLAN Isolation
 
-Each provisioned range receives a dedicated VLAN (100-999):
+Each provisioned range receives its own VLAN(s) from the pool (default 100-199;
+`VSPHERE_VLAN_POOL` / `tn_vsphere_vlan_pool`):
 
 - **No cross-range traffic** — Ranges cannot communicate with each other
 - **No data zone access** — Ranges cannot directly access PostgreSQL, Redis, etc.
-- **Telemetry egress only** — Range VMs can send telemetry to OpenSearch
-- **Management ingress only** — Only provisioning workers can reach range VMs
+- **Depot egress only** — The edge firewall allows nothing out but depot traffic (8081/3142)
+- **Telemetry via the API** — Range VMs have no route to OpenSearch; they POST telemetry to the API
+- **Isolation is measured** — Certification probes decide `isolated` / `not_isolated` (`worker/range_isolation.py`, ADR 0013 §1)
 
 ---
 
@@ -539,7 +564,7 @@ As shipped in `infra/platform/docker/compose.prod.yml` (checked 2026-10-12):
 | Connection | Protected | Evidence |
 |-----------|----------|----------------|
 | Browser → nginx edge | TLS 1.2/1.3, HSTS | `infra/platform/nginx/conf.d/ssl-params.conf`, `snippets/security-headers-common.conf` |
-| nginx → API, web, Keycloak | No (plain HTTP on the compose network) | `conf.d/truenorth.conf` |
+| nginx → API, web, Keycloak | No (plain HTTP on the compose network) | `conf.d/truenorth.conf`, `snippets/keycloak-proxy.conf` |
 | API/worker → PostgreSQL (pgbouncer) | No | `DATABASE_URL` with no `sslmode` |
 | API/worker → Redis | Password, no TLS | `REDIS_URL=redis://` |
 | API → MinIO | No | `MINIO_ENDPOINT=http://minio:9000` |
@@ -552,7 +577,8 @@ Internal traffic relies on the host's container network not being reachable from
 ### TLS Configuration
 
 ```nginx
-# Recommended TLS settings (nginx; the shipped ssl-params.conf sets the protocols)
+# Recommended TLS settings (nginx; the shipped ssl-params.conf sets the protocols,
+# ssl_prefer_server_ciphers off and a 10 m session cache)
 ssl_protocols TLSv1.2 TLSv1.3;
 ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
 ssl_prefer_server_ciphers on;
@@ -765,7 +791,8 @@ ORDER BY timestamp DESC;
 
 ### Audit Log Retention
 
-- **In the database:** 90 days (`tn_audit_hot_retention_days`, never below 30; 0 keeps
+- **In the database:** 90 days (`AUDIT_HOT_RETENTION_DAYS`; installer variable
+  `tn_audit_hot_retention_days`, never below 30; 0 keeps
   rows forever), deleted day by day only after the day's export verifies.
 - **Archive:** kept until the operator prunes it; TrueNorth never deletes archive files.
   Every backup holds a verified copy.
@@ -784,14 +811,15 @@ scanning by hand.
 ### Container Scanning
 
 ```bash
-# Scan container images with Trivy
-trivy image truenorth/control-plane-api:latest
-trivy image truenorth/celery-worker:latest
-trivy image truenorth/ai-orchestrator:latest
-trivy image truenorth/scenario-engine:latest
+# Scan container images with Trivy (release.yml publishes ghcr.io/mblanke/truenorth-<service>;
+# CI scans its own builds, truenorth-range/<service>:<sha>, before merge)
+trivy image ghcr.io/mblanke/truenorth-api:<version>
+trivy image ghcr.io/mblanke/truenorth-worker:<version>
+trivy image ghcr.io/mblanke/truenorth-ai-orchestrator:<version>
+trivy image ghcr.io/mblanke/truenorth-scenario-engine:<version>
 
 # Scan in CI/CD pipeline (fail on HIGH/CRITICAL)
-trivy image --exit-code 1 --severity HIGH,CRITICAL truenorth/control-plane-api:latest
+trivy image --exit-code 1 --severity HIGH,CRITICAL ghcr.io/mblanke/truenorth-api:<version>
 ```
 
 ### Dependency Scanning
@@ -887,7 +915,7 @@ and injection as focus areas.
 - [ ] Password policy configured (see above)
 - [ ] Session timeouts configured
 - [ ] PKCE required for SPA client
-- [ ] Token lifetimes minimized (1 hour access, 24 hour refresh)
+- [ ] Token lifetimes minimized (shipped: 5 min access token, 60 min idle / 10 h maximum SSO session)
 - [ ] Unused realms and clients removed
 
 ### Infrastructure
@@ -916,7 +944,7 @@ repository does it, whatever an operator could add.
 | Control | Status | What exists, and the gap | Evidence |
 |---------|--------|--------------------------|----------|
 | AC-2 Account Management | Partial | Accounts are created only by approving an access request (instructor or admin); admins manage users and re-enable a deactivated account (Users, **Re-enable**). A nightly AD status sync (#309) deactivates accounts AD disabled, accounts known to be AD accounts (`users.ad_object_guid`) that AD removed, and local Keycloak accounts unused for 90 days (only when a break-glass account is named, and never that account). A finding acts only when a run 12-36 h earlier found it too; a rule that would deactivate more than max(3, 25 %) of a tenant's accounts is held; the tenant's last active admin is never deactivated. Gaps: it ships in dry run (`AD_STATUS_SYNC_DRY_RUN`, installer `tn_ad_status_sync_dry_run`) and changes nothing until an operator turns that off; an account made without `ad_object_guid` (the bootstrap administrator, `POST /users` rows) learns it at its next sign-in (#310) and is judged from then on; one that never signs in again keeps none and is not deactivated as removed; TrueNorth never writes to AD | `control-plane/api/app/routers/registration.py`, `control-plane/api/app/routers/admin.py`, `control-plane/api/app/ad_status_sync/service.py`, `tests/api/test_ad_status_sync_290.py`, `docs/onboarding.md` |
-| AC-3 Access Enforcement | Implemented | 60 permissions over 5 roles, checked per route; tenant ownership checked on lookups | `control-plane/api/app/rbac.py`, `control-plane/api/app/tenancy.py` |
+| AC-3 Access Enforcement | Implemented | 74 permissions over 5 roles, checked per route; tenant ownership checked on lookups | `control-plane/api/app/rbac.py`, `control-plane/api/app/tenancy.py` |
 | AC-6 Least Privilege | Partial | Five roles with distinct permission sets. The admin role holds every permission, including cross-tenant reads | `control-plane/api/app/rbac.py` (`ROLE_PERMISSIONS`) |
 | AC-7 Unsuccessful Logon Attempts | Implemented (Keycloak) | Brute-force detection after 5 failures, temporary lockout growing by 60 s up to 300 s; no permanent lockout. AD-federated accounts are also subject to the directory's own policy | `infra/keycloak/realm-truenorth.json`, `tests/contracts/test_keycloak_hardening.py` |
 | AC-8 System Use Notification | Partial | The Keycloak `truenorth` login theme shows the site's notice (`tn_login_banner_text`, set per site as realm localization) above the sign-in form on each interactive sign-in (each SSO session, at most 10 h), on the loopback-only master console too. Gaps: the acknowledgement box is enforced by the browser only (HTML `required`); Keycloak 24 has no per-sign-in server-side acknowledgement (Terms and Conditions records one acceptance per user; anything else needs a Java SPI authenticator). LTI-launched Students sign in through Moodle, which shows no banner (owner decision) | `infra/keycloak/themes/truenorth/login/login.ftl`, `install/roles/tn_keycloak/tasks/banner.yml`, `scripts/check_keycloak_realm.sh` |
@@ -925,7 +953,7 @@ repository does it, whatever an operator could add.
 | AU-3 Content of Audit Records | Partial | Time, user, tenant, action, resource type and id, free-text detail. No source IP, user agent or outcome (success or failure) | `control-plane/api/app/models.py` (`AuditLog`) |
 | AU-6 Audit Review | Partial | A paged, newest-first list (`GET /audit-log`, Admin → Audit Log), scoped per tenant; only the platform administrator (`PLATFORM_TENANT_ID`) reads across tenants, with a `tenant_id` filter. No search, date or user filter, correlation, reporting or alerting on audit events | `control-plane/api/app/routers/admin.py` (`list_audit_log`), `tests/api/test_audit_scope.py` |
 | AU-9 Protection of Audit Information | Partial | The database refuses UPDATE and TRUNCATE of `audit_logs`, stamps inserts with its own clock, and allows DELETE only through the retention path (`tn.audit_purge`, rows 30+ days old, an export and a fresh re-verification check of it). Signed (Ed25519) daily export with a hash chain, verified in every backup and the restore drill. Gap: the application connects as the database owner, which can disable triggers or write export rows, so against a compromised application or host this is detection (chain, out-of-band key fingerprint, off-host backups), not prevention; non-owner role and WORM storage are v1.3 | `control-plane/api/alembic/versions/b7c8d9e0f1a2_audit_log_append_only.py`, `control-plane/worker/worker/audit_jobs.py`, `docs/adr/0011-audit-log-integrity.md`, `tests/api/test_audit_append_only_postgres.py` |
-| AU-11 Audit Record Retention | Implemented | 90 days in the database (`tn_audit_hot_retention_days`, floor 30, 0 = forever), each day deleted only after its export verifies; the signed archive is kept until the operator prunes it, and every backup holds a verified copy. No 365-day or 7-year tiers: keep the archive and backups as long as the site's policy requires | `control-plane/worker/worker/audit_jobs.py`, `scripts/backup/backup.sh`, `docs/runbooks/backup-restore.md` |
+| AU-11 Audit Record Retention | Implemented | 90 days in the database (`AUDIT_HOT_RETENTION_DAYS`, floor 30, 0 = forever), each day deleted only after its export verifies; the signed archive is kept until the operator prunes it, and every backup holds a verified copy. No 365-day or 7-year tiers: keep the archive and backups as long as the site's policy requires | `control-plane/worker/worker/audit_jobs.py`, `scripts/backup/backup.sh`, `docs/runbooks/backup-restore.md` |
 | CA-7 Continuous Monitoring | Partial | Prometheus, Alertmanager and Grafana with unit-tested alert rules. Alert delivery through Alertmanager has not been exercised on staging | `infra/platform/docker/compose.monitoring.yml`, `tests/contracts/test_prometheus_rules.py` |
 | CA-8 Penetration Testing | Not implemented | No penetration test has been performed or scheduled. Internal code security sweeps only | — |
 | CM-2 Baseline Configuration | Partial | Configuration as code: the Ansible installer, `compose.prod.yml` by image digest, a Helm chart, Packer image builds. No drift detection. (Terraform was removed in #131.) | `install/`, `infra/platform/docker/compose.prod.yml`, `infra/k8s/helm/`, `infra/vsphere/packer/` |

@@ -2,8 +2,8 @@
 
 ``POST /scenarios/validate`` reported them, but create and update only parsed the YAML, so
 a scenario naming ``firewall_rule`` (which passed every objective) or a ``manual_ack`` that
-approved itself could be stored and launched. Also: a ``require_observed`` objective is
-never credited from a Student's submitted detection (detections/credit.py).
+approved itself could be stored and launched. Also: a detection objective's query is the
+instructor's look-for guidance, rendered, never an answer key (ADR 0020, detections/evidence.py).
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import uuid
 
 import pytest
 from _shared import act_as, real_tenant, real_user
-from app.detections import credit
+from app.detections import evidence
 from app.models import Scenario, UserRole
 
 HEAD = "name: s\nversion: '1'\nrange_template: t\ntimeline: [{t: '0:00'}]\nobjectives:\n  - "
@@ -74,19 +74,16 @@ def test_qsp_scenarios_have_only_judgeable_objectives(crit):
     assert engine_bridge.objective_errors(safe_yaml.load(qsp_paths._scenario_yaml(po, crit))) == []
 
 
-def _key(params: str):
-    doc = f"objectives:\n  - id: o\n    params: {params}\n"
-    return credit.answer_key("opensearch_query", None, "o", doc)
+def _look_for(params: str, validator: str = "opensearch_query"):
+    doc = f"variables: {{c2: a.example}}\nobjectives:\n  - id: o\n    params: {params}\n"
+    return evidence.look_for(validator, None, "o", doc)
 
 
-@pytest.mark.parametrize("flag", ["true", "'yes'", "1"])
-def test_an_observed_objective_is_not_credited_from_a_submission(flag):
-    # The answer key would match the inject's synthetic records too (their label is not
-    # indexed), so a submission against it is never credited; the engine judges it.
-    with pytest.raises(credit.NotScorable, match="observed range telemetry"):
-        _key(f"{{query: 'event_type:flow', require_observed: {flag}}}")
+def test_a_detection_objectives_query_is_rendered_look_for_guidance():
+    assert _look_for("{query: 'url.domain:*{{ c2 }}*'}") == "url.domain:*a.example*"
+    assert _look_for("{query: 'event_type:flow', require_observed: true}") == "event_type:flow"
 
 
-def test_a_detection_objective_is_still_credited_from_submissions():
-    assert _key("{query: 'event_type:flow', require_observed: false}").query == "event_type:flow"
-    assert _key("{query: 'event_type:flow'}").query == "event_type:flow"
+def test_no_look_for_without_a_query_or_on_another_validator():
+    assert _look_for("{}") is None
+    assert _look_for("{query: 'event_type:flow'}", validator="manual_ack") is None

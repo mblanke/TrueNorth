@@ -6,7 +6,7 @@ rebuilding the VM there, and the quarterly restore drill) are in
 reference for what the scripts do.
 
 Scripts: `scripts/backup/` (`backup.sh`, `restore.sh`, `restore-secrets.sh`,
-`cron-backup.sh`, `escrow-open.sh`, `drill.sh`, shared `lib.sh`). Proof: `scripts/backup/drill.sh`, run by
+`cron-backup.sh`, `s3-backup.sh`, `escrow-open.sh`, `drill.sh`, shared `lib.sh`). Proof: `scripts/backup/drill.sh`, run by
 `.github/workflows/backup-drill.yml` nightly and on every change to `scripts/backup/**`,
 `compose.prod.yml` or `postgres-init/`.
 
@@ -153,7 +153,7 @@ the code through.
 Prometheus watches the same things: each `backup.sh` run writes
 `$METRICS_DIR/truenorth_backup.prom` (`METRICS_DIR` is in `backup.env`; node_exporter's
 textfile collector reads it), and `BackupFailed` (nothing kept), `BackupIncomplete`
-(exit 3 or 5) and `BackupStale` (no good backup in 26 h) fire from it
+(exit 3, 5 or 6) and `BackupStale` (no good backup in 26 h) fire from it
 ([operations.md](../operations.md#alert-rules)). The installer seeds the file with the install
 time, so a nightly job that never runs alerts too. The offsite upload (exit 4) is not in it.
 
@@ -397,8 +397,11 @@ names `truenorth`, `docker` and `tn-r0-pg`. Never point it at a live stack.
 
 Audit export archive: `drill_audit_archive.py seed` writes five days of signed exports with
 the worker's own code (needs python3 with the worker's `cryptography` and `SQLAlchemy`);
-the backup must record them verified, the wipe deletes the directory, `restore.sh` brings
-it back, and `python -m worker.audit_verify`'s archive check (signatures, hashes, the
+the backup must record them verified, `drill_audit_archive.py extend` exports one more day
+(the archive is now newer than the backup), the wipe (`down -v`) deletes the volumes but
+not the archive — it is on the host, so it survives — and `restore.sh` brings the backup's
+state back, quarantining that newer day into `quarantine/` (a `RESTORE.json` there records
+the move). `python -m worker.audit_verify`'s archive check (signatures, hashes, the
 chain) must give the same summary as before. A backup of a tampered archive must exit `6`
 with an alert.
 

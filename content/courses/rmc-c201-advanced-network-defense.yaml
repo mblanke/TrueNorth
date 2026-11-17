@@ -250,8 +250,8 @@ modules:
       action: Check whether nids01 recorded the same contact on the mirror port, and note any difference
         in what each sensor saw.
     - hosts: [honey01, siem01, blue01, nids01]
-      action: Judge whether the deception would survive a careful intruder, and propose one realism
-        improvement with its reason.
+      action: From blue01, judge whether the deception would survive a careful intruder, and propose
+        one realism improvement with its reason.
     - hosts: [blue01]
       action: State why the deception as deployed remains lawful defensive action, and record the boundary
         that must not be crossed.
@@ -434,8 +434,8 @@ modules:
       action: Define the guardrail that stops the playbook isolating more hosts than its trigger supports,
         using honey01 as a false-positive test case.
     - hosts: [ws01, blue01]
-      action: Write the rollback for each automated step, and record who can authorise returning ws01
-        to the network.
+      action: From blue01, write the rollback for each automated step, and record who can authorise
+        returning ws01 to the network.
     - hosts: [siem01, blue01, ws01]
       action: Judge whether the trigger is precise enough for automation, and state the failure the
         guardrail exists to prevent.

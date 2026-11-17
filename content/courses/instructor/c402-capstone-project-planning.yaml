@@ -90,8 +90,10 @@ answer_key_notes:
     explains why the choice was made; citing the supervisor or declaring it final are authority, not reasoning.
     Q3 C (fix two and answer the third with reasoning): review feedback is answered by action or by reasoned
     reply, never by silent acceptance or silent refusal. Q4 A (review engaged with traceably): the revision
-    log shows what changed and why, which is its whole value to an assessor. Q5 B (scope too wide to complete
-    and evaluate): the most frequent proposal failing is scope, not references or formatting.'
+    log shows what changed and why, which is its whole value to an assessor. Q5 B (schedule changed after a comment,
+    with the reason recorded): the entry names what changed and the evidence for changing it, which is treating
+    critique as evidence about the plan; A dismisses it without reasoning, and C and D record neither a change
+    nor a reason.'
 lab_setup:
 - module: 1
   setup: Revert the medium-enterprise range to its baseline template state before the session. Confirm the

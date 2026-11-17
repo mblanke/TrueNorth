@@ -11,7 +11,9 @@ import { apiErrorMessage } from '@shared/kb-errors';
 import { KbStylesComponent } from '@shared/kb-styles.component';
 import { isStaffRole } from '@shared/kb-roles';
 import { MarkdownEditorComponent } from '@shared/markdown/markdown-editor.component';
-import { SupportQueue, TYPE_LABELS, TicketPriority, TicketType, TicketsApiService } from '@core/services/tickets-api.service';
+import {
+  SupportQueue, TYPE_LABELS, TicketCategory, TicketLabelCount, TicketPriority, TicketType, TicketsApiService,
+} from '@core/services/tickets-api.service';
 
 /**
  * "Report a problem". Other pages link here with `?range_id=` and/or
@@ -59,6 +61,12 @@ import { SupportQueue, TYPE_LABELS, TicketPriority, TicketType, TicketsApiServic
             </select>
           </div>
           <div>
+            <label class="tn-kb-field" for="tk-cat">What is it about?</label>
+            <select id="tk-cat" class="tn-kb-input" name="category" [(ngModel)]="category">
+              @for (c of categories(); track c.key) { <option [value]="c.key">{{ c.label }}</option> }
+            </select>
+          </div>
+          <div>
             <label class="tn-kb-field" for="tk-range">Range</label>
             <select id="tk-range" class="tn-kb-input" name="range" [(ngModel)]="rangeId">
               <option [ngValue]="null">None</option>
@@ -72,6 +80,16 @@ import { SupportQueue, TYPE_LABELS, TicketPriority, TicketType, TicketsApiServic
               @for (e of exercises(); track e.id) { <option [ngValue]="e.id">{{ e.name }}</option> }
             </select>
           </div>
+          @if (staff()) {
+            <div>
+              <label class="tn-kb-field" for="tk-labels">Labels (comma separated, staff only)</label>
+              <input id="tk-labels" class="tn-kb-input" name="labels" list="tk-label-options" autocomplete="off"
+                     placeholder="e.g. esxi-03, golden-image" [(ngModel)]="labels">
+              <datalist id="tk-label-options">
+                @for (l of knownLabels(); track l.label) { <option [value]="l.label"></option> }
+              </datalist>
+            </div>
+          }
           @if (staff() && queues().length > 1) {
             <div>
               <label class="tn-kb-field" for="tk-queue">Queue</label>
@@ -111,12 +129,16 @@ export class TicketNewComponent implements OnInit {
   readonly ranges = signal<RangeSummary[]>([]);
   readonly exercises = signal<ExerciseSummary[]>([]);
   readonly queues = signal<SupportQueue[]>([]);
+  readonly categories = signal<TicketCategory[]>([{ key: 'other', label: 'Something else' }]);
+  readonly knownLabels = signal<TicketLabelCount[]>([]);
   readonly busy = signal(false);
 
   subject = '';
   description = '';
   type: TicketType = 'incident';
   priority: TicketPriority = 'medium';
+  category = 'other';
+  labels = '';
   rangeId: string | null = null;
   exerciseId: string | null = null;
   queueId: string | null = null;
@@ -133,6 +155,8 @@ export class TicketNewComponent implements OnInit {
       this.queues.set(q);
       this.queueId = q.find(x => x.is_default)?.id ?? q[0]?.id ?? null;
     });
+    this.api.categories().pipe(catchError(() => of([]))).subscribe(c => c.length && this.categories.set(c));
+    if (this.staff()) this.api.labels().pipe(catchError(() => of([]))).subscribe(l => this.knownLabels.set(l));
   }
 
   pick(ev: Event): void {
@@ -147,6 +171,8 @@ export class TicketNewComponent implements OnInit {
         description: this.description,
         type: this.type,
         priority: this.priority,
+        category: this.category,
+        ...(this.staff() && this.labels.trim() ? { labels: this.labels } : {}),
         range_id: this.rangeId,
         exercise_id: this.exerciseId,
         queue_id: this.staff() ? this.queueId : null,

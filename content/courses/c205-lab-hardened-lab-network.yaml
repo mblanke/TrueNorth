@@ -434,8 +434,8 @@ modules:
     template: medium-enterprise
     steps:
     - hosts: [siem01]
-      action: Read the authorisation the instructor supplies and record the scope, the permitted
-        techniques and the escalation contact.
+      action: On siem01, read the authorisation the instructor supplies and record the scope, the
+        permitted techniques and the escalation contact.
     - hosts: [siem01, dc01, fs01]
       action: From siem01, run the scanning tool the instructor provides against dc01 and fs01 and
         record the services it returns for each.

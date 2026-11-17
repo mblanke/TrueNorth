@@ -55,8 +55,8 @@ answer_key_notes:
     an audit log that cannot be quietly changed and carries the time counters Repudiation; A, B and C
     name other categories, and B tests whether Students confuse secrecy with accountability. Q4 B:
     threat modelling pays during design and again whenever the design changes; A, C and D each delay
-    it to a point where the design is already fixed. Q5 D: ranking combines likelihood with impact,
-    and easy internet reach raises likelihood; A lets impact alone decide, B reduces ranking to
+    it to a point where the design is already fixed. Q5 D: ranking combines likelihood with impact;
+    with comparable impact, easy internet reach raises likelihood; A lets impact alone decide, B reduces ranking to
     mitigation cost, C denies that likelihood matters.
 - module: 3
   notes: >-
