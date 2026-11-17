@@ -125,6 +125,10 @@ def test_f30_companion_an_independent_request_is_not_starved_behind_the_lrs_prox
     out = cmi5_launch(client, student, release)
     au = AU(client, out["url"], student)
     au.fetch()
+    # FastAPI builds /openapi.json on the first request (about 1 s on a fast laptop, more on a
+    # loaded CI runner) and caches it. Build it now, so the bystander below measures event-loop
+    # starvation behind the held LRS call and not the one-time schema build against its 2 s limit.
+    assert client.get("/openapi.json").status_code == 200
     entered, release_call = threading.Event(), threading.Event()
     real_request = lrs.xapi_request
 
