@@ -132,8 +132,12 @@ def old_index(client, db_session, monkeypatch, respx_mock):
         found = idx.search(body["query"])
         return httpx.Response(
             200,
-            json={"hits": {"total": {"value": len(found)},
-                           "hits": [{"_index": index, "_id": str(i), "_source": e} for i, e in enumerate(found)]}},
+            json={
+                "hits": {
+                    "total": {"value": len(found)},
+                    "hits": [{"_index": index, "_id": str(i), "_source": e} for i, e in enumerate(found)],
+                }
+            },
         )
 
     respx_mock.post(f"{OS_URL}/{index}/_search").mock(side_effect=search)

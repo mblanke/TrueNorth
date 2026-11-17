@@ -36,10 +36,13 @@ def _tagged(vc, vm_id: str, range_id: str | None, name: str | None = None) -> Fa
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: a recorded VM that vCenter no longer has under its moid is "
-                                       "counted as deleted when a connection is recorded, even though it may have "
-                                       "been re-registered and still run (control-plane/worker/worker/"
-                                       "provisioners/vsphere_api.py:3211) — companion")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: a recorded VM that vCenter no longer has under its moid is "
+    "counted as deleted when a connection is recorded, even though it may have "
+    "been re-registered and still run (control-plane/worker/worker/"
+    "provisioners/vsphere_api.py:3211) — companion",
+)
 def test_two_tenants_re_registered_vm_credited_while_the_other_tenant_vm_is_left(vc):
     """Two-tenant matrix for the re-registered-VM finding: two ranges share one vCenter,
     each having recorded the connection that built it. Range A's VM was unregistered and
@@ -57,8 +60,10 @@ def test_two_tenants_re_registered_vm_credited_while_the_other_tenant_vm_is_left
     # false credit the oracle pins.
     assert "vm-A-new" not in vc.vms or result_a.resources_removed == 0, (
         f"range A's VM is still registered in this vCenter (moid vm-A-new) but its destroy "
-        f"counted {result_a.resources_removed} resource(s) removed with status {result_a.status!r}")
+        f"counted {result_a.resources_removed} resource(s) removed with status {result_a.status!r}"
+    )
     # And range B's VM, never recorded by range A, survives the whole teardown.
     assert "vm-B" in vc.vms, (
         "range A's destroy touched range B's VM (vm-B): the re-registered VM must be found "
-        "by range A's own mark, not by anything broader")
+        "by range A's own mark, not by anything broader"
+    )

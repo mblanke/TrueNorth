@@ -69,8 +69,11 @@ def test_a_lab_token_stops_working_when_its_owner_is_deactivated(lab, db_session
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Staff opening the console touches the "
-                                        "Student's lab, idle clock and ACTIVE state (control-plane/api/app/lab_sessions/service.py:1276)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: Staff opening the console touches the "
+    "Student's lab, idle clock and ACTIVE state (control-plane/api/app/lab_sessions/service.py:1276)",
+)
 def test_staff_opening_the_console_does_not_touch_the_students_lab(lab, db_session):  # noqa: F811 — the lab fixtures, imported from test_lab_sessions
     """audit443 LOW finding, control-plane/api/app/lab_sessions/service.py:1276 (at the audit
     base; ``service.console``, the unconditional ``touch`` at its end): "Staff opening the
@@ -93,12 +96,23 @@ def test_staff_opening_the_console_does_not_touch_the_students_lab(lab, db_sessi
     until(db_session, a, "ready")
     db_session.commit()
     before_state, before_idle = a.state, a.idle_expires_at
-    teacher = User(email="t@example.test", display_name="T", role=UserRole.instructor,
-                   tenant_id=s.tenant_id, keycloak_id="kc-teach")
+    teacher = User(
+        email="t@example.test",
+        display_name="T",
+        role=UserRole.instructor,
+        tenant_id=s.tenant_id,
+        keycloak_id="kc-teach",
+    )
     db_session.add(teacher)
     db_session.commit()
-    who = CurrentUser(id=str(teacher.id), email=teacher.email, display_name="T", role=UserRole.instructor,
-                      tenant_id=str(teacher.tenant_id), keycloak_id=teacher.keycloak_id)
+    who = CurrentUser(
+        id=str(teacher.id),
+        email=teacher.email,
+        display_name="T",
+        role=UserRole.instructor,
+        tenant_id=str(teacher.tenant_id),
+        keycloak_id=teacher.keycloak_id,
+    )
     fastapi_app.dependency_overrides[get_current_user] = lambda: who
     try:
         assert client.post(f"/lab-sessions/{a.id}/console").status_code == 200
@@ -140,8 +154,11 @@ def test_a_start_lab_during_teardown_hands_a_token_that_still_opens_the_page(lab
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: A range whose destroy is still running holds "
-                                        "no capacity (control-plane/api/app/capacity/service.py:117)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: A range whose destroy is still running holds "
+    "no capacity (control-plane/api/app/capacity/service.py:117)",
+)
 def test_a_range_being_destroyed_still_counts_as_committed(db_session, monkeypatch):
     """audit443 LOW finding, control-plane/api/app/capacity/service.py:117 (at the audit base;
     ``running_ranges``): "A range whose destroy is still running holds no capacity".
@@ -173,8 +190,11 @@ def test_a_range_being_destroyed_still_counts_as_committed(db_session, monkeypat
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: A class's own lab queues behind a self-serve "
-                                        "lab that is itself waiting for site capacity (control-plane/api/app/lab_sessions/service.py:412)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: A class's own lab queues behind a self-serve "
+    "lab that is itself waiting for site capacity (control-plane/api/app/lab_sessions/service.py:412)",
+)
 def test_a_classs_own_lab_starts_beside_a_queued_self_serve_lab(lab, db_session, worker, monkeypatch):  # noqa: F811 — the lab fixtures, imported from test_lab_sessions
     """audit443 MEDIUM finding, control-plane/api/app/lab_sessions/service.py:412 (at the
     audit base; ``_quota_problem``'s FIFO check): "A class's own lab queues behind a self-serve
@@ -195,36 +215,64 @@ def test_a_classs_own_lab_starts_beside_a_queued_self_serve_lab(lab, db_session,
     a, _ = launch(db_session, student(db_session), rid)
     assert a.state == "queued"
     monkeypatch.setenv("LAB_MAX_SESSIONS_PER_TENANT", "1000")
-    lead = User(email=f"lead{uuid.uuid4().hex[:6]}@example.test", display_name="L",
-                role=UserRole.instructor, tenant_id=DEV_TENANT, keycloak_id=f"kc-{uuid.uuid4().hex[:8]}")
+    lead = User(
+        email=f"lead{uuid.uuid4().hex[:6]}@example.test",
+        display_name="L",
+        role=UserRole.instructor,
+        tenant_id=DEV_TENANT,
+        keycloak_id=f"kc-{uuid.uuid4().hex[:8]}",
+    )
     db_session.add(lead)
     db_session.flush()
     today = datetime.now(UTC).date()
-    cls = Class(tenant_id=DEV_TENANT, name="Scratch class", course_id=course_id,
-                start_date=today, end_date=today + timedelta(days=1), lead_instructor_id=lead.id)
+    cls = Class(
+        tenant_id=DEV_TENANT,
+        name="Scratch class",
+        course_id=course_id,
+        start_date=today,
+        end_date=today + timedelta(days=1),
+        lead_instructor_id=lead.id,
+    )
     db_session.add(cls)
     db_session.flush()
     start = datetime.now(UTC) - timedelta(minutes=10)  # live now (own_booking's window)
     _booking = ScheduledEvent(
-        name="A full site elsewhere", tenant_id=DEV_TENANT, state=EventState.scheduled,
-        start_time=start, end_time=start + timedelta(hours=3), vcpu_total=10,
-        ram_mb_total=1048576, disk_gb_total=100000,
+        name="A full site elsewhere",
+        tenant_id=DEV_TENANT,
+        state=EventState.scheduled,
+        start_time=start,
+        end_time=start + timedelta(hours=3),
+        vcpu_total=10,
+        ram_mb_total=1048576,
+        disk_gb_total=100000,
     )
     db_session.add(_booking)
     # 2. the class's session of the lab's course is live now and holds its Students' labs;
     #    a Student on its roll call draws on that hold and needs no site capacity.
     evt = ScheduledEvent(
-        name="Scratch session", tenant_id=DEV_TENANT, state=EventState.scheduled,
-        start_time=start, end_time=start + timedelta(hours=3), course_id=course_id,
-        vcpu_total=8, ram_mb_total=4096, disk_gb_total=100,
+        name="Scratch session",
+        tenant_id=DEV_TENANT,
+        state=EventState.scheduled,
+        start_time=start,
+        end_time=start + timedelta(hours=3),
+        course_id=course_id,
+        vcpu_total=8,
+        ram_mb_total=4096,
+        disk_gb_total=100,
     )
     db_session.add(evt)
     db_session.flush()
-    db_session.add(ClassSession(class_id=cls.id, event_id=evt.id, tenant_id=DEV_TENANT,
-                                range_mode="individual"))
+    db_session.add(ClassSession(class_id=cls.id, event_id=evt.id, tenant_id=DEV_TENANT, range_mode="individual"))
     b = student(db_session)
-    db_session.add(RollCallEntry(class_id=cls.id, tenant_id=DEV_TENANT, email=b.email.lower(),
-                                 user_id=b.id, status=RollCallStatus.signed_in.value))
+    db_session.add(
+        RollCallEntry(
+            class_id=cls.id,
+            tenant_id=DEV_TENANT,
+            email=b.email.lower(),
+            user_id=b.id,
+            status=RollCallStatus.signed_in.value,
+        )
+    )
     db_session.commit()
     act(db_session, service.advance, a)
     assert a.state == "queued" and capacity_gate.BUSY in a.error, (a.state, a.error)

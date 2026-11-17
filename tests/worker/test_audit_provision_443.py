@@ -83,11 +83,9 @@ def test_a_partial_destroy_is_not_recorded_destroyed_and_releases_nothing(task_e
 
     class Prov:
         async def destroy(self, range_id, output):
-            return DestroyResult(status="partial", resources_removed=4,
-                                 errors=["VM vm-105: power-off timed out"])
+            return DestroyResult(status="partial", resources_removed=4, errors=["VM vm-105: power-off timed out"])
 
-    monkeypatch.setattr(tasks.range_alloc, "release_after_destroy",
-                        lambda *a: released.append("released") or 0)
+    monkeypatch.setattr(tasks.range_alloc, "release_after_destroy", lambda *a: released.append("released") or 0)
     monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None, **kw: Prov())
     monkeypatch.setattr(tasks, "_last_attempt", lambda task: True)  # final: no retry
     with pytest.raises(Exception, match="power-off timed out|partial"):
@@ -101,8 +99,9 @@ def test_a_partial_destroy_is_not_recorded_destroyed_and_releases_nothing(task_e
 SECRETS = {
     "connection": {"id": "conn-1", "host": "https://vcenter.site/"},
     "uplink": {"ip": "10.30.32.101", "gateway": "10.30.32.1", "network": "dPG-TN-SVC"},
-    "isolation": {"settings": {"targets": ["10.30.30.1", "10.30.30.20", "vcenter.site:443"],
-                               "exceptions": ["10.30.32.10:8081"]}},
+    "isolation": {
+        "settings": {"targets": ["10.30.30.1", "10.30.30.20", "vcenter.site:443"], "exceptions": ["10.30.32.10:8081"]}
+    },
     "inventory": {"macs": ["00:50:56:3c:00:00"]},
     "vms": [{"name": "r8-dc01", "identity": {"disks": [{"path": "[esx03-local] r/r8-dc01.vmdk"}]}}],
 }
@@ -112,9 +111,15 @@ def _range_with_output(db_session, tenant_id) -> Range:
     template = Template(id=uuid.uuid4(), name="t", yaml="id: t\n", tenant_id=tenant_id)
     db_session.add(template)
     db_session.flush()
-    rng = Range(id=uuid.uuid4(), name="team exercise range", template_id=template.id,
-                tenant_id=tenant_id, state=RangeState.ready, provisioner_backend="vsphere_api",
-                provisioner_output=json.dumps(SECRETS))
+    rng = Range(
+        id=uuid.uuid4(),
+        name="team exercise range",
+        template_id=template.id,
+        tenant_id=tenant_id,
+        state=RangeState.ready,
+        provisioner_backend="vsphere_api",
+        provisioner_output=json.dumps(SECRETS),
+    )
     db_session.add(rng)
     db_session.flush()
     return rng
@@ -188,13 +193,15 @@ def test_a_partial_build_is_not_settled_ready_without_a_persisted_error(task_env
 
     class Prov:
         async def provision(self, range_id, template, allocations):
-            return ProvisionResult(status="partial", vms=vms,
-                                   errors=["VM r-dc01: Cannot create clone: datastore is full"])
+            return ProvisionResult(
+                status="partial", vms=vms, errors=["VM r-dc01: Cannot create clone: datastore is full"]
+            )
 
     monkeypatch.setattr(tasks.range_alloc, "reserve_for_build", lambda *a: {})
     monkeypatch.setattr(tasks, "_get_backend", lambda b, range_id=None, **kw: Prov())
-    monkeypatch.setattr(tasks.greyspace, "after_provision",
-                        lambda *a: pytest.fail("greyspace ran for a partly built range"))
+    monkeypatch.setattr(
+        tasks.greyspace, "after_provision", lambda *a: pytest.fail("greyspace ran for a partly built range")
+    )
     out = tasks.provision_range.run("r-1")
     assert out["status"] != "ready" and out.get("error"), f"partial build settled {out}"
     assert "ready" not in [s for s, _ in task_env["states"]]
@@ -204,9 +211,12 @@ def test_a_partial_build_is_not_settled_ready_without_a_persisted_error(task_env
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: ensure_dvs_portgroup reuses a same-named port "
-                                       "group without re-checking its VLAN or owner mark "
-                                       "(vsphere_infra.py:313)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: ensure_dvs_portgroup reuses a same-named port "
+    "group without re-checking its VLAN or owner mark "
+    "(vsphere_infra.py:313)",
+)
 def test_ensure_dvs_portgroup_refuses_a_same_named_foreign_port_group():
     """Audit #443, low, control-plane/worker/worker/provisioners/vsphere_infra.py:313 —
     "``ensure_dvs_portgroup`` reuses a same-named port group without re-checking its VLAN
@@ -245,8 +255,11 @@ def test_ensure_dvs_portgroup_still_reuses_an_unmarked_port_group_on_its_own_vla
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: reconcile_lab_vms deletes VMs by annotation/"
-                                       "name alone, outside the S5 recorded-ID rule (lab_tasks.py:60)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: reconcile_lab_vms deletes VMs by annotation/"
+    "name alone, outside the S5 recorded-ID rule (lab_tasks.py:60)",
+)
 def test_reconcile_does_not_delete_a_lab_vm_by_annotation_alone(monkeypatch, lease_always_free):
     """Audit #443, low, control-plane/worker/worker/lab_tasks.py:60 — "``reconcile_lab_vms``
     deletes VMs by annotation/name alone, outside the S5 recorded-ID rule".
@@ -262,8 +275,7 @@ def test_reconcile_does_not_delete_a_lab_vm_by_annotation_alone(monkeypatch, lea
 
     class Prov:
         async def find_vms(self, prefix):
-            return [{"vm_id": "vm-1", "name": "aaaaaaaa-gateway",
-                     "range_id": "aaaaaaaa-1111-2222-3333-444444444444"}]
+            return [{"vm_id": "vm-1", "name": "aaaaaaaa-gateway", "range_id": "aaaaaaaa-1111-2222-3333-444444444444"}]
 
         async def destroy(self, range_id, output):
             destroyed.extend(v["vm_id"] for v in output["vms"])

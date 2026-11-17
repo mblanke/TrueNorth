@@ -53,8 +53,9 @@ modules:
     - hosts: [jump-box]
       action: Log on to jump-box over SSH, open a terminal and record the start time in the lab notes.
     - hosts: [jump-box, fw-01, dc-01, ws-01, ws-02, ws-03]
-      action: Ping each host the range documentation lists from jump-box and record every host id with
-        its role and the property of the triad most harmed if it stopped working.
+      action: From jump-box, ping each host the range documentation lists — fw-01, dc-01, ws-01,
+        ws-02 and ws-03 — and record every host id with its role and the property of the triad
+        most harmed if it stopped working.
     - hosts: [jump-box]
       action: Read the fw-01 rule-set extract the instructor supplies and record the action it takes on
         traffic that no rule names.

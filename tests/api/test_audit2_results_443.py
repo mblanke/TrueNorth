@@ -169,7 +169,7 @@ def test_f30_lrs_proxy_keeps_the_event_loop_responsive(client, lrs, release, stu
 @pytest.mark.xfail(
     strict=True,
     reason="audit #443: unguarded server-side fetches to tenant-admin-controlled platform URLs "
-           "bypass net_guard (control-plane/api/app/lti13.py:233)",
+    "bypass net_guard (control-plane/api/app/lti13.py:233)",
 )
 def test_f32_lti13_jwks_fetches_go_through_net_guard(db_session, monkeypatch):
     """The JWKS URL is tenant-admin-controlled; a private (metadata) address must be refused
@@ -204,7 +204,7 @@ def test_f32_lti13_jwks_fetches_go_through_net_guard(db_session, monkeypatch):
 @pytest.mark.xfail(
     strict=True,
     reason="audit #443: a withdrawn Student keeps launch/content/grade; only the LRS proxy checks "
-           "withdrawal (control-plane/api/app/cmi5/lms.py:211)",
+    "withdrawal (control-plane/api/app/cmi5/lms.py:211)",
 )
 def test_f33_a_withdrawn_student_cannot_launch(client, db_session, lrs, release, student):
     """enrolment_for never reads the enrolment status, so a withdrawn student still gets a
@@ -222,7 +222,7 @@ def test_f33_a_withdrawn_student_cannot_launch(client, db_session, lrs, release,
 @pytest.mark.xfail(
     strict=True,
     reason="audit #443: two concurrent first results for the same attempt both land; no uniqueness "
-           "on attempt (control-plane/api/app/result_transfer/service.py:285)",
+    "on attempt (control-plane/api/app/result_transfer/service.py:285)",
 )
 def test_f34_one_attempt_cannot_hold_two_first_results():
     """The schema must back the attempt dedup with a unique constraint or unique index
@@ -244,8 +244,7 @@ def test_f34_one_attempt_cannot_hold_two_first_results():
 @pytest.mark.audit443
 @pytest.mark.xfail(
     strict=True,
-    reason="audit #443: no AU launch limit; one student can flood the LRS "
-           "(control-plane/api/app/cmi5/lms.py:340)",
+    reason="audit #443: no AU launch limit; one student can flood the LRS (control-plane/api/app/cmi5/lms.py:340)",
 )
 def test_f36_au_launches_are_limited(client, lrs, release, student):
     """Five back-to-back launches must not all succeed and each record a `launched`
@@ -265,7 +264,7 @@ def test_f36_au_launches_are_limited(client, lrs, release, student):
 @pytest.mark.xfail(
     strict=True,
     reason="audit #443: cross-tenant package_id reuse ends in an unhandled IntegrityError "
-           "(control-plane/api/app/result_transfer/service.py:252)",
+    "(control-plane/api/app/result_transfer/service.py:252)",
 )
 def test_f38_cross_tenant_package_id_reuse_is_a_mapped_refusal(db_session, monkeypatch):
     """The dedup lookup names the tenant but the primary key does not: two tenants reusing one
@@ -335,7 +334,7 @@ def test_f38_cross_tenant_package_id_reuse_is_a_mapped_refusal(db_session, monke
 @pytest.mark.xfail(
     strict=True,
     reason="audit #443: concurrent bundle imports race the check-then-insert store; unhandled "
-           "IntegrityError (control-plane/api/app/content_feeds/service.py:204)",
+    "IntegrityError (control-plane/api/app/content_feeds/service.py:204)",
 )
 def test_f39_concurrent_bundle_imports_neither_crash_nor_lose(monkeypatch, tmp_path):
     """Two first imports of the same entry, released together at _store's check-then-insert:
@@ -404,8 +403,7 @@ def test_f39_concurrent_bundle_imports_neither_crash_nor_lose(monkeypatch, tmp_p
 @pytest.mark.audit443
 @pytest.mark.xfail(
     strict=True,
-    reason="audit #443: first cmi5 launch races to a PK-collision 500 "
-           "(control-plane/api/app/cmi5/lms.py:228)",
+    reason="audit #443: first cmi5 launch races to a PK-collision 500 (control-plane/api/app/cmi5/lms.py:228)",
 )
 def test_f41_a_first_launch_racing_another_does_not_500(client, db_session, lrs, release, student, monkeypatch):
     """When the registration insert hits its primary key (another first launch won), the
@@ -437,7 +435,7 @@ def test_f41_a_first_launch_racing_another_does_not_500(client, db_session, lrs,
 @pytest.mark.xfail(
     strict=True,
     reason="audit #443: bundle takes ownership of online-origin entries and the next bundle deletes "
-           "them (control-plane/api/app/content_feeds/service.py:243)",
+    "them (control-plane/api/app/content_feeds/service.py:243)",
 )
 def test_f42_a_bundle_does_not_take_ownership_of_online_entries(client, db_session, bundle_mode):
     """A bundle may update what the online pull stored, but must not rewrite its origin to
@@ -461,7 +459,9 @@ def test_f42_a_bundle_does_not_take_ownership_of_online_entries(client, db_sessi
     db_session.commit()
     first = datetime.now(UTC)
     with feeds_acting_as(db_session, UserRole.admin):
-        assert feed_upload(client, feed_sign(feed_bundle(first, entries=[feed_bundle()["entries"][0]]))).status_code == 200
+        assert (
+            feed_upload(client, feed_sign(feed_bundle(first, entries=[feed_bundle()["entries"][0]]))).status_code == 200
+        )
         assert feed_upload(client, feed_sign(feed_bundle(first + timedelta(minutes=1), entries=[]))).status_code == 200
     assert "eol:ubuntu:20.04" in _entries(db_session)
 

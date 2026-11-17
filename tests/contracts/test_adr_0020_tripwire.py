@@ -46,6 +46,7 @@ DEV_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 
 # ── helpers ────────────────────────────────────────────────────────────
 
+
 def _tree(path: Path) -> ast.AST:
     return ast.parse(path.read_text())
 
@@ -209,9 +210,7 @@ def test_the_ack_and_withdraw_routes_need_objective_ack_and_are_audited():
             continue
         checked += 1
         # The permission sits in the signature: `user = Depends(require_permission(Permission.OBJECTIVE_ACK))`.
-        permitted = any(
-            isinstance(n, ast.Attribute) and n.attr == "OBJECTIVE_ACK" for n in ast.walk(node)
-        )
+        permitted = any(isinstance(n, ast.Attribute) and n.attr == "OBJECTIVE_ACK" for n in ast.walk(node))
         assert permitted, f"{node.name} does not require objective:ack"
         expected = "ack_objective" if routes[0].func.attr == "post" else "withdraw_objective_ack"
         assert expected in _constants(node), f"{node.name} writes no {expected} audit event"
@@ -238,7 +237,11 @@ def test_acknowledgement_records_who_note_cites_and_cites_become_cited(db_sessio
     student = _student(db_session)
     sub = _submission(db_session, ex, "obj-a", student)
     obj = exercise_judging.acknowledge(
-        db_session, ex.id, "obj-a", exercise_judging.JudgementIn(evidence="Beacon in Zeek", cites=[sub.id]), _instructor()
+        db_session,
+        ex.id,
+        "obj-a",
+        exercise_judging.JudgementIn(evidence="Beacon in Zeek", cites=[sub.id]),
+        _instructor(),
     )
     judged = json.loads(obj.evidence)
     assert judged["source"] == "instructor"
@@ -273,7 +276,9 @@ def test_withdraw_takes_the_judgement_back_and_retotals(db_session):
     ``recorded``, the objective is no longer achieved, the score drops."""
     ex = _exercise(db_session)
     sub = _submission(db_session, ex, "obj-a", _student(db_session))
-    exercise_judging.acknowledge(db_session, ex.id, "obj-a", exercise_judging.JudgementIn(evidence="note"), _instructor())
+    exercise_judging.acknowledge(
+        db_session, ex.id, "obj-a", exercise_judging.JudgementIn(evidence="note"), _instructor()
+    )
     with pytest.raises(HTTPException) as twice:
         exercise_judging.acknowledge(db_session, ex.id, "obj-a", exercise_judging.JudgementIn(), _instructor())
     assert twice.value.status_code == 409  # already judged
@@ -373,7 +378,9 @@ def test_the_look_for_is_staff_guidance_and_never_compared():
     """ADR 0020 §4: "The scenario's objective `query` is instructor guidance on what to
     look for. It is never compared with anything. It stays staff-only ... The
     `opensearch_query` validator name stays for now."""
-    scenario = "variables:\n  user: jdoe\nobjectives:\n  - id: obj-a\n    params:\n      query: 'process_name:{{ user }}'\n"
+    scenario = (
+        "variables:\n  user: jdoe\nobjectives:\n  - id: obj-a\n    params:\n      query: 'process_name:{{ user }}'\n"
+    )
     assert look_for(names.QUERY, None, "obj-a", scenario) == "process_name:jdoe"
     assert look_for("manual_ack", None, "obj-a", scenario) is None  # only detection objectives have one
     assert names.QUERY == "opensearch_query"
@@ -440,7 +447,11 @@ def test_the_exercise_lock_re_reads_the_row():
     """ADR 0020 review: "The exercise row lock re-reads the row (`populate_existing`), so
     an ack, a withdraw or a second /complete that overlaps a close is refused, not applied
     after it."""
-    attrs = {n.attr for n in ast.walk(_function(_tree(API / "exercise_completion.py"), "lock")) if isinstance(n, ast.Attribute)}
+    attrs = {
+        n.attr
+        for n in ast.walk(_function(_tree(API / "exercise_completion.py"), "lock"))
+        if isinstance(n, ast.Attribute)
+    }
     assert {"populate_existing", "with_for_update"} <= attrs
 
 
@@ -448,12 +459,16 @@ def test_retotal_fills_a_missing_max_score_and_never_rewrites_a_set_one(db_sessi
     """ADR 0020 review: "An exercise made without a maximum (`max_score` 0) takes its
     objectives' total when judged or closed ... A maximum someone set is never rewritten."""
     unset = _exercise(db_session, max_score=0)
-    exercise_judging.acknowledge(db_session, unset.id, "obj-a", exercise_judging.JudgementIn(evidence="note"), _instructor())
+    exercise_judging.acknowledge(
+        db_session, unset.id, "obj-a", exercise_judging.JudgementIn(evidence="note"), _instructor()
+    )
     assert unset.total_score == 60
     assert unset.max_score == 100  # filled from the objectives' total
 
     chosen = _exercise(db_session, max_score=150)
-    exercise_judging.acknowledge(db_session, chosen.id, "obj-a", exercise_judging.JudgementIn(evidence="note"), _instructor())
+    exercise_judging.acknowledge(
+        db_session, chosen.id, "obj-a", exercise_judging.JudgementIn(evidence="note"), _instructor()
+    )
     assert chosen.total_score == 60
     assert chosen.max_score == 150  # someone set it; retotal leaves it alone
 
@@ -465,4 +480,7 @@ def test_the_aar_renders_a_judgement_for_the_reader():
     assert aar_html.evidence_text(judged) == "Judged by Sgt Rivera: Beacon in Zeek (cites 2 detections)"
     bare = json.dumps({"source": "instructor", "by": "Sgt Rivera", "cites": ["a"]})
     assert aar_html.evidence_text(bare) == "Judged by Sgt Rivera (cites 1 detection)"
-    assert aar_html.evidence_text(json.dumps({"source": "instructor", "by": None, "note": ""})) == "Judged by an instructor"
+    assert (
+        aar_html.evidence_text(json.dumps({"source": "instructor", "by": None, "note": ""}))
+        == "Judged by an instructor"
+    )
