@@ -3642,8 +3642,10 @@ export interface paths {
          * Complete Exercise
          * @description Complete an exercise and tally scores.  **Permission: exercise:complete**
          *
-         *     Competency assessment, the LTI grade and the xAPI statement go to whoever completed it
-         *     and to every Student who submitted a detection in this run (app/exercise_completion).
+         *     Competency assessment, the LTI grade and the xAPI statement go to the exercise's Students
+         *     only (its seat or its teams, and on the roll call when it runs on a class range). They do
+         *     not go to whoever completes it, nor to a Student only because they submitted a detection
+         *     (app/exercise_completion, ADR 0020, #375).
          */
         post: operations["complete_exercise_exercises__exercise_id__complete_post"];
         delete?: never;

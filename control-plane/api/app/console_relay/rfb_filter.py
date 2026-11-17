@@ -127,8 +127,17 @@ _VERSION, _SECURITY, _AUTH, _INIT, _MESSAGES = range(5)
 #: Where the server's side of the handshake is: its version seen and waiting for the client's
 #: version line, the security list, waiting for the client's choice, the challenge, the result,
 #: waiting for ClientInit, ServerInit, and done (not examined any more).
-(_SV_VERSION, _SV_VERSION_WAIT, _SV_LIST, _SV_CHOICE_WAIT, _SV_CHALLENGE, _SV_RESULT,
- _SV_INIT_WAIT, _SV_INIT, _SV_DONE) = range(9)
+(
+    _SV_VERSION,
+    _SV_VERSION_WAIT,
+    _SV_LIST,
+    _SV_CHOICE_WAIT,
+    _SV_CHALLENGE,
+    _SV_RESULT,
+    _SV_INIT_WAIT,
+    _SV_INIT,
+    _SV_DONE,
+) = range(9)
 
 
 def _stripped(code: int) -> bool:
@@ -205,8 +214,8 @@ class ViewOnlyFilter:
                     raise Violation(CLOSE_POLICY, "The machine refused the console connection")
                 if len(sbuf) < 1 + count:
                     return
-                self._offered = frozenset(sbuf[1:1 + count])
-                del sbuf[:1 + count]
+                self._offered = frozenset(sbuf[1 : 1 + count])
+                del sbuf[: 1 + count]
                 self._sstate = _SV_CHOICE_WAIT
             elif state == _SV_CHALLENGE:
                 if len(sbuf) < VNC_AUTH_RESPONSE:

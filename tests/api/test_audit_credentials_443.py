@@ -52,8 +52,12 @@ def world(db_session):
     range_ops, tenant ``b`` with a foreign admin), built with the same helpers."""
     a, b = real_tenant(db_session, "audit-a"), real_tenant(db_session, "audit-b")
     w = {"a": a, "b": b}
-    for name, role, tenant in (("admin", UserRole.admin, a), ("instructor", UserRole.instructor, a),
-                               ("range_ops", UserRole.range_ops, a), ("foreign_admin", UserRole.admin, b)):
+    for name, role, tenant in (
+        ("admin", UserRole.admin, a),
+        ("instructor", UserRole.instructor, a),
+        ("range_ops", UserRole.range_ops, a),
+        ("foreign_admin", UserRole.admin, b),
+    ):
         w[name] = real_user(db_session, role, tenant.id)
     return w
 
@@ -102,14 +106,16 @@ def test_rotation_of_a_never_applied_account_cannot_settle_as_applied(client, db
     row = _row(db_session, rng, "web01", "analyst")
     # The worker's real failure path (credential_rotation._settle -> settle_credential_change):
     # the guest did not take the new password.
-    assert db_ops.settle_credential_change(db_session, str(rng.id), str(row.id), row.sealed_password,
-                                           applied=False, operation=operation)
+    assert db_ops.settle_credential_change(
+        db_session, str(rng.id), str(row.id), row.sealed_password, applied=False, operation=operation
+    )
     db_session.expire_all()
     row = _row(db_session, rng, "web01", "analyst")
     assert not row.applied or row.pending, (
         "a failed rotation of an account the build never set settled as applied=True with the "
         "pre-rotation password, which the guest never had: the Student panel calls it verified "
-        "and the certification's INCOMPLETE turns into a PASS no build ever earned")
+        "and the certification's INCOMPLETE turns into a PASS no build ever earned"
+    )
 
 
 @pytest.mark.audit443
@@ -138,13 +144,16 @@ def test_deleting_a_snapshot_while_its_restore_rotation_is_pending_is_refused(cl
     assert rc.any_pending(db_session, rng)  # the restore:<id> rotation is still being applied
     assert client.delete(f"/ranges/{rng.id}/snapshots/{snap.id}").status_code == 409, (
         "deleting the snapshot while its restore rotation is pending destroys the recorded "
-        "passwords that rotation logs in with and reverts to")
+        "passwords that rotation logs in with and reverts to"
+    )
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: force_settle has no guard against a still-running worker task; the later CAS miss is logged at INFO (control-plane/api/app/range_credentials/service.py:414)")
-def test_force_settling_while_the_worker_task_is_still_running_leaves_a_lie_behind(client, db_session, world,
-                                                                                   no_tasks):
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: force_settle has no guard against a still-running worker task; the later CAS miss is logged at INFO (control-plane/api/app/range_credentials/service.py:414)",
+)
+def test_force_settling_while_the_worker_task_is_still_running_leaves_a_lie_behind(client, db_session, world, no_tasks):
     """#443-3 (medium) — control-plane/api/app/range_credentials/service.py:414:
     "force_settle has no guard against a still-running worker task; the later CAS miss is
     logged at INFO and leaves the row showing a password the guest no longer has".
@@ -176,20 +185,24 @@ def test_force_settling_while_the_worker_task_is_still_running_leaves_a_lie_behi
         assert resp.status_code == 409, resp.text
         return
     # ... and the task then succeeds in the guest and settles the version it set:
-    landed = db_ops.settle_credential_change(db_session, str(rng.id), str(row.id), sealed,
-                                             applied=True, operation=operation)
+    landed = db_ops.settle_credential_change(
+        db_session, str(rng.id), str(row.id), sealed, applied=True, operation=operation
+    )
     db_session.expire_all()
     row = _row(db_session, rng, "web01", "analyst")
     assert landed and row.password == new_pw, (
         "the worker's settle of the password it set lost to the admin's force_settle (only an "
         "INFO line): the row now shows the old password, which the guest no longer accepts, "
-        "and reveal hands it out")
+        "and reveal hands it out"
+    )
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Post-restore rotation dispatched only from a task_success signal; a failed send strands every pending row (control-plane/worker/worker/credential_rotation.py:258)")
-def test_a_failed_post_restore_rotation_send_must_not_strand_the_rows(client, db_session, world, no_tasks,
-                                                                      monkeypatch):
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: Post-restore rotation dispatched only from a task_success signal; a failed send strands every pending row (control-plane/worker/worker/credential_rotation.py:258)",
+)
+def test_a_failed_post_restore_rotation_send_must_not_strand_the_rows(client, db_session, world, no_tasks, monkeypatch):
     """#443-4 (low) — control-plane/worker/worker/credential_rotation.py:258:
     "Post-restore rotation is dispatched only from a Celery task_success signal; if that send
     fails every Student row of the class stays pending with no sweep, only per-account manual
@@ -235,14 +248,17 @@ def test_a_failed_post_restore_rotation_send_must_not_strand_the_rows(client, db
     db_session.get(RangeSnapshot, snap.id).snapshot_state = "ready"  # the revert ran
     db_session.commit()
     assert rc.any_pending(db_session, rng)
-    cr._after_restore(sender=SimpleNamespace(name=cr.RESTORE_TASK,
-                                             request=SimpleNamespace(args=[str(rng.id), str(snap.id)])),
-                      result={"status": "restored", "range_id": str(rng.id)})
+    cr._after_restore(
+        sender=SimpleNamespace(name=cr.RESTORE_TASK, request=SimpleNamespace(args=[str(rng.id), str(snap.id)])),
+        result={"status": "restored", "range_id": str(rng.id)},
+    )
     assert not rc.any_pending(db_session, rng), (
         "the rotation send failed and the restore's pending password changes are stranded: "
         "nothing sweeps or retries them, every later restore of the range is refused 409 and "
-        "the only recovery is one manual settle per account")
+        "the only recovery is one manual settle per account"
+    )
     row = _row(db_session, rng, "web01", "analyst")
     assert row.pending or row.password == p0, (
         "the rows were put back to their pre-restore password, not to the snapshot seal the "
-        "reverted guests actually have: reveal hands out a password that no longer logs in")
+        "reverted guests actually have: reveal hands out a password that no longer logs in"
+    )

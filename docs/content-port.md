@@ -116,9 +116,9 @@ Then import:
    - it must be used in a class or an exercise here;
    - the content clock must track it.
 
-   The origin's proof is kept and shown on the chip ("Ported; proven at origin"), but it
-   never makes an item proven here. Courses land unpublished. Publish them through a course
-   release once they are proven here.
+   The origin's proof is kept and shown on the chip ("Ported here <date> from key <key id>
+   (proven at origin)"), but it never makes an item proven here. Courses land unpublished.
+   Publish them through a course release once they are proven here.
 
 Actions in the preview:
 
@@ -170,7 +170,7 @@ docker compose run --rm --no-deps -w /app -e PYTHONPATH=/app \
 | Command | Does |
 |---|---|
 | `key` | Prints this site's public key, for `tn_content_port_trusted_keys`. |
-| `list [--proven-only]` | Lists every course, range template and scenario, proven or why not. |
+| `list [--proven-only]` | Lists every course, range template, scenario and exercise template, proven or why not. |
 | `export --item course:<id> [--item ...] --out /port/bundle.json [--force]` | Writes a signed bundle. Exit 3 when refused because something is not proven, with the reasons. Never replaces an existing file without `--force`. |
 | `verify /port/bundle.json --public-key <b64>` | Checks the signature and the item hashes **offline**, with no API and no database. Run it on the transfer machine. |
 | `preview /port/bundle.json [--tenant <id>] [--shared]` | Shows what importing would do. |

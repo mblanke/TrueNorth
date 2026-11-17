@@ -38,7 +38,10 @@ from test_console_relay import RFB_GREETING, _open, _released, _wait_for, world 
 pytestmark = pytest.mark.audit443
 
 
-@pytest.mark.xfail(strict=True, reason="audit #443: the redaction filter covers the wrong logger (control-plane/api/app/middleware.py:617)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: the redaction filter covers the wrong logger (control-plane/api/app/middleware.py:617)",
+)
 def test_the_grant_in_the_ws_handshake_line_is_redacted():
     """#443 finding (control-plane/api/app/middleware.py:617): the redaction filter covers the
     wrong logger. ``setup_middleware`` attaches ``RedactSecretPaths`` only to
@@ -62,8 +65,7 @@ def test_the_grant_in_the_ws_handshake_line_is_redacted():
         assert redact_path(f"/ws/console/{token}") == "/ws/console/<redacted>"
         setup_middleware(FastAPI())
         # exactly the record uvicorn's websockets impl emits (sansio impl :441, msg + args)
-        handshake_logger.info('%s - "WebSocket %s" [accepted]', "10.30.30.5:55555",
-                              f"/ws/console/{token}")
+        handshake_logger.info('%s - "WebSocket %s" [accepted]', "10.30.30.5:55555", f"/ws/console/{token}")
     finally:
         handshake_logger.removeHandler(handler)
         handshake_logger.setLevel(old_level)
@@ -73,7 +75,10 @@ def test_the_grant_in_the_ws_handshake_line_is_redacted():
     assert "/ws/console/<redacted>" in logged
 
 
-@pytest.mark.xfail(strict=True, reason="audit #443: the live cap counts closed-but-unexpired grants (control-plane/api/app/console_relay/service.py:143)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: the live cap counts closed-but-unexpired grants (control-plane/api/app/console_relay/service.py:143)",
+)
 def test_a_console_just_closed_frees_the_live_cap(client, db_session, request):
     """#443 finding (control-plane/api/app/console_relay/service.py:143): the live-console cap
     counts closed-but-unexpired grants. ``issue`` counts every grant with ``expires_at > now
@@ -89,7 +94,8 @@ def test_a_console_just_closed_frees_the_live_cap(client, db_session, request):
         assert _wait_for(_released(db_session))  # the socket is closed and the grant released
 
     assert not any(g.live_until is not None for g in db_session.query(ConsoleGrant).all()), (
-        "every socket is closed: no console is open")
+        "every socket is closed: no console is open"
+    )
 
     refused = None
     try:
