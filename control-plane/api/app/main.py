@@ -442,6 +442,7 @@ from .routers import (
     storage_router,
     templates_router,
     threat_intel_router,
+    ticket_triage_router,
     tickets_router,
     transcript_router,
     wiki_router,
@@ -544,6 +545,7 @@ app.include_router(live_class_router)  # GET /ops/exercises/{id}/class (app/live
 app.include_router(greyspace_router)
 # Knowledge base, trouble tickets ("Support") and the in-app notification bell
 app.include_router(wiki_router)
+app.include_router(ticket_triage_router)  # before tickets: /tickets/ai-triage/status is not a ticket id
 app.include_router(tickets_router)
 app.include_router(notifications_router)
 

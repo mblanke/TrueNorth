@@ -14,7 +14,7 @@ import { MarkdownEditorComponent } from '@shared/markdown/markdown-editor.compon
 import { MarkdownViewComponent } from '@shared/markdown/markdown-view.component';
 import {
   Assignee, PRIORITIES, STATUSES, STATUS_LABELS, SupportQueue, TYPE_LABELS, Ticket, TicketActivity,
-  TicketAttachment, TicketCategory, TicketComment, TicketLabelCount, TicketUpdate, TicketsApiService, labelList,
+  TicketAttachment, TicketCategory, TicketComment, TicketLabelCount, TicketTriage, TicketUpdate, TicketsApiService, labelList,
 } from '@core/services/tickets-api.service';
 
 const FIELD_LABELS: Record<string, string> = {
@@ -205,6 +205,46 @@ const FIELD_LABELS: Record<string, string> = {
               }
               @if (t.resolved_at) { <dt>Resolved</dt><dd class="tn-kb-small">{{ t.resolved_at | date: 'short' }}</dd> }
             </dl>
+            @if (t.can_work && triageAvailable()) {
+              <section class="tn-kb-panel" style="margin-top:16px" aria-label="AI triage">
+                <strong>AI triage</strong>
+                <p class="tn-kb-small tn-kb-muted" style="margin:4px 0 8px">Suggests only; nothing changes until you apply it.
+                  The ticket text (no names, no internal notes) is sent to this install's AI backend.</p>
+                @if (!suggestion()) {
+                  <button mat-stroked-button type="button" [disabled]="triaging()" (click)="suggest()">
+                    {{ triaging() ? 'Thinking…' : 'Suggest triage' }}
+                  </button>
+                  @if (triageError()) { <p class="tn-kb-error" role="alert">{{ triageError() }}</p> }
+                } @else {
+                  @if (suggestion(); as s) {
+                    @if (s.summary) { <p class="tn-kb-small"><strong>Summary.</strong> {{ s.summary }}</p> }
+                    @if (s.category && s.category !== t.category) {
+                      <p class="tn-kb-small">Category: <strong>{{ categoryLabel(s.category) }}</strong>
+                        <button type="button" class="tn-kb-linkbtn" (click)="applyCategory(s.category)">Apply</button></p>
+                    }
+                    @if (s.priority && s.priority !== t.priority) {
+                      <p class="tn-kb-small">Priority: <strong>{{ s.priority }}</strong>
+                        <button type="button" class="tn-kb-linkbtn" (click)="applyPriority(s.priority)">Apply</button></p>
+                    }
+                    @if (newLabels(t, s.labels).length) {
+                      <p class="tn-kb-small">Labels: <strong>{{ newLabels(t, s.labels).join(', ') }}</strong>
+                        <button type="button" class="tn-kb-linkbtn" (click)="applyLabels(t, s.labels)">Add</button></p>
+                    }
+                    @if (s.reply_hint) { <p class="tn-kb-small"><strong>Reply hint.</strong> {{ s.reply_hint }}</p> }
+                    @if (s.related_pages.length) {
+                      <p class="tn-kb-small" style="margin-bottom:2px"><strong>Related pages</strong></p>
+                      <ul class="tn-kb-small" style="margin:0;padding-left:18px">
+                        @for (p of s.related_pages; track p.page_id) {
+                          <li><a [routerLink]="['/wiki', p.space_slug, p.page_id]">{{ p.title }}</a></li>
+                        }
+                      </ul>
+                    }
+                    <p class="tn-kb-small tn-kb-muted" style="margin:8px 0 0">By {{ s.model || 'the AI' }}. Check it before you rely on it.
+                      <button type="button" class="tn-kb-linkbtn" (click)="suggestion.set(null)">Dismiss</button></p>
+                  }
+                }
+              </section>
+            }
             @if (admin()) {
               <p style="margin:16px 0 0"><button mat-button color="warn" type="button" (click)="remove(t)">Delete ticket</button></p>
             }
@@ -242,6 +282,10 @@ export class TicketDetailComponent implements OnInit {
   readonly knownLabels = signal<TicketLabelCount[]>([]);
   readonly labelList = labelList;
   readonly missing = signal(false);
+  readonly triageAvailable = signal(false);
+  readonly suggestion = signal<TicketTriage | null>(null);
+  readonly triaging = signal(false);
+  readonly triageError = signal('');
   readonly sending = signal(false);
   readonly admin = computed(() => isAdminRole(this.auth.user()?.role));
   readonly isReporter = computed(() => this.ticket()?.reporter_id === this.auth.user()?.id);
@@ -283,8 +327,35 @@ export class TicketDetailComponent implements OnInit {
           this.api.assignees().pipe(catchError(() => of([]))).subscribe(a => this.assignees.set(a));
           this.api.queues().pipe(catchError(() => of([]))).subscribe(q => this.queues.set(q));
           this.api.labels().pipe(catchError(() => of([]))).subscribe(l => this.knownLabels.set(l));
+          this.api.triageAvailable().pipe(catchError(() => of(false))).subscribe(a => this.triageAvailable.set(a));
         }
       });
+  }
+
+  suggest(): void {
+    const id = this.id;
+    this.triaging.set(true);
+    this.triageError.set('');
+    this.api.triage(id).subscribe({
+      next: s => {
+        this.triaging.set(false);
+        if (id === this.id) this.suggestion.set(s); // the user may have moved to another ticket meanwhile
+      },
+      error: err => {
+        this.triaging.set(false);
+        this.triageError.set(apiErrorMessage(err, 'The AI could not suggest anything just now.'));
+      },
+    });
+  }
+
+  applyCategory(category: string): void { this.patch({ category }); }
+  applyPriority(priority: string): void { this.patch({ priority } as TicketUpdate); }
+  newLabels(t: Ticket, suggested: string[]): string[] {
+    const have = labelList(t.labels);
+    return suggested.filter(l => !have.includes(l));
+  }
+  applyLabels(t: Ticket, suggested: string[]): void {
+    this.patch({ labels: [...labelList(t.labels), ...this.newLabels(t, suggested)].join(',') });
   }
 
   canRemove(a: TicketAttachment): boolean {
@@ -430,6 +501,8 @@ export class TicketDetailComponent implements OnInit {
     this.attachments.set([]);
     this.activity.set([]);
     this.editing.set(false);
+    this.suggestion.set(null);
+    this.triageError.set('');
     this.reply = '';
     this.internal = false;
   }

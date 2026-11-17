@@ -56,6 +56,40 @@ Rows live in the `notifications` table (`app/notifications/models.py`, `UserNoti
 caller's own. In-app only for now: no email, and no live push (the WebSocket
 `send_to_user` path exists but the bell polls).
 
+### AI triage
+
+On a ticket, staff (TICKET_WORK) see **AI triage** in the sidebar when an AI backend is set up.
+*Suggest triage* asks the platform's primary AI backend (the one under AI configuration, normally
+on site) for a category, priority, up to four labels, a one-line summary and a hint for the reply,
+and lists wiki pages whose title or tags share words with the subject. Code:
+`app/ticket_triage.py`, `app/routers/ticket_triage.py`.
+
+- **It only suggests.** Nothing changes on the ticket until staff press *Apply* or *Add* beside a
+  field, and that goes through the ordinary ticket update (and the history, under their name).
+- **Staff only, on request.** No automatic triage; students never see it (403).
+- **What leaves**: the ticket's type, subject, description (first 3,000 characters), current
+  category and priority, and the last three *public* replies (500 characters each). Not the
+  reporter's or anyone's name or email, not internal notes, not attachments. Nothing is stored; the
+  audit log records who asked about which ticket, never the text or the answer.
+- **The ticket is data, not instructions.** It is fenced in the prompt (a ticket cannot close the
+  fence), and the answer is accepted only as a JSON object whose every field is checked: category
+  and priority against the lists, labels against the label rules, text cut and stripped of control
+  characters. Anything else is dropped; an answer with nothing usable is a 502, not a made-up
+  suggestion.
+- **Off until an administrator sets `TICKET_AI_TRIAGE=true`**, and unavailable (409) when no real
+  backend is primary (the mock engine, and an unknown backend type that falls back to it, just echo
+  the prompt). `TICKET_TRIAGE_MODEL` picks the model; otherwise an Ollama node's first loaded model,
+  or the adapter's default. A model named after a family this platform does not use (DeepSeek, Qwen,
+  MiniMax, MiMo, Kimi) is refused before anything is sent; an empty name (the engine's default)
+  cannot be judged here, so keep the AI configuration to approved models.
+- **One backend for the whole platform.** The primary AI backend is chosen by the platform
+  administrator and is shared by every tenant (see `routers/ai_config.py`), so every tenant's triage
+  requests go where that backend is. Turning triage on is therefore a platform decision.
+- **A person can make at most 6 requests a minute** (429 after that); failed attempts count, because
+  the audit row is written before the backend is called. The call can occupy a request worker for
+  up to 45 s.
+- The reply hint is for the staff member to read, not text to send: nothing posts it.
+
 ## Behaviour worth knowing
 
 - **Edit conflicts.** A page save carries the revision it started from and is a
@@ -114,6 +148,5 @@ app-wide NaN/Infinity 422-turned-500 found along the way is fixed in
 ## Not in this version
 
 - Email notifications (#378), and live push for the bell (#377; it polls once a minute).
-- AI triage ("ask AI", "run diagnostics") from the March design (#381).
 - Images inside wiki pages (#379), and full-text search through OpenSearch (search is
   title/body/tags matching in the database today, #380).
