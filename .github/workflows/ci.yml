@@ -11,6 +11,13 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels that PR's still-running CI, so superseded runs do not
+# burn minutes or send failure emails. Runs on main are never cancelled: each merge keeps its
+# own run (the group key is unique per commit there).
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   PYTHON_VERSION: "3.11"
   NODE_VERSION: "22"
