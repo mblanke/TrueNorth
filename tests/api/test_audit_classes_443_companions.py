@@ -56,8 +56,10 @@ def test_companion_f1_redating_by_one_day_already_reaches_past_the_approved_plan
     _approve(client, world, ev)
     # The first hour of the day after the class's original end_date (DAY + 4): past
     # last_day_end(DAY+4) + teardown grace (15 min), so only a stretched hold reaches it.
-    probe = {"start_time": (DAY + timedelta(days=5, hours=9)).isoformat(),
-             "end_time": (DAY + timedelta(days=5, hours=10)).isoformat()}
+    probe = {
+        "start_time": (DAY + timedelta(days=5, hours=9)).isoformat(),
+        "end_time": (DAY + timedelta(days=5, hours=10)).isoformat(),
+    }
     act_as(world["admin"])
     assert client.get("/schedule/capacity", params=probe).json()["overlapping_events"] == 0
     act_as(world["lead"])
@@ -68,9 +70,7 @@ def test_companion_f1_redating_by_one_day_already_reaches_past_the_approved_plan
     assert r.status_code in (200, 409), r.text
     act_as(world["admin"])
     held = client.get("/schedule/capacity", params=probe).json()
-    assert held["overlapping_events"] == 0, (
-        "a one-day re-date must not stretch the hold past the approved plan either"
-    )
+    assert held["overlapping_events"] == 0, "a one-day re-date must not stretch the hold past the approved plan either"
 
 
 # ── 2. Cancel racing Close-out: the lead's cancel ─────────────────────────
@@ -79,10 +79,16 @@ def test_companion_f1_redating_by_one_day_already_reaches_past_the_approved_plan
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Cancel racing Close-out overwrites a "
-                                        "closed class to cancelled (classes/router.py:384) — companion")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: Cancel racing Close-out overwrites a "
+    "closed class to cancelled (classes/router.py:384) — companion",
+)
 def test_companion_f2_the_leads_cancel_may_not_overwrite_a_class_closed_concurrently(
-    client, world, db_session, monkeypatch,
+    client,
+    world,
+    db_session,
+    monkeypatch,
 ):
     cid = uuid.UUID(world["class"]["id"])
     real_audit = class_service.audit
@@ -109,11 +115,17 @@ def test_companion_f2_the_leads_cancel_may_not_overwrite_a_class_closed_concurre
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Reject of a pending roll-call addition is "
-                                        "unguarded: racing an Approve it removes an admitted "
-                                        "Student without freeing the seat (classes/service.py:476) — companion")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: Reject of a pending roll-call addition is "
+    "unguarded: racing an Approve it removes an admitted "
+    "Student without freeing the seat (classes/service.py:476) — companion",
+)
 def test_companion_f3_the_reject_route_may_not_remove_a_student_approved_concurrently(
-    client, world, db_session, seats,
+    client,
+    world,
+    db_session,
+    seats,
 ):
     _approve(client, world, _book(client, world, template="", vcpu_total=40))
     _fill(db_session, world["b"].id, vcpu=55)  # another tenant takes most of the cluster
@@ -147,11 +159,16 @@ def test_companion_f3_the_reject_route_may_not_remove_a_student_approved_concurr
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: A class's course can be changed after its "
-                                        "sessions were booked; the sessions keep the old "
-                                        "course_id (classes/service.py:150) — companion")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: A class's course can be changed after its "
+    "sessions were booked; the sessions keep the old "
+    "course_id (classes/service.py:150) — companion",
+)
 def test_companion_f4_a_booked_session_pins_the_course_even_with_an_empty_roll_call(
-    client, world, db_session,
+    client,
+    world,
+    db_session,
 ):
     ev = _book(client, world)
     _approve(client, world, ev)  # nobody is on the roll call at all
@@ -164,9 +181,7 @@ def test_companion_f4_a_booked_session_pins_the_course_even_with_an_empty_roll_c
     db_session.expire_all()
     cls = db_session.get(Class, uuid.UUID(world["class"]["id"]))
     evt = db_session.get(ScheduledEvent, uuid.UUID(ev["id"]))
-    assert cls.course_id == evt.course_id, (
-        "a booked session pins the course even when nobody is on the roll call yet"
-    )
+    assert cls.course_id == evt.course_id, "a booked session pins the course even when nobody is on the roll call yet"
 
 
 # ── 5. A demoted assistant keeps the class: the observer ──────────────────
@@ -175,9 +190,12 @@ def test_companion_f4_a_booked_session_pins_the_course_even_with_an_empty_roll_c
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: A former assistant/observer demoted to "
-                                        "Student keeps the class in GET /classes "
-                                        "(classes/access.py:35) — companion")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: A former assistant/observer demoted to "
+    "Student keeps the class in GET /classes "
+    "(classes/access.py:35) — companion",
+)
 def test_companion_f5_a_demoted_observer_no_longer_sees_the_class_in_the_list(client, world, db_session):
     observer = real_user(db_session, UserRole.observer, world["a"].id)
     act_as(world["lead"])
@@ -187,9 +205,7 @@ def test_companion_f5_a_demoted_observer_no_longer_sees_the_class_in_the_list(cl
     demoted = observer.model_copy(update={"role": UserRole.student})
     act_as(demoted)
     listed = [c["id"] for c in client.get("/classes").json()]
-    assert watched not in listed, (
-        "a Student who is no longer an observer on the class must not see it in the list"
-    )
+    assert watched not in listed, "a Student who is no longer an observer on the class must not see it in the list"
 
 
 # ── 6. Admission gates on the UTC day: two classes, one site evening ──────
@@ -199,15 +215,23 @@ def test_companion_f5_a_demoted_observer_no_longer_sees_the_class_in_the_list(cl
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Admission uses the UTC calendar day for "
-                                        "the class's last day while the rest of the area uses "
-                                        "the site zone (classes/onboarding.py:100) — companion")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: Admission uses the UTC calendar day for "
+    "the class's last day while the rest of the area uses "
+    "the site zone (classes/onboarding.py:100) — companion",
+)
 def test_companion_f6_sign_in_on_the_last_site_day_admits_only_the_class_still_running(
-    client, world, db_session, sign_in, monkeypatch,
+    client,
+    world,
+    db_session,
+    sign_in,
+    monkeypatch,
 ):
     from app.classes import onboarding
 
     monkeypatch.setenv("SITE_TIMEZONE", "America/Chicago")
+
     # 2026-06-01 03:30 UTC = 2026-05-31 22:30 in Chicago: the site's last evening of the
     # running class. Only the admission gate's clock is frozen; everything else runs for real.
     class FrozenDatetime(datetime):
@@ -251,16 +275,18 @@ def test_an_admin_may_still_extend_a_class_with_approved_sessions(client, world)
     ev = _book(client, world)
     _approve(client, world, ev)
     act_as(world["admin"])
-    r = client.put(f"/classes/{world['class']['id']}",
-                   json=_class_body(world, end_date=str((DAY + timedelta(days=9)).date())))
+    r = client.put(
+        f"/classes/{world['class']['id']}", json=_class_body(world, end_date=str((DAY + timedelta(days=9)).date()))
+    )
     assert r.status_code == 200, r.text
 
 
 def test_the_lead_may_extend_a_class_that_has_no_approved_session(client, world):
     """Guard: with nothing approved there is no hold to stretch, so the lead may re-date."""
     act_as(world["lead"])
-    r = client.put(f"/classes/{world['class']['id']}",
-                   json=_class_body(world, end_date=str((DAY + timedelta(days=9)).date())))
+    r = client.put(
+        f"/classes/{world['class']['id']}", json=_class_body(world, end_date=str((DAY + timedelta(days=9)).date()))
+    )
     assert r.status_code == 200, r.text
 
 
@@ -270,8 +296,9 @@ def test_the_lead_may_still_shorten_or_rename_a_class_with_approved_sessions(cli
     _approve(client, world, ev)
     act_as(world["lead"])
     for end in (DAY + timedelta(days=4), DAY + timedelta(days=3)):
-        r = client.put(f"/classes/{world['class']['id']}",
-                       json=_class_body(world, name="renamed", end_date=str(end.date())))
+        r = client.put(
+            f"/classes/{world['class']['id']}", json=_class_body(world, name="renamed", end_date=str(end.date()))
+        )
         assert r.status_code == 200, r.text
 
 
@@ -284,6 +311,7 @@ def test_the_lead_may_not_extend_a_class_whose_approved_session_is_already_over(
     row.state = "completed"
     db_session.commit()
     act_as(world["lead"])
-    r = client.put(f"/classes/{world['class']['id']}",
-                   json=_class_body(world, end_date=str((DAY + timedelta(days=9)).date())))
+    r = client.put(
+        f"/classes/{world['class']['id']}", json=_class_body(world, end_date=str((DAY + timedelta(days=9)).date()))
+    )
     assert r.status_code == 409, r.text

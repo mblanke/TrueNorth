@@ -100,11 +100,7 @@ def test_the_ratchet_runs_in_the_definition_of_done_gate():
             assert "|| fail" in line, f"DoD must fail when the ratchet fails: {line!r}"
     # dod.sh:11's own standing rule, quoted: "a missing tool is a FAILURE, never a
     # silent skip. No `|| true` anywhere."
-    swallowed = [
-        ln
-        for ln in text.splitlines()
-        if "|| true" in ln and not ln.lstrip().startswith("#")
-    ]
+    swallowed = [ln for ln in text.splitlines() if "|| true" in ln and not ln.lstrip().startswith("#")]
     assert not swallowed, f"DoD swallows failures again: {swallowed}"
 
 
@@ -139,9 +135,7 @@ def test_a_count_above_baseline_fails_the_gate(tmp_path, monkeypatch: pytest.Mon
     mod = _mosa_check()
     counts = _counts(mod)
     growable = [
-        name
-        for name in ("lines_api_models_py", "lines_api_schemas_py", "lines_worker_tasks_py")
-        if counts[name] > 0
+        name for name in ("lines_api_models_py", "lines_api_schemas_py", "lines_worker_tasks_py") if counts[name] > 0
     ]
     assert growable, "no god-file metric carries a count that can rise above a baseline"
     name = growable[0]
@@ -196,10 +190,9 @@ def test_the_audits_are_blocking_and_always_run():
     job = _job(CI.read_text(encoding="utf-8"), "supply-chain")
     assert "continue-on-error" not in job, "the supply-chain audits were made non-blocking"
     assert job.count("if: success() || failure()") >= 2, (
-        "the npm audit steps no longer run after a pip-audit failure, so a failing build "
-        "would not carry its evidence"
+        "the npm audit steps no longer run after a pip-audit failure, so a failing build would not carry its evidence"
     )
-    assert "exit \"$rc\"" in job or "exit \"$code\"" in job or "exit 1" in job, (
+    assert 'exit "$rc"' in job or 'exit "$code"' in job or "exit 1" in job, (
         "the npm audit step no longer fails the job on an advisory"
     )
 
@@ -240,9 +233,7 @@ def test_no_advisory_is_ignored_without_an_adr_naming_it():
     """ADR 0003 lines 45-46: "Do not add an ignore without an ADR that names the
     advisory, why it does not apply, and when it will be revisited."
     """
-    adr_text = "\n".join(
-        p.read_text(encoding="utf-8") for p in sorted((ROOT / "docs" / "adr").glob("*.md"))
-    )
+    adr_text = "\n".join(p.read_text(encoding="utf-8") for p in sorted((ROOT / "docs" / "adr").glob("*.md")))
     offenders = []
     for workflow in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
         lines = workflow.read_text(encoding="utf-8").splitlines()
@@ -252,10 +243,7 @@ def test_no_advisory_is_ignored_without_an_adr_naming_it():
             context = "\n".join(lines[max(0, i - 1) : i + 2])
             for advisory in re.findall(r"\b(?:CVE|GHSA|PYSEC)-[0-9A-Za-z-]+\b", context):
                 if advisory not in adr_text:
-                    offenders.append(
-                        f"{workflow.relative_to(ROOT)}:{i + 1} ignores {advisory} "
-                        "with no ADR naming it"
-                    )
+                    offenders.append(f"{workflow.relative_to(ROOT)}:{i + 1} ignores {advisory} with no ADR naming it")
     assert not offenders
 
 
@@ -264,10 +252,7 @@ def test_third_party_container_images_are_pinned_and_never_latest():
     `:latest`."
     """
     dockerfiles = [
-        p
-        for p in ROOT.rglob("Dockerfile*")
-        if p.is_file()
-        and not {"node_modules", "dist", ".venv"} & set(p.parts)
+        p for p in ROOT.rglob("Dockerfile*") if p.is_file() and not {"node_modules", "dist", ".venv"} & set(p.parts)
     ]
     yamls = [
         p
@@ -327,6 +312,4 @@ def test_the_license_leaves_government_data_rights_to_the_contract():
     it ("applicable contract") is pinned here.
     """
     text = (ROOT / "LICENSE").read_text(encoding="utf-8")
-    assert "applicable contract" in text, (
-        "LICENSE no longer leaves government data rights to the contract"
-    )
+    assert "applicable contract" in text, "LICENSE no longer leaves government data rights to the contract"

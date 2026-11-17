@@ -119,7 +119,11 @@ class TestAcknowledgeObjective:
         body = resp.json()
         assert body["achieved"] is True
         judged = json.loads(body["evidence"])
-        assert (judged["source"], judged["by"], judged["note"]) == ("instructor", "Sgt Rivera", "Saw the beacon in Zeek")
+        assert (judged["source"], judged["by"], judged["note"]) == (
+            "instructor",
+            "Sgt Rivera",
+            "Saw the beacon in Zeek",
+        )
         assert body["achieved_at"]
         db_session.expire_all()
         assert db_session.get(Exercise, ex.id).total_score == 85  # 60 just acked + 25 already achieved
