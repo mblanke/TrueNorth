@@ -237,8 +237,10 @@ def _recorded_vms(rng) -> dict[str, dict]:
     return built
 
 
-def _overlay(cells: list[dict], built: dict[str, dict], state: str) -> None:
-    """What the build recorded, on each VM cell. No recorded VMs: everything is planned."""
+def _overlay(cells: list[dict], built: dict[str, dict], state: str, show_addresses: bool = True) -> None:
+    """What the build recorded, on each VM cell. No recorded VMs: everything is planned.
+
+    ``show_addresses=False`` leaves the recorded addresses off the cell and its label."""
     for cell in cells:
         if cell.get("nodeType") in rt._NON_VM_TYPES or cell.get("type") == "standard.Link":
             continue
@@ -252,6 +254,9 @@ def _overlay(cells: list[dict], built: dict[str, dict], state: str) -> None:
             nics = [{"network": str(n.get("network") or ""), "ip": str(n.get("ip") or "")}
                     for n in vm.get("nics") or [] if isinstance(n, dict)]
             runtime = {"status": state, "built": True, "ip": str(vm.get("ip") or ""), "nics": nics}
+        if not show_addresses:
+            runtime.pop("ip", None)
+            runtime.pop("nics", None)
         data["runtime"] = runtime
         cell["attrs"]["label"]["text"] = node_label(data)
 
@@ -275,8 +280,11 @@ def template_picture(template_yaml: str) -> tuple[dict, list[str]]:
     return diagram, ["The template lists assets, not hosts: this is a sketch with default OS and addresses."]
 
 
-def range_diagram(rng) -> dict:
-    """The saved designer diagram, else one generated from the template and the last build."""
+def range_diagram(rng, show_addresses: bool = True) -> dict:
+    """The saved designer diagram, else one generated from the template and the last build.
+
+    ``show_addresses=False`` leaves the built VMs' recorded addresses out of the generated
+    picture (the caller lacks infra:read); status and the built flag stay."""
     saved = rng.diagram_json if isinstance(rng.diagram_json, dict) else None
     if saved and saved.get("cells"):
         return {"range_id": str(rng.id), "diagram_json": saved, "generated": False, "source": "saved", "notes": []}
@@ -287,7 +295,7 @@ def range_diagram(rng) -> dict:
                 "notes": notes}
     state = rng.state.value if hasattr(rng.state, "value") else str(rng.state or "")
     built = _recorded_vms(rng)
-    _overlay(diagram["cells"], built, state)
+    _overlay(diagram["cells"], built, state, show_addresses)
     name = f"{template.name} v{template.version}" if template else "its template"
     notes.insert(0, f"Drawn from {name}; not a saved designer diagram.")
     if built:

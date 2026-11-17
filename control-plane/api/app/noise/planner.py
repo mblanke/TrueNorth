@@ -33,6 +33,10 @@ TARGET_POOL: dict[str, str] = {
     "bad_password": "dc",
     "ssh_admin": "ssh",
     "ntp_sync": "ntp",
+    "icmp_ping": "hosts",
+    "rdp_connect": "rdp",
+    "ftp_session": "ftp",
+    "print_status": "print",
     "admin_scan": "subnet",
     "admin_remote_exec": "hosts",
 }

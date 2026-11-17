@@ -6,7 +6,10 @@ import { MatButtonModule } from '@angular/material/button';
 import { AuthService } from '@core/services/auth.service';
 import { KbStylesComponent } from '@shared/kb-styles.component';
 import { canFileTickets, isAdminRole, isStaffRole } from '@shared/kb-roles';
-import { STATUS_LABELS, TicketFilters, TicketSummary, TicketsApiService } from '@core/services/tickets-api.service';
+import {
+  STATUS_LABELS, TicketCategory, TicketFilters, TicketLabelCount, TicketSummary, TicketsApiService, labelList,
+} from '@core/services/tickets-api.service';
+import { catchError, of } from 'rxjs';
 
 interface Tab { key: string; label: string; filters: TicketFilters }
 
@@ -65,6 +68,21 @@ export function triageOrder(tickets: TicketSummary[]): TicketSummary[] {
                aria-label="Search tickets" [(ngModel)]="q" (keyup.enter)="load()" (search)="load()">
       </div>
 
+      <div class="tn-kb-actions" style="margin-bottom:12px">
+        <label class="tn-kb-small tn-kb-muted" for="tk-f-cat">About</label>
+        <select id="tk-f-cat" class="tn-kb-input" style="width:190px" [(ngModel)]="category" (ngModelChange)="load()">
+          <option value="">Anything</option>
+          @for (c of categories(); track c.key) { <option [value]="c.key">{{ c.label }}</option> }
+        </select>
+        @if (staff() && knownLabels().length) {
+          <label class="tn-kb-small tn-kb-muted" for="tk-f-label">Label</label>
+          <select id="tk-f-label" class="tn-kb-input" style="width:170px" [(ngModel)]="label" (ngModelChange)="load()">
+            <option value="">Any</option>
+            @for (l of knownLabels(); track l.label) { <option [value]="l.label">{{ l.label }} ({{ l.count }})</option> }
+          </select>
+        }
+      </div>
+
       <section class="tn-kb-panel">
         @if (tickets().length) {
           <div class="tn-kb-scroll">
@@ -82,7 +100,14 @@ export function triageOrder(tickets: TicketSummary[]): TicketSummary[] {
                   <td class="tn-kb-key">{{ t.key }}</td>
                   <td>
                     <a class="tn-kb-link" [routerLink]="['/support', t.id]">{{ t.subject }}</a>
-                    @if (t.queue_name && staff()) { <div class="tn-kb-small tn-kb-muted">{{ t.queue_name }}</div> }
+                    <div class="tn-kb-small tn-kb-muted">
+                      {{ categoryLabel(t.category) }}{{ t.queue_name && staff() ? ' · ' + t.queue_name : '' }}
+                    </div>
+                    @if (staff() && labelList(t.labels).length) {
+                      <div class="tn-kb-chips" style="margin:4px 0 0">
+                        @for (l of labelList(t.labels); track l) { <span class="tn-kb-chip" style="padding-right:7px">{{ l }}</span> }
+                      </div>
+                    }
                   </td>
                   @if (staff()) {
                     <td>{{ t.reporter_name || '—' }}</td>
@@ -118,13 +143,24 @@ export class TicketListComponent implements OnInit {
   readonly tickets = signal<TicketSummary[]>([]);
   readonly loading = signal(true);
   readonly forbidden = signal(false);
+  readonly categories = signal<TicketCategory[]>([]);
+  readonly knownLabels = signal<TicketLabelCount[]>([]);
+  readonly labelList = labelList;
   q = '';
+  category = '';
+  label = '';
 
   ngOnInit(): void {
     let saved = '';
     try { saved = sessionStorage.getItem('tn-support-tab') ?? ''; } catch { /* storage may be blocked */ }
     this.tab.set(this.tabs().some(t => t.key === saved) ? saved : this.tabs()[this.staff() ? 1 : 0].key);
+    this.api.categories().pipe(catchError(() => of([]))).subscribe(c => this.categories.set(c));
+    if (this.staff()) this.api.labels().pipe(catchError(() => of([]))).subscribe(l => this.knownLabels.set(l));
     this.load();
+  }
+
+  categoryLabel(key: string): string {
+    return this.categories().find(c => c.key === key)?.label ?? key;
   }
 
   select(key: string): void {
@@ -138,7 +174,14 @@ export class TicketListComponent implements OnInit {
     this.loading.set(true);
     // Staff triage open work: most urgent first, nobody's before someone's (#201).
     const triage = this.staff() && tab.key !== 'done';
-    this.api.list({ ...tab.filters, q: this.q.trim() || undefined }).subscribe({
+    this.api
+      .list({
+        ...tab.filters,
+        q: this.q.trim() || undefined,
+        category: this.category || undefined,
+        label: this.staff() ? this.label || undefined : undefined,
+      })
+      .subscribe({
       next: t => { this.tickets.set(triage ? triageOrder(t) : t); this.loading.set(false); },
       error: err => { this.tickets.set([]); this.loading.set(false); this.forbidden.set(err?.status === 403); },
     });

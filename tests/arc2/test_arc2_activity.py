@@ -12,7 +12,7 @@ import json
 
 import pytest
 from arc2 import check, lab_profile
-from conftest import LAB_PROFILE, course_yaml
+from arc2_conftest import LAB_PROFILE, course_yaml
 from test_arc2_cmi5 import fails, humans, packaged_run
 from test_arc2_manifest import TS, checks, full_manifest, make_run
 

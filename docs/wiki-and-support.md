@@ -39,9 +39,10 @@ tickets as work.
 
 ## Notifications
 
-The bell in the toolbar shows the signed-in user's unread count (refreshed every minute
-and on each page change) and their latest notifications; clicking one marks it read and
-opens the ticket. Nobody is told about their own action.
+The bell in the toolbar shows the signed-in user's unread count and their latest
+notifications; clicking one marks it read and opens the ticket. Nobody is told about their
+own action. New ones arrive **live** (below); the count is also refreshed on each page
+change, and polled every minute whenever the live connection is down.
 
 | Event | Who is told |
 |---|---|
@@ -53,8 +54,152 @@ opens the ticket. Nobody is told about their own action.
 
 Rows live in the `notifications` table (`app/notifications/models.py`, `UserNotification`), written by
 `app/notifications/inbox.py` in the same transaction as the change; `/notifications` serves only the
-caller's own. In-app only for now: no email, and no live push (the WebSocket
-`send_to_user` path exists but the bell polls).
+caller's own.
+
+### Live push
+
+When a notification **commits**, it is pushed to its recipient's open sockets as a
+`notification` message (`app/notifications/push.py`; nothing is sent for work that rolled
+back). The browser opens `/ws/user.<its own id>` (`core/services/user-socket.service.ts`):
+the server lets a user open **only their own** `user.<id>` channel, in its one canonical
+spelling, so nobody else's socket can hold it. The access token travels as the second
+subprotocol, not in the URL; the socket reconnects with a fresh one (backing off up to a
+minute) when the server closes it at token expiry.
+
+Production runs several API workers and a user's socket is on only one of them, so the push
+is relayed between workers over Redis (`WebSocketManager`'s relay, started by the API when
+`REDIS_URL` is set; **`WS_REDIS_RELAY=false` turns it off**, and an unreachable Redis
+falls back to this worker only). Every part is optional: with no `/ws/` route (the web
+container on `:4200` has none; the edge does), no Redis, or a refused token, the bell simply
+polls.
+
+The relay is built not to fail quietly. A worker connects to Redis from its own background
+task, so a slow or absent Redis never delays startup (each connect and read is bounded), keeps
+retrying with backoff if Redis is not up yet when the API boots, and reconnects after any
+Redis error (a restart, a failover); a malformed message is skipped, never fatal. It ignores
+its own messages by a per-instance random id (it used to compare memory addresses, `id(self)`,
+which two spawned workers can share), and never logs `REDIS_URL`, which can carry a password.
+Even so, a socket can be open yet deaf (Redis down on that worker), so the bell also polls every
+five minutes while connected. Leave `WS_HEARTBEAT` on (the default): it is what closes a socket
+when its token expires or its user is disabled.
+
+### Email
+
+When the install has an outgoing mail server (`SMTP_HOST` and a sender, see
+`app/notifications/smtp.py`), the *personal* events above are also emailed: assigned to you,
+a reply, a status change, an internal note. The "new ticket" broadcast to every staff member, and
+a reporter's reply to a ticket nobody owns yet, stay in the bell only.
+
+- **No ticket content leaves by email.** A message names the ticket (`TN-12`), says what
+  happened and links to it (`WEB_BASE_URL`, else the installer's `LTI_WEB_BASE_URL`). No subject,
+  details, reply text, internal-note text or person's name: mail is stored and forwarded by systems
+  the platform does not control, and the text of a ticket can describe a range.
+- **Each person can turn it off**: the *Email me about tickets* checkbox at the foot of the bell
+  (`GET`/`PUT /notifications/settings`, the caller's own row only; `notification_preferences`,
+  no row means on). The checkbox is hidden when the install has no mail server.
+- **Throttled**: someone already *emailed* about a ticket in the last five minutes is not emailed
+  about it again, so a busy thread sends one email, not ten. Only emails count (the notification is
+  marked `emailed`): a bell-only broadcast does not use up the allowance, so an assignment is not
+  swallowed by an earlier "reporter replied". Two events for one person in one request (a status
+  change and an assignment together) send one email.
+- **After the commit, at most once.** The emails go out from a background task once the request
+  is committed, one attempt each (the shared SMTP channel normally retries three times; a retry
+  after a timeout that followed the relay accepting the message would be a duplicate). A failed
+  send is logged and never fails the request; a rolled-back change emails nobody. It is best
+  effort: a restart between the commit and the send drops the email, and the bell row is already
+  there. The throttle reads the database before the commit, so two requests on one ticket landing
+  at the same moment on different workers can each send one.
+- **Internal notes** go to the assignee only while they are still staff.
+
+### Search (OpenSearch)
+
+`GET /wiki/search` ranks with OpenSearch when it is configured (`OPENSEARCH_URL` set and
+`SEARCH_BACKEND` not `null`; `WIKI_OPENSEARCH=false` switches it off, `=true` forces it on):
+stemming (`reset` finds `resetting`), phrases (`"lab reset"`), `-`/`NOT`, and title and tag
+boosts. Code: `app/wiki_search.py`, behind the search-backend adapter (`app/search_backends`).
+
+- **The database decides who may see a page, always.** OpenSearch is asked only for page ids,
+  restricted to the caller's tenant, and returns no text. The router then loads those ids with the
+  same rules as before (tenant, deleted, archived space, staff-only and system-owned spaces,
+  unpublished pages). The index holds no visibility at all, so a stale or wrong index can hide a
+  page from the ranking but cannot show anyone a page they may not read.
+- **Never worse than the old search.** Pages OpenSearch names come first, best first; the plain
+  substring matches follow. With no OpenSearch, a down one, or one slower than 3 s, it is exactly
+  the old search.
+- **The index follows the database.** Every save, restore, publish, move or delete of a page
+  records its new document; when that request commits it is sent (a rolled-back change sends
+  nothing), off the request, and a failure is only logged. A soft-deleted page is removed.
+- **Existing pages** are added with `POST /wiki/search/reindex` (admin; safe to repeat; indexes this
+  tenant only). Run it once after turning this on, and after restoring the index from scratch.
+  Pages saved by a script or Celery task (no request loop) are picked up by the next reindex.
+- The query is free text (`simple_query_string`: no fuzzy, near or slop), never the store's own
+  parser. Index name `truenorth-wiki`, created on first write.
+- Not run against a real cluster in CI: the request shapes are tested against a fake server and the
+  ranking against a fake backend. Try `reindex` and a search on a staging OpenSearch first.
+
+### Images in wiki pages
+
+Editors add an image with the **Image** button, by pasting a screenshot, or by dropping a file on
+the editor (a new page must be saved once first: an image belongs to a page). The editor inserts
+`![name](/api/wiki/images/<id>)`. Only PNG, JPEG, GIF and WebP up to 5 MB and 40 megapixels
+are accepted, up to 100 per page.
+
+- **The type comes from the file's bytes**, never its name or the browser's `Content-Type`. SVG
+  and HTML are refused (an SVG is a script when it is served from this site). A canvas far bigger
+  than the file suggests is refused.
+- **Metadata and trailing data are removed**, without re-encoding (pixels never change). JPEG: Exif,
+  XMP, IPTC, comments and the multi-picture block, through every scan, and anything after the end of
+  the picture (a hidden second image or video); the Exif **orientation** is kept in a minimal segment
+  so phone photos are not shown sideways. PNG: `eXIf`, text and time chunks, anything after IEND.
+  GIF: comments and non-loop extensions, anything after the trailer, at most 500 frames. WebP:
+  `EXIF` / `XMP ` chunks (and their flags) and anything after the RIFF payload. A file that cannot be
+  walked cleanly is refused.
+- **Whoever can see the page can see its image; the id grants nothing.** A staff-only space, an
+  unpublished page (for students), an archived space, a deleted page or another tenant is a 404.
+  An image embedded in a second page stays governed by the page it was uploaded to.
+- **Served so it cannot run**: its checked type, `nosniff`, `Content-Security-Policy: default-src
+  'none'; sandbox`, `Cache-Control: private, max-age=300` with `Vary: Authorization`. The page viewer fetches it with the user's token and
+  shows it from a blob URL; the `<img>` never makes an unauthenticated request. Remote images are
+  still not loaded (they would tell their author who read the page).
+- Generated range pages (system-owned spaces) take no uploads. Deleting a page hides its images;
+  their files stay in the `wiki` bucket until each is removed. Taking `![](…)` out of the text does
+  **not** delete the image, because older revisions still point at it: the editor's *Images on this
+  page* list (`GET /wiki/pages/{id}/images`) shows what the page holds and **Remove** deletes one for
+  good (`DELETE /wiki/images/{id}`). Remove a sensitive screenshot there, not just from the text.
+
+### AI triage
+
+On a ticket, staff (TICKET_WORK) see **AI triage** in the sidebar when an AI backend is set up.
+*Suggest triage* asks the platform's primary AI backend (the one under AI configuration, normally
+on site) for a category, priority, up to four labels, a one-line summary and a hint for the reply,
+and lists wiki pages whose title or tags share words with the subject. Code:
+`app/ticket_triage.py`, `app/routers/ticket_triage.py`.
+
+- **It only suggests.** Nothing changes on the ticket until staff press *Apply* or *Add* beside a
+  field, and that goes through the ordinary ticket update (and the history, under their name).
+- **Staff only, on request.** No automatic triage; students never see it (403).
+- **What leaves**: the ticket's type, subject, description (first 3,000 characters), current
+  category and priority, and the last three *public* replies (500 characters each). Not the
+  reporter's or anyone's name or email, not internal notes, not attachments. Nothing is stored; the
+  audit log records who asked about which ticket, never the text or the answer.
+- **The ticket is data, not instructions.** It is fenced in the prompt (a ticket cannot close the
+  fence), and the answer is accepted only as a JSON object whose every field is checked: category
+  and priority against the lists, labels against the label rules, text cut and stripped of control
+  characters. Anything else is dropped; an answer with nothing usable is a 502, not a made-up
+  suggestion.
+- **Off until an administrator sets `TICKET_AI_TRIAGE=true`**, and unavailable (409) when no real
+  backend is primary (the mock engine, and an unknown backend type that falls back to it, just echo
+  the prompt). `TICKET_TRIAGE_MODEL` picks the model; otherwise an Ollama node's first loaded model,
+  or the adapter's default. A model named after a family this platform does not use (DeepSeek, Qwen,
+  MiniMax, MiMo, Kimi) is refused before anything is sent; an empty name (the engine's default)
+  cannot be judged here, so keep the AI configuration to approved models.
+- **One backend for the whole platform.** The primary AI backend is chosen by the platform
+  administrator and is shared by every tenant (see `routers/ai_config.py`), so every tenant's triage
+  requests go where that backend is. Turning triage on is therefore a platform decision.
+- **A person can make at most 6 requests a minute** (429 after that); failed attempts count, because
+  the audit row is written before the backend is called. The call can occupy a request worker for
+  up to 45 s.
+- The reply hint is for the staff member to read, not text to send: nothing posts it.
 
 ## Behaviour worth knowing
 
@@ -89,7 +234,16 @@ caller's own. In-app only for now: no email, and no live push (the WebSocket
 - **"Report a problem"** appears on the Exercises list, the exercise page and the Ranges
   list (for roles that may file tickets), and opens `/support/new` with the exercise and
   its range filled in.
-- **Labels and category** exist on tickets (search matches labels) but have no screen yet.
+- **Category** is one of a fixed list (`GET /tickets/categories`: range or lab, VM console
+  or access, network, account or sign-in, scoring, course content, TrueNorth itself,
+  something else). The reporter picks it when filing; staff can change it on the ticket.
+  Anyone can filter the list by it.
+- **Labels** are staff triage tags: lowercase, up to 10 per ticket, each up to 30
+  characters from `a-z 0-9 . _ : / -`, added and removed as chips on the ticket (with
+  suggestions from the labels already in use, `GET /tickets/labels`) and used to filter
+  the list and shown on board cards. **A reporter never sees them**: they are masked in
+  every response, left out of the reporter's search, refused as a filter, and their
+  history rows are hidden. Only staff can set them.
 
 ## Reviews
 
@@ -104,7 +258,5 @@ app-wide NaN/Infinity 422-turned-500 found along the way is fixed in
 
 ## Not in this version
 
-- Email notifications, and live push for the bell (it polls once a minute).
-- AI triage ("ask AI", "run diagnostics") from the March design.
-- Images inside wiki pages, and full-text search through OpenSearch (search is
-  title/body/tags matching in the database today).
+Nothing from the first version's list is outstanding: email, live push, images and
+OpenSearch ranking are all in.

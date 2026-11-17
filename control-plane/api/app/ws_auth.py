@@ -87,6 +87,9 @@ def authorize(channel: str, user: CurrentUser, db: Session) -> bool:
     * ``exercise.<id>.staff``: as ``exercise.<id>``, for users who may see the answer key
       (scenario:update) — full instructor-inject events go there;
     * ``tenant.<id>``: the user's own tenant;
+    * ``user.<id>``: only the user's own id, in its one canonical form. It is where a
+      person's own notifications are pushed (app/notifications/push.py); a channel is
+      matched by exact name, so no one else's socket can hold it;
     * ``system.*``: the platform administrator (``rbac.is_platform_admin``), not any tenant's
       admin: alerts and health degradation concern the shared platform.
     """
@@ -107,6 +110,9 @@ def authorize(channel: str, user: CurrentUser, db: Session) -> bool:
         return _owned(db, Exercise, channel[len("exercise.") :], user)
     if channel.startswith("tenant."):
         return channel[len("tenant.") :] == user.tenant_id
+    if channel.startswith("user."):
+        raw = channel[len("user.") :]
+        return canonical_id(raw) is not None and raw == user.id
     if channel.startswith("system."):
         return is_platform_admin(user, db)
     return False

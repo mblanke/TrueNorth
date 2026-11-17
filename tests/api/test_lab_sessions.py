@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import yaml
 from _release_kit import CATALOGUE, CROSSWALK, build
+from app.console_relay.models import ConsoleGrant
 from app.enrollment import ensure_enrollment
 from app.lab_sessions import service, tokens
 from app.lab_sessions.models import LabNetworkLease, LabSession
@@ -358,9 +359,85 @@ class TestApi:
         until(db_session, a, "ready")
         db_session.commit()
         console = client.post(f"/lab-access/{a.id}/console", headers={"X-Lab-Token": token})
-        assert console.status_code == 200 and console.json()["url"].startswith("mock://console/")
-        refused = client.post(f"/lab-access/{a.id}/console?node=ghost", headers={"X-Lab-Token": token})
-        assert refused.status_code == 403
+        # A token carries no sign-in, so it cannot open a relay socket: 401, and no grant.
+        assert console.status_code == 401 and console.json()["detail"] == "Sign in to open the console."
+        assert client.post(f"/lab-access/{a.id}/console?node=ghost", headers={"X-Lab-Token": token}).status_code == 401
+        assert client.post(f"/lab-access/{b.id}/console", headers={"X-Lab-Token": token}).status_code == 401
+        assert db_session.query(ConsoleGrant).count() == 0
+
+    def test_a_console_is_a_grant_for_whoever_opens_it_never_for_the_lab_owner_by_proxy(self, lab, db_session):
+        """An instructor opening a Student's lab console gets a URL they can open themselves
+        (a staff grant), the Student one for themselves; nobody gets one for someone else."""
+        from app.auth import CurrentUser, get_current_user
+        from app.main import app as fastapi_app
+
+        client, rid, _ = lab
+        s = student(db_session)
+        a, _ = launch(db_session, s, rid)
+        until(db_session, a, "ready")
+        teacher = User(id=uuid.uuid4(), email="t@example.test", display_name="T", role=UserRole.instructor,
+                       tenant_id=s.tenant_id, keycloak_id="kc-teach")
+        db_session.add(teacher)
+        db_session.commit()
+
+        def as_(u, role):
+            who = CurrentUser(id=str(u.id), email=u.email, display_name="x", role=role,
+                              tenant_id=str(u.tenant_id), keycloak_id=u.keycloak_id)
+            fastapi_app.dependency_overrides[get_current_user] = lambda: who
+
+        try:
+            as_(teacher, UserRole.instructor)
+            assert client.post(f"/lab-sessions/{a.id}/console").status_code == 200
+            as_(s, UserRole.student)
+            assert client.post(f"/lab-sessions/{a.id}/console").status_code == 200
+        finally:
+            fastapi_app.dependency_overrides.pop(get_current_user, None)
+        grants = {g.user_id: g for g in db_session.query(ConsoleGrant).all()}
+        assert set(grants) == {teacher.id, s.id}
+        assert grants[teacher.id].audience == "staff" and grants[s.id].audience == "student"
+        assert all(g.lab_session_id == a.id and g.tenant_id == s.tenant_id for g in grants.values())
+
+        # Asked again while the socket is open: its Student, and staff, while the lab is up.
+        from app.console_relay import policy
+
+        def still(u, role):
+            who = CurrentUser(id=str(u.id), email=u.email, display_name="x", role=role,
+                              tenant_id=str(u.tenant_id), keycloak_id=u.keycloak_id)
+            db_session.expire_all()
+            return policy.check(db_session, grants[u.id], who).ok
+
+        assert still(s, UserRole.student) and still(teacher, UserRole.instructor)
+        act(db_session, service.end, a)  # the lab ended
+        db_session.commit()
+        assert not still(s, UserRole.student) and not still(teacher, UserRole.instructor)
+
+    def test_a_student_withdrawn_mid_lab_loses_the_open_console_at_the_next_check(self, lab, db_session):
+        """The policy applies the issuing route's closed-enrollment rule (service.enrollment_closed):
+        a socket is cut at its next renewal and a reconnect is refused; staff keep theirs."""
+        from app.auth import CurrentUser, get_current_user
+        from app.console_relay import policy
+        from app.main import app as fastapi_app
+        from app.models import EnrollmentStatus
+
+        client, rid, course_id = lab
+        s = student(db_session)
+        a, _ = launch(db_session, s, rid)
+        until(db_session, a, "ready")
+        enrollment = ensure_enrollment(db_session, user_id=s.id, course_id=course_id, tenant_id=s.tenant_id)
+        db_session.commit()
+        me = CurrentUser(id=str(s.id), email=s.email, display_name="s", role=UserRole.student,
+                         tenant_id=str(s.tenant_id), keycloak_id=s.keycloak_id)
+        fastapi_app.dependency_overrides[get_current_user] = lambda: me
+        try:
+            assert client.post(f"/lab-sessions/{a.id}/console").status_code == 200
+        finally:
+            fastapi_app.dependency_overrides.pop(get_current_user, None)
+        grant = db_session.query(ConsoleGrant).one()
+        assert policy.check(db_session, grant, me).ok
+        enrollment.status = EnrollmentStatus.withdrawn
+        db_session.commit()
+        verdict = policy.check(db_session, grant, me)  # what the renewal and a reconnect both ask
+        assert not verdict.ok and verdict.code == 1008 and "enrollment" in verdict.reason
 
     # F14 / CR1-17: a token is checked against the session as it is now.
 
@@ -419,7 +496,9 @@ class TestApi:
                 assert client.post(f"/lab-sessions/{a.id}/{path}").status_code == 403, path
         finally:
             fastapi_app.dependency_overrides.pop(get_current_user, None)
-        assert client.post(f"/lab-sessions/{a.id}/console").status_code == 200, "staff still can"
+        staff = client.post(f"/lab-sessions/{a.id}/console")
+        assert staff.status_code == 200, "staff still can"
+        assert staff.json()["kind"] == "rfb-ws" and "/ws/console/" in staff.json()["url"]
 
     def test_a_token_is_refused_once_the_enrollment_is_withdrawn(self, lab, db_session):
         from app.models import Enrollment, EnrollmentStatus

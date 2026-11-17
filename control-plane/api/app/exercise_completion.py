@@ -4,8 +4,9 @@ Both totals the score under a lock on the exercise row (so a detection credited 
 moment is either in the total or refused, never lost), then for every participant queues
 competency auto-assessment, the LTI grade pass-back and the xAPI ``completed`` statement.
 
-Exercises have no Student owner, so the participants are whoever closed it (if anyone) and
-every user who submitted a detection in this run (ADR 0005).
+The participants are the exercise's Students (its seat or its teams, ``classes.credit``).
+Submitting a detection does not add anyone: it is evidence, not credit (ADR 0020). Whoever
+closes it is not credited with it, whatever their role (#375).
 
 The clock (``sweep_overdue``) runs in the API next to the lab sweep: a real-backend exercise
 stays running after its timeline, and ends when an instructor completes it or its scenario's
@@ -28,8 +29,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import safe_yaml
-from .detections.models import DetectionSubmission
-from .models import Exercise, ExerciseState, Objective, Scenario, User
+from .models import Exercise, ExerciseState, Objective, Scenario
 
 logger = logging.getLogger("truenorth.api.exercise_completion")
 SWEEP_SECONDS = float(os.getenv("EXERCISE_CLOCK_SECONDS", "60"))
@@ -47,8 +47,17 @@ class Participant:
 def lock(db: Session, exercise_id: uuid.UUID) -> Exercise | None:
     """The exercise row, locked for this transaction (a no-op on SQLite). Callers pass an
     exercise they already hold (get_owned, or the clock's own sweep)."""
-    # tenant-safe: re-reads an exercise the caller already fetched, to lock it.
-    return db.query(Exercise).filter(Exercise.id == exercise_id).with_for_update().one_or_none()
+    # populate_existing: the caller's get_owned already loaded this row into the session;
+    # without it the lock would hand back that stale copy (its old state), and an ack, a
+    # withdraw or a second /complete overlapping a close would be accepted after it.
+    return (
+        # tenant-safe: re-reads an exercise the caller already fetched, to lock it.
+        db.query(Exercise)
+        .filter(Exercise.id == exercise_id)
+        .populate_existing()
+        .with_for_update()
+        .one_or_none()
+    )
 
 
 def total(db: Session, exercise_id: uuid.UUID) -> int:
@@ -59,6 +68,22 @@ def total(db: Session, exercise_id: uuid.UUID) -> int:
     )
 
 
+def possible(db: Session, exercise_id: uuid.UUID) -> int:
+    return (
+        db.query(func.coalesce(func.sum(Objective.points), 0)).filter(Objective.exercise_id == exercise_id).scalar()
+    )
+
+
+def retotal(db: Session, ex: Exercise) -> None:
+    """``total_score`` from the achieved objectives; ``max_score``, when the exercise was made
+    without one (0, the column's "unset"), from all of their points. The worker's mock
+    completion used to fill it; since ADR 0020 the worker closes nothing, so an exercise made
+    without one would read 80/0. A maximum someone set is never rewritten."""
+    ex.total_score = total(db, ex.id)
+    if not ex.max_score:
+        ex.max_score = possible(db, ex.id)
+
+
 def _run_time(ex: Exercise) -> timedelta | None:
     """Wall time from start to completion (``result.duration``), None if either is missing."""
     if ex.started_at is None or ex.completed_at is None:
@@ -67,24 +92,18 @@ def _run_time(ex: Exercise) -> timedelta | None:
     return end - start if end >= start else None
 
 
-def participants(db: Session, ex: Exercise, closer: Participant | None = None) -> list[Participant]:
-    """Whoever closed it, plus every user who submitted a detection in this run."""
-    rows = (
-        db.query(User.id, User.email, User.display_name)
-        .join(DetectionSubmission, DetectionSubmission.user_id == User.id)
-        .filter(DetectionSubmission.exercise_id == ex.id, DetectionSubmission.window_start >= ex.started_at)
-        .distinct()
-        .all()
-        if ex.started_at
-        else []
-    )
-    out = {p.user_id: p for p in (Participant(r[0], r[1] or "", r[2] or "") for r in rows)}
-    if closer is not None:
-        out.setdefault(closer.user_id, closer)
-    return list(out.values())
+def participants(db: Session, ex: Exercise) -> list[Participant]:
+    """The exercise's Students, and no one else.
+
+    Whoever closes an exercise is staff and is never credited with it, and a Student is not
+    credited merely for closing or for submitting a detection (ADR 0020): only the exercise's
+    seat or teams, through ``classes.credit.eligible_students``."""
+    from .classes.credit import exercise_students
+
+    return [Participant(u.id, u.email or "", u.display_name or "") for u in exercise_students(db, ex)]
 
 
-def close(db: Session, exercise_id: uuid.UUID, background_tasks: Any, closer: Participant | None = None) -> Exercise | None:
+def close(db: Session, exercise_id: uuid.UUID, background_tasks: Any) -> Exercise | None:
     """Complete a running or paused exercise and queue its results. None if it was not open."""
     from .celery_client import dispatch
     from .routers.exercises import _push_exercise_lti_grade
@@ -96,8 +115,12 @@ def close(db: Session, exercise_id: uuid.UUID, background_tasks: Any, closer: Pa
         return None
     ex.state = ExerciseState.completed
     ex.completed_at = datetime.now(UTC)
-    ex.total_score = total(db, ex.id)
-    people = participants(db, ex, closer)
+    retotal(db, ex)
+    people = participants(db, ex)
+    if not people:
+        # Scored, but there is no seat or team to credit (e.g. a shared class range with no
+        # teams, or an exercise outside a class). Say so: nothing else records it.
+        logger.warning("Exercise %s completed with no Students to credit", ex.id)
     db.commit()
     db.refresh(ex)
     took = _run_time(ex)

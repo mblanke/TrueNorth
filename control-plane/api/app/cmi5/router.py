@@ -24,6 +24,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Path, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -299,14 +300,22 @@ async def _proxied(
 ) -> Response:
     params = dict(request.query_params)
     body = await request.body()
+    headers_in = dict(request.headers)
+
+    def call():
+        # Blocking, all of it (the LRS call and the database round trips around it): run on a
+        # thread, one function, so one AU's slow LRS or commit never stalls the loop (audit #443).
+        resp = lms.proxy(db, session, request.method, resource, params, body, headers_in)
+        db.commit()
+        return resp
+
     try:
-        resp = lms.proxy(db, session, request.method, resource, params, body, dict(request.headers))
+        resp = await run_in_threadpool(call)
     except RuleViolationError as v:  # refused before anything was written or forwarded
         return JSONResponse({"error": v.message, "violatedReqId": v.req}, status_code=v.status, headers=XAPI_VERSION)
     except (lms.Cmi5Error, content_mod.ContentError) as exc:  # the LRS failed before any write
         err = _http(exc)
         return JSONResponse({"error": err.detail}, status_code=err.status_code, headers=XAPI_VERSION)
-    db.commit()
     if background is not None and resource.strip("/") == "statements" and resp.status in (200, 204):
         # A result may now be due at an LMS gradebook (ags.py): sent after this response,
         # so the AU never waits on the LMS. The retry loop sends whatever this misses.

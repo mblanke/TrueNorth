@@ -5,13 +5,34 @@ installer has finished ([02-install-guide.md](02-install-guide.md)) and ends whe
 can run classes. Day-to-day upkeep (backups, upgrades, porting golden images, alerts) is in
 [06-operations-runbook.md](06-operations-runbook.md).
 
-Checked against `main` at `fd4f79a6` (2026-10-27, v1.2.0). Words follow
+Checked against tag `v1.2.0-rc17` (`dd98ace1`, 2026-11-05): every
+UI label, route and installer variable named below was verified in that tree. Sections 5 to
+8 and 11 were re-read label by label against the tag on 2026-11-05 (the modules behind them
+are unchanged since `dd98ace1`). Earlier reads:
+checked against `main` at `fd4f79a6` (2026-10-27, v1.2.0); reconciled with `main` at
+`353339c2` (2026-11-02) for site setup, the platform tenant, time zone, classes, roll-call
+domains, users, email help, unit readiness and content port.
+Words follow
 [GLOSSARY.md](../GLOSSARY.md). UI paths are written as **sidebar section → item → tab or
 card → button**.
 
-> **Things on this page that have no screen yet** are marked **API only**. You do them with
+> **"Re-run the installer"** in this guide means the [02-install-guide.md](02-install-guide.md)
+> §6 command, run from `~/truenorth/install`, with the setting you want changed in
+> `inventory/site.yml` (the site inventory the installer created; always run with
+> `-i inventory/site.yml`):
+>
+> ```bash
+> cd ~/truenorth/install
+> ansible-playbook -i inventory/site.yml site.yml -K --ask-vault-pass
+> ```
+>
+> `-K` asks for the `tnadmin` sudo password and `--ask-vault-pass` for the vault password.
+> Add `--check` first for a dry run. The re-run re-renders the API's environment file and
+> brings the stack back up, so the change is live when it finishes.
+
+> **Things on this page that still have no screen** are marked **API only**. You do them with
 > a bearer token (see [Using the API](#using-the-api-for-the-api-only-steps)). They are
-> listed again in [Known gaps](#known-gaps-on-v120).
+> listed again in [Known gaps](#known-gaps).
 
 ---
 
@@ -31,11 +52,14 @@ feed bundles, manage the result-transfer trust keys, send a test email, and edit
 content themes and review cycles.
 
 > **Check this first on a multi-tenant site.** Who counts as platform administrator comes
-> from `PLATFORM_TENANT_ID`. On v1.2.0 the installer does not pass it to the API (#273).
-> While the site has **one** tenant, every Admin of it is the platform administrator. When a
-> second tenant is created, **nobody** is, until `PLATFORM_TENANT_ID` reaches the API. Stay
-> on one tenant until #273 is fixed, or set the variable by hand as described in
-> [06-operations-runbook.md](06-operations-runbook.md).
+> from `PLATFORM_TENANT_ID`. The installer now passes it to the API from
+> `tn_platform_tenant_id`; empty means the bootstrap tenant, which the seed records in
+> `/srv/truenorth/state/platform_tenant_id` on the first run and never re-picks
+> ([02-install-guide.md](02-install-guide.md)). While the site has **one** tenant, every
+> Admin of it is the platform administrator. An id that is not a UUID, or names no tenant,
+> makes **nobody** the platform administrator, and the API logs an error at startup that
+> names the installer variable. A Kubernetes (Helm) install is not run by the installer: set
+> `config.platformTenantId` there before a second tenant exists.
 
 ---
 
@@ -45,11 +69,17 @@ The installer created one account, the **bootstrap administrator**, from
 `tn_bootstrap_admin_upn`. It won't install without one. There is no `admin@truenorth.local`
 in production.
 
-- **With AD** (`tn_ldap_enabled: true`), you are that AD account and sign in with your
-  domain password. With `tn_keycloak_local_admin: true` the installer also keeps a local
-  **break-glass** account of the same name in Keycloak, for when AD is down.
-- **Without AD**, it is a local Keycloak account. Its first password is the generated
-  secret `bootstrap_admin_password` under `/srv/truenorth/config/secrets/` on TN-MGMT01.
+- **With AD** (`tn_ldap_enabled: true`) and `tn_keycloak_local_admin: true` — the setup the
+  [02-install-guide.md](02-install-guide.md) example inventory uses — the bootstrap
+  administrator is a **local** Keycloak account, never an AD account: preflight refuses a
+  `tn_bootstrap_admin_upn` inside `tn_domain`, so the name can never match a directory
+  account. You sign in with the generated secret `bootstrap_admin_password` under
+  `/srv/truenorth/config/secrets/` on the TrueNorth VM, **not** a domain password. This is the
+  **break-glass** account: it still signs in when AD, the bind account or LDAPS is down.
+- **With AD and `tn_keycloak_local_admin: false`**, the installer disables the local account
+  and `tn_bootstrap_admin_upn` names an AD account instead: you sign in with that account's
+  domain password, and there is then no sign-in that works without the directory.
+- **Without AD**, it is a local Keycloak account too; same `bootstrap_admin_password`.
 
 Steps:
 
@@ -62,8 +92,12 @@ Steps:
 4. You land on the **Dashboard**. On a fresh install, nobody is asked to sign the Rules of
    use until you publish them (step 2).
 
-If you get no admin menu, you are not the bootstrap account: check the UPN in the installer
-variables.
+**No admin menu?** Two usual causes, in order. If you are the first **AD** administrator
+(not the break-glass account), your registration has probably not been approved with the
+role **Admin** yet, or you have not signed out and back in since the approval —
+[02-install-guide.md](02-install-guide.md) §7.2 walks through it. If you signed in as the
+bootstrap administrator itself and still see no admin menu, check the UPN you signed in with
+against `tn_bootstrap_admin_upn` in the installer variables.
 
 ---
 
@@ -95,7 +129,7 @@ administrator edits and publishes the rules of use."
 
 ---
 
-## 3. Set the roll-call email domains (API only)
+## 3. Set the roll-call email domains
 
 An instructor adds Students to a roll call by email. TrueNorth accepts only addresses in the
 tenant's **roll-call domains**. Which domains apply:
@@ -103,21 +137,21 @@ tenant's **roll-call domains**. Which domains apply:
 | Setting | Effect |
 |---|---|
 | Not set (fresh install) | The domains of the tenant's active AD accounts. With no AD accounts yet, **every add is refused**. |
-| A list, e.g. `["forces.gc.ca"]` | Only those domains. Up to 500 addresses per add. |
-| An empty list `[]` | Any domain. At most 50 addresses per add. |
+| A list, e.g. `forces.gc.ca` | Only those domains. Up to 500 addresses per add. |
+| **Any domain** | Any domain. At most 50 addresses per add. |
 
-There is no screen for this yet. The error an instructor sees points to "Classes, roll-call
-domains", which doesn't exist.
+**Prepare & Operate → Classes**, **Roll-call domains** card (shown to everyone who can create a
+class; only an admin sees **Change**). Its subtitle says what applies now, for example "Not
+set by an admin: roll calls accept the domains of your organisation's AD accounts (…)".
 
-```bash
-# Admin (tenant:update). Audited as roll_call_domains_set.
-curl -X PUT https://<site>/api/classes/roll-call-domains \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"email_domains": ["forces.gc.ca"]}'
+1. Press **Change**.
+2. Either tick **Any domain (roll calls then add at most 50 at a time)**, or type the
+   **Allowed email domains**, one per line or separated by commas.
+3. **Save**. It refuses an empty list with "Enter at least one domain, or tick "Any domain"."
+   Each change is audited (`roll_call_domains_set`).
 
-# Check: "source" is "setting" (yours) or "accounts" (taken from AD accounts)
-curl -H "Authorization: Bearer $TOKEN" https://<site>/api/classes/roll-call-domains
-```
+The error an instructor sees when nothing is set points to "Classes, roll-call domains": this
+card.
 
 Instructors may also send at most 100 onboarding and reminder emails per day each.
 
@@ -134,6 +168,13 @@ Instructors may also send at most 100 onboarding and reminder emails per day eac
 
 Only the platform administrator can change it; other admins see the choices greyed out.
 Self-serve labs ignore **Warn**: a lab that doesn't fit is always refused.
+
+### Site time zone
+
+Times the app says in words ("Labs are busy, next free at 14:00") and the day-before
+roll-call reminder use the site's time zone: `tn_site_timezone` in the installer (an IANA
+name such as `America/Toronto`). Left empty, it is the host's own zone, else UTC. A change
+needs an installer re-run. (The API shows it as `site_timezone` in `GET /schedule/settings`.)
 
 ### Maintenance windows
 
@@ -163,7 +204,10 @@ A range clones golden templates. A build of a golden template is used only after
 platform administrator **promotes** it.
 
 1. Build and replicate the template with the template kit
-   (`infra/vsphere/packer/README.md`). Register-back records the build in TrueNorth.
+   (`infra/vsphere/packer/README.md`). Building it and registering the build in TrueNorth
+   (the kit's **register-back** step) is the test site's job and is walked through in
+   [06-operations-runbook.md](06-operations-runbook.md) §4; on a fresh site the templates
+   usually arrive already ported (06 §4.2).
 2. **Admin → Infrastructure → Golden images** tab. The table shows **Image**, **Status**,
    **Promoted build** and **Checksum**.
 3. Open the image. It lists its builds and the hosts that have no copy of each one.
@@ -221,7 +265,9 @@ curl -X POST https://<site>/api/result-transfer/trust-keys/<id>/retire -H "Autho
 
 The feeds flag golden templates **stale** when a new release, an end-of-life date or a
 known-exploited vulnerability affects them. They are set by `tn_feeds_mode`, and are **off**
-on a fresh install.
+on a fresh install — but the [02-install-guide.md](02-install-guide.md) example inventory
+sets `tn_feeds_mode: online`, so check which value your site's `inventory/site.yml` has
+before assuming either.
 
 | `tn_feeds_mode` | What happens |
 |---|---|
@@ -229,7 +275,7 @@ on a fresh install.
 | `online` | The worker with internet egress pulls endoflife.date, CISA KEV and the NVD daily at 04:10 UTC. Optional settings: `tn_feeds_http_proxy`, `tn_feeds_nvd_api_key`, `tn_feeds_nvd_min_cvss` (default 9.0). |
 | `bundle` | Air-gapped: the platform administrator imports a signed feed bundle. Set its public key in `tn_feeds_bundle_public_key`. |
 
-Change the mode in the installer variables and re-run the installer.
+Change the mode in `inventory/site.yml` and re-run the installer (top of this page).
 
 Check it at **Prepare & Operate → Calendar → Content → Feeds**. It shows **Off**, **Online**
 or **Signed bundles**, the last pull or import, and any errors. In bundle mode, the platform
@@ -271,10 +317,11 @@ Known limits:
 
 - Some accounts are created without their AD object id: the bootstrap admin, users added
   with **Add User**, and demo links. Such an account is **not** deactivated when its AD
-  account is deleted, only when AD disables it (#310).
-- Re-enabling a deactivated user has **no button** yet. **Delete** in Users only
-  deactivates. Re-enable with `PATCH /users/{id}?is_active=true` (API only; the fields are query
-  parameters, not a JSON body).
+  account is deleted, only when AD disables it, **until it signs in again**: the next
+  sign-in records the id from the token (never over an id already held, #310). An account
+  that never signs in again stays without one.
+- **Delete** in Users only deactivates. A deactivated account shows a **Re-enable** button
+  (the person-check icon, tooltip "Re-enable") in the Users list.
 
 More detail: [identity.md](../identity.md), "AD status sync".
 
@@ -291,23 +338,30 @@ Email is **optional**. Without it, TrueNorth still works, but sends nothing:
 
 The relay is set by `tn_smtp_host`, `tn_smtp_port` (587), `tn_smtp_security` (`starttls`,
 `tls` or `none`), `tn_smtp_username`, `tn_smtp_from_address` and `vault_smtp_password`. An
-empty host means email is off. **On v1.2.0 sites SMTP is parked:** no relay is set.
+empty host means email is off. **On a site installed by [02-install-guide.md](02-install-guide.md)
+SMTP is parked:** §6.4 deliberately leaves `tn_smtp_host` unset.
 
 **The banner.** While email is off, every admin sees a red banner on every page:
 
 > Email is not configured: onboarding emails, reminders and calendar invites are not being
 > sent.
 
-It can't be dismissed. It goes away once the relay is set and the API is restarted. Its
-link points to GitHub, which an air-gapped site can't open: the same text is in
-`install/README.md`, "Email (SMTP)". Instructors see a matching warning on the roll call.
+It can't be dismissed, and it stays until a relay is set: put the `tn_smtp_*` variables in
+`inventory/site.yml` and re-run the installer (top of this page) — it re-renders the API's
+environment and brings the API back up with the relay configured, and the banner is gone
+([02-install-guide.md](02-install-guide.md) §6.4; prove delivery with
+`ansible-playbook -i inventory/site.yml playbooks/alert-test.yml --ask-vault-pass`). Its
+**Set up email** link opens a help page bundled in the app (**Set up email**, at
+`/admin/help/email`), so an air-gapped site can read it; it summarises `install/README.md`,
+"Email (SMTP)". Instructors see a matching warning on the roll call.
 
 **While email is off, tell instructors:**
 
 - Students must be told by other means to sign in.
-- Roll-call Students who haven't signed in still **lose their seat 2 hours after the first
-  session starts**, even though nobody emailed them. Instructors should reinstate them, or
-  get them signed in early.
+- A roll-call Student who nobody could notify (email off, a refused send, the daily limit)
+  **keeps their seat** even if they haven't signed in 2 hours after the first session
+  starts; the roll call shows "not notified — seat kept". Instructors must get them signed
+  in, or remove them.
 
 **Check it:** **Admin → Admin → System Health → Email** shows **Configured** or **Not
 configured: nothing is emailed**. The platform administrator also sees the relay and
@@ -320,7 +374,9 @@ configured: nothing is emailed**. The platform administrator also sees the relay
 ### Tenants
 
 **Admin → Admin → Tenants → New Tenant**: **Name** and **Slug**, then **Create**. Only the
-platform administrator can create one; other admins see the button but get "Failed". Read
+platform administrator sees **New Tenant**; other admins see "Only the platform administrator
+creates tenants…" instead (they can rename their own). A name already taken is refused as a
+conflict. Read
 the warning in [section 0](#0-roles-and-the-one-you-need-to-be) before creating a second
 tenant.
 
@@ -332,24 +388,27 @@ filters by it.
 
 **Users → Directory → Organizational Units** groups teams and security groups, not people.
 
-> On v1.2.0, **New OU** fails with its default type: "Department" and "Team" are refused.
-> Pick **Division** or **Custom**. In **Security Groups**, "Role" is refused too.
+> The **New OU** type list offers Country, Branch, Division, Unit, Section and Custom
+> (default Custom); **Security Groups** offer Access, Distribution, Training and Role-based
+> (default Access). These are the types the API accepts.
 
 ### Instructors and observers
 
 - **Someone with no account yet:** they sign in once and fill in **Request access**. You
   approve them in **Admin → Approvals** (also **Users → Approvals**). Their AD groups
   suggest a role and tenant; the role picker shows the suggestion, and you decide.
-  Instructors can approve too, but only for Student and Observer.
   - **Filter by Cohort**, tick several, choose **Role to assign**, then **Approve N** to
     approve a group at once.
   - **Decline** asks for a reason, which the applicant sees.
+  - **Only an administrator approves Request access.** Instructors no longer have
+    **Approvals** on their menu; their Students come in through a class roll call.
 - **Someone with an account:** **Admin → Users → Personnel →** the pencil (**Edit**) →
   **Role**: Student, Instructor, Observer, Range Ops or Admin.
 - **On a class:** the lead instructor, assistant instructors and observers are chosen when
-  the class is created (**Prepare & Operate → Classes → New class**). Changing them later,
-  handing a class to another lead, and cancelling a class are **API only** on v1.2.0
-  (`PUT` / `DELETE /classes/{id}`; lead or admin).
+  the class is created (**Prepare & Operate → Classes → New class**). Changing them later
+  (**Edit**), handing a class to another lead (**Hand over**) and cancelling it (**Cancel
+  class**) are buttons on the class's row, for its lead or an admin while it is open
+  ([04-instructor-guide.md](04-instructor-guide.md)).
 - **Observer consoles** are off by default: observers see live status only. To let observers
   open a class's consoles (read-only), set `tn_class_observer_consoles: true` in the
   installer inventory and re-run `30-config` (`install/README.md`).
@@ -364,12 +423,15 @@ a person later signs in and is approved, TrueNorth **adopts** their row instead 
 duplicate. For classes, use the roll call instead. Details:
 [identity.md](../identity.md).
 
-### Unit readiness (observers): coming in v1.2.0
+### Unit readiness (observers)
 
-**Review → Unit readiness** (#315, in review). For observers, instructors and admins. It
-shows the classes, enrolment, attendance, results and qualifications earned in your tenant,
-filtered by unit and dates, with CSV and PDF export. Until it merges, observers use
-**Classes → <class> → Close-out → Export CSV**.
+**Review → Unit readiness**. For observers, instructors and admins (not range ops, not
+Students). It shows the classes of your tenant, with each Student's enrolment, recorded
+attendance, result (Pass, Fail, Incomplete or "Awaiting result", with the instructor's
+comment) and the qualifications earned, filtered by **From**, **To** and **Unit**, with **CSV**,
+**PDF** and **Print**. It is read-only and never shows scores. Each CSV or PDF export is
+audited. The Unit filter uses the free-text unit described above, so fill in units for your
+Students first.
 
 ---
 
@@ -394,6 +456,33 @@ images.
 
 Instructors see this calendar read-only, except for items they own or have been assigned.
 Range ops can see it.
+
+**Proven chip.** The selected item on the Content view, a course's page, each range template
+card in **Create → Authoring Studio → Content**, and the scenario studio show a chip for
+staff who can read the content clock: **Proven**, or **Not proven: <reasons>**. **Why**
+lists the three conditions and their evidence: a range built from the template as it is now
+reached Certified, it was used with passing evidence (a closed class with a passing Student,
+or a completed exercise at 70% or more), and the content clock does not call it stale. It is
+worked out each time it is shown. An item ported here from another site reads "Ported here …
+It must be proven on this site too."
+
+**Port content panel (platform administrator).** Beside the Content calendar, a **Port
+content** panel moves **proven** courses, range templates, scenarios and exercise templates
+between sites as a signed bundle (golden templates travel separately, guide 06 §4):
+
+- **Export:** **Choose content to export**, tick what to move (anything not proven is greyed
+  with its reason), **Export proven content**. If anything selected, or anything it needs,
+  is not proven, nothing is exported and the panel lists each item with its reasons.
+- **Import:** optionally **Land as shared content**, then **Preview a bundle**. The preview
+  shows each item as New, Update, Unchanged, Conflict, Refused or Skipped, with a diff.
+  Tick **Replace what is here** on each conflict you accept, then **Import**. A bundle can be
+  imported once. Everything lands not yet proven here; courses land unpublished.
+- **This site's key → Show:** the public key an importing site must list in
+  `tn_content_port_trusted_keys`. With none set the importing site refuses every bundle.
+- Every account password in a range template is removed in the bundle: set the scenario
+  passwords again on the new site before building from it.
+
+Details and the offline command line: [content-port.md](../content-port.md).
 
 Setting a content type's cycle (90–120 days), adding or renaming themes, and setting an
 item's owner, themes or own cycle are **API only** on v1.2.0. Use `/content-review/cycles`,
@@ -421,18 +510,43 @@ Below the sessions, **Roll-call additions that didn't fit** lists Students added
 approval when there was no room. **Approve** or **Reject** each one; a rejection needs a
 reason.
 
-A session nobody decides on is cancelled once its end time passes. The instructor gets
-**no email** about your decision: tell them, or they will see it on the calendar.
+A session nobody decides on is cancelled once its end time passes. The instructor (and the
+class's lead) get a notification in the app (the bell) when you approve, reject or propose a
+time, and an email as well if the site has email on. You are not notified of your own
+decision.
 
 ---
 
 ## Using the API for the API-only steps
 
-1. Get a token from a terminal with the device grant (`truenorth-cli` client), as described
-   in [api.md](../api.md), "Keycloak OIDC JWT Flow". Approve the device code in a browser
-   signed in as yourself.
-2. Call `https://<site>/api/<path>` with `-H "Authorization: Bearer $TOKEN"`. Tokens last 5
-   minutes.
+1. Get a token from a terminal with the device grant (`truenorth-cli` client, a browser
+   signed in as yourself approves it). `<issuer>` is `KEYCLOAK_ISSUER`, which the installer
+   renders as `https://<site>/auth/realms/truenorth`. Copy-paste, one step at a time:
+
+   ```bash
+   ISSUER=https://<site>/auth/realms/truenorth
+
+   # 1. Ask for a device code. Open verification_uri_complete from the reply in a browser
+   #    signed in as yourself and approve.
+   curl -s -X POST "$ISSUER/protocol/openid-connect/auth/device" \
+     -d "client_id=truenorth-cli"
+
+   # 2. Poll with the device_code from that reply (it answers authorization_pending until
+   #    you approve). Copy the access_token it prints:
+   curl -s -X POST "$ISSUER/protocol/openid-connect/token" \
+     -d "grant_type=urn:ietf:params:oauth:grant-type:device_code" \
+     -d "client_id=truenorth-cli" \
+     -d "device_code=<device_code>" | jq -r .access_token
+
+   export TOKEN=<the printed token>
+   ```
+
+   The last step needs `jq` or a similar JSON tool. Tokens last **5 minutes**
+   (`expires_in: 300`); when calls start answering 401, run the flow again — start from
+   step 1, a new device code each time.
+2. Call `https://<site>/api/<path>` with `-H "Authorization: Bearer $TOKEN"`. Both
+   `https://<site>/api/<path>` and `https://<site>/api/v1/<path>` reach the same route
+   (nginx strips `/api/` before forwarding; `/api/v1/...` is the versioned alias, ADR 0002).
 
 Every change is audited under your name.
 
@@ -443,33 +557,30 @@ Every change is audited under your name.
 - **"I sign in and land back on the login page."** The API is unreachable: check
   `https://<site>/api/health`.
 - **"Everyone's access request shows no suggested role."** The token carries no `groups`
-  claim. Fix Keycloak, then re-run `playbooks/60-keycloak.yml` ([identity.md](../identity.md),
-  "The claim contract").
+  claim. Fix Keycloak, then, from `~/truenorth/install`, re-run
+  `ansible-playbook -i inventory/site.yml playbooks/60-keycloak.yml -K --ask-vault-pass`
+  ([identity.md](../identity.md), "The claim contract").
 - **"An approval failed: a user with email … already exists from source ad."** Two identity
   subjects share one address. A person must sort it out; TrueNorth won't re-point an
   account.
 - **"Instructor: every roll-call add is refused."** No roll-call domains are set and the
-  tenant has no AD accounts yet. See [section 3](#3-set-the-roll-call-email-domains-api-only).
+  tenant has no AD accounts yet. See [section 3](#3-set-the-roll-call-email-domains).
 - **"After the second tenant, Publish / Promote / New Tenant say Failed or 403."** Nobody is
   platform administrator: see [section 0](#0-roles-and-the-one-you-need-to-be).
 
 ---
 
-## Known gaps on v1.2.0
+## Known gaps
 
 | Gap | Workaround |
 |---|---|
-| `PLATFORM_TENANT_ID` is not passed to the API (#273) | Stay on one tenant, or set it by hand |
-| Roll-call domains: no screen | `PUT /classes/roll-call-domains` |
 | Trust keys: no screen | `/result-transfer/trust-keys` |
 | Catalogue import and enable/disable: no screen | `/golden-images/...` |
-| Edit, hand over or cancel a class: no screen | `PUT` / `DELETE /classes/{id}` |
-| Course default range mode: no screen | `PUT /classes/course-range-modes/{course_id}` (`course:author`) |
 | Review cycles and themes: no screen | `/content-review/cycles`, `/content-review/themes` |
-| Re-enable a deactivated user: no button | `PATCH /users/{id}?is_active=true` |
-| New OU defaults to a type the API refuses | Pick Division or Custom |
-| Email banner links to GitHub | `install/README.md`, "Email (SMTP)" |
-| "Labs are busy, next free at HH:MM" is always UTC: `SITE_TIMEZONE` is not passed to the API | Read the time as UTC |
+| Bulk CSV roster of people who must exist before they sign in: no screen | `POST /users/import-csv` |
+| Approving a request into a different tenant: no screen | `tenant_id` on `POST /registration/requests/{id}/approve` |
+| Observer consoles on class sessions are off until you turn them on | `tn_class_observer_consoles: true` in the installer inventory, then re-run `30-config` |
+| An open console outlives its sign-in token: the token is checked when the console connects, not while it is open (ADR 0014, "Console relay"; issue #441 tracks the fix) | To cut someone off now, act in TrueNorth, not the directory: guide 06 §10 |
 
 ---
 
@@ -479,11 +590,12 @@ Every change is audited under your name.
 Site: ____________________   Date: __________   Admin: ____________________
 
 [ ] Signed in as the bootstrap admin (Sign in with SSO); MFA enrolled
-[ ] Confirmed this is a single-tenant site, or PLATFORM_TENANT_ID is set (#273)
+[ ] Platform tenant checked: tn_platform_tenant_id empty (bootstrap tenant) or the operator's tenant id
 [ ] Rules of use: Admin → Rules of use → draft selected → edited → Save draft → Publish
     [ ] "Sessions may be observed" section kept
     [ ] Signed it myself (I agree)
-[ ] Roll-call email domains set (PUT /classes/roll-call-domains): ____________________
+[ ] Roll-call email domains set (Classes → Roll-call domains → Change): ____________________
+[ ] Site time zone set (tn_site_timezone), or UTC accepted
 [ ] Over-capacity policy checked (Schedule → Over-capacity policy): Block / Warn
 [ ] Maintenance windows entered (Admin → Maintenance windows)
 [ ] Golden images: each needed image has a promoted build

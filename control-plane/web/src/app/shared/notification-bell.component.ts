@@ -6,12 +6,17 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { catchError, filter, interval, of } from 'rxjs';
-import { AppNotification, NotificationsApiService } from '@core/services/notifications-api.service';
+import { AppNotification, NotificationSettings, NotificationsApiService } from '@core/services/notifications-api.service';
+import { UserSocketService } from '@core/services/user-socket.service';
 
 /**
  * The toolbar bell: unread count, and a short list of the caller's notifications.
- * Polls the count every minute while the tab is visible and after each navigation;
- * opening the list fetches it fresh. Clicking an item marks it read and opens its link.
+ * New ones arrive live over the user's own socket (UserSocketService). The count is also
+ * polled every minute while the tab is visible and the socket is down, every five minutes
+ * even while it is up (a socket can be open yet deaf, e.g. if the server's relay between
+ * workers lost Redis), and after each navigation, so the bell works with no socket at all;
+ * reconnecting refreshes it too.
+ * Opening the list fetches it fresh. Clicking an item marks it read and opens its link.
  */
 @Component({
   selector: 'tn-notification-bell',
@@ -39,6 +44,15 @@ import { AppNotification, NotificationsApiService } from '@core/services/notific
         } @empty {
           <p class="empty">{{ loading() ? 'Loading…' : 'Nothing new.' }}</p>
         }
+        @if (settings(); as st) {
+          @if (st.email_available) {
+            <label class="foot">
+              <input type="checkbox" [checked]="st.email_tickets" (change)="setEmail($any($event.target).checked)" />
+              Email me about tickets
+            </label>
+            @if (saveFailed()) { <p class="err" role="alert">Could not save that. Try again.</p> }
+          }
+        }
       </div>
     }
   `,
@@ -57,12 +71,15 @@ import { AppNotification, NotificationsApiService } from '@core/services/notific
     .title, .msg, .when { display: block; font-size: .84rem; }
     .msg { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .when { color: var(--text-muted); font-size: .74rem; margin-top: 2px; }
+    .foot { display: flex; gap: 8px; align-items: center; padding: 10px 12px; font-size: .8rem; color: var(--text-secondary); cursor: pointer; }
+    .err { margin: 0; padding: 0 12px 10px; font-size: .78rem; color: var(--alert, #c8102e); }
     .empty { padding: 16px 12px; margin: 0; color: var(--text-secondary); font-size: .86rem; }
     @media (max-width: 480px) { .panel { position: fixed; left: 8px; right: 8px; width: auto; top: 56px; } }
   `],
 })
 export class NotificationBellComponent implements OnInit {
   private readonly api = inject(NotificationsApiService);
+  private readonly socket = inject(UserSocketService);
   private readonly router = inject(Router);
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly destroyRef = inject(DestroyRef);
@@ -71,15 +88,23 @@ export class NotificationBellComponent implements OnInit {
   readonly unread = signal(0);
   readonly items = signal<AppNotification[]>([]);
   readonly loading = signal(false);
+  /** The caller's own email switch; null until loaded, and stays null if the API will not say. */
+  readonly settings = signal<NotificationSettings | null>(null);
+  readonly saveFailed = signal(false);
 
   ngOnInit(): void {
     this.refreshCount();
+    let tick = 0;
     interval(60_000)
       .pipe(
+        filter(() => !this.socket.connected() || ++tick % 5 === 0),
         filter(() => typeof document === 'undefined' || document.visibilityState === 'visible'),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe(() => this.refreshCount());
+    this.socket.notifications$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(n => this.onPushed(n));
+    // After a (re)connect: anything that arrived while the socket was down.
+    this.socket.opened$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => this.refreshCount());
     this.router.events
       .pipe(filter(e => e instanceof NavigationEnd), takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refreshCount());
@@ -100,6 +125,17 @@ export class NotificationBellComponent implements OnInit {
     if (n.link) this.router.navigateByUrl(n.link);
   }
 
+  setEmail(on: boolean): void {
+    const before = this.settings();
+    if (!before) return;
+    this.saveFailed.set(false);
+    this.settings.set({ ...before, email_tickets: on });
+    this.api.saveSettings(on).subscribe({
+      next: saved => this.settings.set(saved),
+      error: () => { this.settings.set(before); this.saveFailed.set(true); },
+    });
+  }
+
   readAll(): void {
     this.api.markAllRead().pipe(catchError(() => of(null))).subscribe(() => {
       this.unread.set(0);
@@ -117,12 +153,20 @@ export class NotificationBellComponent implements OnInit {
     this.open.set(false);
   }
 
+  /** A notification pushed over the socket: show it now (once, even if the list was loaded already). */
+  private onPushed(n: AppNotification): void {
+    if (this.items().some(i => i.id === n.id)) return;
+    this.items.set([n, ...this.items()].slice(0, 30));
+    if (!n.read) this.unread.set(this.unread() + 1);
+  }
+
   private refreshCount(): void {
     // Errors (signed out, API restarting) just leave the last count; the next poll retries.
     this.api.unreadCount().pipe(catchError(() => of(null))).subscribe(r => r && this.unread.set(r.unread));
   }
 
   private load(): void {
+    this.api.settings().pipe(catchError(() => of(null))).subscribe(st => this.settings.set(st));
     this.loading.set(true);
     this.api.list().pipe(catchError(() => of([] as AppNotification[]))).subscribe(list => {
       this.items.set(list);

@@ -9,6 +9,8 @@ type S = components['schemas'];
 /** One in-app notification (GET /notifications). Aliased from the contract (ADR 0002). */
 export type AppNotification = Required<S['NotificationOut']>;
 
+export type NotificationSettings = S['NotificationSettingsOut'];
+
 /** Client for `/notifications` (control-plane/api/app/routers/notifications.py): the caller's own only. */
 @Injectable({ providedIn: 'root' })
 export class NotificationsApiService {
@@ -27,5 +29,11 @@ export class NotificationsApiService {
   }
   markAllRead(): Observable<S['NotificationUnreadCountOut']> {
     return this.http.post<S['NotificationUnreadCountOut']>(`${this.base}/read-all`, {});
+  }
+  settings(): Observable<NotificationSettings> {
+    return this.http.get<NotificationSettings>(`${this.base}/settings`);
+  }
+  saveSettings(emailTickets: boolean): Observable<NotificationSettings> {
+    return this.http.put<NotificationSettings>(`${this.base}/settings`, { email_tickets: emailTickets });
   }
 }

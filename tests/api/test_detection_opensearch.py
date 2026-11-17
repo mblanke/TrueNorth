@@ -1,9 +1,10 @@
-"""Detection credit against a real OpenSearch (review B4 and M4).
+"""Detections and look-for queries against a real OpenSearch (review B4 and M4; ADR 0020).
 
 The unit tests' FakeStore matches with fnmatch; OpenSearch maps and analyses fields, so a
-key that passes there can match nothing here. This runs the real thing: bootstrap's
+query that passes there can match nothing here. This runs the real thing: bootstrap's
 ingested-at pipeline and range template (under a scratch name), the API's search backend,
-and every answer key in shipped content against an event it should find.
+and every shipped objective's look-for query, both as the instructor runs it and as a
+Student would write it as a detection, against an event it should find.
 
 Set TEST_OPENSEARCH_URL (e.g. http://localhost:9200, security plugin off). CI's
 test-python job runs an OpenSearch service and sets it.
@@ -23,7 +24,7 @@ from pathlib import Path
 import httpx
 import pytest
 import yaml
-from app.detections import credit
+from app.detections import evidence
 from app.search_backends import OpenSearchBackend
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -84,14 +85,16 @@ FIXTURES: dict[tuple[str, str], dict] = {
 DECOY = {"event_type": "http", "url.domain": "intranet.corp.example", "process_name": "svchost.exe"}
 
 
-def _keys() -> list[tuple[str, str, credit.AnswerKey]]:
+def _keys() -> list[tuple[str, str, str, int]]:
+    """(scenario, objective, rendered look-for query, min_hits) for every shipped detection objective."""
     out = []
     for path in sorted((ROOT / "content/scenarios").glob("*/scenario.yaml")):
         text = path.read_text()
         for obj in yaml.safe_load(text).get("objectives") or []:
-            if (obj.get("params") or {}).get("query"):
-                key = credit.answer_key(obj["validator"], None, obj["id"], text)
-                out.append((path.parent.name, obj["id"], key))
+            params = obj.get("params") or {}
+            if params.get("query"):
+                query = evidence.look_for(obj["validator"], None, obj["id"], text)
+                out.append((path.parent.name, obj["id"], query, max(int(params.get("min_hits", 1)), 1)))
     return out
 
 
@@ -129,8 +132,8 @@ def loaded(cluster):
     c, range_id = cluster
     start = datetime.now(UTC) - timedelta(seconds=5)
     api_events, beat_events = [], []
-    for scenario, ref, key in KEYS:
-        events = [copy.deepcopy(FIXTURES[(scenario, ref)]) for _ in range(key.threshold)]
+    for scenario, ref, _, hits in KEYS:
+        events = [copy.deepcopy(FIXTURES[(scenario, ref)]) for _ in range(hits)]
         (api_events if len(api_events) <= len(beat_events) else beat_events).extend(events)
     beat_events.append({**DECOY, "truenorth.ingested_at": "1999-01-01T00:00:00Z"})
     api_events.extend([DECOY] * 3)
@@ -146,26 +149,25 @@ def loaded(cluster):
 
 
 def test_every_query_objective_has_a_fixture():
-    assert {(s, r) for s, r, _ in KEYS} == set(FIXTURES)
+    assert {(s, r) for s, r, _, _ in KEYS} == set(FIXTURES)
 
 
-@pytest.mark.parametrize(("scenario", "ref", "key"), KEYS, ids=[f"{s}:{r}" for s, r, _ in KEYS])
-def test_each_answer_key_is_achievable_by_a_precise_detection(loaded, scenario, ref, key):
+@pytest.mark.parametrize(("scenario", "ref", "query", "hits"), KEYS, ids=[f"{s}:{r}" for s, r, _, _ in KEYS])
+def test_each_look_for_query_finds_its_evidence_as_instructor_and_as_student(loaded, scenario, ref, query, hits):
     range_id, start = loaded
-    judged = asyncio.run(
-        credit.judge(OpenSearchBackend(url=URL), range_id, key, key.query, start, datetime.now(UTC) + timedelta(seconds=5))
-    )
-    assert judged.on_target >= key.threshold, (scenario, ref, key.query, judged)
-    assert judged.achieved, judged
-
-
-def test_catch_all_fails_and_window_excludes_earlier_telemetry(loaded):
-    range_id, start = loaded
-    [(_, _, key)] = [k for k in KEYS if k[:2] == ("apt-nation-state", "detect_c2")]
+    end = datetime.now(UTC) + timedelta(seconds=5)
     backend = OpenSearchBackend(url=URL)
+    staff = asyncio.run(evidence.matches(backend, range_id, query, start, end, trusted=True))
+    assert staff.events_matched >= hits, (scenario, ref, query, staff)
+    student = asyncio.run(evidence.matches(backend, range_id, query, start, end))  # through the grammar
+    assert student.events_matched == staff.events_matched, (scenario, ref, query)
+
+
+def test_the_window_excludes_telemetry_from_before_it(loaded):
+    range_id, _ = loaded
+    [query] = [q for s, r, q, _ in KEYS if (s, r) == ("apt-nation-state", "detect_c2")]
     now = datetime.now(UTC) + timedelta(seconds=5)
-    assert not asyncio.run(credit.judge(backend, range_id, key, "*", start, now)).achieved
-    later = asyncio.run(credit.judge(backend, range_id, key, key.query, now, now + timedelta(minutes=1)))
+    later = asyncio.run(evidence.matches(OpenSearchBackend(url=URL), range_id, query, now, now + timedelta(minutes=1)))
     assert later.events_matched == 0
 
 

@@ -23,6 +23,16 @@ describe('objective display (issue #201)', () => {
     expect(objectiveKind({ validator: 'greyspace_breadcrumb', type: 'detection' })).toBe('Greyspace breadcrumb');
   });
 
+  it('reads an instructor judgement as who judged it, the note and the detections cited (ADR 0020)', () => {
+    const raw = JSON.stringify({ source: 'instructor', by: 'Sgt Rivera', by_id: 'i1', note: 'Team isolated WS07',
+      cites: ['d1', 'd2'], students: ['u1'] });
+    expect(evidenceText(raw)).toBe('Judged by Sgt Rivera: Team isolated WS07 · cites 2 detections');
+    expect(evidenceText(JSON.stringify({ source: 'instructor', by: 'Sgt Rivera', note: '', cites: ['d1'] })))
+      .toBe('Judged by Sgt Rivera · cites 1 detection');
+    expect(evidenceText(JSON.stringify({ source: 'instructor', by: 'Sgt Rivera', note: 'Report filed', cites: [] })))
+      .toBe('Judged by Sgt Rivera: Report filed');
+  });
+
   it('reads a Student detection as who detected what', () => {
     const raw = JSON.stringify({ source: 'student_detection', submission_id: 'x1', student_id: 'u1',
       student: 'Sam Student', events_matched: 3, on_target: 3 });

@@ -43,7 +43,7 @@ import uuid
 from datetime import UTC, datetime
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import func, or_, text, update
@@ -55,6 +55,7 @@ from ..auth import CurrentUser
 from ..db import get_db
 from ..models import AuditLog, Exercise, Range, User, UserRole
 from ..models_tickets import SupportQueue, Ticket, TicketActivity, TicketAttachment, TicketComment
+from ..notifications import ticket_email
 from ..notifications.inbox import existing_user_ids, notify, staff_ids
 from ..rbac import Permission, require_permission, user_has_permission
 from ..tenancy import get_owned, tenant_uuid
@@ -79,8 +80,28 @@ TRACKED_FIELDS = (
     "description",
     "range_id",
     "exercise_id",
+    "category",
+    "labels",
 )
 MAX_FILES_PER_UPLOAD = 10
+EMAIL_NOTICES_KEY = "tn_ticket_email_notices"
+
+# What a ticket is about. A fixed list so triage and filtering stay consistent; the
+# reporter picks one when filing and staff can change it. Rows filed before this list
+# existed may hold another value and keep showing it.
+TICKET_CATEGORIES: dict[str, str] = {
+    "range": "Range or lab",
+    "console": "VM console or access",
+    "network": "Network or connectivity",
+    "account": "Account or sign-in",
+    "scoring": "Scoring or results",
+    "content": "Course content",
+    "platform": "TrueNorth itself",
+    "other": "Something else",
+}
+# Labels are staff triage tags, stored as one comma-separated string.
+LABEL_RE = re.compile(r"^[a-z0-9][a-z0-9._:/-]{0,29}$")
+MAX_LABELS = 10
 
 
 # ── Schemas ─────────────────────────────────────────────────────────────
@@ -92,6 +113,33 @@ def _not_blank(v: str | None) -> str | None:
     if not v:
         raise ValueError("must not be blank")
     return v
+
+
+def _clean_category(v: str | None) -> str | None:
+    if v is None:
+        return v
+    v = v.strip().lower()
+    if v not in TICKET_CATEGORIES:
+        raise ValueError(f"unknown category; use one of: {', '.join(TICKET_CATEGORIES)}")
+    return v
+
+
+def normalise_labels(v: str | None) -> str | None:
+    """Lowercase, trimmed, de-duplicated labels joined by commas; rejects anything odd."""
+    if v is None:
+        return v
+    seen: list[str] = []
+    for raw in v.split(","):
+        label = re.sub(r"\s+", "-", raw.strip().lower())
+        if not label:
+            continue
+        if not LABEL_RE.match(label):
+            raise ValueError(f"invalid label '{raw.strip()}': up to 30 characters from a-z 0-9 . _ : / -")
+        if label not in seen:
+            seen.append(label)
+    if len(seen) > MAX_LABELS:
+        raise ValueError(f"at most {MAX_LABELS} labels")
+    return ",".join(seen)
 
 
 class SupportQueueIn(BaseModel):
@@ -134,6 +182,8 @@ class TicketIn(BaseModel):
     assignee_id: uuid.UUID | None = None  # staff only
 
     _subject = field_validator("subject")(_not_blank)
+    _category = field_validator("category")(_clean_category)
+    _labels = field_validator("labels")(normalise_labels)
 
 
 class TicketUpdate(BaseModel):
@@ -153,6 +203,8 @@ class TicketUpdate(BaseModel):
     unlink_exercise: bool = False
 
     _subject = field_validator("subject")(_not_blank)
+    _category = field_validator("category")(_clean_category)
+    _labels = field_validator("labels")(normalise_labels)
 
 
 class TicketMoveIn(BaseModel):
@@ -230,6 +282,16 @@ class TicketActivityOut(BaseModel):
     created_at: datetime
 
 
+class TicketCategoryOut(BaseModel):
+    key: str
+    label: str
+
+
+class TicketLabelCountOut(BaseModel):
+    label: str
+    count: int
+
+
 class TicketAssigneeOut(BaseModel):
     id: uuid.UUID
     display_name: str
@@ -250,6 +312,18 @@ def _like(term: str) -> str:
     """A LIKE pattern matching `term` literally (``%`` and ``_`` are not wildcards)."""
     escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
+
+
+def _has_label(label: str):
+    """SQL condition: `label` is one of the comma-separated labels (exact, not a substring)."""
+    esc = label.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    col = Ticket.labels
+    return or_(
+        col == label,
+        col.like(f"{esc},%", escape="\\"),
+        col.like(f"%,{esc}", escape="\\"),
+        col.like(f"%,{esc},%", escape="\\"),
+    )
 
 
 def _content_disposition(filename: str) -> str:
@@ -343,9 +417,12 @@ def _decorate(db: Session, user: CurrentUser, tickets: list[Ticket], cls=TicketL
             .all()
         )
         queues = {r.id: r.name for r in rows}
+    staff = _staff(user)
     out = []
     for t in tickets:
         item = cls.model_validate(t)
+        if not staff:
+            item.labels = ""  # triage tags are for staff; the reporter never sees them
         item.key = f"TN-{t.number}"
         item.reporter_name = names.get(t.reporter_id, "")
         item.assignee_name = names.get(t.assignee_id, "") if t.assignee_id else ""
@@ -380,19 +457,56 @@ def _log(db: Session, t: Ticket, user: CurrentUser, field: str, old, new) -> Non
 
 
 def _tell(
-    db: Session, t: Ticket, user: CurrentUser, recipients, title: str, message: str = "", kind: str = "ticket"
+    db: Session,
+    t: Ticket,
+    user: CurrentUser,
+    recipients,
+    title: str,
+    message: str = "",
+    kind: str = "ticket",
+    email: bool = True,
 ) -> None:
-    """Notify `recipients` (user ids) about ticket `t`, never the actor, only real users of the tenant."""
-    notify(
-        db,
-        tenant_id=t.tenant_id,
-        user_ids=existing_user_ids(db, t.tenant_id, recipients),
-        actor_id=uuid.UUID(user.id),
-        title=f"TN-{t.number}: {title}",
-        message=message or t.subject,
-        link=f"/support/{t.id}",
-        kind=kind,
-    )
+    """Notify `recipients` (user ids) about ticket `t`, never the actor, only real users of the tenant.
+
+    The bell always gets it. An email is queued too (sent after the commit by
+    `_send_emails`) unless `email` is False or the event is not an emailable kind; it names
+    the ticket and what happened and carries none of the ticket's text
+    (app/notifications/ticket_email.py)."""
+    ids = existing_user_ids(db, t.tenant_id, recipients)
+    if kind == "ticket_note":  # an internal note is staff-only, even for an assignee whose role has since changed
+        staff = set(staff_ids(db, t.tenant_id))
+        ids = [i for i in ids if i in staff]
+    actor = uuid.UUID(user.id)
+    title = f"TN-{t.number}: {title}"
+    link = f"/support/{t.id}"
+    emailed: set[uuid.UUID] = set()
+    if email:  # before notify: the row about to be written must not count as "already emailed"
+        notices = ticket_email.prepare(
+            db, tenant_id=t.tenant_id, recipient_ids=ids, actor_id=actor, title=title, kind=kind, link=link
+        )
+        if notices:
+            db.info.setdefault(EMAIL_NOTICES_KEY, []).extend(notices)
+            emailed = {n.user_id for n in notices}
+    for who, extra in ((emailed, {ticket_email.EMAILED_FLAG: True}), (set(ids) - emailed, None)):
+        notify(
+            db,
+            tenant_id=t.tenant_id,
+            user_ids=sorted(who),
+            actor_id=actor,
+            title=title,
+            message=message or t.subject,
+            link=link,
+            kind=kind,
+            extra=extra,
+        )
+
+
+def _send_emails(db: Session, background: BackgroundTasks) -> None:
+    """After the commit: hand the queued ticket emails to a background task (once)."""
+    notices = db.info.pop(EMAIL_NOTICES_KEY, None)
+    db.info.pop(ticket_email.EMAILED_KEY, None)
+    if notices:
+        background.add_task(ticket_email.send, notices)
 
 
 def _tell_status(db: Session, t: Ticket, user: CurrentUser, old_status: str) -> None:
@@ -566,6 +680,34 @@ def list_assignees(
     return out
 
 
+@router.get("/categories", response_model=list[TicketCategoryOut])
+def list_ticket_categories(
+    user: CurrentUser = Depends(require_permission(Permission.TICKET_CREATE)),
+) -> list[TicketCategoryOut]:
+    """The fixed list of ticket categories (key and display name)."""
+    return [TicketCategoryOut(key=k, label=v) for k, v in TICKET_CATEGORIES.items()]
+
+
+@router.get("/labels", response_model=list[TicketLabelCountOut])
+def list_ticket_labels(
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_permission(Permission.TICKET_WORK)),
+) -> list[TicketLabelCountOut]:
+    """Labels in use across the tenant's tickets, most used first (for suggestions and filters)."""
+    rows = (
+        db.query(Ticket.labels)
+        .filter(Ticket.tenant_id == tenant_uuid(user), Ticket.deleted_at.is_(None), Ticket.labels != "")
+        .all()
+    )
+    counts: dict[str, int] = {}
+    for (labels,) in rows:
+        for label in labels.split(","):
+            if label:
+                counts[label] = counts.get(label, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [TicketLabelCountOut(label=k, count=v) for k, v in ranked[:200]]
+
+
 @router.get("/board", response_model=list[TicketBoardColumn])
 def board(
     queue_id: uuid.UUID | None = Query(None),
@@ -641,6 +783,8 @@ def list_tickets(
     type: str | None = Query(None, pattern=TYPE_RE),
     queue_id: uuid.UUID | None = Query(None),
     range_id: uuid.UUID | None = Query(None),
+    category: str | None = Query(None, max_length=50),
+    label: str | None = Query(None, max_length=30, description="staff only"),
     q: str | None = Query(None, max_length=200),
     limit: int = Query(200, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -662,14 +806,22 @@ def list_tickets(
         query = query.filter(Ticket.queue_id == queue_id)
     if range_id:
         query = query.filter(Ticket.range_id == range_id)
+    if category:
+        query = query.filter(Ticket.category == category.strip().lower())
+    if label:
+        if not _staff(user):
+            raise HTTPException(403, "Labels are for support staff")
+        query = query.filter(_has_label(label.strip().lower()))
     if q:
         term = q.strip()
         like = _like(term)
         conds = [
             Ticket.subject.ilike(like, escape="\\"),
             Ticket.description.ilike(like, escape="\\"),
-            Ticket.labels.ilike(like, escape="\\"),
         ]
+        if _staff(user):
+            # Searching hidden labels would let a reporter probe them.
+            conds.append(Ticket.labels.ilike(like, escape="\\"))
         digits = term.upper().removeprefix("TN-")
         if digits.isdigit():
             conds.append(Ticket.number == int(digits))
@@ -681,11 +833,14 @@ def list_tickets(
 @router.post("", response_model=TicketOut, status_code=201)
 def create_ticket(
     body: TicketIn,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.TICKET_CREATE)),
 ) -> TicketOut:
     tid = tenant_uuid(user)
     data = body.model_dump()
+    if data["labels"] and not _staff(user):
+        raise HTTPException(403, "Only support staff can label tickets")
     if data["assignee_id"] is not None:
         if not _staff(user):
             raise HTTPException(403, "Only support staff can assign tickets")
@@ -728,6 +883,7 @@ def create_ticket(
         _tell(db, t, user, [t.assignee_id], "assigned to you", kind="ticket_assigned")
     _audit(db, user, "ticket_create", str(t.id))
     db.commit()
+    _send_emails(db, background)
     db.refresh(t)
     return _detail(db, user, t)
 
@@ -744,6 +900,7 @@ def get_ticket(
 @router.patch("/{ticket_id}", response_model=TicketOut)
 def update_ticket(
     body: TicketUpdate,
+    background: BackgroundTasks,
     ticket_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.TICKET_CREATE)),
@@ -789,6 +946,7 @@ def update_ticket(
         _tell(db, t, user, [t.assignee_id], "assigned to you", kind="ticket_assigned")
     _audit(db, user, "ticket_update", str(t.id))
     db.commit()
+    _send_emails(db, background)
     db.refresh(t)
     return _detail(db, user, t)
 
@@ -808,6 +966,7 @@ def delete_ticket(
 @router.post("/{ticket_id}/move", response_model=TicketListOut)
 def move_ticket(
     body: TicketMoveIn,
+    background: BackgroundTasks,
     ticket_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.TICKET_WORK)),
@@ -830,6 +989,7 @@ def move_ticket(
         _tell_status(db, t, user, old_status)
     _audit(db, user, "ticket_move", str(t.id))
     db.commit()
+    _send_emails(db, background)
     db.refresh(t)
     return _decorate(db, user, [t])[0]
 
@@ -858,6 +1018,7 @@ def list_comments(
 @router.post("/{ticket_id}/comments", response_model=TicketCommentOut, status_code=201)
 def add_comment(
     body: TicketCommentIn,
+    background: BackgroundTasks,
     ticket_id: uuid.UUID = Path(...),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_permission(Permission.TICKET_CREATE)),
@@ -885,7 +1046,8 @@ def add_comment(
     elif from_reporter:
         # Whoever owns it; if nobody does yet, every staff member.
         who = [t.assignee_id] if t.assignee_id else staff_ids(db, t.tenant_id)
-        _tell(db, t, user, who, "reporter replied", preview, kind="ticket_reply")
+        # Every staff member when nobody owns it yet: that is a broadcast, so bell only.
+        _tell(db, t, user, who, "reporter replied", preview, kind="ticket_reply", email=bool(t.assignee_id))
     else:
         _tell(db, t, user, [t.reporter_id], "new reply", preview, kind="ticket_reply")
     if not body.is_internal:
@@ -894,6 +1056,7 @@ def add_comment(
         t.updated_at = _now()
     _audit(db, user, "ticket_comment_internal" if body.is_internal else "ticket_comment", str(t.id))
     db.commit()
+    _send_emails(db, background)
     db.refresh(c)
     out = TicketCommentOut.model_validate(c)
     out.author_name = user.display_name
@@ -1020,8 +1183,11 @@ def list_activity(
             return value
         return lookups[field].get(key, "something deleted")
 
+    staff = _staff(user)
     out = []
     for a in rows:
+        if a.field == "labels" and not staff:
+            continue  # triage tags (and that they changed) are staff-only
         item = TicketActivityOut.model_validate(a)
         item.actor_name = names.get(a.actor_id, "")
         item.old_value = _show(a.field, a.old_value)

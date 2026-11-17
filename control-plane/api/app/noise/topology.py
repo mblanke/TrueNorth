@@ -45,6 +45,8 @@ ROLE_POOLS: dict[str, tuple[str, ...]] = {
     "mail_server": ("mail",),
     "mail_gateway": ("mail",),
     "file_server": ("share",),
+    "ftp_server": ("ftp",),
+    "print_server": ("print",),
     "usersim": ("web", "mail", "share"),  # the persona-facing intranet/mail/file box
 }
 SERVER_SSH_ROLES = frozenset({"backup_server", "database_server", "web_server", "web_application", "file_server"})
@@ -139,6 +141,12 @@ def derive_targets(template: dict) -> dict[str, list[str]]:
             add("dns", f"{name}.{domain}")
         if "ssh" in services and role not in AGENT_ROLES:
             add("ssh", ip)
+        if "rdp" in services and role not in AGENT_ROLES:
+            add("rdp", ip)
+        if "ftp" in services and role not in AGENT_ROLES:
+            add("ftp", ip)
+        if services & {"ipp", "print"} and role not in AGENT_ROLES:
+            add("print", ip)
         if role in AGENT_ROLES:
             add("hosts", ip)
             if cidrs.get(vlan):

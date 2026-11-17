@@ -30,6 +30,7 @@ class OpenAICompatibleEngine(BaseAIEngine):
         api_key: str | None = None,
         timeout: float = 30.0,
         model: str = "",
+        max_tokens: int = 256,
     ) -> dict:
         # The test endpoint's default model is an Ollama tag no OpenAI-style engine serves.
         if model == OLLAMA_DEFAULT_MODEL:
@@ -40,7 +41,7 @@ class OpenAICompatibleEngine(BaseAIEngine):
             json={
                 "model": model or DEFAULT_MODEL,
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 256,
+                "max_tokens": max_tokens,
             },
             headers=headers,
             timeout=timeout,
