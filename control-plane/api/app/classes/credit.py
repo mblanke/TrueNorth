@@ -5,7 +5,9 @@ An exercise has no Student owner column. Its Students are what the class records
 - an individual exercise runs on a Student's **seat range** (``class_ranges`` kind seat, whose
   roll-call entry is that Student's);
 - a team exercise: every member of the **teams** that joined it (``teams.exercise_id``, set by
-  ``teams.on_exercise``). Owner decision 2026-11-03: every participant is credited.
+  ``teams.on_exercise``). Owner decision 2026-11-03: every participant is credited;
+- a collective exercise on a class's **shared** range that no seat and no team names: the
+  class's active roll call (fallback, owner decision 2026-11-17). Any team wins over it.
 
 A Student taken off the roll call (``OFF_ROLL_CALL``) or in a cancelled class is not credited.
 Instructors and other staff never are: results are about the Students (owner decision
@@ -106,4 +108,38 @@ def exercise_students(db: Session, ex: Exercise) -> list[User]:
         .filter(Team.exercise_id == ex.id, Team.tenant_id == ex.tenant_id)
     )
     ids = {row[0] for row in seated.all()} | {row[0] for row in on_teams.all()}
+    if not ids and not _has_teams(db, ex):
+        ids = _shared_range_roll_call(db, ex)
     return eligible_students(db, ex, ids)
+
+
+def _has_teams(db: Session, ex: Exercise) -> bool:
+    """True if any team joined this exercise (even an empty one: teams were the intent)."""
+    # tenant-safe: teams of this exercise, in its tenant.
+    return db.query(Team.id).filter(Team.exercise_id == ex.id, Team.tenant_id == ex.tenant_id).first() is not None
+
+
+def _shared_range_roll_call(db: Session, ex: Exercise) -> set[uuid.UUID]:
+    """The fallback for a collective exercise on a class's **shared** range when no seat and no
+    team names anyone: the class's active roll call (owner decision 2026-11-17: credit the
+    class rather than no one). Teams, when there are any, always win; ``eligible_students``
+    still applies the roll call, tenant, role and deleted checks to what this returns."""
+    if ex.range_id is None:
+        return set()
+    rows = (
+        # tenant-safe: roll-call entries of the classes whose shared range this is, in the tenant.
+        db.query(RollCallEntry.user_id)
+        .join(ClassRange, ClassRange.class_id == RollCallEntry.class_id)
+        .join(Class, Class.id == RollCallEntry.class_id)
+        .filter(
+            ClassRange.range_id == ex.range_id,
+            ClassRange.tenant_id == ex.tenant_id,
+            ClassRange.kind == ClassRangeKind.shared.value,
+            RollCallEntry.tenant_id == ex.tenant_id,
+            RollCallEntry.user_id.isnot(None),
+            RollCallEntry.status.notin_(OFF_ROLL_CALL),
+            Class.status != ClassStatus.cancelled.value,
+        )
+        .all()
+    )
+    return {r[0] for r in rows}

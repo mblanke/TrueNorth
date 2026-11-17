@@ -285,6 +285,101 @@ class TestRollCallAppliesToTeamsAndCitations:
         assert {str(s["user_id"]) for s in _passed(recorded)} == _ids(world, 0)
 
 
+def _shared_range(db, world, ex):
+    """The class's one shared range (collective sessions), which is the exercise's range."""
+    db.add(ClassRange(tenant_id=world["tenant"].id, class_id=world["cls"].id,
+                      template_id=db.get(Range, ex.range_id).template_id, kind="shared", entry_id=None,
+                      seat_key="shared", range_id=ex.range_id, builds=1, built_at=NOW))
+    db.flush()
+
+
+class TestSharedRangeFallback:
+    """A collective exercise on the class's shared range with no seat and no team: the class's
+    roll call is credited, not no one (owner decision 2026-11-17)."""
+
+    def test_the_class_roll_call_is_credited_when_no_team_exists(self, client, db_session, world, recorded):
+        ex = _exercise(db_session, world)
+        _shared_range(db_session, world, ex)
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/complete")
+        assert _completed(recorded) == _ids(world, 0, 1, 2)
+        assert {str(a[0]) for a in recorded["lti"]} == _ids(world, 0, 1, 2)
+
+    def test_an_objective_ack_credits_the_class_roll_call(self, client, db_session, world, recorded):
+        ex = _exercise(db_session, world)
+        _shared_range(db_session, world, ex)
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/objectives/OBJ-1/ack")
+        assert {str(s["user_id"]) for s in _passed(recorded)} == _ids(world, 0, 1, 2)
+
+    def test_students_off_the_roll_call_are_not_in_the_fallback(self, client, db_session, world, recorded):
+        ex = _exercise(db_session, world)
+        _shared_range(db_session, world, ex)
+        world["entries"][1].status = "forfeited"
+        world["entries"][2].status = "removed"
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/complete")
+        assert _completed(recorded) == _ids(world, 0)
+
+    def test_a_team_wins_over_the_fallback(self, client, db_session, world, recorded):
+        ex = _exercise(db_session, world)
+        _shared_range(db_session, world, ex)
+        _team(db_session, world, ex, [2])
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/complete")
+        assert _completed(recorded) == _ids(world, 2)
+
+    def test_an_empty_team_still_means_teams_were_the_intent(self, client, db_session, world, recorded):
+        ex = _exercise(db_session, world)
+        _shared_range(db_session, world, ex)
+        _team(db_session, world, ex, [])
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/complete")
+        assert _completed(recorded) == set()
+
+    def test_a_cancelled_class_credits_no_one_through_the_fallback(self, client, db_session, world, recorded):
+        ex = _exercise(db_session, world)
+        _shared_range(db_session, world, ex)
+        world["cls"].status = "cancelled"
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/complete")
+        assert _completed(recorded) == set()
+
+    def test_a_closed_class_still_credits_its_roll_call(self, client, db_session, world, recorded):
+        ex = _exercise(db_session, world)
+        _shared_range(db_session, world, ex)
+        world["cls"].status = "closed"
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/complete")
+        assert _completed(recorded) == _ids(world, 0, 1, 2)
+
+    def test_an_exercise_outside_any_class_range_still_credits_no_one(self, client, db_session, world, recorded):
+        ex = _exercise(db_session, world)
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/complete")
+        assert _completed(recorded) == set()
+
+    def test_the_instructor_is_never_in_the_fallback(self, client, db_session, world, recorded):
+        ex = _exercise(db_session, world)
+        _shared_range(db_session, world, ex)
+        db_session.add(RollCallEntry(class_id=world["cls"].id, tenant_id=world["tenant"].id,
+                                     email=world["instructor"].email, user_id=uuid.UUID(world["instructor"].id),
+                                     status="signed_in", signed_in_at=NOW))
+        db_session.commit()
+        act_as(world["instructor"])
+        client.post(f"/exercises/{ex.id}/complete")
+        assert world["instructor"].id not in _completed(recorded)
+        assert _completed(recorded) == _ids(world, 0, 1, 2)
+
+
 class TestNobodyToCredit:
     def test_completing_an_exercise_with_no_students_says_so(self, client, db_session, world, recorded, caplog):
         ex = _exercise(db_session, world)
