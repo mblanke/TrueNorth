@@ -394,3 +394,23 @@ def test_a_failed_destroy_releases_nothing(task_env, monkeypatch):
     monkeypatch.setattr(tasks, "_last_attempt", lambda task: True)
     with pytest.raises(RuntimeError, match="busy"):
         tasks.destroy_range.run("r-1")
+
+
+def test_build_outcome_fails_a_vm_that_did_not_clone_and_keeps_a_range_with_non_fatal_notes_ready():
+    """Audit #443 (tasks.py:168) and its review: only a VM that never reached ``vms`` fails the
+    build. A software failure on a built VM, a missing noise network or a mirror port leave
+    ``status="partial"`` but a usable range, which stays ready."""
+    built = [{"vm_id": "vm-1", "name": "r-ubu01"}]
+    clone = ProvisionResult(status="partial", vms=built, errors=["VM r-dc01: Cannot create clone: datastore is full"])
+    state, error = ra.build_outcome(clone)
+    assert state == "failed" and "r-dc01" in error and "1 VM(s) built" in error
+    for note in ("VM r-ubu01: software 7zip failed (exit 1603)",
+                 "noise management port group dPG-noise was not found; background-noise agents will be unreachable",
+                 "mirror tn-x-mon: could not attach",
+                 "mirror: could not read the NICs of VM r-ubu01: timed out"):
+        assert ra.build_outcome(ProvisionResult(status="partial", vms=built, errors=[note])) == ("ready", None)
+    # A not-ready VM and a clone failure together: neither is hidden.
+    both = ProvisionResult(status="partial", vms=built, not_ready=["r-ubu01"],
+                           errors=["VM r-ubu01: no address", "VM r-dc01: Cannot create clone"])
+    state, error = ra.build_outcome(both)
+    assert state == "failed" and "r-ubu01" in error and "r-dc01" in error

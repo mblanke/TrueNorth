@@ -159,8 +159,15 @@ Also fixed:
 - **Staff detections.** These are recorded as `staff_detection`, not Student evidence.
 - **Worker start.** `start_exercise` in the worker no longer moves `started_at` or reopens
   a closed exercise.
-- **Participants.** Both `/complete` and the clock assess, grade and send xAPI for every
-  Student who submitted a detection in the run, plus whoever closed it.
+- **Participants.** Both `/complete` and the clock assess, grade and send xAPI for
+  ~~every Student who submitted a detection in the run, plus whoever closed it~~ the
+  exercise's own Students (its seat range's Student, or every member of its teams), and the
+  closer only if the closer is a Student. Amended by #375 (owner decisions 2026-10-06 and
+  2026-11-03) on top of ADR 0020: submitting a detection is evidence, not credit, so it no
+  longer makes a Student a participant; an instructor who completes a class's exercise is
+  not credited with it; and an objective judgement's `passed` statement names those Students
+  plus any it cites, with the instructor as `judged_by`, never the instructor
+  (`app/classes/credit.py`).
 
 Left as they are:
 

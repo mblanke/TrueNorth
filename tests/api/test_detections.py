@@ -330,31 +330,39 @@ class TestJudging:
 
 
 class TestClosing:
-    def test_complete_assesses_every_student_who_submitted(self, client, db_session, store, monkeypatch):
-        # M7: auto-assessment, the LTI grade and xAPI go to the Students who took part
-        # (a recorded detection is taking part).
+    def test_complete_assesses_the_exercises_students_not_whoever_submitted(
+        self, client, db_session, store, monkeypatch
+    ):
+        # M7: auto-assessment, the LTI grade and xAPI go to the exercise's Students (here its
+        # team). A recorded detection is evidence, not credit (ADR 0020): a submitter who is
+        # not one of them is not assessed, nor is the instructor who completed it (#375).
         from app import celery_client
-        from app.models import User
+        from app.models import Team, TeamMembership, User
 
         dispatched = []
         monkeypatch.setattr(celery_client, "dispatch", lambda name, *args: dispatched.append((name, args)) or "id")
         store.events = [beacon(), beacon()]
         ex = _exercise(db_session)
         students = []
-        for i in range(2):
+        for i in range(3):
             u = User(id=uuid.uuid4(), keycloak_id=f"kc-{uuid.uuid4().hex[:6]}", email=f"s{i}@example.org",
                      display_name=f"Student {i}", tenant_id=uuid.UUID(DEV_TENANT), role=UserRole.student)
             db_session.add(u)
             students.append(u)
+        team = Team(name=f"blue-{uuid.uuid4().hex[:4]}", tenant_id=uuid.UUID(DEV_TENANT), exercise_id=ex.id)
+        db_session.add(team)
+        db_session.flush()
+        for u in students[:2]:
+            db_session.add(TeamMembership(user_id=u.id, team_id=team.id))
         db_session.commit()
-        for u in students:
+        for u in (students[0], students[2]):
             with acting_as(UserRole.student) as who:
                 who.id = str(u.id)
                 _submit(client, ex, "nope:x")
-        with acting_as(UserRole.instructor) as instructor:
+        with acting_as(UserRole.instructor):
             assert client.post(f"/exercises/{ex.id}/complete").status_code == 200
         assessed = {args[1] for name, args in dispatched if name == "auto_assess_competency"}
-        assert assessed == {str(students[0].id), str(students[1].id), instructor.id}
+        assert assessed == {str(students[0].id), str(students[1].id)}
 
     def test_the_clock_closes_running_and_paused_exercises_past_their_duration(self, db_session, monkeypatch):
         from app import celery_client
