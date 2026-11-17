@@ -197,7 +197,11 @@ def icmp_ping(action: dict, cfg: AgentConfig) -> dict:
         raise OSError("no ping on this host")
     host = _host(action["target"])
     wait = max(1, int(cfg.timeout))
-    args = [ping, "-n", "1", "-w", str(wait * 1000), host] if sys.platform == "win32" else [ping, "-c", "1", "-W", str(wait), host]
+    args = (
+        [ping, "-n", "1", "-w", str(wait * 1000), host]
+        if sys.platform == "win32"
+        else [ping, "-c", "1", "-W", str(wait), host]
+    )
     done = subprocess.run(args, capture_output=True, timeout=cfg.timeout + 5, check=False)  # noqa: S603
     return {"reply": done.returncode == 0}
 
@@ -238,8 +242,13 @@ def _ipp_status_request(printer_uri: str) -> bytes:
         n, v = name.encode(), value.encode()
         return struct.pack("!BH", tag, len(n)) + n + struct.pack("!H", len(v)) + v
 
-    return (b"\x01\x01\x00\x0b\x00\x00\x00\x01\x01" + attr(0x47, "attributes-charset", "utf-8")
-            + attr(0x48, "attributes-natural-language", "en") + attr(0x45, "printer-uri", printer_uri) + b"\x03")
+    return (
+        b"\x01\x01\x00\x0b\x00\x00\x00\x01\x01"
+        + attr(0x47, "attributes-charset", "utf-8")
+        + attr(0x48, "attributes-natural-language", "en")
+        + attr(0x45, "printer-uri", printer_uri)
+        + b"\x03"
+    )
 
 
 def print_status(action: dict, cfg: AgentConfig) -> dict:

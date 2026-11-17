@@ -211,8 +211,7 @@ def test_amendment_installer_preflight_refuses_experimental_backend_without_the_
     ``EXPERIMENTAL_PROVISIONERS``; and no removed Terraform backend is valid there."""
     tasks = yaml.safe_load(PREFLIGHT.read_text())
     backend_task = next(
-        t for t in tasks
-        if isinstance(t, dict) and "the provisioner backend is supported" in (t.get("name") or "")
+        t for t in tasks if isinstance(t, dict) and "the provisioner backend is supported" in (t.get("name") or "")
     )
     assert backend_task["vars"]["_supported"] == ["mock", "vsphere_api"]
     assert backend_task["vars"]["_experimental"] == ["proxmox_api", "hyperv"]

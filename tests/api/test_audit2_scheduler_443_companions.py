@@ -34,9 +34,7 @@ ONE_VM = "nodes:\n  - id: ws\n    os: win11\n    count: 1\n"  # 2 vCPU, 4 GB, 60
     reason="audit #443: tenant FIFO queue puts a class's own lab behind one self-serve lab "
     "waiting for site capacity (control-plane/api/app/lab_sessions/service.py:412) — companion",
 )
-def test_an_instructors_own_queued_lab_does_not_gate_a_class_students_lab(
-    request, db_session, monkeypatch
-):
+def test_an_instructors_own_queued_lab_does_not_gate_a_class_students_lab(request, db_session, monkeypatch):
     """Second role: the older self-serve waiter is an instructor's own lab, not a
     Student's. The FIFO check counts every queued lab of the tenant regardless of the
     owner's role, so the class Student's own-booking lab (ADR 0014 §18) is still held
@@ -125,9 +123,7 @@ def test_an_instructors_own_queued_lab_does_not_gate_a_class_students_lab(
     reason="audit #443: staff opening a Student's lab console restarts the Student's idle "
     "clock and marks the lab active (control-plane/api/app/lab_sessions/service.py:1276) — companion",
 )
-def test_an_admin_opening_the_console_does_not_extend_the_students_idle_clock(
-    request, db_session
-):
+def test_an_admin_opening_the_console_does_not_extend_the_students_idle_clock(request, db_session):
     """Second role: an admin (not an instructor) opens the Student's console. A staff
     grant is not Student activity: the Student's idle clock belongs to the Student, so
     issuing the grant must leave ``idle_expires_at`` alone (models.ACTIVE: "the student
@@ -175,9 +171,7 @@ def test_an_admin_opening_the_console_does_not_extend_the_students_idle_clock(
 
 
 @pytest.mark.audit443
-def test_start_lab_during_a_teardown_hands_a_usable_token_at_the_just_expired_boundary(
-    request, db_session
-):
+def test_start_lab_during_a_teardown_hands_a_usable_token_at_the_just_expired_boundary(request, db_session):
     """Boundary value: the lab's maximum lifetime lapsed one second ago — the tightest
     expiry that is already past. Resuming the teardown-bound session must still hand the
     browser a token the lab page can use; one minted from that just-past lifetime fails

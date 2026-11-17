@@ -110,7 +110,16 @@ def test_everything_is_generated_from_the_manifest(rendered):
     assert "web/nginx.conf" in files and any(p.startswith("threat/www/") for p in files)
     assert "ntp/chrony.conf" in files
     assert set(rendered.summary["services"]) == {
-        "isp-a", "isp-b", "dns-root", "dns-tld", "dns-auth", "resolver", "webfarm", "threat", "mail", "ntp",
+        "isp-a",
+        "isp-b",
+        "dns-root",
+        "dns-tld",
+        "dns-auth",
+        "resolver",
+        "webfarm",
+        "threat",
+        "mail",
+        "ntp",
     }
 
 
@@ -182,8 +191,16 @@ def test_infrastructure_segment_offsets(t0):
 
     assert offset(plan.gateway) == 1
     assert [offset(ip) for ip in plan.routers.values()] == [2, 3]
-    for attr, want in [("root_dns", 10), ("tld_dns", 11), ("auth_dns", 12), ("mail", 25), ("resolver", 53),
-                       ("threat", 66), ("webfarm", 80), ("ntp", 123)]:
+    for attr, want in [
+        ("root_dns", 10),
+        ("tld_dns", 11),
+        ("auth_dns", 12),
+        ("mail", 25),
+        ("resolver", 53),
+        ("threat", 66),
+        ("webfarm", 80),
+        ("ntp", 123),
+    ]:
         assert offset(getattr(plan, attr)) == want, attr
 
 
@@ -195,8 +212,10 @@ def test_isp_prefixes_share_one_slash_8(rendered, t0):
     far = Manifest(
         tier="t0",
         version="tripwire",
-        isps=(Isp("a", 64501, ipaddress.IPv4Network("198.18.0.0/16")),
-              Isp("b", 64502, ipaddress.IPv4Network("45.0.0.0/16"))),
+        isps=(
+            Isp("a", 64501, ipaddress.IPv4Network("198.18.0.0/16")),
+            Isp("b", 64502, ipaddress.IPv4Network("45.0.0.0/16")),
+        ),
         sites=(),
     )
     with pytest.raises(config.ConfigError, match="one /8"):
@@ -258,7 +277,8 @@ def test_one_row_per_range_and_its_migration():
     (fk,) = range_id.foreign_keys
     assert fk.target_fullname == "ranges.id" and fk.ondelete == "CASCADE"
     migration = (ROOT / "control-plane/api/alembic/versions/a2b3c4d5e6f7_add_range_greyspace.py").read_text(
-        encoding="utf-8")
+        encoding="utf-8"
+    )
     assert 'revision: str = "a2b3c4d5e6f7"' in migration
     assert "ix_range_greyspace_tenant" in migration
 
@@ -276,8 +296,14 @@ def test_attach_refuses_foreign_ranges_and_busy_ranges(db_session):
     foreign = Range(name="foreign range", template_id=foreign_tpl.id, tenant_id=other.id)
     db_session.add(foreign)
     db_session.flush()
-    operator = CurrentUser(id=str(uuid.uuid4()), email="op@truenorth.local", display_name="Operator",
-                           role=UserRole.admin, tenant_id=str(DEV_ID), keycloak_id="operator")
+    operator = CurrentUser(
+        id=str(uuid.uuid4()),
+        email="op@truenorth.local",
+        display_name="Operator",
+        role=UserRole.admin,
+        tenant_id=str(DEV_ID),
+        keycloak_id="operator",
+    )
     with pytest.raises(HTTPException) as exc:
         service.readable_range(db_session, foreign.id, operator)
     assert exc.value.status_code == 404
@@ -335,8 +361,7 @@ def test_gs_core_vm_is_planned_from_the_template():
     router_name = greyspace_host.route_router(template, info)
     assert router_name == "edge01"
     route = template["vms"][0]["greyspace_route"]
-    assert route == {"prefix": info["public"], "via": info["ip"], "resolver": info["resolver"],
-                     "network": "greyspace"}
+    assert route == {"prefix": info["public"], "via": info["ip"], "resolver": info["resolver"], "network": "greyspace"}
 
 
 # ── Decision 7: the configure stage and its service account ──────────────────
@@ -392,8 +417,10 @@ def test_mail_ntp_and_trust_are_rendered(rendered, t0):
         assert f"@ IN MX 10 mail.{config.INFRA_ZONE}." in rendered.files[f"dns/auth/zones/db.{zone}"]
     for zone in threat_only:
         assert f"@ IN MX 10 mail.{config.INFRA_ZONE}." not in rendered.files[f"dns/auth/zones/db.{zone}"]
-    names = {name for name, _ in config.infra_names(plan, config.selected_sites(t0, config.BlockParams()),
-                                                     config.BlockParams())}
+    names = {
+        name
+        for name, _ in config.infra_names(plan, config.selected_sites(t0, config.BlockParams()), config.BlockParams())
+    }
     webmail_zone = next(zone_of(s.fqdn) for s in t0.sites if s.category == "webmail")
     assert f"webmail.{webmail_zone}" in names
     assert "local stratum" in rendered.files["ntp/chrony.conf"]
@@ -407,8 +434,9 @@ def test_every_image_is_pinned_by_digest():
         assert "@sha256:" in image, name
     assert set(config.LOCAL_IMAGES) == {"resolver", "probe", "ntp", "ca"}
     for dockerfile in sorted((ROOT / "greyspace/images").glob("*/Dockerfile")):
-        from_line = next(line for line in dockerfile.read_text(encoding="utf-8").splitlines()
-                         if line.startswith("FROM "))
+        from_line = next(
+            line for line in dockerfile.read_text(encoding="utf-8").splitlines() if line.startswith("FROM ")
+        )
         assert "@sha256:" in from_line, dockerfile
 
 

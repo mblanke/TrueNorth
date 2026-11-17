@@ -34,7 +34,10 @@ from test_console_relay import RFB_GREETING, _open, _released, _wait_for, world 
 pytestmark = pytest.mark.audit443
 
 
-@pytest.mark.xfail(strict=True, reason="audit #443: the redaction filter covers the wrong logger (control-plane/api/app/middleware.py:617) — companion")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: the redaction filter covers the wrong logger (control-plane/api/app/middleware.py:617) — companion",
+)
 def test_the_grant_in_the_refused_ws_handshake_line_is_redacted():
     """Companion of ``test_the_grant_in_the_ws_handshake_line_is_redacted``: the same finding
     (control-plane/api/app/middleware.py:617) seen from the handshake's *other* outcome. A
@@ -66,7 +69,10 @@ def test_the_grant_in_the_refused_ws_handshake_line_is_redacted():
     assert "/ws/console/<redacted>" in logged
 
 
-@pytest.mark.xfail(strict=True, reason="audit #443: the live cap counts closed-but-unexpired grants (control-plane/api/app/console_relay/service.py:143) — companion")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: the live cap counts closed-but-unexpired grants (control-plane/api/app/console_relay/service.py:143) — companion",
+)
 def test_an_instructors_just_closed_consoles_free_their_live_cap(client, db_session, request):
     """Companion of ``test_a_console_just_closed_frees_the_live_cap``: the same finding
     (control-plane/api/app/console_relay/service.py:143) from a second role. ``issue`` counts
@@ -80,9 +86,9 @@ def test_an_instructors_just_closed_consoles_free_their_live_cap(client, db_sess
         assert _wait_for(_released(db_session))  # the socket is closed and the grant released
 
     instructor_grants = db_session.query(ConsoleGrant).filter(ConsoleGrant.user_id == relay_world.lead.id).all()
-    assert len(instructor_grants) == MAX_LIVE_GRANTS and not any(
-        g.live_until is not None for g in instructor_grants), (
-        "every socket is closed: no console of the instructor is open")
+    assert len(instructor_grants) == MAX_LIVE_GRANTS and not any(g.live_until is not None for g in instructor_grants), (
+        "every socket is closed: no console of the instructor is open"
+    )
 
     refused = None
     try:
