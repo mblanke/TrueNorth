@@ -111,6 +111,36 @@ a reporter's reply to a ticket nobody owns yet, stay in the bell only.
   at the same moment on different workers can each send one.
 - **Internal notes** go to the assignee only while they are still staff.
 
+### Images in wiki pages
+
+Editors add an image with the **Image** button, by pasting a screenshot, or by dropping a file on
+the editor (a new page must be saved once first: an image belongs to a page). The editor inserts
+`![name](/api/wiki/images/<id>)`. Only PNG, JPEG, GIF and WebP up to 5 MB and 40 megapixels
+are accepted, up to 100 per page.
+
+- **The type comes from the file's bytes**, never its name or the browser's `Content-Type`. SVG
+  and HTML are refused (an SVG is a script when it is served from this site). A canvas far bigger
+  than the file suggests is refused.
+- **Metadata and trailing data are removed**, without re-encoding (pixels never change). JPEG: Exif,
+  XMP, IPTC, comments and the multi-picture block, through every scan, and anything after the end of
+  the picture (a hidden second image or video); the Exif **orientation** is kept in a minimal segment
+  so phone photos are not shown sideways. PNG: `eXIf`, text and time chunks, anything after IEND.
+  GIF: comments and non-loop extensions, anything after the trailer, at most 500 frames. WebP:
+  `EXIF` / `XMP ` chunks (and their flags) and anything after the RIFF payload. A file that cannot be
+  walked cleanly is refused.
+- **Whoever can see the page can see its image; the id grants nothing.** A staff-only space, an
+  unpublished page (for students), an archived space, a deleted page or another tenant is a 404.
+  An image embedded in a second page stays governed by the page it was uploaded to.
+- **Served so it cannot run**: its checked type, `nosniff`, `Content-Security-Policy: default-src
+  'none'; sandbox`, `Cache-Control: private, max-age=300` with `Vary: Authorization`. The page viewer fetches it with the user's token and
+  shows it from a blob URL; the `<img>` never makes an unauthenticated request. Remote images are
+  still not loaded (they would tell their author who read the page).
+- Generated range pages (system-owned spaces) take no uploads. Deleting a page hides its images;
+  their files stay in the `wiki` bucket until each is removed. Taking `![](…)` out of the text does
+  **not** delete the image, because older revisions still point at it: the editor's *Images on this
+  page* list (`GET /wiki/pages/{id}/images`) shows what the page holds and **Remove** deletes one for
+  good (`DELETE /wiki/images/{id}`). Remove a sensitive screenshot there, not just from the text.
+
 ### AI triage
 
 On a ticket, staff (TICKET_WORK) see **AI triage** in the sidebar when an AI backend is set up.
@@ -202,5 +232,5 @@ app-wide NaN/Infinity 422-turned-500 found along the way is fixed in
 
 ## Not in this version
 
-- Images inside wiki pages (#379), and full-text search through OpenSearch (search is
-  title/body/tags matching in the database today, #380).
+- Full-text search through OpenSearch (search is title/body/tags matching in the database
+  today, #380).
