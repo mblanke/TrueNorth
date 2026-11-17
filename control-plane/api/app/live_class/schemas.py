@@ -47,8 +47,8 @@ class ClassObjectiveOut(BaseModel):
 
 
 class ClassAttemptOut(BaseModel):
-    """One detection attempt in this run. ``query`` and ``precision`` only for staff who may
-    see the answer key (``scenario:update``), as ``GET /exercises/{id}/detections``."""
+    """One detection submission in this run (ADR 0020: evidence, never a grade). ``query`` only
+    for staff (``scenario:update``), as ``GET /exercises/{id}/detections``."""
 
     id: uuid.UUID
     objective_ref: str
@@ -56,15 +56,15 @@ class ClassAttemptOut(BaseModel):
     submitted_at: datetime | None = None
     events_matched: int | None = None
     query: str | None = None
-    precision: float | None = None
 
 
 class ClassObjectiveStateOut(BaseModel):
-    """One objective as this Student stands on it, from their own attempts only."""
+    """One objective as this Student stands on it: ``credited`` when the instructor's judgement
+    of it cites their detection (ADR 0020), else from their own submissions."""
 
     ref_id: str
-    state: Literal["credited", "pending", "missed", "not_attempted"]
-    misses: int = 0
+    state: Literal["credited", "pending", "submitted", "not_attempted"]
+    submissions: int = 0
     credited_at: datetime | None = None
 
 
@@ -73,11 +73,10 @@ class AttentionOut(BaseModel):
 
     - ``lab_fault``: the Student's lab is failed, expired or being cleaned up (not their doing)
     - ``lab_wait``: their lab is queued, building or resetting
-    - ``learning``: ``learning_signal_misses`` or more judged misses on one objective, no credit
     - ``not_seen``: no detection and no lab heartbeat for ``not_seen_minutes`` (neutral)
     """
 
-    kind: Literal["lab_fault", "lab_wait", "learning", "not_seen"]
+    kind: Literal["lab_fault", "lab_wait", "not_seen"]
     detail: str
     objective_ref: str | None = None
     since: datetime | None = None
@@ -91,10 +90,10 @@ class ClassStudentOut(BaseModel):
         [], description="every lab of this Student tied to the run, newest first. More than one is possible "
         "(two modules, or two exercises booked to one course): act on a lab by its session_id, never by position"
     )
-    attempts_total: int = Field(0, description="judged or pending attempts in this run")
-    attempts_credited: int = 0
+    attempts_total: int = Field(0, description="detection submissions in this run")
+    attempts_credited: int = Field(0, description="of those, the ones an instructor's judgement cites")
     credited_refs: list[str] = []
-    score: int = Field(0, description="points of the objectives this Student's own detections were credited for")
+    score: int = Field(0, description="points of the objectives whose judgement cites this Student's detection")
     current_objective: str | None = Field(
         None, description="inferred: the objective of the latest unresolved attempt, else the first not credited"
     )
@@ -115,6 +114,5 @@ class ExerciseClassOut(BaseModel):
     max_score: int = 0
     objectives: list[ClassObjectiveOut] = []
     students: list[ClassStudentOut] = []
-    learning_signal_misses: int
     not_seen_minutes: int
     generated_at: datetime

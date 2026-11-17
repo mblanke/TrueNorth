@@ -1,0 +1,215 @@
+program: truenorth-10x
+schema_version: 2
+state: proposed
+integrator: claude-code
+source_commit: eec5390677b58bfece641698ae84d57d2d941126
+last_source_review: 2026-11-04
+
+rules:
+  status_owner: integrator-only
+  max_parallel_implementation_workers: 2
+  independent_review_required: true
+  dod_command: scripts/dod.sh
+  current_release_claims_are_not_derived_from_this_file: true
+
+taz:
+  intended_model: GLM-5.3
+  state: unqualified-for-program-writes
+  permitted_before_qualification:
+    - read-only repository indexing
+    - disposable evaluation cases
+  required_evidence:
+    - exact_model_id_and_revision
+    - quantization
+    - license
+    - vllm_version
+    - tool_call_parser
+    - chat_template
+    - context_and_concurrency
+    - gpu_topology_and_peak_memory
+    - repository_evaluation_results
+  forbidden:
+    - live_infrastructure_operations
+    - real_learner_data
+    - self_approval_or_merge
+    - silent_model_fallback
+
+decisions:
+  - id: D01
+    status: open
+    question: Which CAF mission-task and readiness authority/vocabulary is normative?
+    blocks: ["01.assertion-policy", "07.commander-projection"]
+  - id: D02
+    status: open
+    question: Which evidence and identity fields may exist in Unclassified and Secret, and which system is authoritative?
+    blocks: ["01.official-record", "06.production-schema"]
+  - id: D03
+    status: open
+    question: Is the Unclassified-to-Secret mechanism a data diode, guarded transfer, or another approved one-way process?
+    note: Data diode is expected but TBC; build transport-neutral signed store-and-forward packages first.
+    blocks: ["06.transport-adapter"]
+  - id: D04
+    status: open
+    question: What are the retention, expiry, correction and appeal policies for readiness evidence?
+    blocks: ["01.retention", "01.official-record"]
+  - id: D05
+    status: open
+    question: Which AI/physical actions may be preapproved and who is the named safety authority?
+    blocks: ["04.effect-policy", "05.automated-effects"]
+  - id: D06
+    status: open
+    question: What protocols and custody/reset obligations do TinyTown, vehicle and other physical assets expose?
+    blocks: ["05.vendor-adapters"]
+  - id: D07
+    status: open
+    question: What workload tiers, recovery objectives and network/storage assumptions define the 70,000-vCPU goal?
+    blocks: ["07.capacity-proof"]
+
+foundations:
+  - id: F0
+    name: release-truth-scorecards
+    status: ready
+    priority: 1
+    dependencies: []
+    suggested_branch: claude/foundation-f0-release-truth
+    active_slice: reconcile-current-evidence-and-scorecards
+    evidence_owner: integrator
+  - id: F1
+    name: clean-room-install-operations
+    status: proposed
+    priority: 3
+    dependencies: [F0]
+    suggested_branch: claude/foundation-f1-clean-room
+    active_slice: claim-tests-and-fresh-operator-run
+    evidence_owner: release-engineer
+  - id: F2
+    name: protected-ci-release-controls
+    status: proposed
+    priority: 2
+    dependencies: [F0]
+    suggested_branch: claude/foundation-f2-protected-ci
+    active_slice: required-check-audit-and-blocking-proof
+    evidence_owner: release-engineer
+  - id: F3
+    name: real-infrastructure-identity
+    status: blocked-by-environment
+    priority: 7
+    dependencies: [F0, F1]
+    suggested_branch: claude/foundation-f3-real-infrastructure
+    active_slice: named-vcenter-ad-moodle-qualification
+    evidence_owner: site-operator
+  - id: F4
+    name: security-accreditation-controls
+    status: proposed
+    priority: 4
+    dependencies: [F0]
+    suggested_branch: claude/foundation-f4-security-controls
+    active_slice: threat-model-and-control-allocation
+    evidence_owner: security-authority
+  - id: F5
+    name: existing-integration-compatibility
+    status: proposed
+    priority: 5
+    dependencies: [F0]
+    suggested_branch: claude/foundation-f5-integration-closure
+    active_slice: reproduce-or-retire-current-limitations
+    evidence_owner: integrator
+  - id: F6
+    name: bilingual-accessibility
+    status: proposed
+    priority: 6
+    dependencies: [F0]
+    suggested_branch: claude/foundation-f6-bilingual-a11y
+    active_slice: critical-journey-inventory-and-shell-foundation
+    evidence_owner: ux-accessibility-owner
+  - id: F7
+    name: content-operational-validation
+    status: blocked-by-authority
+    priority: 8
+    dependencies: [F0, F1, F6]
+    suggested_branch: claude/foundation-f7-content-validation
+    active_slice: approval-rubric-and-representative-rehearsal
+    evidence_owner: training-authority
+
+workstreams:
+  - id: "00"
+    name: credibility-baseline
+    status: ready
+    priority: 1
+    dependencies: []
+    suggested_branch: claude/10x-00-credibility-baseline
+    active_slice: remove-duplicate-exercise-template-routes
+    contract_owner: integrator
+  - id: "01"
+    name: readiness-evidence-ledger
+    status: proposed
+    priority: 2
+    dependencies: ["00"]
+    suggested_branch: claude/10x-01-readiness-evidence
+    active_slice: contract-and-class-result-projection
+    contract_owner: integrator
+    foundation_release_gates: [F0, F4, F6]
+  - id: "02"
+    name: unified-exercise-timeline
+    status: proposed
+    priority: 3
+    dependencies: ["00"]
+    suggested_branch: claude/10x-02-exercise-timeline
+    active_slice: event-envelope-and-run-projection
+    contract_owner: integrator
+    foundation_release_gates: [F0, F3, F4, F7]
+  - id: "03"
+    name: digital-twin-compiler
+    status: proposed
+    priority: 4
+    dependencies: ["00"]
+    suggested_branch: claude/10x-03-digital-twin
+    active_slice: sanitized-terraform-import-preview
+    contract_owner: integrator
+    foundation_release_gates: [F0, F3, F4]
+  - id: "04"
+    name: safe-ai-director
+    status: blocked-by-dependency
+    priority: 6
+    dependencies: ["02"]
+    suggested_branch: claude/10x-04-safe-ai-director
+    active_slice: proposal-approval-replay
+    contract_owner: integrator
+    foundation_release_gates: [F0, F4, F7]
+  - id: "05"
+    name: physical-asset-provider
+    status: blocked-by-dependency
+    priority: 7
+    dependencies: ["02"]
+    suggested_branch: claude/10x-05-physical-assets
+    active_slice: manual-reservation-health-reset
+    contract_owner: integrator
+    foundation_release_gates: [F0, F3, F4]
+  - id: "06"
+    name: enclave-exchange
+    status: proposed
+    priority: 5
+    dependencies: ["00"]
+    suggested_branch: claude/10x-06-enclave-exchange
+    active_slice: signed-pass-fail-package-and-receipt
+    contract_owner: integrator
+    foundation_release_gates: [F0, F4, F5]
+  - id: "07"
+    name: federation-scale-cells
+    status: blocked-by-dependency
+    priority: 8
+    dependencies: ["01", "02", "03", "05", "06"]
+    suggested_branch: claude/10x-07-federation
+    active_slice: measured-cell-admission
+    contract_owner: integrator
+    foundation_release_gates: [F0, F1, F2, F3, F4]
+
+evidence:
+  control_pack_structure_verified: true
+  program_plan_owner_accepted: false
+  foundation_closure_complete: false
+  taz_qualified: false
+  twelve_step_demo_passed: false
+  notes:
+    - No implementation status may be inferred from a proposed packet.
+    - Update source_commit after rebasing and rechecking pointers.

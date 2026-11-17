@@ -174,10 +174,10 @@ def test_an_oversize_template_is_422(client, db_session):
 # -- behaviour: readers of stored YAML fall back as they do for unparseable YAML ------------
 def test_stored_yaml_readers_refuse_an_alias_bomb_quietly():
     from app import exercise_completion, range_topology, scenario_objectives
-    from app.detections import credit, redaction
+    from app.detections import evidence, redaction
 
     assert scenario_objectives.parse(LAUGHS) == []
     assert exercise_completion.duration(LAUGHS) is None
     assert range_topology.count_template_hosts(LAUGHS) is None
     assert redaction.redact_scenario_yaml(LAUGHS) == ""
-    assert credit._scenario(LAUGHS) == {}
+    assert evidence._scenario(LAUGHS) == {}

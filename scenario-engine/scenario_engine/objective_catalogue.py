@@ -6,12 +6,16 @@ validator list all agree with this module (tests/scenario_engine/
 test_scenario_objective_validation.py). It needs only the standard library and
 ``variables``, so the API imports it without the engine's runtime deps.
 
-Who judges what. Every objective has exactly one judge, and nothing passes on content:
+Who judges what. In a **team exercise** an instructor judges every objective
+(ADR 0020, app/exercise_judging.py); nothing below credits an exercise objective. The
+judges below are the scoring engine's (the CLI runner, ``scenario-engine/runner/run.py``),
+and nothing passes on content:
 
-- ``opensearch_query`` (default): a **Student's submitted detection** (ADR 0005,
-  app/detections/credit.py). The scoring engine never credits it: an inject's own
-  synthetic records match the answer key, so the engine would award full points with no
-  Student action. In the engine it is unscored.
+- ``opensearch_query`` (default): a detection objective. In an exercise, Students'
+  submitted detections are recorded as evidence for the instructor (ADR 0020,
+  app/detections/evidence.py) and the query is the instructor's look-for guidance. The
+  scoring engine never credits it: an inject's own synthetic records match the query, so
+  the engine would award full points with no Student action. In the engine it is unscored.
 - ``opensearch_query`` with ``require_observed: true``: the **scoring engine**, from
   observed telemetry only (below). Achieved when enough observed events match; otherwise
   unscored, never failed. Student submissions are not credited against it.

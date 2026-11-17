@@ -227,7 +227,7 @@ def test_schema_accepts_account_ifi_and_registration():
 
 
 def _complete_and_capture(client, db_session, monkeypatch, *, max_score, points):
-    from app.models import Exercise, Objective, ObjectiveType
+    from app.models import Exercise, Objective, ObjectiveType, Team, TeamMembership, User, UserRole
 
     sent: list[dict] = []
     monkeypatch.setattr(xapi, "emit_statement_sync", lambda stmt, timeout=2.0: sent.append(stmt) or True)
@@ -260,6 +260,15 @@ def _complete_and_capture(client, db_session, monkeypatch, *, max_score, points)
                 achieved=True,
             )
         )
+    # A Student on the exercise's team: results are about the Students, and an instructor
+    # who completes it is not credited (#375), so with no Student there is no statement.
+    tenant = db_session.get(Exercise, ex_id).tenant_id
+    student = User(id=uuid.uuid4(), keycloak_id=f"kc-{uuid.uuid4().hex[:6]}", email="s@example.org",
+                   display_name="Student", tenant_id=tenant, role=UserRole.student)
+    team = Team(id=uuid.uuid4(), name="Blue", tenant_id=tenant, exercise_id=ex_id)
+    db_session.add_all([student, team])
+    db_session.flush()
+    db_session.add(TeamMembership(user_id=student.id, team_id=team.id))
     db_session.commit()
 
     assert client.post(f"/exercises/{ex['id']}/start").status_code == 200
@@ -270,13 +279,13 @@ def _complete_and_capture(client, db_session, monkeypatch, *, max_score, points)
     return completed[0]
 
 
-def test_complete_route_with_zero_max_score(client, db_session, monkeypatch):
-    # exercises.max_score is NOT NULL, so 0 is the only "no maximum" the route can see;
-    # None is covered at the builder level above.
+def test_complete_route_with_zero_max_score_takes_the_objectives_total(client, db_session, monkeypatch):
+    # exercises.max_score is NOT NULL, so 0 means "made without one" (QSP paths, forge). Closing
+    # fills it from the objectives' points, as the worker's mock completion did before ADR 0020;
+    # a missing maximum (None) is covered at the builder level above.
     stmt = _complete_and_capture(client, db_session, monkeypatch, max_score=0, points=[30, 20])
     _assert_conformant(stmt)
-    assert stmt["result"]["score"] == {"raw": 50, "min": 0}
-    assert "success" not in stmt["result"]
+    assert stmt["result"]["score"] == {"raw": 50, "min": 0, "max": 50, "scaled": 1.0}
 
 
 def test_complete_route_total_above_max_score(client, db_session, monkeypatch):

@@ -13,13 +13,17 @@ the protocol on the wire.
 
 from __future__ import annotations
 
+import ftplib
 import ipaddress
 import itertools
 import random
 import re
+import shutil
 import smtplib
 import socket
 import struct
+import subprocess
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -102,6 +106,14 @@ def _host(target: str) -> str:
     return target.rsplit(":", 1)[0] if target.count(":") == 1 else target
 
 
+def _port(target: str, default: int) -> int:
+    """The port in a ``host:port`` or ``http://host:port/...`` target, else ``default``."""
+    if "://" in target:
+        return urllib.parse.urlsplit(target).port or default
+    host, _, port = target.rpartition(":") if target.count(":") == 1 else (target, "", "")
+    return int(port) if port.isdigit() else default
+
+
 def _tcp(host: str, port: int, timeout: float, *, read: bool = False) -> bytes:
     with socket.create_connection((host, port), timeout=timeout) as s:
         if read:
@@ -177,6 +189,69 @@ def ntp_sync(action: dict, cfg: AgentConfig) -> dict:
     return {"skew_s": round(secs - time.time(), 1)}
 
 
+def icmp_ping(action: dict, cfg: AgentConfig) -> dict:
+    """One echo request through the system ``ping``: raw ICMP sockets need privilege the agent
+    does not ask for, and the system tool is on every image."""
+    ping = shutil.which("ping")
+    if ping is None:
+        raise OSError("no ping on this host")
+    host = _host(action["target"])
+    wait = max(1, int(cfg.timeout))
+    args = [ping, "-n", "1", "-w", str(wait * 1000), host] if sys.platform == "win32" else [ping, "-c", "1", "-W", str(wait), host]
+    done = subprocess.run(args, capture_output=True, timeout=cfg.timeout + 5, check=False)  # noqa: S603
+    return {"reply": done.returncode == 0}
+
+
+# X.224 Connection Request carrying an RDP Negotiation Request (TLS and CredSSP offered): what
+# every RDP client sends first. Nothing after it, so no session and no credentials.
+_RDP_NEG_REQ = bytes.fromhex("0100080003000000")  # type 1, flags 0, length 8, TLS | CredSSP
+_X224_CR = bytes([0x0E, 0xE0, 0, 0, 0, 0, 0])  # length indicator 14, connection request, refs 0, class 0
+_RDP_NEGOTIATE = struct.pack("!BBH", 3, 0, 4 + len(_X224_CR) + len(_RDP_NEG_REQ)) + _X224_CR + _RDP_NEG_REQ
+
+
+def rdp_connect(action: dict, cfg: AgentConfig) -> dict:
+    """Open a remote-desktop connection far enough to be a real RDP negotiation on the wire."""
+    port = _port(action["target"], 3389)
+    with socket.create_connection((_host(action["target"]), port), timeout=cfg.timeout) as s:
+        s.sendall(_RDP_NEGOTIATE)
+        s.settimeout(cfg.timeout)
+        try:
+            reply = s.recv(64)
+        except TimeoutError:
+            reply = b""
+    return {"port": port, "tpkt": reply[:1] == b"\x03"}
+
+
+def ftp_session(action: dict, cfg: AgentConfig) -> dict:
+    """An anonymous FTP login and a directory query. No file is read or written."""
+    with ftplib.FTP(timeout=cfg.timeout) as ftp:
+        ftp.connect(_host(action["target"]), _port(action["target"], 21))
+        ftp.login()
+        cwd = ftp.pwd()
+    return {"cwd": cwd}
+
+
+def _ipp_status_request(printer_uri: str) -> bytes:
+    """IPP 1.1 Get-Printer-Attributes: the status query a desktop sends before it prints."""
+
+    def attr(tag: int, name: str, value: str) -> bytes:
+        n, v = name.encode(), value.encode()
+        return struct.pack("!BH", tag, len(n)) + n + struct.pack("!H", len(v)) + v
+
+    return (b"\x01\x01\x00\x0b\x00\x00\x00\x01\x01" + attr(0x47, "attributes-charset", "utf-8")
+            + attr(0x48, "attributes-natural-language", "en") + attr(0x45, "printer-uri", printer_uri) + b"\x03")
+
+
+def print_status(action: dict, cfg: AgentConfig) -> dict:
+    """Ask a print server for its printer attributes over IPP; no job is submitted."""
+    host = _host(action["target"])
+    url = f"http://{host}:{_port(action['target'], 631)}/ipp/print"
+    req = urllib.request.Request(url, data=_ipp_status_request(url), headers={"Content-Type": "application/ipp"})
+    with _opener.open(req, timeout=cfg.timeout) as resp:
+        resp.read(64 * 1024)
+        return {"status": resp.status}
+
+
 def admin_scan(action: dict, cfg: AgentConfig) -> dict:
     """An IT inventory sweep: connect to a few common ports across a small subnet."""
     net = ipaddress.ip_network(action["target"], strict=False)
@@ -228,6 +303,10 @@ REGISTRY: dict[str, Activity] = {
     "ad_logon": ad_logon,
     "ssh_admin": ssh_admin,
     "ntp_sync": ntp_sync,
+    "icmp_ping": icmp_ping,
+    "rdp_connect": rdp_connect,
+    "ftp_session": ftp_session,
+    "print_status": print_status,
     "admin_scan": admin_scan,
     "admin_remote_exec": admin_remote_exec,
     "bad_password": bad_password,

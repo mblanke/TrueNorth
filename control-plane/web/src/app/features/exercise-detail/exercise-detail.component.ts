@@ -11,6 +11,7 @@ import { AuthService } from '@core/services/auth.service';
 import type { InjectRecord } from '@core/models';
 import { objectiveKind, objectiveName } from '@shared/objective-display';
 import { DetectionPanelComponent, isDetectionObjective } from './detection-panel.component';
+import { JudgeObjectiveComponent } from '../scoring/judge-objective.component';
 import { RangeNotesComponent } from '../../shared/components/range-notes/range-notes.component';
 import { RangeCredentialsComponent } from '../../shared/components/range-credentials/range-credentials.component';
 import { RangeTopologyComponent } from '../../shared/components/range-topology/range-topology.component';
@@ -63,6 +64,7 @@ interface ScenarioDetail {
     RangeCredentialsComponent,
     RangeTopologyComponent,
     DetectionPanelComponent,
+    JudgeObjectiveComponent,
 ],
   template: `
     @if (detail; as d) {
@@ -146,6 +148,11 @@ interface ScenarioDetail {
                 <tn-detection-panel [exerciseId]="id" [refId]="o.ref_id" [achieved]="o.achieved"
                   [running]="d.state === 'running'" [canSubmit]="auth.canSubmitDetections()"
                   [staff]="auth.isInstructor()" [attempts]="attemptsFor(o.ref_id)" (changed)="refresh()" />
+              }
+              <!-- ADR 0020: an instructor judges each objective while the exercise is open. -->
+              @if (canJudge(d)) {
+                <tn-judge-objective class="judge" [exerciseId]="id" [objective]="o" [submissions]="attemptsFor(o.ref_id)"
+                  [submissionsError]="detectionsError" (changed)="refresh()" />
               }
             }
           </mat-card>
@@ -275,6 +282,7 @@ interface ScenarioDetail {
       .obj mat-icon { color: var(--text-muted); }
       .obj.ok mat-icon { color: var(--success); }
       .obj-ref { font-weight: 600; }
+      .judge { padding-left: 24px; }
       .obj-type { font-size: 0.78rem; color: var(--text-muted); }
       .spacer { flex: 1 1 auto; }
       .pts { font-variant-numeric: tabular-nums; }
@@ -317,6 +325,8 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
   running = false;
   resuming = false;
   error = '';
+  /** The submissions request failed: the judging form says so instead of "none recorded". */
+  detectionsError = false;
   /** Attempts grouped by objective ref; stable arrays so bindings do not churn. */
   private attemptsByRef = new Map<string, Detection[]>();
   private readonly noAttempts: Detection[] = [];
@@ -327,6 +337,10 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
   }
 
   readonly isStudent = () => this.auth.user()?.role === 'student';
+  /** objective:ack while running or paused (the API answers 409 otherwise). */
+  canJudge(d: ScenarioDetail): boolean {
+    return this.auth.canAcknowledgeObjectives() && (d.state === 'running' || d.state === 'paused');
+  }
   nameOf(o: ObjectiveRow): string {
     return objectiveName(o);
   }
@@ -359,9 +373,10 @@ export class ExerciseDetailComponent implements OnInit, OnDestroy {
         const byRef = new Map<string, Detection[]>();
         for (const r of rows) byRef.set(r.objective_ref, [...(byRef.get(r.objective_ref) ?? []), r]);
         this.attemptsByRef = byRef;
+        this.detectionsError = false;
       },
       // Leave the last known list rather than claiming there were no attempts.
-      error: () => {},
+      error: () => (this.detectionsError = true),
     });
   }
 
