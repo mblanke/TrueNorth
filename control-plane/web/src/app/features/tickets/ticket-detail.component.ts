@@ -14,12 +14,12 @@ import { MarkdownEditorComponent } from '@shared/markdown/markdown-editor.compon
 import { MarkdownViewComponent } from '@shared/markdown/markdown-view.component';
 import {
   Assignee, PRIORITIES, STATUSES, STATUS_LABELS, SupportQueue, TYPE_LABELS, Ticket, TicketActivity,
-  TicketAttachment, TicketComment, TicketUpdate, TicketsApiService,
+  TicketAttachment, TicketCategory, TicketComment, TicketLabelCount, TicketUpdate, TicketsApiService, labelList,
 } from '@core/services/tickets-api.service';
 
 const FIELD_LABELS: Record<string, string> = {
   status: 'status', priority: 'priority', type: 'type', assignee_id: 'assignee', queue_id: 'queue', subject: 'subject',
-  range_id: 'range', exercise_id: 'exercise',
+  range_id: 'range', exercise_id: 'exercise', category: 'category', labels: 'labels',
 };
 
 @Component({
@@ -152,7 +152,32 @@ const FIELD_LABELS: Record<string, string> = {
                   </select>
                 } @else { {{ typeLabels[t.type] }} }
               </dd>
+              <dt>About</dt>
+              <dd>
+                @if (t.can_work) {
+                  <select #cat class="tn-kb-input" aria-label="Category" (change)="patchField('category', cat)">
+                    @for (c of categoryOptions(t.category); track c.key) {
+                      <option [value]="c.key" [selected]="c.key === t.category">{{ c.label }}</option>
+                    }
+                  </select>
+                } @else { {{ categoryLabel(t.category) }} }
+              </dd>
               @if (t.can_work) {
+                <dt>Labels</dt>
+                <dd>
+                  <div class="tn-kb-chips">
+                    @for (l of labelList(t.labels); track l) {
+                      <span class="tn-kb-chip">{{ l }}<button type="button" [attr.aria-label]="'Remove label ' + l"
+                                                              (click)="removeLabel(t, l)">×</button></span>
+                    }
+                  </div>
+                  <input #lab class="tn-kb-input" aria-label="Add a label" placeholder="Add a label" list="tk-label-options"
+                         autocomplete="off" maxlength="30" (keydown.enter)="addLabel(t, lab); $event.preventDefault()"
+                         (change)="addLabel(t, lab)">
+                  <datalist id="tk-label-options">
+                    @for (l of knownLabels(); track l.label) { <option [value]="l.label"></option> }
+                  </datalist>
+                </dd>
                 <dt>Queue</dt>
                 <dd>
                   <select #qu class="tn-kb-input" aria-label="Queue" (change)="patchField('queue_id', qu)">
@@ -213,6 +238,9 @@ export class TicketDetailComponent implements OnInit {
   readonly activity = signal<TicketActivity[]>([]);
   readonly assignees = signal<Assignee[]>([]);
   readonly queues = signal<SupportQueue[]>([]);
+  readonly categories = signal<TicketCategory[]>([]);
+  readonly knownLabels = signal<TicketLabelCount[]>([]);
+  readonly labelList = labelList;
   readonly missing = signal(false);
   readonly sending = signal(false);
   readonly admin = computed(() => isAdminRole(this.auth.user()?.role));
@@ -247,10 +275,14 @@ export class TicketDetailComponent implements OnInit {
         }
         this.ticket.set(t);
         this.refreshSide();
+        if (!this.categories().length) {
+          this.api.categories().pipe(catchError(() => of([]))).subscribe(c => this.categories.set(c));
+        }
         if (t.can_work && !this.staffListsLoaded) {
           this.staffListsLoaded = true;
           this.api.assignees().pipe(catchError(() => of([]))).subscribe(a => this.assignees.set(a));
           this.api.queues().pipe(catchError(() => of([]))).subscribe(q => this.queues.set(q));
+          this.api.labels().pipe(catchError(() => of([]))).subscribe(l => this.knownLabels.set(l));
         }
       });
   }
@@ -277,7 +309,7 @@ export class TicketDetailComponent implements OnInit {
   }
 
   /** A sidebar select changed. If the server refuses, put the select back to the saved value. */
-  patchField(field: 'status' | 'priority' | 'type' | 'queue_id' | 'assignee_id', el: HTMLSelectElement): void {
+  patchField(field: 'status' | 'priority' | 'type' | 'category' | 'queue_id' | 'assignee_id', el: HTMLSelectElement): void {
     const value = el.value;
     const body: TicketUpdate =
       field === 'assignee_id' ? (value ? { assignee_id: value } : { unassign: true }) : ({ [field]: value } as TicketUpdate);
@@ -349,6 +381,30 @@ export class TicketDetailComponent implements OnInit {
     return bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
   }
 
+  /** The categories to offer: the fixed list, plus a legacy value the ticket already holds. */
+  categoryOptions(current: string): TicketCategory[] {
+    const list = this.categories();
+    return list.some(c => c.key === current) ? list : [...list, { key: current, label: current }];
+  }
+
+  categoryLabel(key: string): string {
+    return this.categories().find(c => c.key === key)?.label ?? key;
+  }
+
+  /** Add the typed label(s) (comma separated); the API normalises and validates them. */
+  addLabel(t: Ticket, input: HTMLInputElement): void {
+    const typed = input.value.trim();
+    if (!typed) return;
+    input.value = '';
+    this.patch({ labels: [...labelList(t.labels), typed].join(',') }, () =>
+      this.api.labels().pipe(catchError(() => of([]))).subscribe(l => this.knownLabels.set(l)),
+    );
+  }
+
+  removeLabel(t: Ticket, label: string): void {
+    this.patch({ labels: labelList(t.labels).filter(l => l !== label).join(',') });
+  }
+
   describe(a: TicketActivity): string {
     const who = a.actor_name || 'Someone';
     if (a.field === 'created') return `${who} created ${a.new_value}`;
@@ -356,7 +412,13 @@ export class TicketDetailComponent implements OnInit {
     if (a.field === 'description') return `${who} edited the details`;
     const label = FIELD_LABELS[a.field] ?? a.field;
     // The API already turns assignee / queue ids into names.
-    const show = (v: string) => (!v ? 'none' : a.field === 'status' ? STATUS_LABELS[v as keyof typeof STATUS_LABELS] ?? v : v);
+    const show = (v: string) => {
+      if (!v) return 'none';
+      if (a.field === 'status') return STATUS_LABELS[v as keyof typeof STATUS_LABELS] ?? v;
+      if (a.field === 'category') return this.categoryLabel(v);
+      if (a.field === 'labels') return v.split(',').join(', ');
+      return v;
+    };
     return `${who} changed ${label} from ${show(a.old_value)} to ${show(a.new_value)}`;
   }
 
