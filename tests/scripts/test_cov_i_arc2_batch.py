@@ -56,8 +56,12 @@ def test_empty_items_in_the_courses_spec_are_skipped():
 
 def test_a_request_that_cannot_shed_enough_detail_is_truncated_with_an_ellipsis():
     long = "y" * 200
-    doc = {"modules": [{"ordinal": i, "title": f"M{i} {long}", "objectives": [long] * 3,
-                        "topics": [long] * 3, "lab": long} for i in range(1, 9)]}
+    doc = {
+        "modules": [
+            {"ordinal": i, "title": f"M{i} {long}", "objectives": [long] * 3, "topics": [long] * 3, "lab": long}
+            for i in range(1, 9)
+        ]
+    }
     c = batch.Course(code="C998", title=f"Huge {long}", yaml_name="c998.yaml", doc=doc)
     text = batch.request_text(c, limit=500)
     assert len(text) == 500 and text.endswith("...")
@@ -65,8 +69,7 @@ def test_a_request_that_cannot_shed_enough_detail_is_truncated_with_an_ellipsis(
 
 def test_reset_hint_midnight_am_and_impossible_clock_times():
     now = T0
-    assert batch.reset_hint("usage limit reached ∙ resets 12am", now) == (
-        (now + timedelta(days=1)).replace(hour=0))
+    assert batch.reset_hint("usage limit reached ∙ resets 12am", now) == ((now + timedelta(days=1)).replace(hour=0))
     assert batch.reset_hint("resets 25:00", now) is None
     assert batch.reset_hint("resets 10:99", now) is None
 
@@ -108,9 +111,13 @@ def test_build_release_puts_its_tools_dir_on_the_path_before_importing(tmp_path,
 
 def run(phase="new", job_state=None, error=None, name="C103", slug="arc2-c103", auto=True, blocking=0):
     return {
-        "slug": slug, "name": name, "phase": phase, "phase_text": phase,
+        "slug": slug,
+        "name": name,
+        "phase": phase,
+        "phase_text": phase,
         "job": {"state": job_state, "error": error} if job_state else None,
-        "auto_accepted": auto, "actions_blocking": blocking,
+        "auto_accepted": auto,
+        "actions_blocking": blocking,
     }
 
 
@@ -119,8 +126,13 @@ class FakeApi:
         self.runs = runs or []
         self.calls: list[tuple[str, str, object]] = []
         self.release = {
-            "id": "rel-1", "course_id": "course-1", "catalogue_code": "C103",
-            "auto_accepted": True, "version": 1, "state": "candidate", "open_actions": [],
+            "id": "rel-1",
+            "course_id": "course-1",
+            "catalogue_code": "C103",
+            "auto_accepted": True,
+            "version": 1,
+            "state": "candidate",
+            "open_actions": [],
         }
         self.course_published = False
         self.pub_states = ["published"]
@@ -373,8 +385,14 @@ def test_a_publication_that_never_settles_hits_the_timeout():
             return super().get(path, **kw)
 
     clock = TickingClock()
-    d = driver(Staging([run("packaged", "done", name="C103")]), courses("C103"), clock=clock,
-               publish_platform="moodle", publish_timeout=30, own={"C103": "arc2-c103"})
+    d = driver(
+        Staging([run("packaged", "done", name="C103")]),
+        courses("C103"),
+        clock=clock,
+        publish_platform="moodle",
+        publish_timeout=30,
+        own={"C103": "arc2-c103"},
+    )
     assert d.run() == 1
     t = d.tracks["C103"]
     assert t.status == "failed" and "still staging after the timeout" in t.detail
@@ -400,8 +418,13 @@ def test_run_polls_until_every_course_is_finished():
             return super().get(path, **kw)
 
     clock = TickingClock()
-    d = driver(TwoPhase([run("running", "running", name="C103", slug="arc2-c103")]), courses("C103"),
-               clock=clock, own={"C103": "arc2-c103"}, publish_platform="none")
+    d = driver(
+        TwoPhase([run("running", "running", name="C103", slug="arc2-c103")]),
+        courses("C103"),
+        clock=clock,
+        own={"C103": "arc2-c103"},
+        publish_platform="none",
+    )
     assert d.run() == 0 and d.tracks["C103"].status == "accepted"
     assert clock.slept == [60, 60]  # two polls between the first step and the packaged one
 
@@ -460,8 +483,9 @@ def test_the_module_run_as_a_script_exits_with_the_batch_result(monkeypatch, cap
     monkeypatch.setenv("TN_TEST_HOST", "true")
     monkeypatch.setenv("ARC2_RUNS_DIR", str(tmp_path))
     monkeypatch.setattr(_inprocess_api, "connect", lambda upn: (object(), FakeApi()))
-    monkeypatch.setattr(sys, "argv", [
-        "arc2_batch_inprocess.py", "--admin", "a@example.test", "--courses", "C103", "--dry-run"])
+    monkeypatch.setattr(
+        sys, "argv", ["arc2_batch_inprocess.py", "--admin", "a@example.test", "--courses", "C103", "--dry-run"]
+    )
     with pytest.raises(SystemExit) as exc:
         runpy.run_path(str(ROOT / "scripts" / "arc2_batch_inprocess.py"), run_name="__main__")
     assert exc.value.code == 0

@@ -67,18 +67,23 @@ class _Client:
 
 
 def test_a_429_is_retried_after_its_retry_after_with_a_fresh_csrf_header():
-    client = _Client([
-        _Resp(429, {"retry_after": 2}),
-        _Resp(429, raw=b"gateway sludge"),  # a 429 whose body does not parse: wait the default
-        _Resp(200, {"ok": True}, raw=b'{"ok": true}'),
-    ])
+    client = _Client(
+        [
+            _Resp(429, {"retry_after": 2}),
+            _Resp(429, raw=b"gateway sludge"),  # a 429 whose body does not parse: wait the default
+            _Resp(200, {"ok": True}, raw=b'{"ok": true}'),
+        ]
+    )
     sleeps: list[float] = []
     api = _inprocess_api.InProcessApi(client, sleep=sleeps.append, max_429=5)
     assert api.post("/things", json={"a": 1}) == (200, {"ok": True})
     assert sleeps == [3, 61]
     csrf = _inprocess_api.CSRF_HEADER
     assert [(m, kw["headers"].get(csrf)) for m, _p, kw in client.requests] == [
-        ("POST", "tok-0"), ("POST", "tok-1"), ("POST", "tok-2")]
+        ("POST", "tok-0"),
+        ("POST", "tok-1"),
+        ("POST", "tok-2"),
+    ]
     assert client.requests[0][2]["headers"]["Content-Type"] == "application/json"
 
 
@@ -152,9 +157,14 @@ def harness(monkeypatch, client, db_session):
     monkeypatch.setattr(auth, "AUTH_DISABLED", False)
     monkeypatch.setattr(sys, "argv", ["cov_i_inprocess.py"])
     _inprocess_api._audited.clear()
-    admin = User(id=uuid.uuid4(), keycloak_id=f"kc-{uuid.uuid4()}", email="cov-i-admin@example.test",
-                 display_name="Cov", role=UserRole.admin,
-                 tenant_id=uuid.UUID("00000000-0000-0000-0000-000000000001"))
+    admin = User(
+        id=uuid.uuid4(),
+        keycloak_id=f"kc-{uuid.uuid4()}",
+        email="cov-i-admin@example.test",
+        display_name="Cov",
+        role=UserRole.admin,
+        tenant_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+    )
     db_session.add(admin)
     db_session.flush()
     return admin
@@ -171,9 +181,15 @@ def test_users_api_wraps_a_user_and_refuses_an_unknown_one(harness):
 def test_an_inactive_user_is_not_lookupable(harness, db_session):
     from app.models import AuditLog
 
-    ghost = User(id=uuid.uuid4(), keycloak_id=f"kc-{uuid.uuid4()}", email="ghost@example.test",
-                 display_name="Ghost", role=UserRole.admin, is_active=False,
-                 tenant_id=uuid.UUID("00000000-0000-0000-0000-000000000001"))
+    ghost = User(
+        id=uuid.uuid4(),
+        keycloak_id=f"kc-{uuid.uuid4()}",
+        email="ghost@example.test",
+        display_name="Ghost",
+        role=UserRole.admin,
+        is_active=False,
+        tenant_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+    )
     db_session.add(ghost)
     db_session.flush()
     users = _inprocess_api.connect_users()

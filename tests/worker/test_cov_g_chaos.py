@@ -122,8 +122,7 @@ def test_a_completed_affected_task_is_logged_with_its_state(monkeypatch, caplog)
         chaos.chaos_postrun_hook(sender=TASK, task_id="t1", state="SUCCESS")
 
     assert any(
-        "Task worker.tasks.provision_range (t1) completed with state=SUCCESS" in r.message
-        for r in caplog.records
+        "Task worker.tasks.provision_range (t1) completed with state=SUCCESS" in r.message for r in caplog.records
     ), caplog.text
 
 

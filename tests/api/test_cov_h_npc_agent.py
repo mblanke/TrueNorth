@@ -81,8 +81,11 @@ def test_browse_gets_a_page_then_follows_one_same_site_link():
         persona = Persona("ann", cfg, 1.0, random.Random(3))
         detail = persona.browse()
         assert detail == {
-            "site": f"127.0.0.1:{port}", "path": "/index.html", "status": 200,
-            "followed": "/page2.html", "scheme": "http",
+            "site": f"127.0.0.1:{port}",
+            "path": "/index.html",
+            "status": 200,
+            "followed": "/page2.html",
+            "scheme": "http",
         }
         assert len(UA_SEEN) >= 2  # the page and the followed link were both fetched
         assert "GreyspaceNPC/1 (ann)" in UA_SEEN[-1]  # the agent's own User-Agent
@@ -136,6 +139,10 @@ def test_a_successful_action_is_logged_with_its_details(capsys):
 
     actions = [json.loads(line) for line in capsys.readouterr().out.strip().splitlines()]
     assert actions[-1] == {
-        "ts": actions[-1]["ts"], "persona": "ann", "action": "resolve",
-        "ok": True, "name": "127.0.0.1", "addresses": ["127.0.0.1"],
+        "ts": actions[-1]["ts"],
+        "persona": "ann",
+        "action": "resolve",
+        "ok": True,
+        "name": "127.0.0.1",
+        "addresses": ["127.0.0.1"],
     }

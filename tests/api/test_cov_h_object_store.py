@@ -67,8 +67,7 @@ def test_the_endpoint_is_parsed_and_defaults_are_minioadmin(monkeypatch):
     monkeypatch.delenv("MINIO_SECURE", raising=False)
     object_store._client()
     assert made == [
-        {"endpoint": "minio.internal:9000", "access_key": "minioadmin",
-         "secret_key": "minioadmin", "secure": False}
+        {"endpoint": "minio.internal:9000", "access_key": "minioadmin", "secret_key": "minioadmin", "secure": False}
     ]
 
 
@@ -80,8 +79,7 @@ def test_a_bare_endpoint_gets_http_and_minio_secure_forces_tls(monkeypatch):
     monkeypatch.setenv("MINIO_SECRET_KEY", "forge-secret")
     object_store._client()
     assert made == [
-        {"endpoint": "minio.internal:9000", "access_key": "forge",
-         "secret_key": "forge-secret", "secure": True}
+        {"endpoint": "minio.internal:9000", "access_key": "forge", "secret_key": "forge-secret", "secure": True}
     ]
 
 

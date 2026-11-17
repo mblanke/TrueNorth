@@ -68,7 +68,7 @@ def test_blank_rows_are_skipped_entirely():
 
 
 def test_delivery_is_normalised_and_unknown_means_cyber():
-    rows = parse_mesl("title,delivery\n" "A,White Cell\n" "B,white-cell\n" "C,EMAIL\n" "D,carrier pigeon\n" "E,network\n")
+    rows = parse_mesl("title,delivery\nA,White Cell\nB,white-cell\nC,EMAIL\nD,carrier pigeon\nE,network\n")
     assert [r["delivery_method"] for r in rows] == ["white_cell", "white_cell", "email", "cyber", "cyber"]
 
 
@@ -88,13 +88,15 @@ def test_unknown_headers_do_not_crash_the_parser():
 
 # ── parse_objectives ───────────────────────────────────────────────────
 def test_objective_columns_and_their_fallbacks():
-    rows = parse_objectives(
-        "ref,text,moe,competency_code\n"
-        "O1,Detect the phish,Team reports,NICE-SC-T-01\n"
-    )
+    rows = parse_objectives("ref,text,moe,competency_code\nO1,Detect the phish,Team reports,NICE-SC-T-01\n")
     assert rows == [
-        {"ref": "O1", "text": "Detect the phish", "moe": "Team reports",
-         "competency_code": "NICE-SC-T-01", "ordinal": 1}
+        {
+            "ref": "O1",
+            "text": "Detect the phish",
+            "moe": "Team reports",
+            "competency_code": "NICE-SC-T-01",
+            "ordinal": 1,
+        }
     ]
 
 

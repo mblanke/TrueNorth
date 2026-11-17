@@ -54,7 +54,9 @@ def test_no_global_shortcut_service_exists():
     handling is component-local (range-designer's own keydown and its shortcut hints). A
     global one would refute the row: update docs and the inventory, then pin the new
     behaviour instead."""
-    pattern = re.compile(r"command[-_ ]?palette|shortcut[-_ ]?service|global[-_ ]?shortcut|hotkey|mousetrap", re.IGNORECASE)
+    pattern = re.compile(
+        r"command[-_ ]?palette|shortcut[-_ ]?service|global[-_ ]?shortcut|hotkey|mousetrap", re.IGNORECASE
+    )
     hits = [
         str(f)
         for f in sorted((WEB / "src").rglob("*"))
@@ -139,12 +141,17 @@ def test_lti_https_is_only_implicit(monkeypatch):
     Making any of that an explicit https enforcement refutes the row: update docs and the
     inventory, then pin the new behaviour instead."""
     flat = re.sub(r"\s+", " ", (ROOT / "control-plane/api/app/routers/integrations.py").read_text())
-    assert re.search(r'set_cookie\(\s*lti_state_cookie_name\([a-z_]+\).*?secure=True.*?samesite=["\']none["\']', flat), (
+    assert re.search(
+        r'set_cookie\(\s*lti_state_cookie_name\([a-z_]+\).*?secure=True.*?samesite=["\']none["\']', flat
+    ), (
         "Limitation row 'LTI requires HTTPS' (lti-https-implicit): the state cookie is the "
         "implicit HTTPS requirement and is no longer set Secure/SameSite=None. Update the "
         "row's documentation and the limitation inventory."
     )
-    declared = re.search(r'TOOL_BASE_URL = os\.getenv\("LTI_TOOL_BASE_URL", "([^"]*)"\)', (ROOT / "control-plane/api/app/lti13.py").read_text())
+    declared = re.search(
+        r'TOOL_BASE_URL = os\.getenv\("LTI_TOOL_BASE_URL", "([^"]*)"\)',
+        (ROOT / "control-plane/api/app/lti13.py").read_text(),
+    )
     assert declared and declared.group(1).startswith("http://"), (
         "Limitation row 'LTI requires HTTPS' (lti-https-implicit): the app's built-in "
         "LTI_TOOL_BASE_URL default is no longer plain http, so the app now ships an https "

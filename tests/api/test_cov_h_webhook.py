@@ -67,9 +67,10 @@ async def test_the_payload_is_posted_signed_with_hmac_sha256(monkeypatch, respx_
     channel = _channel(monkeypatch)
     route = respx_mock.post(URL).mock(return_value=httpx.Response(200))
 
-    assert await channel.send(
-        "learner@example.test", "Lab ready", "Your lab is up.", metadata={"exercise": "EX-9"}
-    ) is True
+    assert (
+        await channel.send("learner@example.test", "Lab ready", "Your lab is up.", metadata={"exercise": "EX-9"})
+        is True
+    )
 
     request = route.calls.last.request
     payload = json.loads(request.content)
@@ -94,9 +95,7 @@ async def test_without_a_secret_the_payload_goes_unsigned(monkeypatch, respx_moc
 @pytest.mark.asyncio
 async def test_a_transient_failure_is_retried_until_it_succeeds(monkeypatch, respx_mock):
     channel = _channel(monkeypatch)
-    route = respx_mock.post(URL).mock(
-        side_effect=[httpx.Response(500), httpx.Response(503), httpx.Response(200)]
-    )
+    route = respx_mock.post(URL).mock(side_effect=[httpx.Response(500), httpx.Response(503), httpx.Response(200)])
     assert await channel.send("a@b.c", "Subject", "Body") is True
     assert route.call_count == 3
 

@@ -41,23 +41,33 @@ def _sign_doc(doc: dict, key_id: str | None = None) -> tuple[dict, str, str]:
     """Really sign ``doc``: (signed doc, signer's public key b64, key id)."""
     sk, pub, kid = _keypair()
     body = cli.CONTEXT + cli.canonical({k: v for k, v in doc.items() if k != "signature"})
-    sig = {"alg": "Ed25519", "key_id": key_id or kid,
-           "value": base64.b64encode(sk.sign(body)).decode()}
+    sig = {"alg": "Ed25519", "key_id": key_id or kid, "value": base64.b64encode(sk.sign(body)).decode()}
     return {**doc, "signature": sig}, pub, kid
 
 
 def _signed_doc() -> tuple[dict, str, str]:
-    return _sign_doc({"bundle_id": "b-1", "origin": {"site": "a"}, "items": [
-        {"key": "course:1", "name": "C", "content": {"name": "C"},
-         "content_sha256": hashlib.sha256(cli.canonical({"name": "C"})).hexdigest()}]})
+    return _sign_doc(
+        {
+            "bundle_id": "b-1",
+            "origin": {"site": "a"},
+            "items": [
+                {
+                    "key": "course:1",
+                    "name": "C",
+                    "content": {"name": "C"},
+                    "content_sha256": hashlib.sha256(cli.canonical({"name": "C"})).hexdigest(),
+                }
+            ],
+        }
+    )
 
 
 def test_a_public_key_that_is_not_ed25519_is_refused_before_anything_is_read():
     doc, _, _ = _signed_doc()
-    assert cli.verify_offline(doc, "not base64 at all!!") == [
-        "the public key is not a base64 Ed25519 public key"]
+    assert cli.verify_offline(doc, "not base64 at all!!") == ["the public key is not a base64 Ed25519 public key"]
     assert cli.verify_offline(doc, base64.b64encode(b"short").decode()) == [
-        "the public key is not a base64 Ed25519 public key"]
+        "the public key is not a base64 Ed25519 public key"
+    ]
 
 
 def test_a_document_without_a_signature_is_not_signed():
@@ -80,7 +90,8 @@ def test_a_bundle_signed_by_another_key_does_not_verify():
     body = cli.CONTEXT + cli.canonical({k: v for k, v in doc.items() if k != "signature"})
     doc["signature"]["value"] = base64.b64encode(sk2.sign(body)).decode()
     assert cli.verify_offline(doc, pub) == [
-        "the signature does not verify (changed after signing, or another key or purpose)"]
+        "the signature does not verify (changed after signing, or another key or purpose)"
+    ]
 
 
 def test_an_item_whose_content_does_not_match_its_hash_is_reported():
@@ -104,17 +115,25 @@ def test_a_well_signed_bundle_verifies_offline(tmp_path, capsys):
 
 # ── the plan printer ────────────────────────────────────────────────────────────
 def test_the_plan_prints_what_importing_would_do(capsys):
-    cli._print_plan({
-        "bundle_id": "b-1", "exported_at": "2026-11-05", "key_id": "kid",
-        "already_imported_at": "2026-11-06T09:00",
-        "items": [
-            {"action": "conflict", "key": "course:1", "name": "C",
-             "reasons": ["newer here"], "notes": ["kept as draft"]},
-            {"action": "create", "key": "scenario:2", "name": "S"},
-        ],
-        "missing_golden_builds": [{"catalogue_id": "g-win", "build_id": "b7",
-                                   "needed_by": ["range_template:3"]}],
-    })
+    cli._print_plan(
+        {
+            "bundle_id": "b-1",
+            "exported_at": "2026-11-05",
+            "key_id": "kid",
+            "already_imported_at": "2026-11-06T09:00",
+            "items": [
+                {
+                    "action": "conflict",
+                    "key": "course:1",
+                    "name": "C",
+                    "reasons": ["newer here"],
+                    "notes": ["kept as draft"],
+                },
+                {"action": "create", "key": "scenario:2", "name": "S"},
+            ],
+            "missing_golden_builds": [{"catalogue_id": "g-win", "build_id": "b7", "needed_by": ["range_template:3"]}],
+        }
+    )
     out = capsys.readouterr().out
     assert "Bundle b-1 made 2026-11-05, signed by kid" in out
     assert "already imported on 2026-11-06T09:00: refused" in out
@@ -154,10 +173,10 @@ def test_key_prints_the_signing_key_and_refuses_a_failure(capsys):
 
 
 def test_list_prints_proven_and_why_not_and_filters(capsys):
-    items = [{"item_type": "course", "item_id": "1", "title": "C", "label": "proven",
-              "proven": True},
-             {"item_type": "scenario", "item_id": "2", "title": "S", "label": "no range built",
-              "proven": False}]
+    items = [
+        {"item_type": "course", "item_id": "1", "title": "C", "label": "proven", "proven": True},
+        {"item_type": "scenario", "item_id": "2", "title": "S", "label": "no range built", "proven": False},
+    ]
     api = _Api({("GET", "/content-port/items"): (200, items)})
     assert cli.run(api, _args(["list"])) == 0
     out = capsys.readouterr().out
@@ -182,10 +201,25 @@ def test_an_export_refusal_that_is_not_the_conflict_shape(capsys):
 def test_what_the_upload_sends_and_what_a_refused_upload_reports(tmp_path, capsys):
     f = tmp_path / "bundle.json"
     f.write_text("{}")
-    api = _Api({("POST", "/content-port/preview"): (200, {"bundle_id": "b-1", "exported_at": "t",
-                                                          "key_id": "kid", "items": []})})
-    argv = ["import", str(f), "--tenant", "00000000-0000-0000-0000-000000000001",
-            "--shared", "--overwrite", "course:1", "--overwrite", "scenario:2"]
+    api = _Api(
+        {
+            ("POST", "/content-port/preview"): (
+                200,
+                {"bundle_id": "b-1", "exported_at": "t", "key_id": "kid", "items": []},
+            )
+        }
+    )
+    argv = [
+        "import",
+        str(f),
+        "--tenant",
+        "00000000-0000-0000-0000-000000000001",
+        "--shared",
+        "--overwrite",
+        "course:1",
+        "--overwrite",
+        "scenario:2",
+    ]
     assert cli.run(api, _args(argv)) == 0  # no --yes: preview only
     _method, path, _j, _c, _h = api.calls[0]
     assert path == "/content-port/preview"

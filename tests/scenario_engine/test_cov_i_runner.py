@@ -46,7 +46,8 @@ def test_schema_validation_reports_why_it_failed(caplog):
 
 def test_load_scenario_reports_objectives_that_could_never_be_judged(tmp_path, caplog):
     scenario = {
-        "name": "covertest", "version": "1.0",
+        "name": "covertest",
+        "version": "1.0",
         "objectives": [{"id": "o1", "validator": "psychic", "points": 5}],
     }
     path = tmp_path / "scenario.yaml"
@@ -64,10 +65,12 @@ def test_build_range_context_is_the_standalone_three_host_lab():
 
 
 def test_a_dry_run_logs_every_event_without_executing():
-    scenario = {"timeline": [
-        {"t": "0:00", "action": "simulated_execution", "params": {"technique": "T1059"}},
-        {"t": "0:30", "action": "network_scan"},
-    ]}
+    scenario = {
+        "timeline": [
+            {"t": "0:00", "action": "simulated_execution", "params": {"technique": "T1059"}},
+            {"t": "0:30", "action": "network_scan"},
+        ]
+    }
     results = execute_timeline(scenario, CTX, dry_run=True)
     assert results == [
         {"t": "0:00", "action": "simulated_execution", "status": "dry_run"},
@@ -99,7 +102,8 @@ def test_without_an_injector_registry_a_run_is_log_only_and_never_sleeps_backwar
 
 
 SCENARIO = {
-    "name": "cov-i-runner", "version": "1.0",
+    "name": "cov-i-runner",
+    "version": "1.0",
     "timeline": [{"t": "0:00", "action": "simulated_execution", "params": {"technique": "T1059"}}],
     "objectives": [{"id": "ack", "validator": "manual_ack", "points": 10}],
 }
@@ -114,10 +118,21 @@ def _write(tmp_path):
 def test_main_writes_a_scored_results_json(tmp_path, monkeypatch):
     scenario_path = _write(tmp_path)
     out = tmp_path / "results.json"
-    monkeypatch.setattr(sys, "argv", [
-        "run.py", str(scenario_path), "--range-id", "rx", "--dry-run",
-        "--event-store", "null", "--output", str(out),
-    ])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run.py",
+            str(scenario_path),
+            "--range-id",
+            "rx",
+            "--dry-run",
+            "--event-store",
+            "null",
+            "--output",
+            str(out),
+        ],
+    )
     main()
     results = json.loads(out.read_text())
     assert results["scenario"] == "cov-i-runner" and results["range_id"] == "rx"
@@ -130,9 +145,19 @@ def test_main_writes_a_scored_results_json(tmp_path, monkeypatch):
 
 def test_main_prints_the_results_when_no_output_file_is_given(tmp_path, monkeypatch, capsys):
     scenario_path = _write(tmp_path)
-    monkeypatch.setattr(sys, "argv", [
-        "run.py", str(scenario_path), "--range-id", "rx", "--dry-run", "--event-store", "null",
-    ])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run.py",
+            str(scenario_path),
+            "--range-id",
+            "rx",
+            "--dry-run",
+            "--event-store",
+            "null",
+        ],
+    )
     main()
     printed = json.loads(capsys.readouterr().out)
     assert printed["score"]["unscored"] == 10

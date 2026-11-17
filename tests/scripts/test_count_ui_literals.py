@@ -181,7 +181,7 @@ class TestClassBLiteralAttributes:
         assert _ab(t) == (0, 1)
 
     def test_binding_single_quoted_value_counts(self) -> None:
-        t = "<input [placeholder]='warn ? \"Required\" : \"\"'>"
+        t = '<input [placeholder]=\'warn ? "Required" : ""\'>'
         assert _ab(t) == (0, 1)
 
     def test_binding_fragments(self) -> None:

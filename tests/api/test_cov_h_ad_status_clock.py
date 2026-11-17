@@ -44,7 +44,8 @@ def _stub_loop(monkeypatch, *, ticks: int, configured: bool, tick_result):
         sent.append(("invites", invites))
 
     monkeypatch.setattr(
-        clock, "asyncio",
+        clock,
+        "asyncio",
         SimpleNamespace(sleep=fake_sleep, to_thread=fake_to_thread, CancelledError=asyncio.CancelledError),
     )
     monkeypatch.setattr(clock, "TICK_SECONDS", 0.0)
@@ -85,7 +86,10 @@ async def test_a_crashed_tick_is_logged_and_the_next_tick_still_runs(monkeypatch
     sleeps, tick_calls, sent = _stub_loop(
         monkeypatch, ticks=3, configured=True, tick_result=RuntimeError("database gone")
     )
-    with caplog.at_level(logging.ERROR, logger="truenorth.api.ad_status_sync.clock"), pytest.raises(asyncio.CancelledError):
+    with (
+        caplog.at_level(logging.ERROR, logger="truenorth.api.ad_status_sync.clock"),
+        pytest.raises(asyncio.CancelledError),
+    ):
         await clock.run_forever()
     assert len(tick_calls) == 2  # tick 1 crashed, tick 2 ran anyway, tick 3 never slept
     assert "AD status sync tick failed" in caplog.text

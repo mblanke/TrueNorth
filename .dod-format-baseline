@@ -89,7 +89,6 @@ control-plane/api/app/course_publishing/payload.py
 control-plane/api/app/course_publishing/withdraw.py
 control-plane/api/app/course_releases/service.py
 control-plane/api/app/curriculum_ingest.py
-control-plane/api/app/detections/credit.py
 control-plane/api/app/detections/names.py
 control-plane/api/app/detections/redaction.py
 control-plane/api/app/email_status/router.py

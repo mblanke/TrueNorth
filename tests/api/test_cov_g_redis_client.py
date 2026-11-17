@@ -71,9 +71,7 @@ def test_an_async_standard_client_defaults_to_bytes(standalone, monkeypatch):
 # -- the Sentinel client -----------------------------------------------------------------------
 
 
-def test_configured_sentinels_build_a_master_client_with_the_realm_credentials(
-    monkeypatch, caplog
-):
+def test_configured_sentinels_build_a_master_client_with_the_realm_credentials(monkeypatch, caplog):
     monkeypatch.setattr(rc, "SENTINEL_HOSTS", "s1.example:26380,s2.example")
     monkeypatch.setattr(rc, "SENTINEL_MASTER", "range-master")
     monkeypatch.setattr(rc, "SENTINEL_PASSWORD", "sentinel-secret")

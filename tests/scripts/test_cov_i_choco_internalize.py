@@ -54,8 +54,13 @@ DEPOT = "http://10.30.32.10:8081"
 # Definition schema: the refusals the rejects table does not reach
 # --------------------------------------------------------------------------- #
 def _raw(**over) -> dict:
-    doc = {"name": "demo", "version": "1.2.3", "type": "msi", "silent_args": "/qn",
-           "installers": [{"url": "https://x/d.msi", "sha256": SHA}]}
+    doc = {
+        "name": "demo",
+        "version": "1.2.3",
+        "type": "msi",
+        "silent_args": "/qn",
+        "installers": [{"url": "https://x/d.msi", "sha256": SHA}],
+    }
     doc.update(over)
     return doc
 
@@ -122,7 +127,8 @@ def test_write_back_stops_at_the_next_installer(tmp_path):
     p.write_text(
         "name: demo\nversion: '1'\ntype: zip\ninstallers:\n"
         "  - url: https://x/a.zip\n    sha256: pinned\n"
-        "  - url: https://x/b.zip\n    sha256: \"\"\n")
+        '  - url: https://x/b.zip\n    sha256: ""\n'
+    )
     assert ci.write_back_sha256(p, "https://x/a.zip", "c" * 64) is False  # pinned: keep looking? no: next item
     assert yaml.safe_load(p.read_text())["installers"][1]["sha256"] == ""  # b was never touched
 
@@ -136,8 +142,7 @@ def test_the_prefetch_role_module_loads_with_the_reused_helpers():
 
 
 def test_the_auth_header_is_basic_and_never_printed():
-    assert ci._auth_header(("u", "p")) == {
-        "Authorization": "Basic " + base64.b64encode(b"u:p").decode()}
+    assert ci._auth_header(("u", "p")) == {"Authorization": "Basic " + base64.b64encode(b"u:p").decode()}
 
 
 def test_sha256_file_hashes_in_chunks(tmp_path):
@@ -159,8 +164,9 @@ def test_raw_has_asks_the_search_api_for_the_sha_and_matches_the_path():
 
     def urlopen(req, timeout=None):
         seen.append(req)
-        return io.BytesIO(json.dumps({"items": [
-            {"path": "demo/1.2.3/d.msi"}, {"path": "/prefix/demo/1.2.3/d.msi"}]}).encode())
+        return io.BytesIO(
+            json.dumps({"items": [{"path": "demo/1.2.3/d.msi"}, {"path": "/prefix/demo/1.2.3/d.msi"}]}).encode()
+        )
 
     ci.urllib.request.urlopen, real = urlopen, ci.urllib.request.urlopen
     try:
@@ -186,7 +192,7 @@ def test_raw_upload_puts_the_file_with_its_length():
         ci.raw_upload(DEPOT, ("u", "p"), "demo/1.2.3/d.msi", src)
     finally:
         ci.urllib.request.urlopen = real
-    req, = seen
+    (req,) = seen
     assert req.get_method() == "PUT"
     assert req.full_url == f"{DEPOT}/repository/installers/demo/1.2.3/d.msi"
     assert req.get_header("Content-length") == str(src.stat().st_size)
@@ -195,9 +201,12 @@ def test_raw_upload_puts_the_file_with_its_length():
 
 def test_hosted_versions_follows_the_continuation_tokens():
     pages = [
-        json.dumps({"items": [{"name": "demo", "version": "1.0"},
-                              {"name": "other", "version": "9.9"}],
-                    "continuationToken": "tok-1"}),
+        json.dumps(
+            {
+                "items": [{"name": "demo", "version": "1.0"}, {"name": "other", "version": "9.9"}],
+                "continuationToken": "tok-1",
+            }
+        ),
         json.dumps({"items": [{"name": "DEMO", "version": "2.0"}]}),  # name match is case-free
     ]
     seen = []
@@ -216,8 +225,14 @@ def test_hosted_versions_follows_the_continuation_tokens():
 
 def test_internalize_takes_the_raw_present_shortcut_and_keeps_the_advisory_advisory(tmp_path):
     """raw already has the installer: no upload; a failing upstream check is swallowed."""
-    defn = ci.validate({"name": "demo", "version": "1.2.3", "type": "zip",
-                        "installers": [{"url": "https://vendor.example/d.zip", "sha256": BLOB_SHA}]})
+    defn = ci.validate(
+        {
+            "name": "demo",
+            "version": "1.2.3",
+            "type": "zip",
+            "installers": [{"url": "https://vendor.example/d.zip", "sha256": BLOB_SHA}],
+        }
+    )
 
     def urlopen(req, timeout=None):
         if "vendor.example" in req.full_url:
@@ -241,8 +256,13 @@ def test_internalize_takes_the_raw_present_shortcut_and_keeps_the_advisory_advis
         rec = ci.internalize(defn, DEPOT, ("u", "p"), tmp_path, "https://up/", False, Prefetch())
     finally:
         ci.urllib.request.urlopen = real
-    assert rec == {"id": "demo", "vendor_version": "1.2.3", "version": "1.2.3.1", "hosted": "present",
-                   "installers": [{"file": "d.zip", "sha256": BLOB_SHA, "downloaded": True, "raw": "present"}]}
+    assert rec == {
+        "id": "demo",
+        "vendor_version": "1.2.3",
+        "version": "1.2.3.1",
+        "hosted": "present",
+        "installers": [{"file": "d.zip", "sha256": BLOB_SHA, "downloaded": True, "raw": "present"}],
+    }
     assert uploads == []
 
 
@@ -256,7 +276,8 @@ def _defs(tmp_path, names=("demo1", "demo2"), blank=()):
         sha = "''" if n in blank else f"'{BLOB_SHA}'"
         (d / f"{n}.yaml").write_text(
             f"name: {n}\nversion: '1.2.3'\ntype: zip\ninstallers:\n"
-            f"  - url: https://vendor.example/{n}.zip\n    sha256: {sha}\n")
+            f"  - url: https://vendor.example/{n}.zip\n    sha256: {sha}\n"
+        )
     return d
 
 
@@ -270,8 +291,9 @@ def test_a_bad_definition_is_fatal_before_anything_else_runs(tmp_path, capsys):
 
 def test_only_limits_the_run_to_the_named_packages(tmp_path):
     d, work = _defs(tmp_path), tmp_path / "work"
-    assert ci.main(["--defs", str(d), "--only", "demo2", "--pack-only",
-                    "--baked-url", DEPOT, "--workdir", str(work)]) == 0
+    assert (
+        ci.main(["--defs", str(d), "--only", "demo2", "--pack-only", "--baked-url", DEPOT, "--workdir", str(work)]) == 0
+    )
     assert [p.name for p in (work / "nupkgs").iterdir()] == ["demo2.1.2.3.1.nupkg"]
 
 
@@ -337,8 +359,7 @@ def test_a_full_run_uploads_one_package_and_reports_the_failed_one(tmp_path, mon
     monkeypatch.setattr(ci, "_prefetch", Prefetch)
     monkeypatch.setattr(ci.urllib.request, "urlopen", urlopen)
     report = tmp_path / "report.json"
-    argv = ["--defs", str(d), "--nexus", DEPOT, "--workdir", str(work),
-            "--report", str(report), "--write-back"]
+    argv = ["--defs", str(d), "--nexus", DEPOT, "--workdir", str(work), "--report", str(report), "--write-back"]
     assert ci.main(argv) == 0
     out = capsys.readouterr().out
     assert "uploaded  demo1 1.2.3.1  NEWER-UPSTREAM 2.0" in out
