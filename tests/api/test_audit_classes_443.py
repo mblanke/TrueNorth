@@ -113,8 +113,12 @@ def world(db_session, client, outbox, cluster):
     db.flush()
     db.add(RollCallSettings(tenant_id=a.id, email_domains=["corp.test"]))
     w = {
-        "a": a, "b": b, "course": course, "other_course": other_course,
-        "seat_tpl": seat_tpl, "shared_tpl": shared_tpl,
+        "a": a,
+        "b": b,
+        "course": course,
+        "other_course": other_course,
+        "seat_tpl": seat_tpl,
+        "shared_tpl": shared_tpl,
         "lead": real_user(db, UserRole.instructor, a.id),
         "assistant": real_user(db, UserRole.instructor, a.id),
         "admin": real_user(db, UserRole.admin, a.id),
@@ -142,8 +146,10 @@ def _class_body(w, **over):
 def _book(client, w, start=MON, hours=3, template="shared_tpl", **extra) -> dict:
     act_as(w["lead"])
     body = {
-        "name": "Lab day", "start_time": start.isoformat(),
-        "end_time": (start + timedelta(hours=hours)).isoformat(), "class_id": w["class"]["id"],
+        "name": "Lab day",
+        "start_time": start.isoformat(),
+        "end_time": (start + timedelta(hours=hours)).isoformat(),
+        "class_id": w["class"]["id"],
     }
     if template:
         body["template_id"] = str(w[template].id)
@@ -169,8 +175,14 @@ def _on_roll_call(client, w, *emails):
 
 def _fill(db, tenant_id, start=MON, hours: float = 3, vcpu=80, name="someone else") -> ScheduledEvent:
     """A held booking that takes most of the cluster at that time (as the donors)."""
-    ev = ScheduledEvent(name=name, state=EventState.scheduled, tenant_id=tenant_id, start_time=start,
-                        end_time=start + timedelta(hours=hours), vcpu_total=vcpu)
+    ev = ScheduledEvent(
+        name=name,
+        state=EventState.scheduled,
+        tenant_id=tenant_id,
+        start_time=start,
+        end_time=start + timedelta(hours=hours),
+        vcpu_total=vcpu,
+    )
     db.add(ev)
     db.flush()
     return ev
@@ -203,17 +215,17 @@ def test_f1_redating_an_approved_class_may_not_stretch_its_hold(client, world):
     assert r.status_code in (200, 409), r.text
     act_as(world["admin"])
     held = client.get("/schedule/capacity", params=probe).json()
-    assert held["overlapping_events"] == 0, (
-        "the class hold must not stretch past the approved plan without re-approval"
-    )
+    assert held["overlapping_events"] == 0, "the class hold must not stretch past the approved plan without re-approval"
 
 
 # ── 2. Cancel racing Close-out overwrites closed → cancelled ──────────────
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Cancel racing Close-out overwrites a "
-                                        "closed class to cancelled (classes/router.py:384)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: Cancel racing Close-out overwrites a closed class to cancelled (classes/router.py:384)",
+)
 def test_f2_cancel_may_not_overwrite_a_class_closed_concurrently(client, world, db_session, monkeypatch):
     """classes/router.py:384 — Cancel racing Close-out overwrites a closed class.
 
@@ -258,9 +270,12 @@ def seats(monkeypatch):
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Reject of a pending roll-call addition is "
-                                        "unguarded: racing an Approve it removes an admitted "
-                                        "Student without freeing the seat (classes/service.py:476)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: Reject of a pending roll-call addition is "
+    "unguarded: racing an Approve it removes an admitted "
+    "Student without freeing the seat (classes/service.py:476)",
+)
 def test_f3_reject_may_not_remove_a_student_approved_concurrently(client, world, db_session, seats):
     """classes/service.py:476 — Reject of a pending roll-call addition is unguarded.
 
@@ -302,9 +317,12 @@ def test_f3_reject_may_not_remove_a_student_approved_concurrently(client, world,
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: A class's course can be changed after its "
-                                        "sessions were booked; the sessions keep the old "
-                                        "course_id (classes/service.py:150)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: A class's course can be changed after its "
+    "sessions were booked; the sessions keep the old "
+    "course_id (classes/service.py:150)",
+)
 def test_f4_a_booked_class_may_not_switch_course_behind_its_sessions(client, world, db_session):
     """classes/service.py:150 — A class's course changes after its sessions were booked.
 
@@ -327,18 +345,19 @@ def test_f4_a_booked_class_may_not_switch_course_behind_its_sessions(client, wor
     db_session.expire_all()
     cls = db_session.get(Class, uuid.UUID(world["class"]["id"]))
     evt = db_session.get(ScheduledEvent, uuid.UUID(ev["id"]))
-    assert cls.course_id == evt.course_id, (
-        "the class's course and its booked session's course must stay in step"
-    )
+    assert cls.course_id == evt.course_id, "the class's course and its booked session's course must stay in step"
 
 
 # ── 5. A demoted assistant keeps the class in the list ────────────────────
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: A former assistant/observer demoted to "
-                                        "Student keeps the class in GET /classes "
-                                        "(classes/access.py:35)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: A former assistant/observer demoted to "
+    "Student keeps the class in GET /classes "
+    "(classes/access.py:35)",
+)
 def test_f5_a_demoted_assistant_no_longer_sees_the_class_in_the_list(client, world):
     """classes/access.py:35 — A former assistant demoted to Student keeps the class.
 
@@ -361,9 +380,12 @@ def test_f5_a_demoted_assistant_no_longer_sees_the_class_in_the_list(client, wor
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(strict=True, reason="audit #443: Admission uses the UTC calendar day for "
-                                        "the class's last day while the rest of the area uses "
-                                        "the site zone (classes/onboarding.py:100)")
+@pytest.mark.xfail(
+    strict=True,
+    reason="audit #443: Admission uses the UTC calendar day for "
+    "the class's last day while the rest of the area uses "
+    "the site zone (classes/onboarding.py:100)",
+)
 def test_f6_admission_keeps_the_site_day_not_the_utc_day(client, world, db_session, sign_in, monkeypatch):
     """classes/onboarding.py:100 — Admission uses the UTC calendar day for the last day.
 
@@ -376,6 +398,7 @@ def test_f6_admission_keeps_the_site_day_not_the_utc_day(client, world, db_sessi
     from app.classes import onboarding
 
     monkeypatch.setenv("SITE_TIMEZONE", "America/Toronto")
+
     # 2026-06-01 00:30 UTC = 2026-05-31 20:30 in Toronto: the site's last evening of the
     # class. Only the admission gate's clock is frozen; everything else runs for real.
     class FrozenDatetime(datetime):
@@ -389,6 +412,4 @@ def test_f6_admission_keeps_the_site_day_not_the_utc_day(client, world, db_sessi
     db_session.flush()
     _on_roll_call(client, world, "joe.bloggs@corp.test")
     body = sign_in(_identity())
-    assert body["status"] == "registered", (
-        "on the class's last site day the sign-in must still admit, not refuse"
-    )
+    assert body["status"] == "registered", "on the class's last site day the sign-in must still admit, not refuse"

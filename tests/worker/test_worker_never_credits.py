@@ -24,6 +24,8 @@ def test_no_worker_module_writes_achieved_or_total_score():
     offenders = []
     for path in WORKER.rglob("*.py"):
         text = path.read_text()
-        if re.search(r"""(\bachieved\s*=\s*(True|sa\.true\(\))|["']achieved["']\s*:\s*True|total_score\s*=\s*(?!0\b))""", text):
+        if re.search(
+            r"""(\bachieved\s*=\s*(True|sa\.true\(\))|["']achieved["']\s*:\s*True|total_score\s*=\s*(?!0\b))""", text
+        ):
             offenders.append(str(path.relative_to(WORKER)))
     assert offenders == []

@@ -27,9 +27,7 @@ def test_the_boundary_label_value_does_not_match_as_free_text(client, old_index)
     value bypasses the term check, and on a pre-v1.0 index it exists in exactly one place: the
     labelled event's indexed ``event.module`` label. If the search counts or returns that
     event, free text matched an indexed label value the guard itself declared unsearchable."""
-    guarded = client.get(
-        f"/telemetry/{old_index}/search", params={"q": "event.module:truenorth.inject"}
-    )
+    guarded = client.get(f"/telemetry/{old_index}/search", params={"q": "event.module:truenorth.inject"})
     assert guarded.status_code == 422, guarded.text
 
     r = client.get(f"/telemetry/{old_index}/search", params={"q": "truenorth.inject"})

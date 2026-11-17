@@ -119,9 +119,15 @@ def _package_surface(pkg_dir: Path) -> tuple[set[str], set[str], set[str]]:
                 classes.add(node.name)
             elif isinstance(node, ast.FunctionDef) and node.name.startswith("get_"):
                 factories.add(node.name)
-            elif isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and "registry" in t.id.lower() for t in node.targets):
+            elif isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and "registry" in t.id.lower() for t in node.targets
+            ):
                 registries.add(node.targets[0].id)
-            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and "registry" in node.target.id.lower():
+            elif (
+                isinstance(node, ast.AnnAssign)
+                and isinstance(node.target, ast.Name)
+                and "registry" in node.target.id.lower()
+            ):
                 registries.add(node.target.id)
     return classes, factories, registries
 
@@ -137,7 +143,13 @@ ADR_SEAM_TABLE = [
     ("auth", "app.auth_backends.base", "BaseAuthBackend", "app.auth_backends", "get_auth_backend"),
     ("lms / xapi", "app.lms.base", "BaseLMSBackend", "app.lms", "get_lms_backend"),
     ("search", "app.search_backends.base", "BaseSearchBackend", "app.search_backends", "get_search_backend"),
-    ("threat intel feeds", "app.threat_intel_backends.base", "BaseFeedBackend", "app.threat_intel_backends", "get_feed_backend"),
+    (
+        "threat intel feeds",
+        "app.threat_intel_backends.base",
+        "BaseFeedBackend",
+        "app.threat_intel_backends",
+        "get_feed_backend",
+    ),
     ("notifications", "app.notifications.base", "NotificationChannel", "app.notifications.registry", "get_channel"),
     ("ai", "_ai_orch.backends.base", "BaseAIBackend", "_ai_orch.backends", "get_cloud_backend"),
     ("ai engine admin", "app.ai_backends.base", "BaseAIEngine", "app.ai_backends", "get_ai_engine"),
@@ -160,7 +172,9 @@ def test_adr_seam_table_is_still_the_code(seam, interface_module, interface_attr
         interface = importlib.import_module(interface_module)
     except ImportError as exc:  # _ai_orch.backends is a namespace stub: __spec__ is None
         raise AssertionError(f"{seam}: ADR 0001 interface module {interface_module} is gone") from exc
-    assert hasattr(interface, interface_attr), f"{seam}: ADR 0001 interface attr {interface_attr} missing from {interface_module}"
+    assert hasattr(interface, interface_attr), (
+        f"{seam}: ADR 0001 interface attr {interface_attr} missing from {interface_module}"
+    )
 
     try:
         registry = importlib.import_module(registry_module)
@@ -378,7 +392,9 @@ def test_kind_dispatch_scanner_trips_on_drift_and_passes_clean_code(monkeypatch)
 def test_vendor_sdk_scanner_trips_on_drift_and_spares_adapters(monkeypatch):
     """Self-test for decision 2's scanner: it must fire on a vendor SDK import in product
     code, and stay quiet for the same import inside an adapter package."""
-    drift = _scan_synthetic(monkeypatch, _SDK_DRIFT, "/fake/app/tasks.py", lambda d: _vendor_sdk_offenders([d / "tasks.py"]))
+    drift = _scan_synthetic(
+        monkeypatch, _SDK_DRIFT, "/fake/app/tasks.py", lambda d: _vendor_sdk_offenders([d / "tasks.py"])
+    )
     adapter = _scan_synthetic(
         monkeypatch,
         _SDK_IN_ADAPTER,
