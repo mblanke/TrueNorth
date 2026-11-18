@@ -96,3 +96,19 @@ def test_the_install_readme_carries_no_lab_specific_names():
     assert not found, f"lab-specific text in install/README.md (move it to install/lab/): {found}"
     for gone in (".github/workflows/terraform-plan.yml", ".github/workflows/packer-build.yml", "infra/proxmox/terraform"):
         assert not (ROOT / gone).exists(), f"{gone} was removed with the Proxmox path; do not restore it"
+
+
+def test_the_clean_room_protocol_has_both_phases():
+    """A site with no test site cannot finish the install in one pass: Phase A (mock
+    provisioner) needs nothing from the owner, Phase B (real vCenter) needs ported templates
+    and the build passwords. The protocol must say so, and every placeholder its commands use
+    must be defined where the guide that holds them says (#487, last-mile 1.2)."""
+    clean = (ROOT / "docs/guides/clean-room-install.md").read_text(encoding="utf-8")
+    for phrase in ("Phase A", "Phase B", "tn_provisioner_backend: mock", "Phase B prerequisites"):
+        assert phrase in clean, f"clean-room-install.md must mention {phrase!r}"
+    install = (ROOT / "docs/guides/02-install-guide.md").read_text(encoding="utf-8")
+    ops = (ROOT / "docs/guides/06-operations-runbook.md").read_text(encoding="utf-8")
+    for placeholder in ("<range-host-N>", "<non-range-port-group>"):
+        assert placeholder in ops, f"06 section 4 no longer uses {placeholder}: drop the row from 02"
+        assert placeholder in install, f"02's site-values table must define {placeholder}"
+    assert "tn_provisioner_backend: mock" in install

@@ -462,6 +462,10 @@ their build record, so that every site clones the same, checksummed build, and t
 certification's template-pinning section (S2) shows the promoted build on every VM. This is
 the normal path; building from ISO at the site is guide 02 Appendix D.
 
+A site with no test site of its own gets the exported kit (4.1's output) and the two build
+passwords from the owner who built the templates; the clean-room protocol lists them as the
+Phase B prerequisites (`clean-room-install.md`).
+
 You need, per template: the exported OVF, its **build record**
 (`<id>.build.json`, from the test site's `infra/vsphere/packer/logs/`), and checksums. You
 also need the **template build passwords** (`vault_template_windows_admin_password`,
