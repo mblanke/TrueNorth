@@ -45,6 +45,8 @@ the value comes from — none is invented here:
 | `<management-port-group>` | vCenter networking: the port group the management VLAN (`<vlan-mgmt>`, guide 01) sits on | Port-group name exactly as vCenter shows it |
 | `<management-host-1-name-in-vcenter>`, `<management-host-2-name-in-vcenter>` | §3.3's `govc find '/<datacenter>/host' -type h` | Host names exactly as vCenter shows them |
 | `<one-range-host>` | The range hosts (guide 01's host table) | Its `<one-range-host>-local` datastore must exist |
+| `<range-host-N>`, `<range-host-N-name-in-vcenter>` | The range hosts, as in `<one-range-host>`; 06 §4.2 lists every one | The short name (the last element of a `govc find '/<datacenter>/host' -type h` line) and the name vCenter lists the host under; copy both from that line |
+| `<non-range-port-group>` | vCenter networking: any port group that is not a range port group | Only a placeholder network for an imported template (06 §4.2); no VM is ever left on it |
 | `<a-range-host-mgmt-ip>` | One range host's management address | IPv4 |
 | `<vcenter-ip>` | `dig +short <vcenter-fqdn>` (§1.3), or the site's vCenter record | IPv4 |
 | `<enclave-id>` | Your choice (**[DECISION]** in §5.3) | 1-63 characters: lowercase letters, digits and hyphens, starting and ending with a letter or digit (preflight enforces this) |
@@ -410,6 +412,11 @@ cd ~/truenorth/install
 cp inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
 nano inventory/group_vars/all/vault.yml
 ```
+
+**No vCenter yet?** For the clean-room Phase A (`clean-room-install.md`), set
+`tn_provisioner_backend: mock` in §5.3; then `vault_vsphere_password` may stay the
+placeholder, the two template passwords below are not checked, and §3 is skipped. Ranges are
+simulated. Switch back to `vsphere_api` and fill them for a real site.
 
 The two template build passwords are not yours to invent: they come from the custodians
 of the test site's build record (06 §4), and preflight refuses to pass without them.
