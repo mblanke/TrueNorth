@@ -270,9 +270,33 @@ jobs:
             trivy-${{ matrix.service.name }}.json
           if-no-files-found: ignore
 
+  guides:
+    name: Guide PDFs
+    needs: [version]
+    runs-on: ubuntu-latest
+    # A convenience for printing and transfer kits (docs/guides/README.md): a failure here
+    # must never stop the signed images and manifest from being published.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Install pandoc and a PDF engine
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pandoc texlive-xetex \
+            texlive-fonts-recommended texlive-latex-extra fonts-dejavu-core lmodern
+      - name: Render the guides
+        run: scripts/build_guides_pdf.sh guides-pdf
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: guides-pdf
+          path: guides-pdf/*.pdf
+          if-no-files-found: error
+
   publish:
     name: GitHub release
-    needs: [version, image]
+    needs: [version, image, guides]
+    # guides is best-effort: publish on a green image job whatever it did
+    if: ${{ !cancelled() && needs.version.result == 'success' && needs.image.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -294,6 +318,12 @@ jobs:
           pattern: release-*
           path: assets
           merge-multiple: true
+      # Best-effort: the PDFs join the release (and SHA256SUMS, which is signed) when they built.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        continue-on-error: true
+        with:
+          name: guides-pdf
+          path: assets/out
       - name: release-manifest.json
         env:
           GIT_SHA: ${{ github.sha }}

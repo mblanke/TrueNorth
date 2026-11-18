@@ -10,7 +10,7 @@
 # Ubuntu: sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended
 # macOS:  brew install pandoc, plus a TeX distribution (e.g. BasicTeX).
 # Without them it says what is missing and exits 2; it never half-builds a set.
-# Not part of release.yml: run it when the documentation set is cut (docs/guides/README.md).
+# release.yml runs it too (the `guides` job) and attaches the PDFs to the release.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
