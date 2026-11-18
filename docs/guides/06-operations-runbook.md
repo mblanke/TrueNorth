@@ -80,7 +80,8 @@ to go **backwards** (an older release, or a database newer than the code) unless
 1. Read the release notes (`docs/release-notes/<vX.Y.Z>.md` in the new release) and
    `CHANGELOG.md`: new migrations, new required settings, known limitations. A release
    candidate has a notes file only when its upgrade needs one (`v1.2.0-rc21.md`, from rc19:
-   no migration, no new setting); otherwise read its target release's (`v1.2.0.md` for
+   no migration, no new setting; `v1.2.0-rc22.md`, from rc21: two additive migrations and
+   one new setting); otherwise read its target release's (`v1.2.0.md` for
    `v1.2.0-rcN`), plus `CHANGELOG.md`.
 2. **[DECISION]** The window. In-flight range builds either finish (the default, `drain`:
    up to an hour for a large range) or are abandoned (`-e tn_upgrade_inflight=abandon`;

@@ -60,6 +60,11 @@ def test_the_rc_upgrade_notes_exist_and_state_the_migration_fact():
     notes = (ROOT / "docs/release-notes/v1.2.0-rc21.md").read_text(encoding="utf-8")
     assert "no migration" in notes.lower() and "rc19" in notes and "rc20" in notes
     assert "v1.2.0-rc21.md" in (ROOT / "docs/guides/06-operations-runbook.md").read_text(encoding="utf-8")
+    rc22 = (ROOT / "docs/release-notes/v1.2.0-rc22.md").read_text(encoding="utf-8")
+    assert "b4d6f8a0c2e4" in rc22 and "c5e7a9b1d3f4" in rc22, "rc22's notes must name its two migrations"
+    versions = ROOT / "control-plane/api/alembic/versions"
+    assert (versions / "b4d6f8a0c2e4_add_notification_preferences.py").exists()
+    assert (versions / "c5e7a9b1d3f4_add_wiki_images.py").exists()
 
 
 def test_the_role_guides_are_checked():
