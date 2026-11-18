@@ -52,6 +52,7 @@ release with these assets:
 | `release-manifest.json.sigstore.json` | its Sigstore bundle: certificate, signature, transparency-log proof |
 | `sbom-<service>.spdx.json` | SBOM per image |
 | `trivy-<service>.json` | the scan that gated the image (fixable HIGH/CRITICAL; empty when clean) |
+| `00-index.pdf` ... `06-operations-runbook.pdf` | the guides (`docs/guides/`) rendered by `scripts/build_guides_pdf.sh`; best-effort, so a release can lack them if that job failed |
 | `SHA256SUMS` | SHA-256 of every asset above (the manifest's bundle included) |
 | `SHA256SUMS.sigstore.json` | the Sigstore bundle of `SHA256SUMS` |
 

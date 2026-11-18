@@ -38,5 +38,8 @@ scripts/build_guides_pdf.sh <out-dir>  # or somewhere else
 It needs `pandoc` and a PDF engine on the machine (on Ubuntu:
 `sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended`; on macOS:
 `brew install pandoc` and a TeX distribution such as BasicTeX). Without pandoc it says so
-and exits non-zero. The release workflow does not build the PDFs: run the script when you
-cut the documentation set, and attach the PDFs where they are needed.
+and exits non-zero. From the release after rc21, the release workflow builds the PDFs too (best-effort: a failure
+there never stops the images and manifest) and attaches them to the GitHub release as
+`00-index.pdf` to `06-operations-runbook.pdf`, covered by the signed `SHA256SUMS`. Each guide
+ends with its one-page printable checklist, so the PDF carries it. For a set built from a
+branch, run the script yourself.
