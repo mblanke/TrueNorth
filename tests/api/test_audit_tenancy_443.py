@@ -466,11 +466,6 @@ class TestSharedContentReadableById:
 
 # ── rbac.py:413 (low) — require_tenant_access never sees the path param ──
 class TestRequireTenantAccess:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: require_tenant_access can never see the path parameter it "
-        "is supposed to check and therefore always passes (rbac.py:413)",
-    )
     def test_require_tenant_access_enforces_the_path_parameter(self, db_session):
         """rbac.py:413 (low): the dependency reads kwargs.get(tenant_id_param) from
         **kwargs, but FastAPI never injects path parameters into a dependency's
@@ -508,3 +503,43 @@ class TestRequireTenantAccess:
         # actually runs and the unreachable 403 branch is what is exercised (200 at base).
         assert c.get(f"/tenants/{other}/users", params={"kwargs": "{}"}).status_code == 403
         assert c.get(f"/tenants/{other}/users").status_code == 403
+
+    def test_require_tenant_access_edges(self, db_session, monkeypatch):
+        """Own tenant passes in any UUID case; the platform administrator crosses; a route
+        without the named path parameter is refused, never passed; no bogus query parameter."""
+        from app import rbac
+        from fastapi import Depends, FastAPI
+        from fastapi.testclient import TestClient
+
+        def app_for(role, tenant):
+            who = CurrentUser(
+                id=str(uuid.uuid4()),
+                email="u@example.test",
+                display_name="u",
+                role=role,
+                tenant_id=tenant,
+                keycloak_id=f"kc-{uuid.uuid4().hex[:8]}",
+            )
+            mini = FastAPI()
+            mini.dependency_overrides[get_current_user] = lambda: who
+            mini.dependency_overrides[get_db] = lambda: db_session
+
+            @mini.get("/tenants/{tenant_id}/users")
+            def with_param(tenant_id: uuid.UUID, user: CurrentUser = Depends(rbac.require_tenant_access("tenant_id"))):
+                return {"ok": True}
+
+            @mini.get("/nope")
+            def without_param(user: CurrentUser = Depends(rbac.require_tenant_access("tenant_id"))):
+                return {"ok": True}
+
+            return TestClient(mini)
+
+        _second_tenant(db_session)
+        db_session.commit()
+        monkeypatch.setenv("PLATFORM_TENANT_ID", DEV_TENANT)
+        c = app_for(UserRole.instructor, DEV_TENANT)
+        assert c.get(f"/tenants/{DEV_TENANT.upper()}/users").status_code == 200
+        assert c.get("/nope").status_code == 500
+        # An admin of an ordinary tenant is checked like anyone else; the operator crosses.
+        assert app_for(UserRole.admin, OTHER_TENANT).get(f"/tenants/{DEV_TENANT}/users").status_code == 403
+        assert app_for(UserRole.admin, DEV_TENANT).get(f"/tenants/{OTHER_TENANT}/users").status_code == 200

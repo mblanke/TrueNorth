@@ -24,7 +24,7 @@ Findings and their state at this base:
   Moodle-launched Student cannot open any WebSocket.
 * FAILING — finding 3 (ws_auth.py:59): the bare ``except Exception`` reports an identity
   provider outage as "not allowed" (1008) instead of "service unavailable".
-* FAILING — finding 4 (rbac.py:413): require_tenant_access declares ``**kwargs`` and so can
+* FIXED — finding 4 (rbac.py:413; was failing): require_tenant_access declared ``**kwargs`` and so can
   never see the path parameter it checks. On the pinned FastAPI (0.142.2) that fails closed
   (422: ``kwargs`` is demanded as a query parameter); on a release that silently ignores a
   ``**kwargs`` parameter it would fail open — either way the documented usage
@@ -256,12 +256,6 @@ def test_an_idp_outage_is_not_reported_as_not_allowed(client, monkeypatch):
 # ── Finding 4 — rbac.py:413: require_tenant_access cannot see the path parameter ──────
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: require_tenant_access cannot see the path "
-    "parameter it checks; it passes every cross-tenant request "
-    "if ever used (control-plane/api/app/rbac.py:413)",
-)
 def test_require_tenant_access_rejects_a_cross_tenant_request():
     """Audit #443 finding 4 (control-plane/api/app/rbac.py:413, low): require_tenant_access
     cannot see the path parameter it checks; it passes every cross-tenant request if ever
