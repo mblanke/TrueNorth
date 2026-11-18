@@ -1,5 +1,7 @@
 # 02 — Install guide
 
+Version: 1.1 · Applies to: v1.2.0-rc22 · Last reviewed: 2026-11-18
+
 **For:** the person installing TrueNorth (the owner or another team).
 **Before you start:** every item on the [01 — Site prerequisites](01-site-prerequisites.md)
 checklist is ticked, **and** you have the golden templates' build passwords from the

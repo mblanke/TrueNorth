@@ -1,5 +1,7 @@
 # 05 — Student quick start
 
+Version: 1.1 · Applies to: v1.2.0-rc22 · Last reviewed: 2026-11-18
+
 Everything you need to take a class or a self-serve lab on TrueNorth Range. Your instructor's
 side is in [04-instructor-guide.md](04-instructor-guide.md).
 

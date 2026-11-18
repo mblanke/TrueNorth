@@ -1,5 +1,7 @@
 # 04 — Instructor guide: running a class end to end
 
+Version: 1.1 · Applies to: v1.2.0-rc22 · Last reviewed: 2026-11-18
+
 For instructors (and the assistants and observers on their classes). It follows one class
 from creation to close-out. The site must already be set up by an administrator
 ([03-admin-first-day.md](03-admin-first-day.md)). Your Students' side is in

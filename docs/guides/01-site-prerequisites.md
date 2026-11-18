@@ -1,5 +1,7 @@
 # 01 — Site prerequisites
 
+Version: 1.1 · Applies to: v1.2.0-rc22 · Last reviewed: 2026-11-18
+
 **For:** the site's infrastructure, network and directory teams, and whoever installs
 TrueNorth. **Read before:** [02 — Install guide](02-install-guide.md).
 

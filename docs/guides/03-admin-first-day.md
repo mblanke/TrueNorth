@@ -1,5 +1,7 @@
 # 03 — Administrator: your first day
 
+Version: 1.1 · Applies to: v1.2.0-rc22 · Last reviewed: 2026-11-18
+
 For the administrator of a freshly installed TrueNorth Range site. It starts after the
 installer has finished ([02-install-guide.md](02-install-guide.md)) and ends when instructors
 can run classes. Day-to-day upkeep (backups, upgrades, porting golden images, alerts) is in

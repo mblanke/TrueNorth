@@ -1,5 +1,7 @@
 # 06 — Operations runbook
 
+Version: 1.1 · Applies to: v1.2.0-rc22 · Last reviewed: 2026-11-18
+
 **For:** whoever runs TrueNorth after it is installed: the platform administrator and the
 range operators who look after the VM, vCenter and the network.
 **Assumes:** an install done with [02 — Install guide](02-install-guide.md): the installer
