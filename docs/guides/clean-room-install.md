@@ -97,6 +97,12 @@ marked **B** are Phase B only.
 Stages 10 and 11 use a throwaway class of at least three test Students. The 12 to 15 Student
 class is a separate acceptance step (see Pass criteria).
 
+## Known unverified
+
+These parts of the guides have not been re-read end to end against a running release, so
+expect findings: 04 sections 10 to 12 (attendance, close-out, exercise templates beyond the
+first part), and every `Not verified` line the guides carry. Log them as usual.
+
 ## Stuck log
 
 One row per time you stopped, guessed, left the document, or the document was wrong. Copy

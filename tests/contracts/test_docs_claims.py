@@ -56,6 +56,14 @@ def test_user_guide_lists_what_is_missing():
     assert "\n## Not in v1.2.0\n" in GUIDE.read_text(encoding="utf-8")
 
 
+def test_the_rc_upgrade_notes_exist_and_state_the_migration_fact():
+    """06 section 2.1 points at per-release notes; rc21's say whether a migration is needed
+    (last-mile 1.6). Presence only: the fact itself was checked by diffing the two tags."""
+    notes = (ROOT / "docs/release-notes/v1.2.0-rc21.md").read_text(encoding="utf-8")
+    assert "no migration" in notes.lower() and "rc19" in notes and "rc20" in notes
+    assert "v1.2.0-rc21.md" in (ROOT / "docs/guides/06-operations-runbook.md").read_text(encoding="utf-8")
+
+
 def test_the_role_guides_are_checked():
     names = {p.name for p in ROLE_GUIDES}
     assert {"03-admin-first-day.md", "04-instructor-guide.md", "05-student-quick-start.md"} <= names
@@ -68,6 +76,19 @@ def test_security_compliance_evidence_paths_exist():
     assert cited, "no evidence paths found in the compliance mapping"
     missing = sorted(p for p in cited if not (ROOT / p.rstrip("/")).exists())
     assert not missing, f"docs/security.md cites paths that do not exist: {missing}"
+
+
+def test_the_guides_carry_no_stale_provenance_banners_and_name_moodle_and_smtp():
+    """Last-mile 1.4: no 'not re-read' or lab-host banners in the role guides; 02 has a worked
+    SMTP block and says Moodle is optional; 03 says what Moodle gates."""
+    guides = {p.name: p.read_text(encoding="utf-8") for p in ROLE_GUIDES}
+    for name, text in guides.items():
+        for phrase in ("were not re-read", "not re-read end to end", "TN-MGMT01"):
+            assert phrase not in text, f"{name} still carries {phrase!r}"
+    install = guides["02-install-guide.md"]
+    assert "tn_smtp_from_address: truenorth@" in install and "vault_smtp_password" in install
+    assert "tn_moodle_enabled: true" in install
+    assert "self-serve" in guides["03-admin-first-day.md"] and "tn_moodle_enabled" in guides["03-admin-first-day.md"]
 
 
 def test_the_guides_agree_on_who_signs_in_first():
