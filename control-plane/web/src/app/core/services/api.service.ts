@@ -1,6 +1,6 @@
-// Author: Marc-Andre Blanke
+﻿// Author: Marc-Andre Blanke
 // Created: 2026-03-04T22:24:49Z
-﻿import { Injectable, inject } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '@env/environment';

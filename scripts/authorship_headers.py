@@ -99,12 +99,14 @@ def first_commit_times() -> dict[str, str]:
 
 
 def has_header(text: str) -> bool:
-    return HEADER_RE.search("\n".join(text.splitlines()[:6])) is not None
+    return HEADER_RE.search("\n".join(text.removeprefix("﻿").splitlines()[:6])) is not None
 
 
 def with_header(text: str, name: str, created: str) -> str:
     mark = EXTENSIONS[Path(name).suffix]
     header = f"{mark} Author: {AUTHOR}\n{mark} Created: {created}\n"
+    if text.startswith("﻿"):  # keep a byte-order mark first; elsewhere it is an irregular character
+        return "﻿" + with_header(text[1:], name, created)
     lines = text.splitlines(keepends=True)
     at = 0
     if lines and lines[0].startswith("#!"):

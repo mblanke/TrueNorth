@@ -1,6 +1,6 @@
-// Author: Marc-Andre Blanke
+﻿// Author: Marc-Andre Blanke
 // Created: 2026-03-04T22:24:49Z
-﻿import { Component, OnInit, signal, inject } from '@angular/core';
+import { Component, OnInit, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';

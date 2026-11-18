@@ -1,6 +1,6 @@
-// Author: Marc-Andre Blanke
+﻿// Author: Marc-Andre Blanke
 // Created: 2026-03-04T22:24:49Z
-﻿import { Component, DestroyRef, OnInit, signal, inject } from '@angular/core';
+import { Component, DestroyRef, OnInit, signal, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Observable, interval } from 'rxjs';
 import { CommonModule } from '@angular/common';

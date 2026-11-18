@@ -34,4 +34,6 @@ def test_the_header_goes_after_a_shebang_and_before_a_docstring():
     assert sh.splitlines()[0] == "#!/usr/bin/env bash" and sh.splitlines()[1] == "# Author: Marc-Andre Blanke"
     ts = ah.with_header("export const a = 1;\n", "a.ts", "2026-01-02T03:04:05Z")
     assert ts.startswith("// Author: Marc-Andre Blanke\n// Created: 2026-01-02T03:04:05Z\nexport")
+    bom = ah.with_header("﻿export const a = 1;\n", "a.ts", "2026-01-02T03:04:05Z")
+    assert bom.startswith("﻿// Author:") and "﻿" not in bom[1:] and ah.has_header(bom)
     assert ah.has_header(py) and ah.has_header(sh) and ah.has_header(ts) and not ah.has_header("x = 1\n")
