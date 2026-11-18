@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:23:31Z
 """648ef1fe0b6c adds the AD status sync tables, and only those (#290).
 
 Additive and empty: ``user_last_seen`` is not backfilled (an account with no row counts from

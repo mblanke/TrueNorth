@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range - Provisioner registry.
 
 Maps backend names to provisioner classes and provides a factory function.

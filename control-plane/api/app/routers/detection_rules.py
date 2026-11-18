@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-04-17T20:21:24Z
 """TrueNorth Range — Sigma-compatible detection rule editor router."""
 
 from __future__ import annotations

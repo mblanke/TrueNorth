@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:14Z
 """Companions for the audit #443 oracle tests (card #470, item 2).
 
 One companion per REAL oracle in ``test_audit2_provision_443.py``: the same secure

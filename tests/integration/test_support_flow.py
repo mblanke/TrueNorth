@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:35:36Z
 """Integration test: the Support flow on the live stack.
 
 A runbook goes into the wiki, a ticket cites it and is assigned to a member of staff,

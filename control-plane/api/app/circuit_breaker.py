@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-04-17T20:21:24Z
 """Circuit breaker for external service calls (Proxmox, Keycloak, OpenSearch).
 
 States: CLOSED → OPEN (after threshold failures) → HALF_OPEN (probe) → CLOSED.

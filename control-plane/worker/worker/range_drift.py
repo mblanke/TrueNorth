@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T07:24:37Z
 """The periodic drift check (ADR 0013 §5, range certification S5, issue #243).
 
 Beat-scheduled next to ``health_check_ranges`` (celery_app.py, every RANGE_DRIFT_SECONDS,

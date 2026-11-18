@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:20:42Z
 """Integration test: QSP ingest -> developmental path -> Student progress -> progress endpoints.
 
 Against the live itest stack (``make itest``; AUTH_DISABLED, so every call is the seeded

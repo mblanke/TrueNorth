@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:38:08Z
 """The egress proxy tunnels to allow-listed hosts only (tools/arc2/egress.py)."""
 
 from __future__ import annotations

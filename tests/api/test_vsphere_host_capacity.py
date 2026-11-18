@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-15T15:51:19Z
 """ESXi host CPU, memory, storage and VM count over the vSphere VI/JSON API (vCenter 8.0U1+).
 
 The vCenter REST API discovery uses has no host capacity, so the Infrastructure page

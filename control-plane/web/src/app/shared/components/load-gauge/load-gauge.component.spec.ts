@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-15T16:19:22Z
 import { TestBed } from '@angular/core/testing';
 import { LoadGaugeComponent, loadBand, loadPct } from './load-gauge.component';
 

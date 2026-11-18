@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T16:44:41Z
 """Wiki search through the search backend (OpenSearch), with the database as the authority (#380).
 
 OpenSearch is used to **rank** pages (stemming, phrases, title and tag boosts); it is never

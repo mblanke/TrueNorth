@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T01:18:22Z
 """Consoles on class ranges and the observers' live view (ADR 0014 §19-20; #313, #321).
 
 ``app/classes/consoles.py`` and ``console_router.py``. The rules under test:

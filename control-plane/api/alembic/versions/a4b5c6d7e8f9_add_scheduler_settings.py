@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """add scheduler_settings (ADR 0004 slice 2: admin-set over-capacity policy)
 
 Revision ID: a4b5c6d7e8f9

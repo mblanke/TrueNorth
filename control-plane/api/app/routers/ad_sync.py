@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range -- AD/LDAP Synchronization Router.
 
 Provides status, trigger, and config endpoints for Active Directory integration.

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range - AI Orchestrator API.
 
 Air-gapped AI service. In this deployment the primary backend is the local

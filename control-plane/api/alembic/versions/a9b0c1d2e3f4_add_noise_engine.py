@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """add background noise engine tables
 
 Revision ID: a9b0c1d2e3f4

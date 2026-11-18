@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:34:43Z
 """TrueNorth Range — Trouble tickets router.
 
 Jira-style tickets: students report range problems, staff track internal work, and

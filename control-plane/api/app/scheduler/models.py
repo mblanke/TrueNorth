@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Scheduler tables. New scheduler tables go here, never into the shared ``app.models``."""
 
 from __future__ import annotations

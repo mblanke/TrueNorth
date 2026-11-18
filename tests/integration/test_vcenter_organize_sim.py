@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T20:25:04Z
 """scripts/lab/vcenter_organize.py against govmomi's vcsim, through the real govc.
 
 Starts its own vcsim on a free local port (never a configured vCenter) and seeds the tree

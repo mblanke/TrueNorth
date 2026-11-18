@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """Storing feed entries and each source's status (SQLAlchemy Core on the generated mirror,
 tables.py: no raw SQL in the worker, ADR 0003). The API's bundle import writes the same
 rows through its ORM (``app/content_feeds/service.py``).

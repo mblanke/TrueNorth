@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:20:23Z
 """Pause and resume an exercise's scenario run.
 
 Until 2026-10-08 a paused exercise could not be resumed: there was no endpoint, and the

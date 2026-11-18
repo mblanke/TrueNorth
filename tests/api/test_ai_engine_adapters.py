@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:09:21Z
 """/ai-config talks to inference engines only through app.ai_backends (ADR 0001).
 
 Adapter unit tests (registry, URL/payload shape, probe failure) and the two

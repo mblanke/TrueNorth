@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:18Z
 """Tripwires for ADR 0001 — docs/adr/0001-adapter-registry.md.
 
 Each test pins one DECISION of the ADR (quoted in its docstring) so the day the code

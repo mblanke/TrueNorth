@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """Wire shapes of the content feeds (ADR 0014 decision 25). Kept out of ``app.schemas`` (ADR 0003).
 
 A **signed feed bundle** is one JSON document::

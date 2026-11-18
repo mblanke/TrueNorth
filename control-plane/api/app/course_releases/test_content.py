@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T02:08:48Z
 """Test content: releases whose ARC² gates a test host's runner accepted, not a person.
 
 On a test host (staging) the ARC² runner accepts the outline and preview gates itself

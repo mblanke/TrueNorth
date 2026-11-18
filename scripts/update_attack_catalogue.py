@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:26:01Z
 """Regenerate content/mitre/enterprise-attack-techniques.json from MITRE's STIX bundle.
 
 The catalogue is the ATT&CK Enterprise matrix reduced to what TrueNorth validates

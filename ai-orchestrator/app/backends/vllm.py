@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T00:59:40Z
 """TrueNorth Range AI Orchestrator — vLLM backend.
 
 vLLM exposes an OpenAI-compatible API, making it a drop-in for

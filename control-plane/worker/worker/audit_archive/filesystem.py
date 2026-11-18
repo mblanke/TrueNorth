@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """The filesystem audit archive: a directory (AUDIT_ARCHIVE_DIR) on the worker's volume.
 
 Each write goes to ``<name>.tmp``, is fsynced, renamed into place and the directory

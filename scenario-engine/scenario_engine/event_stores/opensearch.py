@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T03:01:44Z
 """OpenSearch (or Elasticsearch 7+) event store over plain HTTP."""
 
 from __future__ import annotations

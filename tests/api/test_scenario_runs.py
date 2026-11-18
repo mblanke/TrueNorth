@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:23:46Z
 """Scenario runs on the API: execution endpoints, recorded injects, the instructor inject's
 dispatch, and DELETE /scenarios/{id} while an exercise uses it."""
 

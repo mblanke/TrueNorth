@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:29:45Z
 """Lab-session tasks (app/lab_sessions drives them; it owns the session records).
 
 Kept out of tasks.py (ADR 0003). The API passes in everything a task needs; the only

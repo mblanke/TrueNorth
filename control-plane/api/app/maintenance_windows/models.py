@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:33:17Z
 """The maintenance window table (ADR 0013 §7, range certification S7).
 
 New tables go in their section, never into the shared ``app.models`` (ADR 0003).

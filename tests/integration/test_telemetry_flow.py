@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """Integration test: telemetry ingestion flow.
 
 Send telemetry events via the API, then read them back through the API's own search

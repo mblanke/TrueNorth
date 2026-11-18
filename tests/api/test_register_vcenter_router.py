@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-15T15:25:28Z
 """scripts/register_vcenter_inprocess.py against the real /hypervisors router.
 
 The contract tests (tests/contracts/test_installer_register_vcenter.py) use a fake API;

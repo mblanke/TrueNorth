@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T21:07:12Z
 """TrueNorth Range - Windows Server roles inside range VMs, over VMware guest operations.
 
 render.py gives a Windows Server node whose ``services`` name roles (worker/windows_roles.py)

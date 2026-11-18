@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:06:38Z
 """TrueNorth Range - after-action review generation (generate_aar).
 
 Moved out of tasks.py (ADR 0003). The Celery name is unchanged

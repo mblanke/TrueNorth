@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """add audit events table
 
 Revision ID: d4e5f6a1b2c3

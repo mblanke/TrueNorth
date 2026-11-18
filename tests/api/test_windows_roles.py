@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T21:07:12Z
 """Windows Server roles: ticking one sizes the VM, picks how it is installed, and is checked.
 
 The designer's role grid used to be decoration: the ids it wrote matched nothing the

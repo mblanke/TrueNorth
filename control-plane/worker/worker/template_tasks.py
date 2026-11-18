@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T13:46:51Z
 """Pruning of host-local golden-template copies (ADR 0012 decision 6, ADR 0013 §2).
 
 ``infra/vsphere/packer/build.sh replicate`` puts a copy of each build on every range host

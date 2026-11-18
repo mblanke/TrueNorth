@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:44:08Z
 """Fail if an installer task passes a module an argument the module does not take.
 
 ansible-lint and --syntax-check both accepted `dest:` on

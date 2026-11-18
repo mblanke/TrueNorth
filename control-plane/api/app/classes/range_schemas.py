@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T08:23:12Z
 """Class ranges, session modes and teams: request and response shapes (ADR 0014 §9-11; #282).
 
 Published in docs/interfaces/openapi.json (ADR 0002). Nothing here carries a credential: a

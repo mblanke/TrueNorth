@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:29:45Z
 """The lab sweep: advance every session that holds resources, once a minute.
 
 Readiness, baselines, resets and teardown complete in worker tasks; expiry happens with

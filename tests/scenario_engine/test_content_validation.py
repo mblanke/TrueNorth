@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """Tests for schema validation of content YAML files."""
 
 from pathlib import Path

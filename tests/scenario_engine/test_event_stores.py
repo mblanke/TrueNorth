@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T03:01:44Z
 """Detection scoring runs against any event store, not OpenSearch specifically (ADR 0001)."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-14T13:46:21Z
 """A host installed with tn_ai_enabled: false, end to end in process: control-plane API ->
 the real orchestrator app with what the installer renders (openai primary, OPENAI_BASE_URL and
 OPENAI_API_KEY empty) -> a clear 503 "AI is not configured", never a 502 and never mock text.

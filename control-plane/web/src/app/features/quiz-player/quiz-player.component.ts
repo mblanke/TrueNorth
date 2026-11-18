@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-06-11T16:29:26Z
 import { Component, OnDestroy, OnInit, computed, signal, inject } from '@angular/core';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';

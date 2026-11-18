@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:46:28Z
 """The LTI tool private key and the noise plan keys are sealed at rest.
 
 f4b5c6d7e8a9 sealed hypervisor and AI-engine credentials but left two signing secrets as

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T00:04:56Z
 """``{{ name }}`` placeholders in scenario content, filled from the scenario's ``variables:``.
 
 A mirror of scenario_engine/variables.py (tests/api/test_scenario_variables.py keeps

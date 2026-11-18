@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T20:01:42Z
 """The unit readiness page (ADR 0014 decision 7; issue #289).
 
 =======================================  ==================================================

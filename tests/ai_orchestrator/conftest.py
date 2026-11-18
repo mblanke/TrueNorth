@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T00:59:40Z
 """AI Orchestrator test configuration.
 
 Registers ai-orchestrator/app/backends/ under the ``_ai_orch.backends``

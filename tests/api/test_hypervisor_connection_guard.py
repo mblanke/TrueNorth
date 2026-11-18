@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T03:26:11Z
 """A hypervisor connection live ranges are on cannot be deleted, deactivated or repointed;
 a vSphere connection cannot exist without a password (review of #131, 2026-10-11).
 

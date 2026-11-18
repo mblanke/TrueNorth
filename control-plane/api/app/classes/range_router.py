@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T08:23:12Z
 """A class's ranges, its sessions' modes and teams (ADR 0014 §9-11, §19; issue #282).
 
 =====================================================  ========================================

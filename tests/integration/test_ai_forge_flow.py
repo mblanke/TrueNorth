@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:11:33Z
 """Integration test: Exercise Forge through the live AI orchestrator.
 
 control-plane API -> ai-orchestrator (AI_MODEL_BACKEND=mock) -> scenario YAML ->

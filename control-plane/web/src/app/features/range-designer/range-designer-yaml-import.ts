@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-10T01:19:07Z
 /**
  * Range Designer: import a range-template YAML file back onto the canvas.
  *

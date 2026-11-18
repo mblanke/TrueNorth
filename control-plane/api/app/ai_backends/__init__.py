@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:09:21Z
 """TrueNorth Range — AI inference engine adapter registry (ADR 0001).
 
 Usage:

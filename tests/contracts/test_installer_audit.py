@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """The installer gives the audit export its secret, its archive and nothing more (ADR 0011).
 
 * ``audit_signing_seed`` is a generated, persisted (and so escrowed) secret;

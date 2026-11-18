@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-03-04T22:24:49Z
 import { Routes } from '@angular/router';
 import {
   adminGuard,

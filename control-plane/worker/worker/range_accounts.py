@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T15:00:52Z
 """The accounts a range's machines get, handed to its provisioner for one build (ADR 0012 §12,
 ADR 0013 §3).
 

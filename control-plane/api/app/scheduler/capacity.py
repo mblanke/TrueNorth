@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """The scheduler's view of cluster capacity (ADR 0004 §4; ADR 0006).
 
 The scheduler only asks a :class:`CapacityProvider`; it never reads hypervisor tables or

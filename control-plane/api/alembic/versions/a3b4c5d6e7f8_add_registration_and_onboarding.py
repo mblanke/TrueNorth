@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-28T01:34:17Z
 """add trainee registration requests + user onboarding state
 
 Revision ID: a3b4c5d6e7f8

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T08:32:46Z
 """Range certification S4 (ADR 0013 §4, issue #242): isolation evidence per security zone.
 
 * result classes: a refused connect is ``connect_failed_only`` (never proof), a timeout is

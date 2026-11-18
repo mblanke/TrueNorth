@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:51Z
 """GET /range-credentials/template-issues: the templates ADR 0013 §3 no longer accepts.
 
 A typed-in account password is allowed only on a ``scenario: true`` account, never on a

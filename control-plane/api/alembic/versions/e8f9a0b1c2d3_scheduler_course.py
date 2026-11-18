@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """scheduler: a booking's class is a course (ADR 0004 slice 10)
 
 Revision ID: e8f9a0b1c2d3

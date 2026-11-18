@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T20:25:04Z
 """An in-memory vSphere Automation (CIS) tagging service, for tests.
 
 Serves the ``/api/cis/tagging`` (vSphere 7.0U2+) and legacy

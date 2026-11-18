@@ -1,4 +1,6 @@
-﻿import { Component, inject } from '@angular/core';
+﻿// Author: Marc-Andre Blanke
+// Created: 2026-03-04T22:24:49Z
+import { Component, inject } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 

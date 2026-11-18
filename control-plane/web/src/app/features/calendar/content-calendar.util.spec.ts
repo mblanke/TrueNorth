@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-23T03:04:55Z
 import {
   NO_THEME_COLOUR, clockText, dayKey, gridDays, heading, kindLabel, listText, shift, startOfWeek, themeOf,
 } from './content-calendar.util';

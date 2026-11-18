@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-09-27T03:48:16Z
 """Snapshot endpoints: tenant scoping and refusing work that would race the worker.
 
 DELETE /ranges/{id}/snapshots/{sid} carried a "tenant-safe: _tenant_range() above"

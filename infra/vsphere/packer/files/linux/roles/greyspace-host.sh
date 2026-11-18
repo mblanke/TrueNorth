@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:46:01Z
 # TrueNorth derived image: greyspace-host, the image a range's Greyspace gs-core VM is
 # cloned from (ADR 0007; worker/greyspace_host.py, GREYSPACE_HOST_TEMPLATE).
 #

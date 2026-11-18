@@ -1,4 +1,6 @@
 #!/bin/vbash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:06Z
 # TrueNorth Range - VyOS template build, step 1 of 2 (live ISO, as user vyos).
 # boot_command runs this from the build's second CD (TNVYOS) before tn-vyos-install.py.
 # Drops the template's NIC MAC pins (hw-id) from the live config and saves it, so the

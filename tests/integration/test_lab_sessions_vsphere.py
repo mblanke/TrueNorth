@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:29:45Z
 """Two students' labs on a real vCenter: build, reset, expire, clean up, reconcile.
 
 Skipped unless configured. Everything runs in this process: the API's lab-session service

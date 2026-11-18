@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """The content feeds' API (ADR 0014 decision 25, issue #287): the feeds status and the
 signed feed bundle import. Admins only; a platform administrator imports. A bundle is
 applied only when its signature verifies against the configured public key; an unsigned,

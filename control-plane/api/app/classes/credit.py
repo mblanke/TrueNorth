@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T14:53:38Z
 """Who an exercise's results belong to (#375).
 
 An exercise has no Student owner column. Its Students are what the class records:

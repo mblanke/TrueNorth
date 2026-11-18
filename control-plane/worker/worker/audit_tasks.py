@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """Audit log export and retention (ADR 0011). Beat runs both daily (celery_app.py).
 
 ``export_audit_days`` (00:45 UTC): every UTC day before today that has no export yet,

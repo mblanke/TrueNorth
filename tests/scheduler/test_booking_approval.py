@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T05:38:37Z
 """Classes 4: class booking approval (ADR 0014 §14-17; issue #281).
 
 The rules under test:

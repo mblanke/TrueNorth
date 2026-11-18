@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """Signed daily exports of audit_logs, and their verification (ADR 0011).
 
 Shared by the Celery tasks (audit_tasks.py) and the verifier (audit_verify.py). Core

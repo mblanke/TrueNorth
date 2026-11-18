@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T03:28:26Z
 """PUT/PATCH bodies must refuse an explicit null for a NOT NULL column.
 
 Update handlers apply ``model_dump(exclude_unset=True)`` with ``setattr``, so a field

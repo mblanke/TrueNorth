@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-10T11:52:51Z
 /**
  * The AU side of a cmi5 (Quartz) session, for TrueNorth's AU runtime.
  *

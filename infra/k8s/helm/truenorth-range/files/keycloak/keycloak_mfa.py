@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:26:37Z
 """Make a Keycloak realm require a second factor for privileged users. Idempotent.
 
 Used by the installer (install/roles/tn_keycloak/tasks/mfa.yml) and by CI

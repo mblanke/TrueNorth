@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T03:25:04Z
 """The worker's reads and writes of API-owned tables, as SQLAlchemy Core on ``tables.py``.
 
 Every statement here is built from the generated mirror of the API models

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:34:43Z
 """Wiki edits and restores are compare-and-set on the page's revision.
 
 Two people saving the same page at once must leave one consistent page and history.

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-24T12:18:10Z
 """Purpose-bound public-key enrollment for independent enclave result transfer."""
 
 from __future__ import annotations

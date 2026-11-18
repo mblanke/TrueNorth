@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T13:56:23Z
 """The nightly wrapper reports success for a successful backup on a new host.
 
 On a host's first nights only daily/ exists; counting weekly/ and monthly/ for the summary

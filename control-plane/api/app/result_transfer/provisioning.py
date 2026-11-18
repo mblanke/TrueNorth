@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-24T11:26:34Z
 """Signed Secret-to-Unclassified opaque subject credential."""
 
 from __future__ import annotations

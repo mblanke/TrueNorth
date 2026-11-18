@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:30:08Z
 """``POST /curricula/{id}/generate-course`` needs ``course:author``.
 
 It writes a Course and its modules (authoring) and spends AI-orchestrator time. Until

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T08:23:12Z
 """A class's ranges: built at the lead, kept all week, torn down at the end (ADR 0014 §9-10; #282).
 
 What a class owns (``ClassRange``):

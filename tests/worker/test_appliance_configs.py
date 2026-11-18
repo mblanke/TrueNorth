@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:19:07Z
 """VyOS and OPNsense edge routers get the range's rendered config (vsphere_api TODO(appliance)).
 
 Until now only pfSense was configured per range; VyOS and OPNsense booted with their

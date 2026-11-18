@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:37:12Z
 """Tenant isolation and permissions closed by the 2026-10-07 tenancy follow-up.
 
 - ``GET /exercises/{id}/objectives`` and ``POST .../objectives/{ref}/ack`` read and

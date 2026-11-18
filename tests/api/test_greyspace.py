@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:33:32Z
 """Greyspace (ADR 0007): manifest parsing, config generation, and the range API.
 
 The manifest and the generator are what the control plane and the runtime stack share

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:31:01Z
 """Greyspace corpus and stack tooling (ADR 0007). Standard library only.
 
     corpus.py t0 --out DIR                    build the T0 CI fixture (about 20 synthetic sites)

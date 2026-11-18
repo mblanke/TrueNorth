@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-10T01:23:41Z
 /**
  * The LTI session hand-off (control-plane/api/app/lti_identity/session.py).
  *

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T00:59:40Z
 """TrueNorth Range AI Orchestrator — Mock AI backend.
 
 Returns deterministic fake responses for:

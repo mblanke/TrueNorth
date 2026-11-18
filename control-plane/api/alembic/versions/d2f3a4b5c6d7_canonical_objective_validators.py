@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T21:11:59Z
 """canonical objective validator names
 
 Revision ID: d2f3a4b5c6d7

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """The audit export signing key (ADR 0011): Ed25519, derived from AUDIT_SIGNING_SEED.
 
 The seed is an installer-generated secret (``audit_signing_seed`` in tn_generated_secrets,

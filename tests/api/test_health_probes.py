@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:46:28Z
 """Health endpoints tell the truth (app/main.py, app/health.py).
 
 Before: /health answered 200 ``status: ok`` with the database down, and /health/ready

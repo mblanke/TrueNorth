@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T18:45:08Z
 """A self-enrolment is course content, never a seat in another class's booked exercise.
 
 Review of R0-B (B1): self-enrolment on a shared course made any Student a participant of

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T07:24:37Z
 """What vCenter holds for a range, read by managed-object id (ADR 0013 §5, range certification S5).
 
 Blocking pyVmomi reads, run through ``asyncio.to_thread`` by the provisioner

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T03:26:43Z
 """pyproject.toml's dependency list must match control-plane/api/requirements.txt.
 
 The API image installs requirements.txt; `pip install -e .` uses pyproject.toml. They

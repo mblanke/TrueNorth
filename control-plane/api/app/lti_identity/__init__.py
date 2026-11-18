@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:23:41Z
 """LTI identity after the launch: session hand-offs for launched Students, exercise
 learner links, and staff accounts linked to an LMS account by explicit confirmation.
 

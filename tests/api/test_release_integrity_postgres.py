@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T02:40:35Z
 """Releases and publications, held by PostgreSQL itself (R2: CR1-14, CR1-15, F10, F12 in
 docs/review/codereview1.md). Each test runs on a fresh database built by
 ``alembic upgrade head`` (tests/conftest.py ``postgres_engine``); skipped without

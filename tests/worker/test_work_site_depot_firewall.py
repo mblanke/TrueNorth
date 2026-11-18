@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T13:09:42Z
 """Range firewalls at the work site reach TN-DEPOT01 on 10.30.32.10, ports 8081/3142 only (#214).
 
 The work install's own values (install/inventory/group_vars/all/main.yml: tn_depot_url,

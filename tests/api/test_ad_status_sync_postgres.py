@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:31:53Z
 """The last-admin guard under concurrency, on PostgreSQL (#290 round 2, should-fix 3).
 
 SQLite serialises writers, so a race there proves nothing. Runs only with

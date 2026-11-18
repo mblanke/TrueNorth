@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T22:16:44Z
 """The installer can load the shipped content/ into an installed host, off by default.
 
 A production install starts with an empty catalogue by design; staging and demo hosts

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:56:43Z
 """The batch driver's release build (scripts/arc2_batch_inprocess.py build_release): the
 engine's own builder over a no-symlink snapshot of the run, read where the api container
 reads it (ARC2_RUNS_DIR), and the API's verifier accepts what it produces."""

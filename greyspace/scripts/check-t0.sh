@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:31:01Z
 # Build the T0 corpus, render the Greyspace stack for it, start it under its own compose
 # project, and check the simulated internet end to end from the probe (a stand-in for a
 # range's edge router):

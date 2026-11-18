@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T08:49:12Z
 """What a class's ranges hold in the cluster (ADR 0014 §10; #282 review item 1).
 
 A class's ranges stay up from the first session that needs them to the class's end

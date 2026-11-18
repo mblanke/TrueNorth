@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T12:13:13Z
 """7c4d2e9a1b60: when a roll-call Student was really notified; no "ready" status (#319).
 
 Upgrade from its parent onto a database that already holds a roll call: ``class_roll_call``

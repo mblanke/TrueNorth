@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:20:13Z
 """Threat intelligence feeds: CRUD, pulling a feed into indicators, and the ways a pull fails.
 
 Before this, a feed could be recorded but nothing ever fetched it or created an indicator.

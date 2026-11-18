@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T05:38:37Z
 """Approvals competing for the same capacity, on PostgreSQL (ADR 0014 §15-16, issue #281).
 
 SQLite serialises writers, so a race there proves nothing. These run only with

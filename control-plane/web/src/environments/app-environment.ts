@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-08T12:25:02Z
 /**
  * Shape shared by environment.ts (development, `ng serve`, unit tests) and
  * environment.prod.ts (every production build: angular.json's `production`

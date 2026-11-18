@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:34:43Z
 """Wiki: spaces, page tree, revisions, optimistic concurrency, visibility, search.
 
 The negatives matter most: another tenant's page, a staff-only space, or an

@@ -1,4 +1,6 @@
-﻿import { Component, OnInit, signal, inject } from '@angular/core';
+﻿// Author: Marc-Andre Blanke
+// Created: 2026-03-04T22:24:49Z
+import { Component, OnInit, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatTableModule } from '@angular/material/table';

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:35Z
 # Variant script (ubuntu-webstack): wire nginx to PHP-FPM and enable the stack.
 # Runs as root after the packages are installed. The web app and its database are
 # deploy-time; this only leaves a working, empty LEMP server.

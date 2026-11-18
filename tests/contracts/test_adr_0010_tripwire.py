@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:19Z
 """ADR 0010 tripwire: red the day the code drifts from docs/adr/0010-delete-policy.md.
 
 One test per DECISION the ADR states (its "Decision" section, not the context or the

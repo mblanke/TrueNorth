@@ -1,4 +1,6 @@
-﻿import { Component, OnInit, computed, inject, signal } from '@angular/core';
+﻿// Author: Marc-Andre Blanke
+// Created: 2026-03-04T22:24:49Z
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';

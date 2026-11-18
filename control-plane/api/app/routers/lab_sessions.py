@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:29:45Z
 """Lab sessions: a student's own small range for a range activity (app/lab_sessions).
 
 Two ways in, same operations:

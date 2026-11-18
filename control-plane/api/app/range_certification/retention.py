@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:01:33Z
 """Retention of archived certification records (owner decision 2026-10-21, issue #244).
 
 A range's **newest** record is its current one and is never purged, whatever its age and

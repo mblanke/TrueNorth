@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:38:08Z
 """The only way out of a confined Course Studio job: an allow-listing HTTPS proxy.
 
 A job runs request text from any tenant, and its environment holds the runner's model

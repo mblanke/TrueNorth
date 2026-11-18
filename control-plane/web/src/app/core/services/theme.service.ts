@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-06-11T01:47:57Z
 import { Injectable, signal, Signal } from '@angular/core';
 
 export interface ThemeOption {

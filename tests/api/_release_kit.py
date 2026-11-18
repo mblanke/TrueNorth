@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:49:43Z
 """Build ARC² release tarballs for API tests with the real tooling (tools/arc2/release.py), so
 the API's verifier is tested against the format the tool actually writes.
 

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T02:24:15Z
 """Golden-image builds through the API (ADR 0013 §2): the kit registers, an admin promotes.
 
 The registry serves every tenant, so recording and promoting builds is the PLATFORM

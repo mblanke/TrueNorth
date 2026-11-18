@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T00:59:40Z
 """TrueNorth Range — Abstract LMS/LRS backend interface.
 
 Any compliant backend must implement this ABC.  The transport layer is

@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-07T14:35:36Z
 import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy, Component, DestroyRef, ElementRef, HostListener, OnInit, inject, signal,

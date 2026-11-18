@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T00:59:40Z
 """TrueNorth Range AI Orchestrator — OpenAI backend.
 
 Supports OpenAI and any OpenAI-compatible endpoint (Azure OpenAI,

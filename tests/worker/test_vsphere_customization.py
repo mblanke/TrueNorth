@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T06:21:31Z
 """#255: every Windows range VM's guest customization (Sysprep) outcome is checked after
 power-on, against the vSphere fakes of test_vsphere_provision.
 

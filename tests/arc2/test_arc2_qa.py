@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:26:18Z
 """QA depth tests: the repo's content rules applied to a run (course YAML, catalogue row, engine
 scenario, timeline, defang scan), plus parity with the repo's own course files."""
 

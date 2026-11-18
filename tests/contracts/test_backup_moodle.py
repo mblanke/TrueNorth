@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T22:17:33Z
 """Backups hold the installer's Moodle when it runs one (tn_moodle_enabled).
 
 Moodle's database is `moodle` in the platform's PostgreSQL, so backup.sh's dump of every

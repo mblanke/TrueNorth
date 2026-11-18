@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """Background noise engine: the dial, the planner, and both sides of the router.
 
 What matters most here, in order:

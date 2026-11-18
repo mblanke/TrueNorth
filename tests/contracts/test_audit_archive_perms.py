@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-14T00:57:09Z
 """backup.sh / restore.sh and an audit archive they cannot read (rc6 staging upgrade).
 
 On staging the archive is the worker's, /srv/truenorth/audit-archive 10001:10001 0750

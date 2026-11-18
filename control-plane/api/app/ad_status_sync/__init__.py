@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:23:31Z
 """Nightly AD status sync and the 90-day rule for local accounts (ADR 0014 decision 6; #290).
 
 Importing this package registers its tables on ``Base.metadata``. ``directory`` reads the

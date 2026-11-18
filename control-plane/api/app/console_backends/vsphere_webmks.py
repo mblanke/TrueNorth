@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:29:45Z
 """VMware WebMKS console: a one-time ticket for one VM, from vCenter through pyVmomi.
 
 ``VirtualMachine.AcquireTicket("webmks")`` returns the ESXi host, port and a ticket valid

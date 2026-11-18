@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-21T13:24:27Z
 """Embedding-width resolution for curriculum RAG indexing.
 
 The width of an embedding vector is a property of the served model, not a

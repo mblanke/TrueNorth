@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:43:56Z
 """Write OpenSearch's internal_users.yml from passwords given on stdin (never argv).
 
 stdin: {"path": "<file>", "uid": 1000, "gid": 1000,

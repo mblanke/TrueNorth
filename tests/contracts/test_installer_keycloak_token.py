@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T14:08:52Z
 """The demo-account steps take a fresh Keycloak admin token.
 
 Keycloak's admin-cli tokens live about 60 s; the demo accounts (create, set passwords, record

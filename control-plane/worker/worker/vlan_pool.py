@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:59Z
 """The physical VLAN pool for isolated ranges (VSPHERE_VLAN_POOL).
 
 A template's VLAN ids are logical labels: two ranges built from one template both say

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:52:40Z
 """TrueNorth lab - the two vCenter changes govc has no flag for.
 
   vim_helper.py pg-security --name dPG-TN-SVC   # promiscuous / forged / MAC changes = reject

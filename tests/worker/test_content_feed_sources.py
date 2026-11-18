@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """The content feed sources (worker/feed_backends; ADR 0014 decision 25, issue #287).
 
 Each source reads recorded payloads (tests/worker/content_feeds_fixtures) through a fake

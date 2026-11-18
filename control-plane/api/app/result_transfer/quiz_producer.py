@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-24T12:16:06Z
 """Build a result-transfer package from one completed pseudonymous quiz attempt."""
 
 from __future__ import annotations

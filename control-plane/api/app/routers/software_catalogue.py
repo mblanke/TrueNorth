@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:52:40Z
 """Read-only view of the deploy-time software catalogue, for the Range Designer.
 
 GET /software-catalogue   any authenticated user

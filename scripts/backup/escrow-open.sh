@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:42:59Z
 # =============================================================================
 # TrueNorth Range — open the secrets escrow of a backup.sh backup
 # =============================================================================

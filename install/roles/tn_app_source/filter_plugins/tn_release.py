@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T15:29:08Z
 """Order TrueNorth release tags: ``vX.Y.Z`` and ``vX.Y.Z-rcN``.
 
 Ansible's ``version(..., version_type='semver')`` follows SemVer 2.0 to the letter: a

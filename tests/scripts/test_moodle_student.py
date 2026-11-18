@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T19:46:09Z
 """scripts/_moodle_student.py, the acceptance suite's browserless Moodle Student, against a
 mock Moodle (httpx.MockTransport) that serves Moodle 5.2's markup for the pages it uses.
 

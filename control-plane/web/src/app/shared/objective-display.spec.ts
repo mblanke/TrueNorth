@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-20T02:44:52Z
 import { evidenceText, humanizeRef, objectiveKind, objectiveName } from './objective-display';
 
 describe('objective display (issue #201)', () => {

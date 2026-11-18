@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T21:07:12Z
 """Windows Server roles inside range VMs (worker/provisioners/vsphere_roles.py).
 
 Guest operations are faked at the GuestSession level: what is held here is the sequencing

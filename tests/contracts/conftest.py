@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T00:57:34Z
 """Contract-suite fixtures.
 
 * Makes ``ai-orchestrator/app/backends`` importable as ``_ai_orch.backends`` by running

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """The NVD CVE API 2.0: CVEs published for the products in the product map.
 
 ``GET https://services.nvd.nist.gov/rest/json/cves/2.0`` with ``virtualMatchString`` (the

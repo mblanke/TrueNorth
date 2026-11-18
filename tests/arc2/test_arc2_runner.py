@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:32:49Z
 """The Course Studio runner: queue → headless /arc2 → job record.
 
 A fake ``claude`` script stands in for Claude Code, so these tests spend nothing and

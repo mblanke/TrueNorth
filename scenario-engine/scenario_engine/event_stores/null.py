@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T03:01:44Z
 """Offline event store: fixed events, matched only by ``field:value`` terms.
 
 For tests and air-gapped dry runs. It is not a Lucene engine: a query matches an event

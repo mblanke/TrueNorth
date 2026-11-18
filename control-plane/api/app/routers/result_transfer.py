@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-24T12:20:02Z
 """Platform-operator API for result-transfer public-key trust enrollment."""
 
 from __future__ import annotations

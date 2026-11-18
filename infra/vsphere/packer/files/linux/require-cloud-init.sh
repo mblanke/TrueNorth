@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:27Z
 # TrueNorth Range - refuse a Linux template the worker cannot configure. Runs just before
 # cleanup.sh on every Linux build (bases and the clones derived from them); any failure
 # fails the build, so no template is made. What it requires is what a clone needs on first

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T05:28:59Z
 """Classes 2: the acknowledgement form, the rules of use everyone signs (ADR 0014 §3; #279).
 
 The rules under test:

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:35Z
 # TrueNorth derived image: certificate authority (step-ca) on ubuntu-lts.
 set -euo pipefail
 echo "=== ca-host role"

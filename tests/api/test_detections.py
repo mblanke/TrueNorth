@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T00:10:51Z
 """Team exercises: Student detections are evidence, instructors judge (ADR 0005, ADR 0020).
 
 There is no answer key. A detection is run inside the exercise window (the server's ingest

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """Response shapes of the noise API (``app/routers/noise.py``).
 
 They describe exactly what the handlers already returned as plain dicts, so declaring

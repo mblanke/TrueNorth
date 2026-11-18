@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:02:59Z
 """Publish an accepted release to a Moodle: stage hidden, verify, then activate once.
 
     requested   the job exists (one per release and platform)

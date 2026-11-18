@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T02:44:10Z
 """Prometheus alert rules: valid, unit-tested, documented, and fed by something real.
 
 * ``promtool check rules`` on alerts.yml and ``promtool test rules`` on alerts.test.yml

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T00:59:08Z
 """The content port's trusted keys reach the api, and are empty (nothing imported) on a
 fresh install (docs/content-port.md)."""
 

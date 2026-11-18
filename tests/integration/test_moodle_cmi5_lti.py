@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T13:16:52Z
 """A real Moodle launches a TrueNorth cmi5 AU over LTI 1.3 and gets the grade (AGS).
 
 Runs against the disposable Moodle in infra/platform/docker/compose.moodle-test.yml, with

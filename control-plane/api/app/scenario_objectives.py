@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:31:14Z
 """A scenario's objectives, materialised as Objective rows on the exercise that runs it.
 
 The exercise's Objective rows are what it is scored on: an instructor judges each one

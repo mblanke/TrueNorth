@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-09-27T03:17:10Z
 """DB_AUTO_CREATE and SEED_DEV_DATA must do what the installer says they do.
 
 compose.prod.yml, the installer and app/bootstrap_admin.py all rely on these two

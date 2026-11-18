@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T21:24:27Z
 """API modules must import when laid out as in the Docker image.
 
 The image copies control-plane/api/app to /app/app, so a module that looks "up" the

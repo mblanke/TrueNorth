@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:52:40Z
 """Sum vCPU / RAM / disk per range template and check them against the vSphere lab.
 
 Reads every ``content/ranges/*/template.yaml`` (or the paths given) and prints one row per

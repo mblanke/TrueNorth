@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:52:40Z
 """Read-only vSphere discovery for a TrueNorth deployment.
 
 Inventories a vCenter (and the ESXi hosts behind it) and writes:

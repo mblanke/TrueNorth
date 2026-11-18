@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T00:59:40Z
 """TrueNorth Range — Generic OIDC auth backend.
 
 Validates RS256 / ES256 JWTs from any standards-compliant identity

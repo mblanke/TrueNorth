@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T03:04:55Z
 """The content clock's periodic sync (ADR 0014 decisions 22-24, issue #286).
 
 Each run, under a Redis lock (redis_lock.py) so two never overlap:

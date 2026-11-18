@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:46:01Z
 """gs-core on vSphere (ADR 0007, slice 0): planning, the configure stage, breadcrumbs.
 
 The VM build itself is vsphere_api's (tests/integration/test_vsphere_sim.py builds gs-core

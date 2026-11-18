@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T00:59:08Z
 """Builders for the content port's tests: content, and each kind of evidence "proven" reads
 (a certification record, a closed class, a completed exercise, a content clock row)."""
 

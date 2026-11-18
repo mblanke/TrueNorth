@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """The noise dial: one number, 0-100, translated into behaviour.
 
 Pure functions only — no DB, no clock — so the mapping is testable and the same level

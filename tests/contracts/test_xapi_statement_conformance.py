@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T00:57:34Z
 """xAPI 1.0.3 conformance for every statement shape ``app.xapi`` emits.
 
 The schema at ``docs/interfaces/xapi-statement.schema.json`` is a structural

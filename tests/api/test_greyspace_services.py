@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:46:01Z
 """Greyspace slices 4-8 in the stack generator: mail, NTP, HTTPS/CA, NPC traffic, the host
 render, bin/gs breadcrumbs and corpus ingest (ADR 0007). Pure Python; the CI ``greyspace``
 job runs the same stack for real (greyspace/scripts/check-t0.sh)."""

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """iCalendar (RFC 5545) output for bookings (ADR 0004 §6).
 
 Written by hand rather than with a library: the subset needed (one VCALENDAR of

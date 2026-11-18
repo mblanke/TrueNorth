@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T12:13:13Z
 """First-run onboarding shapes (moved out of ``schemas.py``, ADR 0003; published in
 docs/interfaces/openapi.json)."""
 

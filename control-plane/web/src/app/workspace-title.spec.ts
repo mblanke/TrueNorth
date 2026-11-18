@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-20T02:44:52Z
 import { workspaceTitleFor } from './workspace-title';
 
 describe('workspaceTitleFor (the shell breadcrumb, #201)', () => {

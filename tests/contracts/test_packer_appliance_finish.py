@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:06Z
 """The pfSense and VyOS appliance builds finish their template, then power themselves off.
 
 With ``communicator = "none"`` the vsphere-iso builder neither runs ``shutdown_command`` nor

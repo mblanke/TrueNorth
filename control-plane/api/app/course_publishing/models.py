@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:02:59Z
 """Course publications: an accepted release delivered to one Moodle.
 
 One row per (release, platform): asking again returns the same row, and a retry resumes

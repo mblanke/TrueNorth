@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-14T03:37:48Z
 """Installer contracts for the staging acceptance fixes (v1.2.0-rc7 on tn-staging).
 
 * AI: the orchestrator's per-task models (AI_HEAVY/GENERAL/CODE_MODEL) are rendered from

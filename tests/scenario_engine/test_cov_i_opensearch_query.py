@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """COV-I: scenario_engine/validators/opensearch_query.py — every branch of
 ``OpenSearchQueryValidator.validate`` against the shipped offline store.
 

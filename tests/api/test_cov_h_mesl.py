@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """MESL ingest (app/mesl.py): the spreadsheet an exercise planner uploads.
 
 ``parse_mesl`` reads a Master Event Sequence List CSV into serial dicts, tolerating the

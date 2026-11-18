@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T23:33:50Z
 """POST /ranges/{id}/stop and /start power the range's VMs (CR1-05 in
 docs/review/codereview1.md).
 

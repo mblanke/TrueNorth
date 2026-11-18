@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T00:57:34Z
 """Hypervisor connection backend interface (docs/adr/0001-adapter-registry.md).
 
 The API side of hypervisor support: checking a stored connection and discovering its

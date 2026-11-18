@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:23:41Z
 """Results pulled back from Moodle: one cursor per Moodle, one ledger row per fact.
 
 ``moodle_result_cursors`` is where TrueNorth is in a Moodle's change log (the plugin's

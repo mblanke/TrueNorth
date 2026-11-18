@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-28T01:34:17Z
 """Post-approval first-run flow for a newly created trainee.
 
 Only reachable once someone has a ``users`` row, so this depends on

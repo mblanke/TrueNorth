@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Cluster capacity: what the hosts can carry and what is running on them
 (docs/adr/0006-capacity-service.md).
 

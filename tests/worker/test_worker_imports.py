@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T02:37:59Z
 """Every worker task module imports on its own, in a fresh interpreter.
 
 ``import worker.tasks`` used to fail with a circular import (tasks -> celery_app ->

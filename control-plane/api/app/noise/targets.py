@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """What an agent may be pointed at.
 
 Agents are dual-homed (training NIC + management NIC), so a target is a way to make them

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:52:40Z
 """GET /software-catalogue feeds the Range Designer's services autocomplete.
 
 It must report what the worker would install from (the real catalogue file), require

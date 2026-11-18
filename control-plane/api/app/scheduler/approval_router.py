@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T05:38:37Z
 """Approving class sessions over HTTP (ADR 0014 §14-16; issue #281). The rules are in
 :mod:`.approval`.
 

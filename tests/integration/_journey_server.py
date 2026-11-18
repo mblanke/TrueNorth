@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T19:46:09Z
 """TrueNorth as a browser meets it, for tests/integration/test_moodle_student_journey.py.
 
 One ASGI app on one origin, laid out as the web container's nginx lays it out

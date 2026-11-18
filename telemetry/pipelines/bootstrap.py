@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """Bootstrap OpenSearch with index templates, ILM policies, ingest pipelines, and dashboards.
 
 Idempotent — safe to run multiple times.  Checks existence before creating.

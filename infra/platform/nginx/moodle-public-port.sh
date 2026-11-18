@@ -1,4 +1,6 @@
 #!/bin/sh
+# Author: Marc-Andre Blanke
+# Created: 2026-09-27T17:22:36Z
 set -eu
 # Moodle compares PHP's SERVER_PORT with SITE_URL. The test harness publishes
 # 8083:8080, so use the public port for direct requests without proxy headers.

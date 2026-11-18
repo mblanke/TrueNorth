@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T00:57:34Z
 """Adapter contract suites — ADR 0001 rule 4.
 
 One suite per adapter seam. Implementations are discovered from each registry dict at

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T21:03:43Z
 """Did this sign-in use a second factor, and does this user need one? One answer for every caller.
 
 Keycloak reports how a user signed in two ways:

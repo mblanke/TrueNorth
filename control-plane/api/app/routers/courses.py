@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range - Courses, Enrollments & Learning Paths router.
 
 Provides CRUD for courses (with ordered modules), user enrollments,

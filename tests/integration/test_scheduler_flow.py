@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Integration test: a booking builds its own range and exercise (ADR 0004 slice 11).
 
 Book a session from a template and a scenario with no range linked -> run the scheduler

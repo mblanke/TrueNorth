@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T00:59:08Z
 """Port proven content between TrueNorth sites from the command line (docs/content-port.md).
 
 The air-gapped way to do what the Content view's Port content panel does. It drives the

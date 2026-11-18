@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T08:23:12Z
 """class session ranges: individual or collective sessions, class ranges, session teams
 
 Revision ID: 57e2c4b65b98

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """cmi5 against the real stack: TrueNorth's LMS side and the xAPI it writes to a real lrsql.
 
 The cmi5 lane (CI job `cmi5`, ``ITEST_LRS=1 scripts/itest.sh``) runs these against the

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:26:37Z
 """Drive a real Keycloak's browser sign-in to prove the MFA configuration works.
 
 Run by scripts/check_keycloak_mfa.sh against the Keycloak image compose.prod.yml pins,

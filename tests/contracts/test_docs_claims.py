@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T14:37:29Z
 """Docs that promise what the code does not have (R0-B, audit 2).
 
 * docs/user-guide.md and the role guides (docs/guides/) may name a UI feature only if the

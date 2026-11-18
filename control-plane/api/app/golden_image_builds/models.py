@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T02:24:15Z
 """Golden-image builds and the promoted one (ADR 0013 §2).
 
 One row per build of a golden image that the template kit registered: the Packer build

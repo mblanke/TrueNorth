@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-19T19:51:30Z
 """Guards on how authored content joins the developmental path.
 
 `CourseModule.po_id` is the only link `qsp_progress` walks to place a learner on the

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:06:38Z
 """TrueNorth Range - the one seam between a scenario run and scenario injection.
 
 ``dispatch_inject(exercise_id, action, params)`` delivers one inject to an exercise's

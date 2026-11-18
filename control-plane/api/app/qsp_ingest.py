@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-07-19T14:26:35Z
 """CFITES / QSP crosswalk ingestion.
 
 Parses ``crosswalk.csv`` (the derived PO/EO contract) into the structured

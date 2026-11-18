@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T03:25:04Z
 """The worker's SQL, executed against the API's own schema.
 
 Every other worker test mocks ``_db_session``, so until MOSA slice 6b none of the

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """Abstract base class for notification channels."""
 
 from __future__ import annotations

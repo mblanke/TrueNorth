@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T08:23:12Z
 """Classes 5: per-session ranges, kept all week, balanced teams (ADR 0014 §9-11, §17, §19; #282).
 
 The rules under test:

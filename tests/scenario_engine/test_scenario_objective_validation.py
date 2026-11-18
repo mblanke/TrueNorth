@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T19:38:08Z
 """Scenario validation refuses objectives that cannot be judged honestly (R0-B).
 
 ``POST /scenarios/validate`` (app/engine_bridge.validate_yaml) runs the engine's JSON

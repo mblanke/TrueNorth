@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:46:18Z
 """The ai-orchestrator is not an open service.
 
 Before: all fifteen routes answered anyone who could reach port 6000 (nginx even published

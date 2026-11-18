@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T12:08:42Z
 """Review of #322 (f5b0d5e1): a tenant admin must not be able to become the platform admin.
 
 B1  The installer used to re-pick the platform tenant by SLUG on every run, and a tenant's

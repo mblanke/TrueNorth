@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-07T14:35:36Z
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 

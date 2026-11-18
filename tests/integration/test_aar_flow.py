@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:40:50Z
 """Integration test: an exercise run end to end, then its after-action report.
 
 template -> range -> scenario -> exercise -> run (mock provisioner + mock scenario runner)

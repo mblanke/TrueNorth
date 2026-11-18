@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:17:28Z
 # TrueNorth Moodle farm: one Moodle per tenant, wired to TrueNorth.
 #
 #   scripts/moodle-farm.sh add <node> --port <public port> [--site-url <url>] [--no-build]

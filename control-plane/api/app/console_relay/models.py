@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-03T15:59:22Z
 """The console grant table (#366)."""
 
 from __future__ import annotations

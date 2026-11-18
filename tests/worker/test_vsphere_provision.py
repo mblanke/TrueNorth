@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:59Z
 """vSphere range builds, end to end against fakes.
 
 The vsphere_api provisioner had never built a VM: it looked libraries up with a GET

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:52:40Z
 # TrueNorth lab - connect or disconnect TN-DEPOT01's uplink NIC (its only internet path).
 #
 #   scripts/lab/depot-uplink.sh status

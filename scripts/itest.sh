@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T13:37:26Z
 # Integration tests against a real stack: the same sequence locally (`make itest`) and in
 # CI (`integration` and `e2e` jobs in .github/workflows/ci.yml).
 #

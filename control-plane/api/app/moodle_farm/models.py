@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T13:52:50Z
 """Which Moodle platforms are TrueNorth's own farm nodes (app/moodle_farm/service.py).
 
 Kept out of ``app/models.py`` (ADR 0003: per-section modules).

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:23:41Z
 """The LTI session hand-off (gap #1 in docs/moodle-integration.md).
 
 A Student who arrives from an LMS with no TrueNorth sign-in of their own (the launch

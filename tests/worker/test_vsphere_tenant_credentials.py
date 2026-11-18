@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:19:06Z
 """vsphere_api logs in to the range's own tenant's vCenter, for every operation (H6).
 
 v1.0.0 known limitation H6: the worker resolved the range's tenant's HypervisorConnection

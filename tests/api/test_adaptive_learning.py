@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-04-17T20:21:24Z
 """Tests for Adaptive Learning API endpoints."""
 
 import json

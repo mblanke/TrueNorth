@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Companion oracles for the audit #443 results-area findings (card #468, item 2).
 
 One companion per strict-xfail oracle in ``test_audit2_results_443.py``: a second input

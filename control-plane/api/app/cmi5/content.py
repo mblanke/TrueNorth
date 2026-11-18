@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """What an AU shows and how its quiz is marked, read from the release's learner part.
 
 The ARC² package puts each AU in its own folder (``07-bundle/cmi5/mod_NNN/``) with a

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T03:26:11Z
 """The port a hypervisor connection gets when none is given, by family.
 
 Until 2026-10-11 every connection defaulted to 8006 (Proxmox's API port), so a vSphere

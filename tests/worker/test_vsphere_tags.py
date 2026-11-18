@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T20:25:04Z
 """vsphere_tags: range labels, the tags of a range VM, and the CIS tagging client in both
 REST dialects, against an in-memory tagging service that enforces single cardinality."""
 

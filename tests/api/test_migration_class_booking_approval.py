@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T05:38:37Z
 """5e6d8a033133 adds class booking approval, and only that (ADR 0014 §14-17, issue #281).
 
 Upgrade from its parent onto a database that already holds a class with a roll call and a

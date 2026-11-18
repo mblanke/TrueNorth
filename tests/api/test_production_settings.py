@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:46:28Z
 """TN_ENV=production fails fast on unsafe settings (app/settings.py).
 
 Before: production started with AUTH_DISABLED honoured, a random per-process CSRF key

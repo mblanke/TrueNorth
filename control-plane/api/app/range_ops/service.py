@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T01:32:44Z
 """Accept, send and reconcile range operations: provision, destroy, stop, start
 (CR1-06 in docs/review/codereview1.md; re-landed from #17 and #18).
 

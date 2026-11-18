@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T20:37:19Z
 """Who may write to and read a range's telemetry index.
 
 `POST /telemetry/{range_id}/events` used to need only a login: any user could write

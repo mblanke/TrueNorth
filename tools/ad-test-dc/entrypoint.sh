@@ -1,4 +1,6 @@
 #!/bin/bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:00:31Z
 # TrueNorth AD test DC entrypoint.
 #
 #   entrypoint.sh            provision (first start of a new volume), then run samba

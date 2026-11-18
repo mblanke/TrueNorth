@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T18:32:44Z
 """TrueNorth Range - is a built vSphere VM's guest network really up?
 
 Observed 2026-10-20: a range was recorded ``ready`` showing all three planned addresses

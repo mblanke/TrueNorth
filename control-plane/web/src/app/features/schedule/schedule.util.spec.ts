@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-07T14:21:06Z
 import type { Booking } from '@core/services/scheduler-api.service';
 import type { MaintenanceWindow } from '@core/services/maintenance-windows-api.service';
 import {

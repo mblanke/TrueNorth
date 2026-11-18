@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T05:53:29Z
 """Break-glass for the rules of use (ADR 0014 §3): sign for a stuck user, or republish the
 shipped text over a bad version. Run inside the api image on the host, like
 scripts/audit_note_inprocess.py (docs/runbooks/break-glass.md, "Rules of use"):

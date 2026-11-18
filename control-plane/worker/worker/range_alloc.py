@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:22:03Z
 """Reserve a build's shared values (VLANs, uplink addresses) before the provisioner runs.
 
 The provisioner says what it needs (``BaseProvisioner.allocation_needs``: vSphere asks for

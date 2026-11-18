@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:58:07Z
 """`alembic heads` and `history` work the way the installer runs them in the api image.
 
 The installer's pre-migration check runs `alembic -c alembic.ini heads` from /app with no

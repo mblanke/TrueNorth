@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:02:59Z
 """add course publications
 
 Revision ID: b0d1e2f3a4b5

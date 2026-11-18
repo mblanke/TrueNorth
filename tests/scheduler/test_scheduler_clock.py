@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """The scheduler clock (ADR 0004 slice 4).
 
 Provision at the lead, activate at the start, complete and tear down after the grace,

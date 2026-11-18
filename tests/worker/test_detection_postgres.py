@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T00:25:20Z
 """Detection credit and the exercise lifecycle on Postgres built by Alembic (review finding 7).
 
 The other real-DB tests build the schema with ``Base.metadata.create_all`` on SQLite.

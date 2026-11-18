@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:49:43Z
 """Course releases: the immutable, accepted versions of a course that the platform delivers.
 
 Kept out of ``app/models.py`` (ADR 0003: per-section modules). A release is created as a

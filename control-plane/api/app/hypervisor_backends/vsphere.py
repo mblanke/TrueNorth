@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T00:57:34Z
 """vSphere connection backend — vCenter Automation REST API (the range platform).
 
 Endpoint: ``https://{host}[:{port}]`` from the connection row; the port is left out when

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:34:43Z
 """Write in-app notifications.
 
 ``notify()`` adds one ``UserNotification`` row per recipient to the caller's session, so a

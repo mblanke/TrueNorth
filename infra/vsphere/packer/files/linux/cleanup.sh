@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:35Z
 # TrueNorth Range — Linux template cleanup (stage T). Runs as the last provisioner on
 # every Linux build so clones get a fresh identity under vSphere/cloud-init.
 set -euo pipefail

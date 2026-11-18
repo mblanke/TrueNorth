@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:01:33Z
 """Sign and verify a certification export (Ed25519 over canonical JSON).
 
 The audit-log exports (ADR 0011) are signed with ``AUDIT_SIGNING_SEED``, which by that

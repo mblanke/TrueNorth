@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T18:09:45Z
 """Mark a golden image ``built`` with its template name, from inside the api image (ADR 0012).
 
 The last step of ADR 0012 decision 9: after a template is built, replicated and a test

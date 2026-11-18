@@ -1,4 +1,6 @@
 #!/bin/sh
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:25:02Z
 # Writes the SPA's runtime config from the container environment, so one web image
 # serves every deployment. Run by the nginx image's /docker-entrypoint.sh before nginx
 # starts (any *.sh in /docker-entrypoint.d/), as the unprivileged `nginx` user.

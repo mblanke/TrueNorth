@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-04-17T20:21:24Z
 import {
   Component, ElementRef, ViewChild, AfterViewInit, OnDestroy, Input, effect, inject, signal,
 } from '@angular/core';

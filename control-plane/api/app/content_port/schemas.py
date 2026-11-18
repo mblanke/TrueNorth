@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T00:59:08Z
 """Wire shapes of the content port: the signed bundle and the API (kept out of
 ``app.schemas``, ADR 0003).
 

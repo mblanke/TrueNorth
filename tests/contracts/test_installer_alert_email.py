@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T19:13:38Z
 """Alert delivery by email (install/README.md "Alerting"; docs/operations.md "Alert delivery").
 
 Off (the default), Alertmanager keeps the shipped null receiver and the installer says, in

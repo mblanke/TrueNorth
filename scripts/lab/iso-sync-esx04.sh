@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T18:09:45Z
 # TrueNorth work site - copy the build ISOs from [esx01-local] ISO/ to [esx04-local] ISO/.
 #
 #   scripts/lab/iso-sync-esx04.sh                  # plan: what is missing or differs

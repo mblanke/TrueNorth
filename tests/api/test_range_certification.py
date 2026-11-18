@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:01:33Z
 """Range Certification Record (ADR 0013 §6, issue #244; slice S6 skeleton).
 
 * every provision opens one record (its deployment), with the plan hash and who asked;

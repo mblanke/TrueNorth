@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T02:43:58Z
 """Classes and their roll call: validation, the roll-call rules and its emails (ADR 0014).
 
 Adding an email to a roll call (``add_to_roll_call``):

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:26:37Z
 """The MFA break-glass playbook resets one user's second factor, and nothing else.
 
 playbooks/breakglass-reset-mfa.yml -> roles/tn_keycloak/tasks/breakglass.yml. The same

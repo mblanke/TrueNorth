@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:33:17Z
 """Maintenance windows, re-checked at a range task's entry (ADR 0013 §7, range certification S7).
 
 The API refuses a provision, a restore (a reset) or a person's normal destroy while a

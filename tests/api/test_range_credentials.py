@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T15:00:52Z
 """Range credentials (ADR 0012 §12-14 as amended by ADR 0013 §3): declared, sealed,
 role-filtered, revealed one at a time with an audit row, documented without secrets.
 

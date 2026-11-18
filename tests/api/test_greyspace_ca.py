@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T03:02:57Z
 """The Greyspace root CA's key stays in the ca service (review of #133, 2026-10-11).
 
 Before: make-certs.sh ran ``chmod 0644 ./*.key`` (the root key included) in one volume

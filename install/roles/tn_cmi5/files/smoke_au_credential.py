@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T18:33:28Z
 """Smoke check: cmi5 launching is not fail-closed, and its credential works (roles/tn_cmi5).
 
 Run in the RUNNING api container (`docker compose exec -T api python -c`), so it sees the

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:59Z
 """TrueNorth Range - the pyVmomi half of building a range on vSphere.
 
 Placement, folders, per-range port groups, NIC wiring and guest customization. The

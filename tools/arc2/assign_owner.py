@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:36:06Z
 """Give unowned Course Studio runs a tenant.
 
 The Studio API shows a run only to the tenant recorded as ``tenant_id`` in

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-24T12:18:10Z
 """add purpose-bound public key trust registry
 
 Revision ID: 8bc4d6fa0532

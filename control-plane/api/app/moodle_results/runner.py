@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:23:41Z
 """Pull results from every active Moodle on a schedule, in the API (as the lab sweep and the
 exercise clock run): the Moodle seam, the signing key and the learning records it writes
 are all the API's, and the worker image holds none of them (ADR 0001, ADR 0003).

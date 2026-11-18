@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T13:16:52Z
 """cmi5 AUs as LTI 1.3 resources: an LMS (Moodle) launches TrueNorth's AU with TrueNorth as
 the cmi5 LMS, and gets the result in its gradebook (ags.py). docs/cmi5.md, "Moodle".
 

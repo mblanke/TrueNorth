@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:37:11Z
 """OS confinement for one Course Studio job.
 
 The engine runs request and feedback text from course authors in any tenant, and its

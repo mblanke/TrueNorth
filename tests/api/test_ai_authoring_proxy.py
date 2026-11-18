@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-21T04:28:32Z
 """Tests for the AI authoring proxies.
 
 No live orchestrator: httpx is monkeypatched so we assert request validation

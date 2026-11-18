@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T12:53:56Z
 """The exercise template record (ADR 0017; app/exercise_templates).
 
 A reusable exercise: objectives, MESL, scenario, range template, teams, instructor notes. A

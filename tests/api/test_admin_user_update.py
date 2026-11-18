@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T19:46:09Z
 """PATCH /users/{id} changes only the fields it is given.
 
 Its fields are query parameters (``UserUpdateIn`` as a dependency, as the contract says).

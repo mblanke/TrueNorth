@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:11:33Z
 """Exercise Forge when the AI orchestrator misbehaves.
 
 The orchestrator is replaced at the httpx boundary: down, timing out, failing,

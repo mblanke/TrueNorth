@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:25:47Z
 """TrueNorth Range - telemetry batch ingest (ingest_telemetry_batch).
 
 Moved out of tasks.py (ADR 0003). The Celery name is unchanged

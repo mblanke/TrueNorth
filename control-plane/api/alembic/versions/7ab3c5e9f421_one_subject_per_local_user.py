@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-24T12:13:54Z
 """allow only one provisioned subject token per local user
 
 Revision ID: 7ab3c5e9f421

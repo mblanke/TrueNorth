@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:34:43Z
 """In-app notifications for Support: who hears about what, and that each user sees only their own."""
 
 import uuid

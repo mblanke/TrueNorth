@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-03T22:21:32Z
 """Push a freshly committed notification to its recipient's open sockets (issue #377).
 
 ``inbox.notify`` queues a ``(notification, user_id, payload)`` on the session; when that

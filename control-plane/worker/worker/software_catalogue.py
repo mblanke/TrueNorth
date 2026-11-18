@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:59Z
 """Deploy-time software catalogue: a node's ``services`` names -> install specs per OS family.
 
 The catalogue is ``content/catalogue/software_catalogue.yaml``. The worker image copies

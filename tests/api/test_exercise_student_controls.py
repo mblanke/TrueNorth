@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:29:36Z
 """Students do not start, close or replay a team exercise (security sweep M3).
 
 Students held exercise:start and exercise:complete. /run on a completed exercise reset

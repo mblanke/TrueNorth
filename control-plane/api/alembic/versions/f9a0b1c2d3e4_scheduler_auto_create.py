@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """scheduler: a booking's scenario and exercise (ADR 0004 slice 11)
 
 Revision ID: f9a0b1c2d3e4

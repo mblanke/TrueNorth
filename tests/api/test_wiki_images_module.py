@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T15:57:47Z
 """app/wiki_images.py: what is accepted, what is refused, what is removed (#379)."""
 
 import contextlib

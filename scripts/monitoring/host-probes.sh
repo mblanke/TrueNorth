@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T02:44:10Z
 # =============================================================================
 # TrueNorth Range — host-side probes for Prometheus (node_exporter textfile collector)
 # =============================================================================

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T16:18:35Z
 """The tenant-scoping guard, applied to the scheduler section (ADR 0004).
 
 tests/api/test_tenant_scoping_guard.py scans ``app/routers/*.py`` only; the scheduler

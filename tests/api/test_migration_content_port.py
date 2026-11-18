@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T00:59:08Z
 """7c1d2e9f4a60 adds the content port's two tables, and only those (docs/content-port.md).
 
 Upgrade from its parent onto a database holding a template: the tables appear with their

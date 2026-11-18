@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-12T19:13:09Z
 import { HttpErrorResponse } from '@angular/common/http';
 import type { UserRole } from '@core/services/auth.service';
 import { PAGE_ACCESS, roleCan, roleHasAccess } from '@core/auth/permissions';

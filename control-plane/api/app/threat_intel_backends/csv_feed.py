@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:20:13Z
 """TrueNorth Range — CSV threat intelligence feed backend.
 
 Reads a CSV with a header row, fetched from the feed's URL or uploaded by an operator.

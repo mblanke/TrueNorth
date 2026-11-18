@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T07:24:37Z
 """range inventory checks: teardown verification and drift
 
 Revision ID: b62353ae80af

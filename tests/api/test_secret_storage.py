@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:35:00Z
 """Stored credentials are encrypted at rest and never returned.
 
 Before: POST /hypervisors/connections wrote the vCenter password into ``password_encrypted``

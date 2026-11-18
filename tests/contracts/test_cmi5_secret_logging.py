@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """A cmi5 launch URL's one-time fetch secret is never logged or sent on as a Referer.
 
 The AU URL TrueNorth (or any LMS) launches carries ``fetch=<api>/cmi5/fetch/<secret>`` in

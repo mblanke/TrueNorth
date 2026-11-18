@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:26:13Z
 """Ops center: another tenant's exercise is not found, for every endpoint.
 
 Create-annotation, inject and stats resolved the exercise through ``get_owned``. Listing

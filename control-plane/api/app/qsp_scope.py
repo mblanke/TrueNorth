@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T01:49:50Z
 """Which QSP qualifications (and so which performance objectives) a tenant may read.
 
 One rule for every QSP read, routers and services alike: the caller's own tenant's

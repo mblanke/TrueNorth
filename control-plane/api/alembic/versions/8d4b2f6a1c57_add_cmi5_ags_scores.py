@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T13:16:52Z
 """add cmi5_ags_scores: AU results going back to an LMS gradebook over LTI AGS
 
 Revision ID: 8d4b2f6a1c57

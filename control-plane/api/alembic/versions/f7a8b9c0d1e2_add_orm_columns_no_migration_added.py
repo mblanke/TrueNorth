@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-09-27T03:17:10Z
 """add the columns the models gained that no migration ever added
 
 Revision ID: f7a8b9c0d1e2

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:26:01Z
 """The vendored ATT&CK Enterprise catalogue (content/mitre) and the module that reads it.
 
 The API and worker images share no code, so attack_catalogue.py is two identical files;

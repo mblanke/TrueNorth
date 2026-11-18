@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-04-17T20:21:24Z
 """Unit tests for OpenTelemetry tracing setup."""
 
 from __future__ import annotations

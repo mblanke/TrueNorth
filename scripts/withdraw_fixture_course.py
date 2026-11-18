@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T23:22:25Z
 """Withdraw a fixture course (C105) on an installed TrueNorth, from inside the api image.
 
 Hosts installed before #147 published C105 (a CI / CATAPULT cmi5 fixture) to Students,

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:23:33Z
 """Scenario run evidence: what each inject did, and scenario executions outside an exercise.
 
 The worker writes both tables (control-plane/worker/worker/scenario_db.py mirrors them);

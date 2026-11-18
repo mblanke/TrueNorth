@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:26:18Z
 """The adversarial review of PR 3 found two ways a run could never finish; these pin the fixes.
 
 - A failure found by the post-package check (step 7) could not be reworked: package-builder

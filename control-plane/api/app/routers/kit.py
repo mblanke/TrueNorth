@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """Kit definition CRUD.
 
 A kit is deployable hardware (rack, compute, storage, network): infrastructure, so reads

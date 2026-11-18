@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """Detection objective: enough events match a query in the range's event store.
 
 Named ``opensearch_query`` because scenario content uses that validator name; the store

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T11:54:17Z
 """An instructor setting up their own class without an admin (#200).
 
 ``scope`` decides which courses a caller teaches and which exercises they run; the

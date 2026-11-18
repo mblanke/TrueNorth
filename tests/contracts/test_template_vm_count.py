@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:19:07Z
 """A shipped range template's declared ``vm_count`` equals the VMs it builds.
 
 ADR 0004 decisions log (2026-10-05): four templates declared a vm_count that differed from

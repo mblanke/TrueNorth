@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T02:44:10Z
 """The live vSphere lab workflow runs by hand only, on the self-hosted lab runner.
 
 Until a runner labelled [self-hosted, truenorth-lab] is registered, a nightly schedule only

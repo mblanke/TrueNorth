@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T18:45:07Z
 """R0-B role access: the API side of what each role's menu and pages offer.
 
 The web app hides pages and buttons by the permissions in rbac.py

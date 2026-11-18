@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:26:18Z
 """Contract tests for tools/arc2: schema, fragment ownership, the golden thread, gates, routing.
 
 Fixtures are inline: a tiny crosswalk with one claimed PO, and a complete manifest for a

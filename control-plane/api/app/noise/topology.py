@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """Read a range template and work out where noise lives and what it talks to.
 
 Template opt-in, all optional except ``enabled``::

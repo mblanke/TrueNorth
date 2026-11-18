@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """The cmi5 course structure TrueNorth serves (GET /cmi5/releases/{id}/cmi5.xml) and the
 parser behind it (app/cmi5/structure.py).
 

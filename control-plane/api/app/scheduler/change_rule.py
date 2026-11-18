@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T12:13:13Z
 """Who may change a booking: one rule for the server and for the page (#200, ADR 0014 §8; #319).
 
 ``refusal`` is what ``router._changeable`` enforces on every edit, move, cancel, accept and

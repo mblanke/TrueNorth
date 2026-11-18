@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T19:46:09Z
 """A Student's Moodle web session without a browser, for scripts/staging_acceptance.py.
 
 Integration coverage that **bypasses the browser**: the same pages and forms a browser

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """scripts/count_ui_literals.py: the #436 literal inventory as a ratchet.
 
 Three layers:

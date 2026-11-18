@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-11-04T14:56:48Z
 import { InjectionToken } from '@angular/core';
 
 /** What the viewer tells the component. */

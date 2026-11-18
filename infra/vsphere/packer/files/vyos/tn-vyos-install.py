@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:06Z
 """TrueNorth Range - VyOS template build, step 2 of 2 (live ISO, as root).
 
 boot_command runs ``sudo python3 /run/tncd/tn-vyos-install.py`` from the build's second CD

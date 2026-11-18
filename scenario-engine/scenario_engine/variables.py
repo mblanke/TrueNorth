@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T00:04:56Z
 """``{{ name }}`` placeholders in scenario content, filled from the scenario's ``variables:``.
 
 An objective query is the answer key detection credit is judged against (ADR 0005). One

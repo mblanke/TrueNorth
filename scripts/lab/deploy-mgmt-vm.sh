@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:52:40Z
 # TrueNorth lab - clone TN-BUILD01 or TN-DEPOT01 from tmpl-ubuntu-2404 (runbook §4.1a).
 #
 #   scripts/lab/deploy-mgmt-vm.sh TN-BUILD01 --ssh-key ~/.ssh/id_ed25519_lab.pub           # plan

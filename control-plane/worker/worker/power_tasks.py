@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T23:33:50Z
 """Range power: stop and start (CR1-05 in docs/review/codereview1.md).
 
 Until these, POST /ranges/{id}/stop set the range to ``stopped`` and sent nothing: the

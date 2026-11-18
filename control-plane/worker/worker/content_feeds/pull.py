@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """The daily online pull of the content feeds (ADR 0014 decision 25, issue #287).
 
 A beat task on worker-provision, the worker with egress (``celery_app.py``). Only when

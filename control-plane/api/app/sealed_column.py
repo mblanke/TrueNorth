@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:46:28Z
 """A column type that seals its value at rest (app/secretbox.py) and unseals it on load.
 
 For a secret only server code ever reads, so its call sites can stay unchanged: Python

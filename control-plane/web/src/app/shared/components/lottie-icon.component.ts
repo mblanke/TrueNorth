@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-06-11T01:47:57Z
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { LottieComponent, AnimationOptions } from 'ngx-lottie';
 

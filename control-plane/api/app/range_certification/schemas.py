@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:01:33Z
 """Response shapes of the certification endpoints (published in docs/interfaces/openapi.json)."""
 
 from __future__ import annotations

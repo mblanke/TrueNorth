@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:01:33Z
 """The Range Certification Record is append-only in PostgreSQL itself (migration
 68d00729cc34, ADR 0013 §6): UPDATE, DELETE and TRUNCATE are refused on both tables, and
 every insert is stamped with the database clock, so evidence cannot be backdated.

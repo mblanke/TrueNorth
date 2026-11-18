@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-19T19:18:08Z
 """Guards on app.seed — the module has no other test coverage.
 
 On 2026-08-19 seed.py was reduced to two functions with zero import statements:

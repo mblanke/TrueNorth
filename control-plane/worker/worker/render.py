@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-07-19T14:26:35Z
 """Topology → VM-definitions renderer (worker-side, self-contained).
 
 Converts a range template (`nodes` / `assets` + `network.vlans` / `inputs`) into

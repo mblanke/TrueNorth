@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T20:26:02Z
 """Contract: no site secrets or private keys in tracked text files.
 
 Scans every file ``git ls-files`` reports (binary files skipped) for:

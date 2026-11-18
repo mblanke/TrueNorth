@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range - API versioning by URL prefix (docs/adr/0002-interface-versioning.md).
 
 The published contract (docs/interfaces/openapi.json) is served under ``/api/v1``.

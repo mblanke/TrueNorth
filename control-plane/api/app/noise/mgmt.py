@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """Noise agents' management addresses: reserved per range on the shared portgroup.
 
 Every noise-enabled range puts its agents on one management portgroup (vSphere

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """The content feeds' pipeline in the worker (ADR 0014 decision 25, issue #287): the daily
 pull stores entries and each source's status; the content clock's sync turns them into
 stale flags on the golden templates they name, carried down to what uses them, each once.

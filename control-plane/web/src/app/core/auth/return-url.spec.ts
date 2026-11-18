@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-08T12:21:16Z
 import { safeReturnUrl } from './return-url';
 
 describe('safeReturnUrl', () => {

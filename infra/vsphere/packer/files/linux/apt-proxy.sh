@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T18:34:07Z
 # TrueNorth Range — point apt / dnf at the build proxy (TN-DEPOT01 apt-cacher-ng) for the
 # rest of a Packer build. Runs on every Linux base, derived image and variant before any
 # package step; cleanup.sh removes what this writes, so templates never ship a proxy.

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T10:48:49Z
 """Telemetry indices are green on a single OpenSearch node.
 
 A fixed number_of_replicas: 1 on the default single-node install left every index yellow

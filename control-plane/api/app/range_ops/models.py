@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T01:32:44Z
 """The range operation table (CR1-06 in docs/review/codereview1.md)."""
 
 from __future__ import annotations

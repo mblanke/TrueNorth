@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T13:46:51Z
 """``infra/vsphere/packer/build.sh replicate`` (ADR 0012 decision 6), against a stub govc.
 
 The script was also run against vcsim (hosts esx02-04 with <host>-local datastores); this

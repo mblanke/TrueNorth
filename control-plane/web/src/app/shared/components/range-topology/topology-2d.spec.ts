@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-20T18:13:16Z
 import { layoutTopology2d } from './topology-2d';
 
 const ZONE = (id: string, label: string, x: number, y: number) => ({

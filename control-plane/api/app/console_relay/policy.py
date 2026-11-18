@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-03T15:59:22Z
 """Is this grant's holder still allowed this console? Asked at connect and at every renewal.
 
 A grant is issued after the rules of ``classes/consoles.py`` (or the lab-session rules) said

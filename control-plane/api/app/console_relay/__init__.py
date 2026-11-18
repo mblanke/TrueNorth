@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-03T15:59:22Z
 """The console relay: a browser reaches a lab VM's screen only through TrueNorth (S1 of the
 console viewer, #366).
 

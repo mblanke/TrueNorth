@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:54:12Z
 """Static guard: no route may be "signed in, therefore allowed" by accident.
 
 `test_auth_coverage_guard.py` proves every route resolves an identity. It cannot tell

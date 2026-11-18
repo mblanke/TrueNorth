@@ -1,4 +1,6 @@
 #!/bin/sh
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:02:59Z
 #
 # Refresh local_truenorth from the image on every start.
 #

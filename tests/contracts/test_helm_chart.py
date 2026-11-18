@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T20:12:19Z
 """Contract: the Helm chart (infra/k8s/helm/truenorth-range) keeps its production posture.
 
 Helm is a supported install target for v1.0.0. These tests render the chart with

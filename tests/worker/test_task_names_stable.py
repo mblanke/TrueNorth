@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:06:38Z
 """The tasks.py split (ADR 0003) changed no Celery name, and the run loop calls the inject seam.
 
 run_scenario / run_scenario_v2 moved to worker/exercise_run.py, generate_aar to

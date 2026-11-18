@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range - Proxmox cluster management router.
 
 Full lifecycle management of the 2-node Proxmox VE cluster:

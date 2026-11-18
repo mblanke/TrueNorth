@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T00:41:45Z
 """MOSA ratchet: modularity debt may shrink but never grow.
 
 Same contract as the ruff ratchet in scripts/dod.sh (.dod-ruff-baseline): each metric

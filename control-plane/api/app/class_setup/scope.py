@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T11:54:17Z
 """Which courses a caller teaches and which exercises they run (#200, rule (a)).
 
 Courses and exercises carry no owner or instructor column. The one record of who teaches

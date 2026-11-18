@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T18:45:07Z
 """Whose after-action report a Student may read.
 
 ``aar:read`` is held by Students, observers, instructors and admins (rbac.py). Every AAR

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:46:01Z
 """The worker's copy of the Greyspace stack generator is the API's, byte for byte (ADR 0007).
 
 The API renders a range's Greyspace configuration (GET /ranges/{id}/greyspace/config) and

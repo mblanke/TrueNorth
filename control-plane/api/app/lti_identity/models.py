@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:23:41Z
 """Who an LTI launch is, after the launch: session hand-offs and exercise learner links.
 
 ``lti_handoffs``: a launched Student who has no TrueNorth sign-in of their own (an account

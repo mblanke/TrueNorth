@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:46:18Z
 """How the API authenticates to the ai-orchestrator service.
 
 The orchestrator refuses every route but /health without its service token

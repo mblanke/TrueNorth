@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T20:25:04Z
 """scripts/lab/vcenter_organize.py and vcenter-organize.sh, and the kit's tagging, with no vCenter.
 
 tests/integration/test_vcenter_organize_sim.py runs the same tool against vcsim through the

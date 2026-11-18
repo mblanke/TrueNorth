@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:33:17Z
 """The tenant-scoping guard, applied to the maintenance window section (ADR 0003).
 
 tests/api/test_tenant_scoping_guard.py scans ``app/routers/*.py`` only; maintenance windows

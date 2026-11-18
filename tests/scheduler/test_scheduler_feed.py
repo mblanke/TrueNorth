@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """The calendar feed (ADR 0004 slice 5): per-user bearer-token URL, hash-only storage,
 revocable, role re-checked on every fetch, tenant-scoped, and never logged."""
 

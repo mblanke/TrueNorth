@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:40:50Z
 """After-action report data, gathered from the database.
 
 ``build_report`` is what ``POST /exercises/{id}/aar/generate`` stores as

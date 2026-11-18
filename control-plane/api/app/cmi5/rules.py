@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """What an AU may send: the cmi5 (Quartz) rules TrueNorth enforces as the LMS.
 
 cmi5 says the LMS SHOULD reject a statement that breaks its rules and MUST void one it

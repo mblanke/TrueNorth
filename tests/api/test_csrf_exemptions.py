@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:29:37Z
 """With auth on, CSRF does not block the cross-site POSTs that carry their own signature.
 
 Release blocker (2026-10-08): with AUTH_DISABLED=false, CsrfMiddleware answered 403 to

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:01:33Z
 """Evidence the other slices record, as the certification record reads it (ADR 0013 §6).
 
 * S1 (#239) network allocation: the range's VLANs against VLANs used outside TrueNorth on

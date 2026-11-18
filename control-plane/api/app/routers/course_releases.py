@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:49:43Z
 """Course releases: upload an ARC² release candidate, accept it, download its parts.
 
 The learner part is what a student may receive; the instructor part (rubric, solutions,

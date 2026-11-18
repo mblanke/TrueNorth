@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T15:55:05Z
 """Close-out: results, closing, reopening and the export (ADR 0014 §13; issue #283).
 
 **Pre-fill.** For each Student on the roll call (and each who lost their seat) the lead sees:

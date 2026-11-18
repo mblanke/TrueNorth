@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T11:01:01Z
 """Build the live class read model for one exercise (issue #199). Read only: writes nothing.
 
 Who is in the class is not decided here. It is ``aar_access.participants`` (an assigned

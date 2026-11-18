@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """Round-3 coverage for app/redis_client.py (whole-slice rank: 0% before this file).
 
 The Sentinel-aware Redis helper is imported by nothing the slice's tests touch, so its

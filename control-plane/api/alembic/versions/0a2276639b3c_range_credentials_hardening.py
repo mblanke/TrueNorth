@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:51Z
 """range credentials hardening: bound seals, implicit staff logins, rotation, no wiki secrets (ADR 0013 §3)
 
 Revision ID: 0a2276639b3c

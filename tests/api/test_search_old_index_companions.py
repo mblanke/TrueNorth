@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Companion oracles for ``tests/api/test_search_old_index.py`` (audit #443, card #454).
 
 One companion per REAL strict-xfail oracle there, each pinning the same secure behaviour of

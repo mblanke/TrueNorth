@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-19T19:18:25Z
 """Academic programme catalogue ingestion.
 
 Parses ``content/catalogue/cyber_operator_programme.csv`` — the academic delivery

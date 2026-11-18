@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T00:49:02Z
 """Closing an exercise: one path for an instructor's /complete and for its duration running out.
 
 Both totals the score under a lock on the exercise row (so a detection credited at the same

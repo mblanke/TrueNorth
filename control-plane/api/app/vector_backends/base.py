@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T00:57:34Z
 """Vector store interface for curriculum RAG (docs/adr/0001-adapter-registry.md).
 
 Distinct from ``search_backends`` (telemetry ingest and Lucene search): this is a

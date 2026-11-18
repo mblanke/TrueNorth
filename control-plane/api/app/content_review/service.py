@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T03:04:55Z
 """The content clock's service: who may see and change what, and the writes (ADR 0014
 decisions 22-24, issue #286). The rules are in ``staleness`` (pure).
 

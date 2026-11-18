@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """COV-I: scripts/arc2_batch_inprocess.py — the edges test_arc2_batch_inprocess.py stops short of.
 
 Whole-slice coverage before this file: 87.8% (533 statements). Missing were: a register file

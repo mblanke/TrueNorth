@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-15T17:53:09Z
 """scripts/register_ai_backend_inprocess.py against the real /ai-config router.
 
 The contract tests (tests/contracts/test_installer_register_ai_backend.py) use a fake API;

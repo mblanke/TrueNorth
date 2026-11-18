@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-07-19T14:26:35Z
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';

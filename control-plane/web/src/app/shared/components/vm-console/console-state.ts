@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-11-04T14:56:48Z
 import type { components } from '@core/api/schema';
 
 type S = components['schemas'];

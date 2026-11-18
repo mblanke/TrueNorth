@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:59Z
 """vSphere range metrics and the scheduled run's single vCenter login.
 
 collect_metrics reads every VM of a range in one PropertyCollector call. The collector

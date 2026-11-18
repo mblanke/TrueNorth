@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T13:42:44Z
 """Who sees which courses and learning paths (``app.routers.courses``).
 
 - Scope: the caller's tenant plus global rows (tenant_id NULL); another tenant's course or

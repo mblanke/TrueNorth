@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T02:43:58Z
 """The Class record, its staff and its roll call (ADR 0014 §1, §2, §5, §8).
 
 New tables go in their section, never into the shared ``app.models`` (ADR 0003).

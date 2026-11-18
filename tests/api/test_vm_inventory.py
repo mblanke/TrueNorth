@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T20:25:04Z
 """The Infrastructure page's VM list: a vCenter's VMs with TrueNorth's tn-* tags, grouped.
 
 ``GET /hypervisors/connections/{id}/vms`` reads live through the adapter

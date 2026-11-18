@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:22:33Z
 """Who may run a scenario execution, on which range, and who sees its answer key
 (security sweep H2 and M2).
 

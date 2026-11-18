@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T23:15:42Z
 """Fixtures for worker task tests."""
 
 from __future__ import annotations

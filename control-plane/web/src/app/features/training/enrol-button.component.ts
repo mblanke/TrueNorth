@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-12T18:45:07Z
 import { ChangeDetectionStrategy, Component, Injectable, computed, inject, input, signal } from '@angular/core';
 import { Observable, tap } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';

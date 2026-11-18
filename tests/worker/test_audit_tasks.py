@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """Signed daily audit export, chain, verification and retention (worker/audit_tasks.py, ADR 0011).
 
 SQLite here, for the logic; the database triggers and the purge path through them are in

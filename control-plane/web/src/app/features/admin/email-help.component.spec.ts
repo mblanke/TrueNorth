@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-28T11:45:59Z
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { EmailHelpComponent } from './email-help.component';

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T16:29:26Z
 """TrueNorth Range — Quiz engine router (Curriculum Forge).
 
 Moodle-style assessments: AI generation from ingested curriculum, instructor

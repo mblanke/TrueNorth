@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T14:37:31Z
 """With no AI endpoint configured the orchestrator says so instead of calling out.
 
 OLLAMA_PROXY_URL used to default to one person's internet-facing host. It was never

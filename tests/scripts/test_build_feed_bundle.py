@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """scripts/build_feed_bundle.py: a bundle it signs is one the API accepts (ADR 0014 §25).
 
 The feeds are recorded payloads behind a fake ``FeedHttp``: no network.

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Companion oracles for audit #443 (TN10X-AUDIT2-tests-scheduler), card #469.
 
 One companion per strict-xfail oracle in ``test_audit2_scheduler_443.py``: a second

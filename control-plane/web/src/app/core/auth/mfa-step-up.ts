@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-13T01:26:37Z
 import { HttpErrorResponse } from '@angular/common/http';
 import type Keycloak from 'keycloak-js';
 

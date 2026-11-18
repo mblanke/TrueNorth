@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T03:04:55Z
 """The content clock's API (ADR 0014 decisions 22-24, issue #286): RBAC per role, tenant
 isolation, shared catalogue content, audit, the window list, the stale list, and the
 ``flag_stale`` hook the feeds (issue #287) will call.

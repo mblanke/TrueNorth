@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-08-28T01:35:10Z
 import { Injectable, signal, computed } from '@angular/core';
 
 export interface TourStep {

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T18:09:45Z
 # TrueNorth work site - build the golden templates phase by phase (ADR 0012), on TN-MGMT01.
 #
 #   sudo scripts/lab/build-phase.sh status        # read-only: what exists where

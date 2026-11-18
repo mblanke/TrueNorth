@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T16:33:08Z
 """Registration-section schemas kept out of schemas.py (ADR 0003)."""
 
 from __future__ import annotations

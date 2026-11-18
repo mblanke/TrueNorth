@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T00:59:08Z
 """content port: imported bundles and the items they brought
 
 Revision ID: 7c1d2e9f4a60

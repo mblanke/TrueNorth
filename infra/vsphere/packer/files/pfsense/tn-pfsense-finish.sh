@@ -1,4 +1,6 @@
 #!/bin/sh
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:06Z
 # TrueNorth Range - finish the pfSense template inside the installer (Packer "pfsense").
 #
 # boot_command leaves the installer's final dialog through Shell, mounts the build's second

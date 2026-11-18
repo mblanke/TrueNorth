@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T13:46:51Z
 """Every OS a shipped range names resolves to an enabled golden image (ADR 0012 decisions 1, 8).
 
 The first range build on the work vCenter stopped at a template that did not exist. A range

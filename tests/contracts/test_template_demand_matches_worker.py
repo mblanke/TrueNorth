@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """The scheduler's booking size must equal what the worker builds.
 
 `range_topology.template_demand` (API) re-implements worker/render.py's node expansion

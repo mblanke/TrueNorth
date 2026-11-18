@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-07-19T14:26:35Z
 """add CFITES/QSP qualification spine (qualifications, POs, EOs, lessons, module content, range map)
 
 Revision ID: b8c9d0e1f2a3

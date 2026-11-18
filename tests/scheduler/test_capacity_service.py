@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """CapacityService (ADR 0006): real host supply under the overcommit policy, and running
 ranges that no booking covers counted as committed (the overtax gap ADR 0004 names)."""
 

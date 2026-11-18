@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """Channel registry — maps channel type names to channel instances."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T03:26:11Z
 """Abandoning a range: record it destroyed without touching the hypervisor (#131 review 3).
 
 The worker refuses to call a range destroyed when it cannot prove its VMs are gone: a

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """Request and response bodies of the cmi5 routes (kept out of ``app/schemas.py``, ADR 0003)."""
 
 from __future__ import annotations

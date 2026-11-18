@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T16:43:30Z
 """The view-only allowlist: which browser-to-hypervisor RFB messages a view-only grant may send (#369).
 
 A console is RFB over a WebSocket (WebMKS). A WebSocket message is not an RFB message: a

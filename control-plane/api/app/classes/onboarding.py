@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T02:43:58Z
 """Roll call is approval (ADR 0014 §1): a roll-call Student's first AD sign-in admits them.
 
 Called by ``GET /auth/me`` for a valid token that has no ``users`` row. When it admits

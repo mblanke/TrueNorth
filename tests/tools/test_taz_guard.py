@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T15:57:49Z
 """scripts/taz_guard.py: the CI check that keeps a TAZ pull request inside its task card.
 
 Each test builds a small repository with a `main`, a Claude-written `taz-base/7` (the

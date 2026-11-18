@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-07-19T14:46:43Z
 """Collective exercise router — team events driven by a MESL.
 
 A collective exercise (Exercise.kind='collective') carries objectives and a Master

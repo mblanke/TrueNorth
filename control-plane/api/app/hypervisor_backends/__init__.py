@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T00:57:34Z
 """TrueNorth Range — hypervisor connection backend registry.
 
 Usage:

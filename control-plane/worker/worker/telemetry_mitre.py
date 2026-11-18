@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:25:47Z
 """MITRE ATT&CK technique tagging for telemetry on its way into a range's index.
 
 Every event written to ``range-<id>`` (``POST /telemetry/{range_id}/events`` in the API,

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T01:01:50Z
 """The API -> worker task contract (worker/worker/contracts.py, ADR 0002) matches both ends."""
 
 from __future__ import annotations

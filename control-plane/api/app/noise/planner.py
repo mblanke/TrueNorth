@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """Turn personas + the dial into a concrete, timestamped action plan for one node.
 
 Deterministic: the plan for a given (seed, node, window) is the same however often and

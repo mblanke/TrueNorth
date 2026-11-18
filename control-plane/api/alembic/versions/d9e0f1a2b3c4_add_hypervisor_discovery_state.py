@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T18:15:02Z
 """hypervisor_discovery_state: scheduled rediscovery bookkeeping per connection
 
 Revision ID: d9e0f1a2b3c4

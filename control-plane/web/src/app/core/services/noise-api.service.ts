@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-07T14:14:37Z
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import type { components } from '../api/schema';

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T02:44:10Z
 """ADR 0010: no NULL-on-delete beyond the sites that predate it.
 
 A delete that would orphan history is refused with 409 (``app/delete_guard.py``,

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T16:43:15Z
 """``GET /registration/nations`` and ``/registration/qualifications``: the lists an applicant may read.
 
 Live on rc12 the request-access form's Nation dropdown was empty: it called

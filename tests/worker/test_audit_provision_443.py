@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Oracle tests for audit tracking issue #443 (Fable audit, 3-skeptic vote), card
 TN10X-AUDIT-tests-provision: one failing test per confirmed provisioning / teardown /
 drift finding still present at base 280a838b. The fixes themselves stay with the

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T11:01:01Z
 """``GET /ops/exercises/{id}/class``: the live class for the Ops Center (issue #199).
 
 Ops Center's own rule (web ``pageGuard('opsCenter')``): ``exercise:read`` and

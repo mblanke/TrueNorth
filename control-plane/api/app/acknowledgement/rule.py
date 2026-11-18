@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T05:28:59Z
 """Who must sign the rules of use before doing anything else (ADR 0014 decision 3).
 
 A user must sign when a version has been published and any of these is true:

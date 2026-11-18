@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-03T15:59:22Z
 """``/ws/console/{grant}``: the browser's end of a console relay (#366).
 
 The browser opens ``wss://<tn>/ws/console/<grant>`` as for any WebSocket here:

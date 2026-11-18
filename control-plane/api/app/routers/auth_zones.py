@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range -- Auth Zones Router.
 
 Zone-based authentication policies (FIDO2, Kerberos, session tokens).

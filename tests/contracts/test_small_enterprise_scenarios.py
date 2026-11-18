@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T20:33:48Z
 """Every scenario that runs on small-enterprise names hosts that template builds.
 
 Scenarios find their hosts three ways: by tag (``host_tag``, ``src_tag``,

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T01:03:35Z
 # Render the role guides (docs/guides/*.md) to PDF with pandoc, for printing or a transfer kit.
 #
 #   scripts/build_guides_pdf.sh             # writes build/guides-pdf/<guide>.pdf

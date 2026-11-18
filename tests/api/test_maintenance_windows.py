@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:33:17Z
 """Maintenance windows (ADR 0013 §7, range certification S7, issue #245).
 
 Inside a window, provision, reset/restore and a person's normal destroy are refused with

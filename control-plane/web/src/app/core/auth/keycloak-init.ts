@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-08-28T01:35:10Z
 import { EnvironmentProviders, inject, provideAppInitializer } from '@angular/core';
 import Keycloak from 'keycloak-js';
 import { provideKeycloak } from 'keycloak-angular';

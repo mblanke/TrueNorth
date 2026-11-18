@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T18:15:02Z
 """Per-connection discovery state: when it last ran, its last error, and who holds it now."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T15:00:52Z
 """Per-range credentials (ADR 0012 decisions 12 and 13, as amended by ADR 0013 §3).
 
 One row per account a range's machines are given at deploy: the accounts its template

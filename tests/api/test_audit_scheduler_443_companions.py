@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Companion oracles for the confirmed audit findings of tracking issue #443 in the area
 "scheduler, lab sessions and capacity" (card TN10X-AUDIT-tests-scheduler).
 

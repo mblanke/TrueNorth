@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """The content feeds on PostgreSQL (ADR 0014 decision 25, issue #287): the migrated schema
 (``postgres_engine`` is ``alembic upgrade head``), the worker's pull storing entries through
 the table mirror, and the content clock's sync turning them into a flag, once.

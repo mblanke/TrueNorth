@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-03T18:31:33Z
 """The CI test shards together run exactly the suite `pytest tests/` would, once each."""
 import importlib.util
 import re

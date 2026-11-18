@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T03:13:31Z
 """Deploy-time setup of the Exchange, SharePoint SE and MECM role images
 (worker/provisioners/vsphere_products.py).
 

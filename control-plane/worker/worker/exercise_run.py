@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:06:38Z
 """TrueNorth Range - the scenario run loop: run_scenario, run_scenario_v2, run_inject,
 run_scenario_execution.
 

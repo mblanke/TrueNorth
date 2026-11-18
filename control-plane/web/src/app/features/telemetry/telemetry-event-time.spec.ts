@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-04T15:02:59Z
 import { telemetryEventTime } from './telemetry.component';
 
 describe('telemetryEventTime', () => {

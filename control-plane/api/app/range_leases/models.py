@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T23:15:42Z
 """The range lease table (CR1-06, CR1-11 in docs/review/codereview1.md)."""
 
 from __future__ import annotations

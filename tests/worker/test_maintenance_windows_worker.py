@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:33:17Z
 """The worker re-checks maintenance windows at a range task's entry (worker/maintenance_windows.py,
 ADR 0013 §7, range certification S7).
 

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:16:39Z
 """Classes 7: a Student's "My classes" page (ADR 0014 §20; #284).
 
 ``GET /classes/attending`` (app/classes/my_classes.py). The rules under test:

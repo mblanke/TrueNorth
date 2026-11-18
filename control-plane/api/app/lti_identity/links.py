@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:23:41Z
 """Staff deep linking: an LMS account bound to a staff account by explicit confirmation.
 
 The v1.0.0 known limitation: the LMS asserts the email claim and TrueNorth does not verify

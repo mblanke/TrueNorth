@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:46:01Z
 """TrueNorth Range - Greyspace breadcrumb injector (plan slice 4, ADR 0007).
 
 Plants (or removes) breadcrumbs in the range's Greyspace simulated internet: a page or

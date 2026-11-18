@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """The content clock's feeds step (run inside ``content_review_sync.sync``).
 
 Reads the stored feed entries and the flags already raised, finds each live golden

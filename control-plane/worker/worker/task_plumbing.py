@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:06:38Z
 """TrueNorth Range - the DB session and API notification, for task modules split out of tasks.py.
 
 ``_db_session`` and ``_notify_api`` still live in ``tasks.py``: tests patch them there

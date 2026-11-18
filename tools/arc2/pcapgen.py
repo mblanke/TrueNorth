@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:32:49Z
 """Synthetic teaching captures for ARC² courses: a reviewed spec in, a pcap out.
 
 An agent never writes packet bytes. It writes a short YAML spec (hosts, segments and a

@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-20T11:01:01Z
 /**
  * How the live class reads (issue #199, layout B). Display only: every fact here comes from
  * GET /ops/exercises/{id}/class; nothing is scored, flagged or changed on the client.

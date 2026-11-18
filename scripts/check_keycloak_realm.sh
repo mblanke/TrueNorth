@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T14:57:49Z
 # Import infra/keycloak/realm-truenorth.json into a throwaway Keycloak and fail if
 # the realm does not come up. Uses the image compose.prod.yml pins, so the check
 # tracks the version that actually runs.

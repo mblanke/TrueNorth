@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """``audit_exports``: one row per signed export of a UTC day of audit_logs (ADR 0011).
 
 Written only by the worker (worker/audit_tasks.py) after the files were written to the

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T23:15:42Z
 """Range leases: which worker execution is acting on a range right now.
 
 Importing this package registers its table on ``Base.metadata``. The worker takes and

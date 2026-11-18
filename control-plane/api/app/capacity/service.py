@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Supply and running load (docs/adr/0006-capacity-service.md).
 
 Supply

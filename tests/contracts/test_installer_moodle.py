@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T22:17:33Z
 """The installer's optional Moodle (install/roles/tn_moodle, playbooks/85-moodle.yml).
 
 Off by default; on, it runs TrueNorth's Moodle image by digest from the release, keeps its

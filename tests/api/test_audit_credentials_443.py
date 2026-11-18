@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Failing oracle tests for audit issue #443 (range credentials and rotation).
 
 Card TN10X-AUDIT-tests-creds: one test per confirmed audit finding that is still present

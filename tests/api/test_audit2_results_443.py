@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Strict-xfail oracle tests for audit #443 findings (write card TN10X-AUDIT2-tests-results).
 
 One test per finding that reproduces on the current code: each fails today, is expected to

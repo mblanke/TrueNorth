@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:27Z
 # TrueNorth Range - cloud-init on every Linux template (Debian/Ubuntu family; Rocky gets it
 # from its kickstart %packages). The worker configures a Linux range VM ONLY through
 # cloud-init's VMware datasource (guestinfo.metadata / guestinfo.userdata: hostname, static

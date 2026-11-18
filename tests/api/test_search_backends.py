@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T00:59:40Z
 """Tests for the pluggable Search/Telemetry backend system (Phase 3)."""
 
 from __future__ import annotations

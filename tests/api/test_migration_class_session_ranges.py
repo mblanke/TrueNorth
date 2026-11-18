@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T08:23:12Z
 """57e2c4b65b98 adds class session ranges, and only that (ADR 0014 §9-11, issue #282).
 
 Upgrade from its parent onto a database that already holds a class with a roll call and a

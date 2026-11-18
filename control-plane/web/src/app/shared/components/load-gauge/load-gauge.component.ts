@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-15T16:19:22Z
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
 /** Load bands: warning from 75 %, critical from 90 % (same thresholds as the bar gauges). */

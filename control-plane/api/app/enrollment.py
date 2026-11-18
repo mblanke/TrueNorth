@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-28T01:34:17Z
 """Enrollment creation, shared by every path that enrolls someone.
 
 Extracted from ``routers/courses.py`` because three callers need it — the course

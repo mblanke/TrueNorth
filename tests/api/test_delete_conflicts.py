@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T15:16:32Z
 """DELETE of a parent row that other rows reference: 409 or the children go, never 500.
 
 PostgreSQL refuses to delete a row a foreign key still points at. The shared test

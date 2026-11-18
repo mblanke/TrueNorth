@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T21:04:13Z
 """Who may open the ``/ws/{channel}`` WebSocket, and which channels and rooms (CR1-07).
 
 Until this, the endpoint accepted anyone, with no token, on any channel name, and let any

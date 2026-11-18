@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """Background noise router — the white cell's dial, and the agents' control channel.
 
 Two audiences, two auth schemes:

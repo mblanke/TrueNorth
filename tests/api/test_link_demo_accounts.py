@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:19:07Z
 """app.link_demo_accounts: demo roster rows get their Keycloak subject, and nothing else does."""
 
 from __future__ import annotations

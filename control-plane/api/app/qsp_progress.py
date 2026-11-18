@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-18T15:21:56Z
 """Per-learner progress across the QSP qualification spine.
 
 Resolves "where is this learner on the developmental path" by walking the link

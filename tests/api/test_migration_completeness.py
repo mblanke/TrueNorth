@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-28T01:33:15Z
 """The migration chain must be able to build the schema on its own.
 
 For most of this repo's life it could not. Of the 69 tables the ORM defines,

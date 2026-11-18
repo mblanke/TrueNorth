@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """What a persona actually does on the wire.
 
 Each activity takes the planned action and the agent config, does the real thing

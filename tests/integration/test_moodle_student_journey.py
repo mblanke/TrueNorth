@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T19:46:09Z
 """M1: the complete Moodle Student loop, in a real browser (Chromium, Playwright).
 
 Runs in the CI ``moodle`` lane against the disposable Moodle of compose.moodle-test.yml

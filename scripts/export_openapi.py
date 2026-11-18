@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T00:41:45Z
 """Export the control-plane API contract to docs/interfaces/openapi.json.
 
 The committed file is the published key interface (MOSA pillar 3). scripts/dod.sh runs

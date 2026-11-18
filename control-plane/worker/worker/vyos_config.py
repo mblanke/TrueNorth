@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:19:07Z
 """TrueNorth Range - a per-range VyOS configuration, rendered by the worker.
 
 The VyOS counterpart of pfsense_config.py. Pure functions: the vSphere provisioner calls

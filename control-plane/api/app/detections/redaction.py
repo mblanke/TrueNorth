@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T00:16:50Z
 """What a Student may see of a scenario: the briefing, not the answer key (ADR 0005 §5).
 
 The answer key is everything that says what the attack emits: objective ``params``

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T20:52:05Z
 """The test suite never reaches a real broker or Redis.
 
 Until 2026-10-05 it published real Celery messages (provision_range, run_scenario_v2,

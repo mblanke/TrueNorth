@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-11-18T02:58:36Z
 /* Fixture for tests/scripts/test_count_ui_literals.py — class C policies on
    miniature TypeScript. Not compiled by Angular. Each line pins one policy
    decision; the expected count lives in TestCommittedFixtures. */

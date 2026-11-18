@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:01:33Z
 """Evidence TrueNorth already holds, turned into section entries (pure functions).
 
 Each returns ``(status, summary, detail)`` for one section, from what the worker recorded

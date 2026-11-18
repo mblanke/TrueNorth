@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """Fixtures for integration tests (require live services).
 
 These run against a real API and a real OpenSearch, so they are gated — but on whether

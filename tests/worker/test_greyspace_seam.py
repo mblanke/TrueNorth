@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:33:32Z
 """The worker's Greyspace seam (worker/greyspace.py, ADR 0007) against the API's own schema.
 
 On the mock backend a block is recorded as deployed; on any backend without a Greyspace

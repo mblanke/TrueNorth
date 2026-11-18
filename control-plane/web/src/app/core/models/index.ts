@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-03-04T22:24:49Z
 // ── TrueNorth Range TypeScript Models ─────────────────────────────────
 // Wire types are aliases of the published contract (docs/interfaces/openapi.json),
 // generated into ../api/schema.d.ts by `npm run gen:api` (ADR 0002). Do not hand-copy a

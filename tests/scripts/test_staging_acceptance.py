@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T01:58:31Z
 """scripts/staging_acceptance.py: the report, the runner's PASS/FAIL/SKIP rules, fixtures,
 cleanup, personas, the command line, and the multi-user harness in scripts/_inprocess_api.py
 (fakes only; the checks themselves run against a stack, see docs/runbooks/staging-acceptance.md)."""

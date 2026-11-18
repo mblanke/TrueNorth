@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:29:36Z
 """Curriculum URL ingest goes through app.net_guard (H1).
 
 Before: ``httpx.AsyncClient(follow_redirects=True)`` with only a scheme check in the

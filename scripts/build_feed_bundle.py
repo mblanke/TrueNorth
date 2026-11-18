@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """Build a signed content feed bundle for an air-gapped TrueNorth (ADR 0014 decision 25).
 
 Run on a machine with internet access and a checkout of this repository. It reads the same

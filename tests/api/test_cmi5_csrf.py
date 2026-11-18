@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """With auth on, the cmi5 token routes are not CSRF-checked, and every other cmi5 route is.
 
 The fetch URL (a one-time secret in its path) and the AU's xAPI endpoint (the session token

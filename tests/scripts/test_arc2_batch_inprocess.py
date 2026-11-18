@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:56:43Z
 """scripts/arc2_batch_inprocess.py: request text, run state machine, backoff, idempotency,
 the release → accept → publish path, and the shared in-process harness (fakes only)."""
 

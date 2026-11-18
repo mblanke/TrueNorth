@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:33Z
 """0a2276639b3c (ADR 0013 §3): existing ranges keep working and nothing holds a secret it should not.
 
 Upgrade from its parent onto a database holding two ranges, one with an ADR 0012 credential

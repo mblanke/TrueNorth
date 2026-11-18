@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-28T11:45:59Z
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { SchedulerApiService, SchedulerSettings } from './scheduler-api.service';
 

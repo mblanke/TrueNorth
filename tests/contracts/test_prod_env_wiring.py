@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T13:43:52Z
 """The production settings the API and AI orchestrator insist on reach them.
 
 TN_ENV=production (control-plane/api/app/settings.py, ai-orchestrator/app/main.py)

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T07:37:32Z
 """A Redis lock for a periodic sweep that must never overlap itself (range_drift.py).
 
 Why not a PostgreSQL advisory lock: production reaches PostgreSQL through pgbouncer in

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T03:26:11Z
 """Review of #131 (per-tenant vCenter credentials), 2026-10-11: regression tests.
 
 Blocker 1: a tenant connection with no password made vsphere_api fall back to the worker's

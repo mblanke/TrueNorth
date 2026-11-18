@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-07T16:32:49Z
 import { RunSummary, authorTodo, canReply, pageRef, pollMs, primaryAction, runnerLooksIdle, stageDots } from './studio';
 
 const run = (over: Partial<RunSummary> = {}): RunSummary => ({

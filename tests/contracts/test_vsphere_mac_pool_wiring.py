@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T18:59:33Z
 """Range NIC MACs and guest-IP readiness settings reach the worker, per install (#232 review).
 
 Each TrueNorth install on a shared vCenter needs its own VSPHERE_MAC_POOL slice: two installs

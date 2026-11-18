@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:43:56Z
 """How the API reaches OpenSearch: one place for the URL, credentials and TLS verification.
 
 Every API client of the store (search backend, vector store, health check) builds its

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:33:17Z
 """The worker decides which ranges a maintenance window covers exactly as the API does.
 
 The API refuses work inside a window (app/maintenance_windows/policy.py); the worker

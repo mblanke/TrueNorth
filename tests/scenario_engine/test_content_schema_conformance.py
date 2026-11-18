@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T00:57:34Z
 """Shipped scenario and range-template YAML vs the engine's JSON Schemas (draft-07).
 
 ``scenario-engine/schemas/*.schema.json`` is the contract the API (engine_bridge.validate_yaml)

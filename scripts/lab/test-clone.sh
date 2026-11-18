@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T18:09:45Z
 # TrueNorth work site - ADR 0012 decision 9: does a clone of template <id> take TrueNorth's
 # customization on every range host? Clone, customize, power on, wait for VMware Tools to
 # report the new name and IP, then destroy the clone.

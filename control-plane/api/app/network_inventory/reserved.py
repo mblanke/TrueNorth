@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T19:01:25Z
 """Site networks a range template's subnets may not overlap (TN_RANGE_RESERVED_CIDRS).
 
 The installer's ``tn_range_reserved_cidrs`` (the work site: its management, build and

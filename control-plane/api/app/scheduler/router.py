@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """TrueNorth Range - Event scheduling router with resource reservation.
 
 Prevents over-commitment by tracking resource claims per time window.

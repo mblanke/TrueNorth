@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T21:07:27Z
 """Runbook §5 smoke test against the real vCenter, on this checkout (the S8 lab evidence).
 
 Carved from hardening/handoff (#40) onto main of 2026-10-07. **Needs a live lab** for its

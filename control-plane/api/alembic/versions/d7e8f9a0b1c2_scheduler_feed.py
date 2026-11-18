@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """scheduler feed: per-user feed tokens and event SEQUENCE (ADR 0004 slice 5)
 
 Revision ID: d7e8f9a0b1c2

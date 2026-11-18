@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """xAPI actor switches from email to an account IFI: record each user's legacy identity
 
 Revision ID: 5a1e9c3d7b20

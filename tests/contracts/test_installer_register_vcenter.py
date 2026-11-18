@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-15T15:25:28Z
 """80-seed registers the installer's vCenter as a hypervisor connection (TN-MGMT01, 2026-10-15).
 
 The installer configured the worker's vCenter but never registered it, so /infrastructure

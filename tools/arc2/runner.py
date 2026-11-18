@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:32:49Z
 """Course Studio runner: starts and resumes ``/arc2`` runs for the web page.
 
 The seven ARC² agents are Claude Code subagents driven by ``.claude/commands/arc2.md``;

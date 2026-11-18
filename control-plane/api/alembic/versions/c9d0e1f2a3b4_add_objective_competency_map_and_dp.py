@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-07-19T14:26:35Z
 """add objective->competency map (NICE + NIST CSF) and developmental-progression fields
 
 Revision ID: c9d0e1f2a3b4

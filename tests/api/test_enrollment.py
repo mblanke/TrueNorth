@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:05:41Z
 """``app.enrollment``: the one place a Student gets enrolled.
 
 Three callers share it (course enroll, registration approval, onboarding path

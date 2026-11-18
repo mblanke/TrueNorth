@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-11-04T14:56:48Z
 import { Provider } from '@angular/core';
 
 import { RFB_CLIENT_FACTORY, RfbClient, RfbConnectOptions, RfbEvents } from './rfb-client';

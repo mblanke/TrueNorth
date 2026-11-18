@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """The noise API's published shapes (app/noise/schemas.py) are the ones it always sent.
 
 The handlers returned plain dicts; declaring response models put the shapes into

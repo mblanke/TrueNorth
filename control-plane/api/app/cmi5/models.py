@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """cmi5 registrations and sessions: TrueNorth acting as the cmi5 LMS for its own releases.
 
 Kept out of ``app/models.py`` (ADR 0003: per-section modules). docs/cmi5.md has the model.

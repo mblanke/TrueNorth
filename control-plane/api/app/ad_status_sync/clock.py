@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:23:31Z
 """The nightly AD status sync clock (ADR 0014 decision 6; #290).
 
 Runs in the API beside the scheduler's and the classes' clocks (the same pattern: an

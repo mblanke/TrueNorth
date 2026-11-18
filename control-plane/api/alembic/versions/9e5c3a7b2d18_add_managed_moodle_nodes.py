@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T13:52:50Z
 """add managed_moodle_nodes: which Moodle platforms are TrueNorth's own farm nodes
 
 Revision ID: 9e5c3a7b2d18

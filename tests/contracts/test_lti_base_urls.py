@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:37:03Z
 """Gap #6 (docs/moodle-integration.md): production gives the api its public LTI URLs, and
 everything that tells a learning platform where TrueNorth is says the same thing.
 

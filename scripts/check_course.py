@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T20:00:41Z
 """The course oracle: is one authored course file technically proven?
 
     python scripts/check_course.py content/courses/c103-intro-to-networking.yaml [...]

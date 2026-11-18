@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T11:54:17Z
 """An instructor sets up their own class without an admin (#200).
 
 The rule (app/class_setup/scope.py): you teach a course, or run an exercise, when a live

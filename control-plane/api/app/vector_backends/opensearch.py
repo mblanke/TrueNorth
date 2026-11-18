@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T00:57:34Z
 """OpenSearch k-NN vector store (lucene HNSW, cosine)."""
 
 from __future__ import annotations

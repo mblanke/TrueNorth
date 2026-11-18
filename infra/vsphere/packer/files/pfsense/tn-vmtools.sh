@@ -1,4 +1,6 @@
 #!/bin/sh
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:06Z
 # TrueNorth Range - VMware Tools (open-vm-tools) on the pfSense template and every range
 # firewall cloned from it. Installed as /usr/local/etc/rc.d/tn-vmtools.sh by
 # tn-pfsense-finish.sh. Started twice over, harmlessly: by tn-pfsense-config boot (the

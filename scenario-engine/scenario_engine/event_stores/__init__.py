@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T03:01:44Z
 """Event stores that detection objectives are scored against (docs/adr/0001).
 
 Scenario content writes detection queries in Lucene ``query_string`` syntax, which

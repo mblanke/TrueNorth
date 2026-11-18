@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T05:28:59Z
 """The draft rules of use shipped with TrueNorth (ADR 0014 decision 3; issue #279).
 
 A starting point for the platform administrator to edit, not legal text. It is stored as

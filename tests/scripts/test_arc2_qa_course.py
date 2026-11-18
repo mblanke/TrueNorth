@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T13:40:58Z
 """scripts/arc2_qa_course.py and scripts/arc2_qa_batch.py: ARC²'s QA stage over an existing course
 file and its instructor pack. The positive case is C105's committed ARC² bundle, adapted to the
 TAZ shape (a course YAML plus a staff-only pack); every failure type has a synthetic bad course."""

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T14:33:01Z
 """tools/cli/requirements.txt pins exact versions, the same ones the services pin.
 
 It was the one unpinned requirements file (``typer[all]>=0.9.0`` ...): what an operator got

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:26:37Z
 """``GET /auth/me``: the identity state the SPA routes on (moved out of schemas.py, ADR 0003)."""
 
 from __future__ import annotations

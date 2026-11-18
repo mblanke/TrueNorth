@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:08:15Z
 """DELETE /scenarios/{id} refuses with 409 while an exercise still references it.
 
 SQLite in the unit-test engine does not enforce foreign keys, so the referencing

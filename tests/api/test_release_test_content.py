@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T02:08:48Z
 """Test content travels with a release (adversarial review of #130/#136).
 
 A release whose ARC² gates a test host's runner accepted (``auto_accepted`` in release.json,

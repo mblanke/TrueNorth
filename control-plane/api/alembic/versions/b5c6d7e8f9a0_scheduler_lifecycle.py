@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """scheduler lifecycle: `provisioning` state, instructor and creator (ADR 0004 slice 3)
 
 Revision ID: b5c6d7e8f9a0

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T21:04:13Z
 """Who may open /ws/{channel} (app/ws_auth.py, CR1-07 in docs/review/codereview1.md).
 
 On main the endpoint accepted anyone without a token, on any channel name, and let any

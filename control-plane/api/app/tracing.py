@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-04-17T20:21:24Z
 """OpenTelemetry distributed tracing setup for TrueNorth API.
 
 Initialises tracer provider, configures instrumentation for FastAPI,

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-03T22:33:29Z
 """Email for ticket notifications (issue #378).
 
 A ticket notification is written to the inbox in the request's transaction (``inbox.notify``);

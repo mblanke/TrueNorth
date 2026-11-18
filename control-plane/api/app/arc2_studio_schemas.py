@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:36:06Z
 """Response shapes for the ARC² Course Studio API (routers/arc2_studio.py).
 
 The top level of each response is typed for the published contract. Parts that mirror

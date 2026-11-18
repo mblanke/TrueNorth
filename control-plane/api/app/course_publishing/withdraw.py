@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T23:22:25Z
 """Withdraw a fixture course: back to draft in TrueNorth, hidden in every Moodle it reached.
 
 C105's committed release is a CI / CATAPULT cmi5 fixture, not a course for Students

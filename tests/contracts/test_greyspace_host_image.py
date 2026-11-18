@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:46:01Z
 """The greyspace-host golden image pre-loads exactly the images the stack runs (ADR 0007).
 
 A gs-core VM has no internet: an image the generator names but the Packer role did not

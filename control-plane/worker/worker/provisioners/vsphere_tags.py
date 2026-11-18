@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T20:25:04Z
 """vCenter tags and range folder names for TrueNorth's objects (ADR 0012 follow-up).
 
 Four tag categories, each single-cardinality on VirtualMachine (one value per VM), so the

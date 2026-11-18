@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T03:13:31Z
 """Finish long in-guest setups a build left ``running`` (ADR 0012).
 
 A product role image (Exchange 2019 / SharePoint (SE, 2019) / MECM) and Security Onion each take 20 min to

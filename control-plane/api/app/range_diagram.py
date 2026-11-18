@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T18:13:16Z
 """A picture for every range: its topology drawn from its template when none was saved.
 
 The 2D views and the 3D topology viewer render a Range Designer graph

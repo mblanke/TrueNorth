@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """Mint the cmi5 AU credential on a yetanalytics/lrsql LRS (its admin API).
 
 cmi5 AU traffic is forwarded with its own LRS credential, ``CMI5_LRS_AUTH``, never the

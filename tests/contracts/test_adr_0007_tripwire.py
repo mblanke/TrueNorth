@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:19Z
 """ADR 0007 (docs/adr/0007-greyspace.md, "Greyspace: a simulated internet attached to a
 range") pinned to the code, decision by decision.
 

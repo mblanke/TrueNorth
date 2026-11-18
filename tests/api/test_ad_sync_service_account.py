@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:01:47Z
 """/ad-sync calls Keycloak's Admin API as the API's own service account.
 
 Client credentials against the application realm (truenorth-api-admin, realm-management

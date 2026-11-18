@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:25:54Z
 """The telemetry search grammar (app/search_backends/query.py) and its OpenSearch DSL.
 
 ``q`` used to reach OpenSearch ``query_string`` verbatim. These pin what a query may

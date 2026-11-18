@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-28T01:34:17Z
 """Trainee registration and instructor approval.
 
 The account lifecycle this implements::

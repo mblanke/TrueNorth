@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T04:21:17Z
 """Range utilisation for ``collect_range_metrics`` (tasks.py): measured, or nothing.
 
 Until 2026-10-11 the task published ``random.uniform`` CPU, memory, disk and network

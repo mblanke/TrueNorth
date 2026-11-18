@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:37:30Z
 """One runner owns the queue at a time, and a restart recovers its own leftovers only.
 
 The runner is a single host process. Its startup recovery fails jobs left ``running``,

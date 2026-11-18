@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:09:21Z
 """TrueNorth Range — AI inference engine adapter interface (ADR 0001).
 
 The AI admin screen (``/ai-config``) stores backends as DB rows

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-07-19T14:26:35Z
 """Celery client for the API to dispatch worker tasks.
 
 The API has no Celery app of its own, so `celery.current_app.send_task` targets a

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-04-17T20:21:24Z
 """TrueNorth Range — Threat Intelligence feed management router.
 
 Feeds are pulled through their backend (``app/threat_intel_backends``, chosen by the

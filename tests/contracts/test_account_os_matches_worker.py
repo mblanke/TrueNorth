@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T15:09:55Z
 """The API decides which machines are Windows exactly as the worker does (ADR 0012).
 
 A typed-in password for a Windows machine must meet Windows complexity

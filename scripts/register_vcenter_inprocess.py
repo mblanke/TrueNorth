@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-15T15:25:28Z
 """Register the installer's vCenter as a hypervisor connection, from inside the api image.
 
 The installer renders the worker's vCenter (VSPHERE_URL/USERNAME/PASSWORD/DATACENTER/

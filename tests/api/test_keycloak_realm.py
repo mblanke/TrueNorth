@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T14:57:49Z
 """Static checks on infra/keycloak/realm-truenorth.json for things Keycloak 24 rejects.
 
 The authoritative check is scripts/check_keycloak_realm.sh (CI job keycloak-realm),

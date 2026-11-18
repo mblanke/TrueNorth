@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T15:19:32Z
 """AI triage suggestions for tickets (#381): suggest-only, staff-only, minimal data, checked output."""
 
 import json

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-30T19:39:21Z
 """Build an expensive fixture's database once per test run, then replay its rows.
 
 Importing the whole catalogue and every course file costs about three seconds, and the

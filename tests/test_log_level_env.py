@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:44:08Z
 """Services start with LOG_LEVEL in the case compose and the installer write it ("info").
 
 compose.prod.yml passes LOG_LEVEL=${LOG_LEVEL:-info} and the installer renders

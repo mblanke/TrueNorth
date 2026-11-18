@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T03:43:42Z
 """noise-tamper-flake oracle: the forge test still checks every tamper case.
 
 Passing the pinned-clock run is not enough on its own: deleting the flaky ``kind`` case,

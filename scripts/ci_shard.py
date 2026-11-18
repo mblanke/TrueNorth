@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-11-03T18:31:33Z
 """Print the test files one CI shard runs, one path per line.
 
 The `test-python` suite is one serial pytest run that takes over half an hour, so

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T00:57:34Z
 """ADR 0001: hypervisor connection backends and external platforms go through registries."""
 
 from __future__ import annotations

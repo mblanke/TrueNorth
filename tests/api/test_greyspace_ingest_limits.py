@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T03:02:57Z
 """WARC ingest refuses malformed lengths (review of #133, 2026-10-11).
 
 ``int(headers["content-length"])`` took "-1", and ``fh.read(-1)`` then read (and held)

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T15:00:52Z
 """Range credentials: the accounts a range's machines get, stored sealed per range.
 
 Importing this package registers ``range_credentials`` and ``range_credential_snapshots`` on

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:46:01Z
 """TrueNorth Range - the post-deploy configure stage (docs/greyspace-plan.md, slice 0).
 
 ``configure_range`` runs after ``provision_range`` has built a range and marked it ready,

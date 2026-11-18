@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """The scheduler's clock (ADR 0004 §5, slice 4).
 
 Once a minute it moves bookings along their lifecycle as time passes:

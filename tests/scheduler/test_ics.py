@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """iCalendar output (RFC 5545), as ADR 0004 §Interfaces requires: it parses, UIDs are
 stable, SEQUENCE rises on update, times are UTC."""
 

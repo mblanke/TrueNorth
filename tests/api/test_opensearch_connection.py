@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:43:56Z
 """Every API client of OpenSearch authenticates and verifies TLS the same way.
 
 Production runs the OpenSearch security plugin (TLS + basic auth). The search backend

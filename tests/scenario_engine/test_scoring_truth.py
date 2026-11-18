@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T19:38:08Z
 """Scoring validators are judged from evidence, refused, or unscored; never a free pass (R0-B).
 
 Before 2026-10-12 ``firewall_rule`` counted every expected rule as matched (always

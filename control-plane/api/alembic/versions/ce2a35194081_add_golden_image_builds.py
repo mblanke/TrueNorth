@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T02:24:15Z
 """golden_image_builds: registered builds of a golden image and the promoted one (ADR 0013 §2)
 
 Revision ID: ce2a35194081

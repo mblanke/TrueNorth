@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:34:43Z
 """TrueNorth Range — Wiki / knowledge base router.
 
 Confluence-style spaces holding a tree of markdown pages, with full revision history.

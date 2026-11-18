@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-04-17T20:21:24Z
 """Tests for Exercise Forge API endpoints."""
 
 from unittest.mock import AsyncMock, patch

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-15T15:51:19Z
 """ESXi host capacity over the vSphere VI/JSON API (vCenter 8.0U1+), plain httpx.
 
 The vCenter Automation REST API that ``vsphere.py`` discovers hosts with has no host CPU,

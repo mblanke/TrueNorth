@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-03T22:33:29Z
 """Ticket notifications by email (#378): who is mailed, what the mail says, and the opt-out."""
 
 import uuid

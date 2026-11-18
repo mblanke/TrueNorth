@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:37:11Z
 """A Course Studio job can touch only its own run.
 
 The engine runs untrusted request and feedback text, and its tools include arbitrary

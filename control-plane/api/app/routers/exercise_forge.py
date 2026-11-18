@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-04-17T20:21:24Z
 """TrueNorth Range — Exercise Forge router.
 
 AI-powered exercise generation from threat intelligence indicators.

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T00:59:08Z
 """Proven (owner decision 2026-10-27; app/content_port/proven.py): a course, range template
 or scenario is proven when a range built from it reached Certified (from the template as it
 is now), a closed class or a completed exercise using it has passing evidence, and the

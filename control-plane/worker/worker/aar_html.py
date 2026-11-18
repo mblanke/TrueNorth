@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:40:50Z
 """After-action report: HTML rendering and PDF-safe text.
 
 Pure functions over the AAR report dict; no imports from the API or the worker. The same

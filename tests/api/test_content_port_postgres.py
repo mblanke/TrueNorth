@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T01:15:54Z
 """The content port on PostgreSQL (docs/content-port.md): the migrated schema, an export
 and an import end to end, and two concurrent imports of the same bundle: one lands, the
 other fails on the unique bundle id (the API answers it 409), never a second copy.

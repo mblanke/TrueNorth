@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """The content feeds' tables (ADR 0014 decision 25, issue #287).
 
 New tables go in their section, never into the shared ``app.models`` (ADR 0003).

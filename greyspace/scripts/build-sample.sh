@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:33:05Z
 # Build a Greyspace corpus sample by shallow-mirroring permissive-licence sites.
 #
 #   greyspace/scripts/build-sample.sh --tier mac [--dest DIR] [--seeds FILE] [--per-site-mb N] [--dry-run]

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T23:31:58Z
 """Open consoles of idle-due labs, asked in one batch before the sweep takes any lock
 (ADR 0014 §18; #311 round 3).
 

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T08:23:12Z
 """A class's ranges on PostgreSQL: two clock replicas build each seat once (#282).
 
 SQLite serialises writers, so a race there proves nothing. These run only with

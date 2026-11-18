@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-07-19T14:26:35Z
 """CFITES / QSP qualification-spine router.
 
 Import the crosswalk contract and browse the resulting Qualification -> PO -> EO

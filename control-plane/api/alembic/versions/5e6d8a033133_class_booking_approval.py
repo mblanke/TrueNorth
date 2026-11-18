@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T05:38:37Z
 """class booking approval: class sessions, booking approvals, two booking states
 
 Revision ID: 5e6d8a033133

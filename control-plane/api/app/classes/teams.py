@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T08:23:12Z
 """A collective session's teams (ADR 0014 §11; #282).
 
 A collective session (an exercise: everyone on one shared range) splits its class's roll call

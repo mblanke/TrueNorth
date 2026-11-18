@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:35:00Z
 """Seal and unseal stored credentials (hypervisor passwords and tokens, AI engine keys).
 
 SOURCE OF TRUTH: control-plane/worker/worker/secretbox.py. The API ships a byte-identical

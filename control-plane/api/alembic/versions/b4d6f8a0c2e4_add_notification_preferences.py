@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-03T22:33:29Z
 """notification preferences: a user's own switch for ticket email
 
 Revision ID: b4d6f8a0c2e4

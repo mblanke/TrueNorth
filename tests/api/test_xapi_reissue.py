@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """Re-issuing pre-switch statements (app/xapi_reissue.py) and the LRS resource capability.
 
 The live round trip against a real lrsql is tests/integration/test_cmi5_lrs.py; here the

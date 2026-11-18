@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-28T01:34:17Z
 """Bulk cohort intake: CSV roster pre-provisioning and group-based enrolment.
 
 These are the two paths that let an instructor prepare a course before anyone

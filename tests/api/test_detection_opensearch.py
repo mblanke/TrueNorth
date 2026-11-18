@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T00:49:02Z
 """Detections and look-for queries against a real OpenSearch (review B4 and M4; ADR 0020).
 
 The unit tests' FakeStore matches with fnmatch; OpenSearch maps and analyses fields, so a

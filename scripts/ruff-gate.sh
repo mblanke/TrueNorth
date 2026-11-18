@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T13:26:40Z
 # Ruff lint and format, as ratchets rather than cliffs. Shared by scripts/dod.sh and CI's lint-python
 # job so local green and CI green mean the same thing.
 #

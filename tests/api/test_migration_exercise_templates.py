@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T12:53:56Z
 """9d4e7a2b5c18 adds the exercise template's two tables, and only those (ADR 0017).
 
 Upgrade from its parent onto a database holding a template, a scenario and an exercise: the

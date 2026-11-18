@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:52:40Z
 """scripts/lab/choco-internalize.py: offline Chocolatey packages from content/choco."""
 
 from __future__ import annotations

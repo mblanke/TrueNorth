@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """scheduler clock: auto_provisioned and reminded_at (ADR 0004 slice 4)
 
 Revision ID: c6d7e8f9a0b1

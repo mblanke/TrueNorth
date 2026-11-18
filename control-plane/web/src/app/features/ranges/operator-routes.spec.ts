@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-12T19:13:09Z
 import { TestBed } from '@angular/core/testing';
 import { Router, RoutesRecognized, provideRouter } from '@angular/router';
 import { routes } from '../../app.routes';

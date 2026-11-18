@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T12:53:56Z
 """The exercise template's rules: who sees what, what a template may name, and making an
 exercise from one (ADR 0017).
 

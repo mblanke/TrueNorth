@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T02:10:52Z
 """A read-only fake of the vCenter Automation REST API (/api), for dashboards on a site
 with no vCenter. Lab and staging only.
 

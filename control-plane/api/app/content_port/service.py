@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T00:59:08Z
 """The content port's API side: proven status, export, preview and import.
 
 Who may do what:

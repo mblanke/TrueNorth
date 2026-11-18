@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-07T14:21:06Z
 /**
  * Pure helpers for the Schedule page (ADR 0004 slice 8): week maths, side-by-side
  * lanes, load levels, and the client-side preview of double bookings. The server is

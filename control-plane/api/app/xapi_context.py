@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """Where an xAPI statement sits: its registration and its language, read from the database.
 
 ``app.xapi`` builds statements and never touches the database; the routers call these

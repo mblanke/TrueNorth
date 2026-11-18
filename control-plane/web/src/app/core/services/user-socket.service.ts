@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-11-03T22:21:32Z
 import { Injectable, InjectionToken, OnDestroy, effect, inject, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 import { AuthService } from './auth.service';

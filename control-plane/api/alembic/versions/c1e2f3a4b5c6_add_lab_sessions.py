@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:29:45Z
 """add lab sessions
 
 Revision ID: c1e2f3a4b5c6

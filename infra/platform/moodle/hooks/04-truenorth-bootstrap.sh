@@ -1,4 +1,6 @@
 #!/bin/sh
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:02:59Z
 #
 # Wire this Moodle to TrueNorth on every start (after install/upgrade in 02):
 # sign-in and sync key, LTI tool, login redirect, TrueNorth branding.

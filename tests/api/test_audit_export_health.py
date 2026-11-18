@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """Deep health's ``audit_export`` component (ADR 0011): degraded when the signed export
 falls behind while there is something to export."""
 

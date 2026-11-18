@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-28T01:33:15Z
 """Structural guards on the migration tree.
 
 The repo once carried two alembic trees — the live one under

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T20:45:24Z
 """Installer contracts for ARC² Course Studio (install/roles/tn_arc2, playbooks/55-arc2.yml).
 
 ARC² is optional and off by default. On, the installer runs tools/arc2/runner.py on the

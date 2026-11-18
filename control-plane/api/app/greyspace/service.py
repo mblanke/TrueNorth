@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:33:32Z
 """Attach, detach and describe a range's Greyspace block (ADR 0007).
 
 * **Tenant-scoped.** Every lookup goes through the caller's tenant; a foreign range is a

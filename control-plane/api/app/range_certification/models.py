@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:01:33Z
 """The Range Certification Record tables (ADR 0013 §6, issue #244).
 
 ``range_certification_records``: one row per deployment, a provision of a range (its

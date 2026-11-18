@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-20T02:44:52Z
 /**
  * The shell's "Workspace / <title>" breadcrumb for a URL: the first path segment's section.
  * A page missing here showed "Overview" (Wiki, Support, Teams and Schedule did, #201).

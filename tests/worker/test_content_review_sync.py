@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T03:04:55Z
 """The content clock's periodic sync (worker/content_review_sync.py; ADR 0014 decisions
 22-24, issue #286): review rows for all content, the dependency edges the content already
 declares, due dates, and staleness carried down the edges. A real SQLite database built

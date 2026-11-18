@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T20:01:42Z
 """Unit readiness shapes (ADR 0014 decision 7; published in docs/interfaces/openapi.json).
 
 Pass, fail or incomplete and the instructor's comment: never a score, a percentage or a

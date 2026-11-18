@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T00:59:08Z
 """The content port's export and import (app/content_port; docs/content-port.md).
 
 Export: the platform administrator only; only proven content, with everything it needs

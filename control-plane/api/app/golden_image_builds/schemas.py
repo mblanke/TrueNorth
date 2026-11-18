@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T02:24:15Z
 """Request and response bodies of golden-image builds (ADR 0013 §2)."""
 
 from __future__ import annotations

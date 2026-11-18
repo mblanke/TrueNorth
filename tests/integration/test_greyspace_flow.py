@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:33:32Z
 """Integration: attach a Greyspace block to a mock range through the live API (ADR 0007).
 
 Runs in the CI ``integration`` job against the stack scripts/itest.sh starts (schema from

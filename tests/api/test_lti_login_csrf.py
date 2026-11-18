@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:29:37Z
 """LTI launches are bound to the browser that began them, and email links Students only.
 
 Security sweep (low), 2026-10-08:

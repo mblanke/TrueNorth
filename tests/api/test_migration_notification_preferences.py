@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-03T22:33:29Z
 """b4d6f8a0c2e4: per-user notification preferences, for ticket email (#378).
 
 Upgrade from its parent adds ``notification_preferences`` with no rows (no row means email is

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:36:28Z
 """The runner's deadline holds however the engine behaves.
 
 The deadline used to be checked only when the engine printed a line, so a silent engine

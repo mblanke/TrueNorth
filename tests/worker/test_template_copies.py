@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T13:46:51Z
 """Host-local golden-template copies (ADR 0012 decision 6, ADR 0013 §2): naming, build
 stamps, pruning rules (from the build records: never a promoted build's copy or one a range
 records), and the prune task's contract (dry run by default, deferred while a range builds,

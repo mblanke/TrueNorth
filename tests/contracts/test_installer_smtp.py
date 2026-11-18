@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:27:27Z
 """The app's email relay is installable (#306; install/README.md "Email (SMTP)").
 
 The API sends roll-call onboarding emails, reminders, seat-forfeit notices and calendar

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T15:57:47Z
 """Check and clean an image uploaded to a wiki page (issue #379).
 
 The type of an upload is decided from its **bytes**, never from the filename or the

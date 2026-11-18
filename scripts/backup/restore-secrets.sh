@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:01:58Z
 # =============================================================================
 # TrueNorth Range — write a backup's escrowed secrets back onto a host
 # =============================================================================

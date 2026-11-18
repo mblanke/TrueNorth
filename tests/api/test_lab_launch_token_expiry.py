@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-13T03:15:05Z
 """The token a Moodle "Start lab" hands the lab page (audit #443, integrations.py:948).
 
 Only a lab that is already ending or ended gets a short grace token so the page can load

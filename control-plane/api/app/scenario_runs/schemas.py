@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:23:46Z
 """API shapes for scenario runs (kept out of app/schemas.py, ADR 0003)."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T07:48:36Z
 """roll-call seat forfeit: forfeited_at and joined_at on class_roll_call
 
 Revision ID: 32270311dba6

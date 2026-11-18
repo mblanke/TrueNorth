@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T10:48:49Z
 """Every health check in compose.prod.yml can run inside its image.
 
 The installer's stack-up waits for every container to be healthy, so a probe whose

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T02:44:33Z
 """Every telemetry query the instructor guide shows parses in the search grammar.
 
 The guide (docs/guides/04-instructor-guide.md, which replaced docs/user-guide.md) once listed Lucene queries (``AND NOT``, ``destination.ip:10.*``) that

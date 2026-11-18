@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:25:47Z
 """ingest_telemetry_batch (worker/telemetry_tasks.py): range index, defaults, MITRE tags, errors."""
 
 from __future__ import annotations

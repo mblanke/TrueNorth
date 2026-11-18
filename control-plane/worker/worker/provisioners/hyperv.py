@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T00:59:40Z
 """TrueNorth Range - Microsoft Hyper-V provisioner.
 
 Provisions VMs on a Windows Hyper-V host via WinRM using PowerShell

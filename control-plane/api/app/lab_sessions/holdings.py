@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T20:06:49Z
 """What lab sessions hold of the site's capacity, for the capacity section and the scheduler
 (ADR 0006; ADR 0014 §18, #288). Reads only; imports nothing from the scheduler.
 

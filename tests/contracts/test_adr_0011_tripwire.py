@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:19Z
 """Tripwires for ADR 0011 (audit log integrity): each test pins one decision of the ADR
 (docs/adr/0011-audit-log-integrity.md) and turns red the day the code drifts from it.
 

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """The noise agent against the real controller API, and its activities against localhost.
 
 The agent loop is driven with a fake clock and sleep so a "minute" of noise runs in

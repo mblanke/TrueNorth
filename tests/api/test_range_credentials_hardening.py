@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:33Z
 """ADR 0013 §3 (issue #241): rotation, admin rotate, lab session credentials, snapshots.
 
 * a rebuild of a range built before gives every Student-visible generated account a new

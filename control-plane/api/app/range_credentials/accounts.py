@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T15:00:52Z
 """A range template's ``accounts:`` block: parse, validate, generate, redact (ADR 0012 §12).
 
 ::

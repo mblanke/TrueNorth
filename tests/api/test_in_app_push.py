@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:34:43Z
 """An in-app notification is pushed to the recipient's own sockets, and nobody else's.
 
 ``InAppChannel.send`` called ``ws_manager.send_to_user(recipient, {...})`` with two

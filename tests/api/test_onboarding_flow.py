@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-28T01:34:17Z
 """Post-approval first-run flow, and the self-service profile endpoint.
 
 The reason `/onboarding/profile` exists at all is covered here: a `student`

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T07:24:37Z
 """Reading a range's inventory checks, and an administrator confirming unidentified items
 (ADR 0013 §5, range certification S5, issue #243).
 

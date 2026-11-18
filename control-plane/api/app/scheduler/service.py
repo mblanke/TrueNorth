@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Scheduler logic, and the only way other sections reach scheduler data.
 
 Capacity comes from a :class:`~.capacity.CapacityProvider` (CapacityService (ADR 0006)

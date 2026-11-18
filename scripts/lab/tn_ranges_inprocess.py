@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T20:25:04Z
 """TrueNorth's ranges for scripts/lab/vcenter-organize.sh, read from inside the api image.
 
 Prints one JSON object on stdout, nothing else: ``{"ranges": [...], "templates": [...]}``.

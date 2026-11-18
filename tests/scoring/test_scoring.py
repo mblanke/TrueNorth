@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """Tests for TrueNorth Range — Scoring Engine."""
 
 from __future__ import annotations

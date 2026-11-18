@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:33:17Z
 """What a maintenance window refuses, what always bypasses it, and which ranges it covers.
 
 Pure functions, no database. The worker re-checks windows at a range task's entry with

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:02:59Z
 """An in-memory Moodle with the plugin's semantics, for tests and offline development.
 
 It keeps one store per Moodle site (``lti_issuer``), so separate platforms never share

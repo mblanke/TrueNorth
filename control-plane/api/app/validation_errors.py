@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:34:43Z
 """TrueNorth Range - 422 responses that can always be encoded.
 
 FastAPI's default handler for a request that fails validation echoes the offending

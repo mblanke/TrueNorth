@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:27:27Z
 """Whether the API can send email, and a test message for the platform administrator (#306).
 
 The relay is set at install time (``tn_smtp_*``; install/README.md "Email (SMTP)") and read

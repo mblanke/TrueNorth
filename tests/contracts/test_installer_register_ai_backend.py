@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-15T17:53:09Z
 """80-seed registers the installer's AI endpoint as an AI backend (TN-MGMT01, 2026-10-15).
 
 The installer configured the orchestrator's endpoint (tn_ai_base_url, vault_openai_api_key,

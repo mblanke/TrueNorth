@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T03:24:52Z
 """TrueNorth Range — verify a JWT against a published JWKS (RFC 7517) with PyJWT.
 
 One place for the rules every third-party token must meet, whoever issued it

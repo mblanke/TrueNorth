@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T03:26:11Z
 """POST /ranges/{id}/abandon: a platform administrator writes off a failed range without a
 hypervisor call (#131 review 3, should-fix 1a), and a range whose destroy found none of its
 VMs no longer blocks the tenant's connection changes (1b).

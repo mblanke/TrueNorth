@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T18:15:02Z
 """Scheduled rediscovery of hypervisor connections (the Infrastructure page's figures).
 
 Until this existed the stored inventory changed only when someone pressed Discover. Now an

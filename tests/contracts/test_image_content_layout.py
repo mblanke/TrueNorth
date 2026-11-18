@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T14:33:01Z
 """The api and worker images carry the content they read, at the path their code looks in.
 
 compose.prod.yml used to mount content/catalogue and content/mitre from the checkout into

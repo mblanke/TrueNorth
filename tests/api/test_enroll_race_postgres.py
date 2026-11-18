@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T18:45:08Z
 """Two concurrent self-enrolments on PostgreSQL make one row, and both callers get it.
 
 ``POST /courses/{id}/enroll`` checks for an existing enrolment, then inserts. Two requests

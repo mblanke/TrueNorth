@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:13:40Z
 """Network reservations: addresses and VLANs a range holds on shared infrastructure.
 
 Noise agents' management NICs, edge-firewall uplinks and range VLANs share networks that

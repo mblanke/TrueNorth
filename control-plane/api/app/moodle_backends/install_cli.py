@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T22:17:33Z
 """The installer's hooks for a Moodle it runs itself (install/roles/tn_moodle).
 
 Run inside the api container, which already holds the database and the tool key, so the

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """Telemetry event correlation engine — pattern-based alert generation.
 
 Consumes enriched events, correlates within time windows, and produces

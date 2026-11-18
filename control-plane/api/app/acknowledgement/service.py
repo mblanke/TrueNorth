@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T05:28:59Z
 """Drafts, publication, signatures and the signature export (ADR 0014 decision 3; #279).
 
 The rules:

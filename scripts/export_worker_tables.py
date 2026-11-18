@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T03:04:26Z
 """Generate the worker's view of the API-owned tables it reads and writes.
 
 The worker builds as its own image and cannot import ``app.models``; until 2026-10-03 it

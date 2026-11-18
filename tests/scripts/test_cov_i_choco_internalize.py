@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """COV-I: scripts/lab/choco-internalize.py — the edges test_choco_internalize.py stops short of.
 
 Whole-slice coverage before this file: 75.5% (372 statements). Missing were: the remaining

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T04:15:41Z
 """The restore drill's audit archive step runs without Celery (PR #168, CI `drill` lane).
 
 scripts/backup/drill.sh runs scripts/backup/drill_audit_archive.py on the host's python3,

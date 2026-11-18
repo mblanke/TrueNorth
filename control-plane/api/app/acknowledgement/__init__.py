@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T05:28:59Z
 """The acknowledgement form: the rules of use everyone signs (ADR 0014 decision 3, issue #279).
 
 Importing this package registers its tables on ``Base.metadata``. ``rule`` decides who

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T07:24:37Z
 """A range's independently identified inventory, and what is compared with it (ADR 0013 §5,
 range certification S5, issue #243). Pure functions over dicts: no database, no SDK.
 

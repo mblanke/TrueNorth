@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range — Scoring Engine (package)."""
 
 from scenario_engine.scoring.engine import (

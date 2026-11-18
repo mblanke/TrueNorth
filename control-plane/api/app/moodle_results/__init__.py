@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:23:41Z
 """Moodle results: completions and quiz grades for published courses, pulled back into
 TrueNorth's enrolments, module progress and quiz attempts.
 

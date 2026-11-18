@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-19T19:18:08Z
 """Guard that every router in app.routers is actually registered on the app.
 
 On 2026-08-19 every `app.include_router(...)` call was deleted from main.py while

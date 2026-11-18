@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-20T18:13:16Z
 import { parseDiagram } from './topology-scene';
 
 describe('parseDiagram (3D topology)', () => {

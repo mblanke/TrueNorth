@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T00:04:56Z
 """Templated objective queries are rendered from ``variables:`` or rejected (review finding 3)."""
 
 from __future__ import annotations

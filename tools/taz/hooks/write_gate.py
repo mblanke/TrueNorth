@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T15:57:49Z
 """PreToolUse write gate for TAZ (rings 1-6). Vendored from TAZ's model-write-gate.py.
 
 Installed after the 2026-08-19 incident, in which a Claude Code session whose main loop

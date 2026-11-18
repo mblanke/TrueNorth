@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:52:42Z
 """Issue #227: the QSP qualification reads are scoped to the caller's tenant + shared.
 
 ``GET /qsp/qualifications``, ``/qsp/qualifications/{code}/objectives``,

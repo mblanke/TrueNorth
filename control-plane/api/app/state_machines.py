@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T23:33:50Z
 """Allowed state transitions for ranges and exercises (kept out of models.py, ADR 0003).
 
 A range's in-progress states (provisioning, destroying, stopping, starting) are set by

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-24T11:52:04Z
 """opaque subject credential inbox
 
 Revision ID: 5e9a1c3d7f20

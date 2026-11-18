@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T15:29:08Z
 """The installer orders release tags with rcN numerically (install/roles/tn_app_source).
 
 Work install, 2026-10-20: `is version(..., version_type='semver')` judged v1.2.0-rc12

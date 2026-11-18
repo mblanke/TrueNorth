@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T05:28:59Z
 """The rules of use: read, sign, and (administrators) publish and export (ADR 0014 §3; #279).
 
 =================================================  ==============================================

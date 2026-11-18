@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:20:24Z
 """Tenant isolation and permissions on the platform-core routers.
 
 directory, auth_zones, storage, ad_sync and admin (teams, roster import). Until

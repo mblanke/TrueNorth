@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:18Z
 """Tripwire tests for docs/adr/0002-interface-versioning.md.
 
 One test per enforceable DECISION the ADR states, pinned at the code that enforces it;

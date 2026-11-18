@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T07:48:36Z
 """Seat forfeit and reinstatement (ADR 0014 §4; issue #280).
 
 **The rule.** A Student on a class's roll call who has not signed in by 2 hours after the

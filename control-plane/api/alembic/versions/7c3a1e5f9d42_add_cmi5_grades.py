@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """add cmi5_grades: the server-marked cmi5 quiz attempts
 
 Revision ID: 7c3a1e5f9d42

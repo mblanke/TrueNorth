@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T00:59:08Z
 """Whether a course, range template or scenario is **proven** (owner decision 2026-10-27).
 
 Computed from what the site holds now; nothing here is stored. An item is proven when all

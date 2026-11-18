@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-07T14:35:36Z
 /**
  * A readable message from an API error, for toasts in the Wiki and Support pages.
  *

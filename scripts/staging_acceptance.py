@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T01:58:31Z
 """Post-install acceptance for TrueNorth: one check group per module, on an installed host.
 
 Runs inside a one-off api container, in-process, as the bootstrap administrator (the same

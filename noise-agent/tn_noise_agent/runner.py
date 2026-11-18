@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """The agent loop: fetch plan, carry it out on time, report, repeat.
 
 Plans are deterministic and overlap from one fetch to the next, so the runner remembers

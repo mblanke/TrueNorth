@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """The product map: what each golden template is built from, as the feeds name it.
 
 ``content/catalogue/feed_products.yaml`` (its header documents the fields). Found through

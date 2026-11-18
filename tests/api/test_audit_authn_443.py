@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """One failing test per still-present confirmed finding of audit #443 (authentication,
 RBAC and WebSocket sign-in), so the later fixes have an oracle to land against. Every test
 below FAILS at base 280a838b and asserts the correct behaviour; each docstring names its

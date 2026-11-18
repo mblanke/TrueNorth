@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """COV-I: scripts/_inprocess_api.py — the branches the harness tests never reach.
 
 Whole-slice coverage before this file: 75.6% (102/135 statements). Missing were the 429

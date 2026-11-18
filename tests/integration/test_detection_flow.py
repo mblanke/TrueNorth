@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:23:22Z
 """Integration: the detection flow end to end, against a real OpenSearch (ADR 0005, 0020).
 
 An instructor writes a detection rule and loads a threat intel feed (the upload variant

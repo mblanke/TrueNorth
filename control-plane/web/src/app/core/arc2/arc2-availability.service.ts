@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-09T18:50:12Z
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { Arc2StudioApiService, Arc2Status } from '@core/services/arc2-studio-api.service';
 

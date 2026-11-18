@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Audit #443 oracle tests (card TN10X-AUDIT2-tests-provision): the vSphere destroy path.
 
 One strict-xfail test per audit finding reproduced at the base commit (d5851f6d). Each

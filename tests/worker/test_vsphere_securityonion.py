@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T15:20:30Z
 """Security Onion per-range setup (worker/provisioners/vsphere_securityonion.py).
 
 Guest operations are faked at the GuestSession level, as in test_vsphere_roles.py. These

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:19:07Z
 """Who takes part in an exercise, for a Student's detection submission (ADR 0005, M3).
 
 There is no Student-to-exercise table. The relations that exist, the same ones the

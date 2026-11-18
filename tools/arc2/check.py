@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:26:18Z
 """ARC² run contract: init, merge, check, gate, status.
 
 The manifest (``build/arc2/<slug>/manifest.json``) is the only shared state between the

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T15:55:05Z
 """Attendance recorded by several API replicas at once, on PostgreSQL (ADR 0014 §12, issue #283).
 
 SQLite serialises writers, so a race there proves nothing. These run only with

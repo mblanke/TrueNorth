@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:20:42Z
 """/metrics labels requests by route template, never by raw path (security sweep H1).
 
 The raw path of a calendar-feed fetch is a bearer credential (ADR 0004). It used to be

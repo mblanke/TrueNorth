@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:46:01Z
 """The greyspace_breadcrumb injector and validator (ADR 0007, plan slice 4)."""
 
 from __future__ import annotations

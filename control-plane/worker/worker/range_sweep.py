@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T03:26:11Z
 """Scheduled reads over every active range: one provisioner and one login per endpoint.
 
 ``health_check_ranges`` and ``collect_range_metrics`` (tasks.py) used to build a new

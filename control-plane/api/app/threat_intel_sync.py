@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:20:13Z
 """Store a feed pull as the feed's indicators, inside the feed's tenant.
 
 A pull states the feed's current indicator set:

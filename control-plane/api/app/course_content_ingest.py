@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-19T19:18:25Z
 """Course content ingestion — modules, labs and quizzes for a catalogue course.
 
 Loads an authored course file (``content/courses/*.yaml``) onto a course that the

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T12:08:42Z
 """c3318a0d7e51 maps the OU and security-group types the Users page used to offer onto the
 API's enums (#318, review of #322): department -> custom, team -> custom, role -> role_based.
 A row with a legacy type could not be saved from the page after the enums were enforced.

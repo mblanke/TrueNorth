@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:49:43Z
 """Course release lifecycle: upload a candidate, accept it once, pin enrollments to it.
 
 Accepting a release is the point where authored content reaches the course: the release's

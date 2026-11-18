@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T15:00:52Z
 """SHA-512-crypt (``$6$``), in pure Python: the hash Linux ``/etc/shadow`` and cloud-init take.
 
 Ulrich Drepper's specification ("Unix crypt using SHA-256 and SHA-512", the algorithm glibc

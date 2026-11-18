@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T14:11:22Z
 """The hand-rolled Prometheus histogram in app/metrics.py exports valid buckets.
 
 ``observe`` used to bump every bucket the value fitted (already cumulative) and

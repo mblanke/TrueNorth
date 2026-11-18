@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:19Z
 """ADR 0017 tripwire (docs/adr/0017-exercise-template-record.md).
 
 One test per enforceable decision of the ADR: each pins the code that honours it today, so the

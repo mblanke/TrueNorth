@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """TrueNorth Range — external calendar sync registry (ADR 0004 §7).
 
 Usage:

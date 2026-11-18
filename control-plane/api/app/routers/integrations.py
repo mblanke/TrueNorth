@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range - External platform integrations router.
 
 Manages registration and connectivity for Moodle, Immersive Labs, OffSec,

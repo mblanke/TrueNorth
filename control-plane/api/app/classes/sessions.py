@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T05:38:37Z
 """A class's sessions: its scheduler bookings (ADR 0014 §8, §14-17; issue #281).
 
 - Only the class's lead (or an admin of its tenant) books a session for it, and only while

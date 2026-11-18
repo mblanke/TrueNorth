@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-24T11:26:34Z
 from __future__ import annotations
 
 import json

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range -- AI Orchestrator Configuration Router.
 
 DB-backed CRUD for AI backends, fleet nodes, model routing,

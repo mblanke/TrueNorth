@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Booking lifecycle and double-booking (ADR 0004 slice 3).
 
 draft -> scheduled -> provisioning -> active -> completed, cancelled from any state

@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-06-11T01:47:57Z
 import { AfterViewInit, Directive, ElementRef, Input, OnDestroy, inject } from '@angular/core';
 
 import { MotionService } from './motion.service';

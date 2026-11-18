@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """API versioning (app/versioning.py, docs/adr/0002): /api/v1 is real, root paths alias it."""
 
 from __future__ import annotations

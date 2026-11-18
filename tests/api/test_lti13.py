@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-09-23T17:03:20Z
 """LTI 1.3 launch validation and just-in-time user provisioning.
 
 Until now nothing tested ``app/lti13.py``. These cover the two identity decisions a
