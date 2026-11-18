@@ -137,6 +137,9 @@
             path: "{{ tn_release_cache_dir }}"
             state: directory
             mode: "0755"
+          # Real even in --check: verify-blob below runs for real, so it needs the binary
+          # (a simulated download left a missing file and a failure with no message, #487).
+          check_mode: false
           when: tn_cosign_path | length == 0
 
         - name: Release — download the pinned cosign, checked against its SHA-256
@@ -145,6 +148,7 @@
             dest: "{{ tn_release_cache_dir }}/cosign-{{ tn_cosign_version }}-{{ tn_cosign_platform }}"
             checksum: "sha256:{{ tn_cosign_sha256[tn_cosign_platform] }}"
             mode: "0755"
+          check_mode: false
           when: tn_cosign_path | length == 0
 
         - name: Release — cosign verify-blob against the release workflow's identity
