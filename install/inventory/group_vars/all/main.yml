@@ -258,6 +258,11 @@ tn_bootstrap_admin_upn: ""
 # The next night is then the first applied one: it deactivates what the last dry-run night
 # also found, for the same reason.
 tn_ad_status_sync_dry_run: true
+# Class observers' consoles (CLASS_OBSERVER_CONSOLES; ADR 0014 §19, owner decision 2026-10-28).
+# false (the default): an observer gets live status only, and the API refuses their console
+# tickets. true: observers on a class may open its Students' consoles, read-only. A boolean;
+# preflight refuses anything else.
+tn_class_observer_consoles: false
 
 # ── vSphere ───────────────────────────────────────────────────────────
 # NOTE: vsphere_api, NOT "vsphere" — the registry keys in

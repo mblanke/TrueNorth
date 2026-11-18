@@ -360,14 +360,11 @@ not screenshots.
   live status only: consoles are off for observers on this site". The owner has not yet
   decided to allow observers to watch Students' screens. (The console relay now drops an
   observer's keyboard, mouse and clipboard input itself, so the setting is safe to turn on.)
-  The setting is the environment variable `CLASS_OBSERVER_CONSOLES` on the API container, off
-  by default. On an installer-built site it **cannot be turned on** in v1.2.0: the installer
-  has no variable for it, and the compose file gives the API an explicit environment list
-  that does not include it — setting it in the site's `.env` does not reach the container.
-  Turning it on means editing the compose file's api environment by hand, which is a local
-  change outside what the installer sets or supports. Where it has been turned on that way,
-  an observer may open consoles on the **Students' machines only**; their console is
-  view-only: keys, mouse and clipboard are not passed on.
+  The setting is off by default. Your administrator turns it on with the installer variable
+  `tn_class_observer_consoles` (it sets `CLASS_OBSERVER_CONSOLES` on the API container; see
+  [install/README.md](../../install/README.md)). Where it is on, an observer may open consoles
+  on the **Students' machines only**; their console is view-only: keys, mouse and clipboard
+  are not passed on.
 - Observers never see range passwords.
 
 Observers also see the calendar, roll call, sessions and ranges, attendance, close-out and
@@ -652,9 +649,8 @@ this guide cannot point you to one. Do not promise Students these routes yet.
 
 ## Known gaps (tell your administrator if they bite)
 
-- Observer consoles cannot be turned on at an installer-built site in v1.2.0: the installer
-  has no variable for `CLASS_OBSERVER_CONSOLES` and the compose file does not pass it to the
-  API container (section 7 has the detail). Observers get the live status grid only.
+- Observer consoles are off unless your administrator sets `tn_class_observer_consoles`
+  (section 7 has the detail). Until then observers get the live status grid only.
 - Teams are split by hand, not automatically.
 - A lab-drawing class session can't be booked from the Schedule form — it takes the API call
   shown in section 11.

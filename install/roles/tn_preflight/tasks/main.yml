@@ -52,6 +52,16 @@
       tn_site_timezone empty (the host's zone) or an IANA name such as America/Toronto.
     quiet: true
 
+# CLASS_OBSERVER_CONSOLES: a typo ("ture", "enabled") would be read by the API as off, silently.
+- name: Preflight — tn_class_observer_consoles is a boolean
+  ansible.builtin.assert:
+    that:
+      - tn_class_observer_consoles | default(false) | string | lower in ['true', 'false']
+    fail_msg: >-
+      tn_class_observer_consoles must be true or false (default false: observers get live
+      status only; true lets them open the Students' consoles, read-only).
+    quiet: true
+
 - name: Preflight — no vault value is still a CHANGE_ME placeholder
   vars:
     _skip: >-

@@ -409,6 +409,9 @@ filters by it.
   (**Edit**), handing a class to another lead (**Hand over**) and cancelling it (**Cancel
   class**) are buttons on the class's row, for its lead or an admin while it is open
   ([04-instructor-guide.md](04-instructor-guide.md)).
+- **Observer consoles** are off by default: observers see live status only. To let observers
+  open a class's consoles (read-only), set `tn_class_observer_consoles: true` in the
+  installer inventory and re-run `30-config` (`install/README.md`).
 - Approving someone into a **different** tenant is **API only** (`tenant_id` on
   `POST /registration/requests/{id}/approve`, platform administrator).
 
@@ -576,7 +579,7 @@ Every change is audited under your name.
 | Review cycles and themes: no screen | `/content-review/cycles`, `/content-review/themes` |
 | Bulk CSV roster of people who must exist before they sign in: no screen | `POST /users/import-csv` |
 | Approving a request into a different tenant: no screen | `tenant_id` on `POST /registration/requests/{id}/approve` |
-| Observer consoles on class sessions are off, and the installer has no setting for them | `CLASS_OBSERVER_CONSOLES` on the API, see guide 04 |
+| Observer consoles on class sessions are off until you turn them on | `tn_class_observer_consoles: true` in the installer inventory, then re-run `30-config` |
 | An open console outlives its sign-in token: the token is checked when the console connects, not while it is open (ADR 0014, "Console relay"; issue #441 tracks the fix) | To cut someone off now, act in TrueNorth, not the directory: guide 06 §10 |
 
 ---
