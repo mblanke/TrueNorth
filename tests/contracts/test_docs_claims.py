@@ -85,3 +85,16 @@ def test_the_guides_agree_on_who_signs_in_first():
     for name in ("02-install-guide.md", "03-admin-first-day.md"):
         assert "break-glass" in guides[name], f"{name} must name the break-glass bootstrap account"
     assert "break-glass" in readme
+
+
+def test_the_guides_carry_no_stale_provenance_banners_and_name_moodle_and_smtp():
+    """Last-mile 1.4: no 'not re-read' or lab-host banners in the role guides; 02 has a worked
+    SMTP block and says Moodle is optional; 03 says what Moodle gates."""
+    guides = {p.name: p.read_text(encoding="utf-8") for p in ROLE_GUIDES}
+    for name, text in guides.items():
+        for phrase in ("were not re-read", "not re-read end to end", "TN-MGMT01"):
+            assert phrase not in text, f"{name} still carries {phrase!r}"
+    install = guides["02-install-guide.md"]
+    assert "tn_smtp_from_address: truenorth@" in install and "vault_smtp_password" in install
+    assert "tn_moodle_enabled: true" in install
+    assert "self-serve" in guides["03-admin-first-day.md"] and "tn_moodle_enabled" in guides["03-admin-first-day.md"]

@@ -785,10 +785,33 @@ is emailed:
 
 Every administrator sees a persistent banner, *"Email is not configured: onboarding emails,
 reminders and calendar invites are not being sent"*, and the Classes page warns when
-Students are added. Both are expected. When a relay is chosen, set the `tn_smtp_*`
-variables (`install/README.md` "Email (SMTP)") and alert email (`tn_alert_email_enabled`,
-`tn_alert_email_to`), then re-run `site.yml` and prove delivery with
-`ansible-playbook -i inventory/site.yml playbooks/alert-test.yml --ask-vault-pass`.
+Students are added. Both are expected. When a relay is chosen, add this under the host in `inventory/site.yml` (§5.3), with the
+values from the relay's owner:
+
+```yaml
+          tn_smtp_host: <smtp-relay-fqdn>           # no scheme
+          tn_smtp_port: 587                         # 587 starttls, 465 tls, 25 starttls or none
+          tn_smtp_security: starttls                # starttls | tls | none
+          tn_smtp_username: <relay-account>         # empty: the relay accepts this host by address
+          tn_smtp_from_address: truenorth@<mail-domain>   # the relay must allow this sender
+          tn_alert_email_enabled: true
+          tn_alert_email_to: <ops-mailbox>
+```
+
+and, with a `tn_smtp_username`, the password in the vault (§5.2) as `vault_smtp_password`.
+Re-run the installer (§6.2) and prove delivery with
+`ansible-playbook -i inventory/site.yml playbooks/alert-test.yml --ask-vault-pass`. Preflight
+refuses a host with no sender address, and a username without its password. Alert email
+defaults to these same settings; `install/README.md` "Email (SMTP)" lists the rest.
+
+### 6.5 Moodle is optional
+
+Moodle is not installed unless `tn_moodle_enabled: true` is set in `inventory/site.yml`.
+Without it, booked class ranges work as usual, but there is no **Open in Moodle** button and
+no self-serve labs (those start only from a Moodle "Start lab" activity). To add it later, set the variable and
+re-run the installer: it adds TrueNorth's Moodle at `https://<tn-fqdn>:8443` (open TCP 8443
+wherever 443 is open; no DNS record or certificate name is needed). Publishing a course to it
+and the Student's route in are in `docs/runbooks/moodle.md`.
 
 ---
 
