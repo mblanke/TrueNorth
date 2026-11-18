@@ -687,8 +687,13 @@ nothing:
 ansible-playbook -i inventory/site.yml site.yml -K --ask-vault-pass --check
 ```
 
-`--check` stops at the first stage that needs an earlier stage's real work (for example a
-missing directory). What matters is that **preflight** (`00-preflight`) passes: it checks
+The two prompts are different: `BECOME password:` is `-K`, the sudo password of `tnadmin`;
+`Vault password:` is `--ask-vault-pass`, the passphrase you set in §5.3. Typing one at the
+other's prompt fails after about 15 seconds with a vault decryption error.
+
+On a **first install** `--check` cannot go all the way: nothing is running yet, so the
+Keycloak stage reports that it has nothing to check and the later stages that need a running
+stack stop it. What matters is that **preflight** (`00-preflight`) passes: it checks
 the vault, the OS, Docker, disk, time, DNS forward and reverse through AD, the ports and
 the escrow, and names the fix for anything wrong. Its LDAPS and vCenter checks are
 **port checks only** — the LDAPS *bind* is first exercised in the install's 40-tls
@@ -760,6 +765,13 @@ ansible-playbook -i inventory/site.yml site.yml -K --ask-vault-pass -e @smoke.ym
 A clean second run, changing nothing of substance and passing the smoke test again, is the
 proof the install is repeatable. Keep both runs' output with the site record.
 
+**Courses are not loaded by default.** `tn_load_shipped_content` is `false`, so a fresh
+install shows course cards with no modules, quizzes or declared prerequisites, and the
+career map draws no arrows. To load the shipped courses, set `tn_load_shipped_content: true`
+in `site.yml` and run `ansible-playbook -i inventory/site.yml playbooks/80-seed.yml -K
+--ask-vault-pass`. Do this when the site should show its course catalogue (before a class);
+leave it off for a bare platform check.
+
 ### 6.4 Email is parked
 
 No SMTP relay is configured (`tn_smtp_host` unset). TrueNorth works without it, but nothing
@@ -793,8 +805,12 @@ variables (`install/README.md` "Email (SMTP)") and alert email (`tn_alert_email_
    Put it in the site's password safe. Never delete or edit that file: the installer reads
    it on every run.
 2. From a workstation that resolves `<tn-fqdn>` through the site DNS, open
-   `https://<tn-fqdn>/`. **Always by name**: by IP address the page stays empty.
-3. Tick the notice and sign in as `tnadmin@<tn-vm-name>.local` with that password.
+   `https://<tn-fqdn>/`. **Always by name**: by IP address the page stays empty. With the
+   self-signed certificate (`tn_tls_mode: selfsigned`) Chrome shows no "proceed" link, because
+   the site sends HSTS: type `thisisunsafe` on the warning page, or install the site CA first
+   (§5.4).
+3. Tick the notice and sign in as the value of `tn_bootstrap_admin_upn` (in §5.3's example,
+   `tnadmin@<tn-vm-name>.local`) with that password.
 4. **Mobile Authenticator Setup** opens: scan the QR code with an authenticator app, type
    the code. TrueNorth may ask for one more code straight away; that is expected.
 5. If a **Rules of use** page appears, read it and agree.
@@ -871,7 +887,7 @@ and check it again on the far side (`cd kit && sha256sum -c SHA256SUMS`).
           tn_app_source_mode: local
           tn_app_local_path: /home/tnadmin/truenorth
           tn_release_trusted_root: /path/to/kit/trusted_root.json
-          tn_cosign_path: /home/tnadmin/cosign
+          tn_cosign_path: /home/tnadmin/cosign    # the cosign binary itself, not its directory
           tn_image_archive_dir: /path/to/kit/images
           tn_feeds_mode: bundle
           tn_feeds_bundle_public_key: "<feed-bundle-public-key-base64>"
@@ -1010,6 +1026,11 @@ node later and re-run the installer.
 The node is bare-metal Ubuntu, not a VM: vLLM serves the model, LiteLLM puts an
 OpenAI-compatible API with a key in front of it, and TrueNorth's AI orchestrator calls
 LiteLLM.
+
+**ARC² (Course Studio) is separate.** With `tn_ai_enabled: true`, ARC² still needs its own
+model settings: `tn_arc2_mode: local`, `tn_arc2_local_url` (https only), `tn_arc2_local_model`
+and `vault_arc2_local_token`. It does not reuse `tn_ai_base_url`, and the AI node needs an
+https gateway that answers `/v1/messages`. Skip this if ARC² stays off (the default).
 
 **Model rule:** use only models your site policy approves.
 **[DECISION]** the coder model, `<coder-model>` (its Hugging Face id `<coder-model-repo>`),

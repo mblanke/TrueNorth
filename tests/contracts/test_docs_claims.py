@@ -66,3 +66,22 @@ def test_security_compliance_evidence_paths_exist():
     assert cited, "no evidence paths found in the compliance mapping"
     missing = sorted(p for p in cited if not (ROOT / p.rstrip("/")).exists())
     assert not missing, f"docs/security.md cites paths that do not exist: {missing}"
+
+
+def test_the_guides_agree_on_who_signs_in_first():
+    """The bootstrap administrator is the local break-glass account; the first AD admin is
+    approved afterwards (02 section 7, install/README.md). Guides once said the first sign-in
+    is a named AD account (#487, last-mile 1.1)."""
+    readme = (ROOT / "install/README.md").read_text(encoding="utf-8")
+    guides = {p.name: p.read_text(encoding="utf-8") for p in ROLE_GUIDES}
+    guides["install/README.md"] = readme
+    stale = [
+        (name, phrase)
+        for name, text in guides.items()
+        for phrase in ("NAMED AD account", "The named AD account that admits everyone else")
+        if phrase in text
+    ]
+    assert not stale, f"these still say the first sign-in is an AD account: {stale}"
+    for name in ("02-install-guide.md", "03-admin-first-day.md"):
+        assert "break-glass" in guides[name], f"{name} must name the break-glass bootstrap account"
+    assert "break-glass" in readme

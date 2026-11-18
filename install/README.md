@@ -96,9 +96,10 @@ cp inventory/group_vars/all/vault.yml.example inventory/group_vars/all/vault.yml
 $EDITOR inventory/group_vars/all/vault.yml       # replace every CHANGE_ME (preflight refuses them)
 ansible-vault encrypt inventory/group_vars/all/vault.yml
 
-# 2. Nominate the first administrator — a NAMED AD account (without AD: the local account
-#    60-keycloak creates). Without this the install finishes with an approval queue nobody
-#    can drain. Pin the release to install (docs/release.md): tn_release_version: v1.2.3.
+# 2. Nominate the bootstrap administrator (tn_bootstrap_admin_upn): the local break-glass
+#    account 60-keycloak creates, outside the AD domain. It signs in first and approves
+#    the first AD administrator. Without this the install finishes with an approval queue
+#    nobody can drain. Pin the release to install (docs/release.md): tn_release_version: v1.2.3.
 #    The AI endpoint (tn_ai_base_url) has no default (no AI server yet: tn_ai_enabled:
 #    false, "AI (optional)"). The backup escrow is REQUIRED
 #    ("Backups"). Set the SMTP relay (tn_smtp_*) or no onboarding email, reminder or
@@ -1201,7 +1202,7 @@ actually change:
 | `tn_smtp_host` | *(empty: email off)* | The app's relay, with `tn_smtp_port` (`587`), `tn_smtp_security` (`starttls`), `tn_smtp_username`, `tn_smtp_from_address` and `vault_smtp_password` ("Email (SMTP)"). Off: onboarding emails, reminders and invites are not sent. |
 | `tn_alert_email_enabled` | `false` (staging too, until its SMTP details are set) | Alerts by email; with `tn_alert_email_to`, `tn_alert_email_from`, `tn_alert_smtp_host`, `tn_alert_smtp_port` (`587`), `tn_alert_smtp_require_tls` (`true`) and `vault_alert_smtp_username` / `vault_alert_smtp_password` ("Alerting"). Off: alerts go nowhere. |
 | `vault_alertmanager_webhook_url` | *(empty)* | A webhook receiver, alone or beside email ("Alerting"). |
-| `tn_bootstrap_admin_upn` | *(empty — required)* | The named AD account that admits everyone else. |
+| `tn_bootstrap_admin_upn` | *(empty — required)* | The bootstrap administrator: a local break-glass Keycloak account outside `tn_domain` (with AD, set `tn_keycloak_local_admin: true`; it defaults to `false`). It signs in first and approves the first AD administrator. Only with `tn_keycloak_local_admin: false` does it name an AD account. |
 | `tn_platform_tenant_id` | *(empty: the bootstrap tenant)* | `PLATFORM_TENANT_ID`: whose admins are the platform administrators. A tenant UUID to name another. |
 | `tn_site_timezone` | *(empty: the host's zone, else UTC)* | `SITE_TIMEZONE`, an IANA name such as `America/Toronto`. |
 | `tn_class_observer_consoles` | `false` | `CLASS_OBSERVER_CONSOLES`. Off: observers get live status only and the API refuses their console tickets (owner decision 2026-10-28). `true` lets observers on a class open its Students' consoles, read-only. Boolean; preflight refuses anything else. Re-run `30-config` to apply. |
