@@ -71,11 +71,14 @@ class World:
     def grant(self, user: User, **kw) -> str:
         """Issue a grant as the console endpoints do; returns the URL token."""
         vm = {**self.vm, "name": kw["vm_name"], "vm_id": kw["vm_name"]} if kw.get("vm_name") else self.vm
-        access = service.issue(self.db, MockConsole(), user_id=user.id, tenant_id=TENANT_A, rng=self.rng,
-                               vm=vm, view_only=kw.get("view_only", False), observed=False, base=BASE,
-                               audience=kw.get("audience", "student"), class_id=kw.get("class_id"),
-                               event_id=kw.get("event_id"), lab_session_id=kw.get("lab_session_id"))
-        self.db.commit()
+        # The previous socket's clean-up may still be releasing its grant on the shared session
+        # (#477): issue and commit one at a time, like every other use of it in this file.
+        with _ONE_STATEMENT_AT_A_TIME:
+            access = service.issue(self.db, MockConsole(), user_id=user.id, tenant_id=TENANT_A, rng=self.rng,
+                                   vm=vm, view_only=kw.get("view_only", False), observed=False, base=BASE,
+                                   audience=kw.get("audience", "student"), class_id=kw.get("class_id"),
+                                   event_id=kw.get("event_id"), lab_session_id=kw.get("lab_session_id"))
+            self.db.commit()
         assert access["kind"] == "rfb-ws" and access["expires_in"] == GRANT_SECONDS
         assert access["url"].startswith(f"{BASE}/ws/console/")
         return access["url"].rsplit("/", 1)[1]
