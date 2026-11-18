@@ -432,7 +432,7 @@ These are repo issues the build team will hit. They are listed here and not fixe
 YAMLs, the worker and scenario-engine renderers, the API topology stencil, the Range
 Designer, the Packer templates (`infra/{vsphere,proxmox,hyperv}/packer/ubuntu-2404.pkr.hcl`,
 ISO 24.04.5, with an autoinstall seed in `infra/proxmox/packer/http/ubuntu/`), the Terraform
-defaults and `.github/workflows/packer-build.yml`. `ubuntu-2204`, `ubuntu-22.04` and
+defaults. `ubuntu-2204`, `ubuntu-22.04` and
 `ubuntu2204` are **deprecated aliases**. They still resolve to `ubuntu-lts`, through the
 catalogue's `os_aliases_in_ranges` and a fallback in the resolvers, so stored ranges and
 registries imported before the rename keep working (`tests/api/test_os_aliases.py`).

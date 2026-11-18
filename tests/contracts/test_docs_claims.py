@@ -85,3 +85,14 @@ def test_the_guides_agree_on_who_signs_in_first():
     for name in ("02-install-guide.md", "03-admin-first-day.md"):
         assert "break-glass" in guides[name], f"{name} must name the break-glass bootstrap account"
     assert "break-glass" in readme
+
+
+def test_the_install_readme_carries_no_lab_specific_names():
+    """install/README.md is for any site; the reference lab's names live in install/lab/
+    (last-mile 1.5). Also the removed Proxmox workflows must not come back."""
+    text = (ROOT / "install/README.md").read_text(encoding="utf-8")
+    lab = ("TN-MGMT01", "TN-DC01", "COTE/TrueNorth-Demo", "id_ed25519_lab", "192.168.1.", "tn-staging")
+    found = [w for w in lab if w in text]
+    assert not found, f"lab-specific text in install/README.md (move it to install/lab/): {found}"
+    for gone in (".github/workflows/terraform-plan.yml", ".github/workflows/packer-build.yml", "infra/proxmox/terraform"):
+        assert not (ROOT / gone).exists(), f"{gone} was removed with the Proxmox path; do not restore it"

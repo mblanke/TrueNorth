@@ -87,7 +87,7 @@ C4Container
     }
 
     Container_Boundary(infra, "Infrastructure Layer") {
-        Container(tf, "Terraform", "HCL, Proxmox provider", "Range network infra (infra/proxmox/terraform); VMs are built by hypervisor API provisioners, ADR 0009")
+        Container(tf, "Terraform", "HCL, reference only", "Not used to build ranges (infra/vsphere/terraform); VMs are built by hypervisor API provisioners, ADR 0009")
         Container(packer, "Packer", "HCL", "VM template building")
     }
 
@@ -755,9 +755,8 @@ graph TB
 | DNS resolution | Range VLAN | DNS Server | Allow (53) | Name resolution |
 
 > The "Management access" row is design intent: no SSH/WinRM allow rule is defined
-> anywhere in this repository. `infra/proxmox/terraform/modules/networking/firewall.tf`
-> contains only the default-deny, intra-range ICMP, DNS (53), NTP (123), monitoring
-> (9090/9100/3000/9200), established/related and egress-allowlist rules, and the pfSense
+> anywhere in this repository. The Proxmox Terraform firewall module that once held the
+> default-deny and allowlist rules was removed (last-mile 1.5), and the pfSense
 > template (`infra/proxmox/packer/http/pfsense/config.xml`) has only "LAN to any" pass
 > rules. SSH/WinRM reach the VMs at the provisioning layer (cloud-init SSH keys,
 > Packer/Ansible with WinRM), not through a firewall rule tracked here.

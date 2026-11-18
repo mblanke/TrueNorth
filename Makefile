@@ -2,7 +2,7 @@
 # TrueNorth Range — Makefile
 # ------------------------------------------------------------------
 .PHONY: help dev dev-down import-content test lint format build clean migrate \
-                packer-validate tf-plan k6 pre-commit security-scan \
+                packer-validate k6 pre-commit security-scan \
                 prod-config prod-up prod-down prod-ps prod-logs \
                 itest itest-down itest-web arc2-runner
 
@@ -156,12 +156,6 @@ packer-validate: ## Validate all Packer templates
 	echo "Validating $$hcl..."; \
 	packer validate -syntax-only "$$hcl" && echo "  ✓ $$hcl" || echo "  ✗ $$hcl"; \
 	done
-
-tf-plan: ## Terraform plan (infra/proxmox/terraform)
-	cd infra/proxmox/terraform && terraform init -input=false && terraform plan
-
-tf-validate: ## Terraform validate
-	cd infra/proxmox/terraform && terraform init -input=false && terraform validate
 
 # ── Load Testing ───────────────────────────────────────────
 k6: ## Run k6 load tests

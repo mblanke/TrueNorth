@@ -28,9 +28,8 @@ TrueNorth Range uses GitHub Actions for CI/CD with the following workflow trigge
 | Trigger | Pipeline | Actions |
 |---------|----------|---------|
 | Push to `main` | CI (`ci.yml`) | Lint, test, Docker builds (loaded, scanned — not pushed) |
-| Pull Request | CI (`ci.yml`), plus `helm-kind.yml` and `terraform-plan.yml` (only on `infra/proxmox/terraform/**` changes) | Lint, test, supply-chain audit, image build + Trivy gate |
+| Pull Request | CI (`ci.yml`), plus `helm-kind.yml` | Lint, test, supply-chain audit, image build + Trivy gate |
 | Tag `v*` | Release (`release.yml`) | Build, scan, sign and tag six images in GHCR; publish `release-manifest.json` — no deploy |
-| Manual dispatch | Packer (`packer-build.yml`) | Validate and/or build the Proxmox templates |
 
 There is no `develop` branch trigger (`.github/workflows/ci.yml:5-9` lists only
 `main`), no scheduled security scan, and **no workflow deploys anything**
@@ -80,8 +79,6 @@ flowchart LR
 .github/workflows/
 +-- ci.yml              # Main CI pipeline (push/PR)
 +-- release.yml         # Release pipeline (tag): build, scan, sign, publish — no deploy
-+-- packer-build.yml    # Proxmox Packer image build (manual dispatch)
-+-- terraform-plan.yml  # Terraform plan posted to the PR (infra/proxmox/terraform)
 +-- helm-kind.yml       # Installs the Helm chart into a kind cluster (push/PR)
 +-- backup-drill.yml    # Scheduled backup drill
 +-- lab.yml             # Lab session workflow
@@ -276,7 +273,7 @@ trivy image truenorth-api:latest
 
 Packer builds VM templates for range environments. There is no single
 `infra/packer/` tree: templates live **per hypervisor**, in `infra/proxmox/packer/`
-(the ones `.github/workflows/packer-build.yml` builds), `infra/vsphere/packer/`
+(kept for reference; nothing builds them in CI), `infra/vsphere/packer/`
 (the golden-template tree, ADR 0012) and `infra/hyperv/packer/`.
 
 ### Packer Template Structure
@@ -314,103 +311,27 @@ cd infra/proxmox/packer
 for hcl in *.pkr.hcl; do packer validate -syntax-only "$hcl"; done
 
 # Build one template — the Proxmox connection comes in as PKR_VAR_* variables
-# (from truenorth.auto.pkrvars.hcl or the CI secrets, packer-build.yml:82-89)
+# (from truenorth.auto.pkrvars.hcl)
 packer init .
 packer build -force -on-error=cleanup windows-server-2022.pkr.hcl
 ```
 
-### Packer Build Pipeline (GitHub Actions)
+### Packer in CI
 
-> **The live workflow is `.github/workflows/packer-build.yml`** (manual
-> dispatch, `ubuntu-latest`, not self-hosted): a `validate` job runs
-> `packer validate -syntax-only` over every template, then an optional `build`
-> job (input `validate_only`, environment `proxmox`) builds the chosen template
-> with `PKR_VAR_proxmox_*` secrets — URL, username and password, not a token.
-> Template choices: all, ubuntu-2404, windows-server-2022,
-> windows-10-workstation, kali-linux, pfsense, security-onion. The vSphere
-> golden templates are only fmt/validate-syntax checked in CI (`ci.yml` job
-> `packer-vsphere`); a full validate needs a filled `lab.auto.pkrvars.hcl` and
-> builds run on site.
-
-```yaml
-# Excerpt of .github/workflows/packer-build.yml — read the file for the whole thing
-name: Packer Build
-on:
-  workflow_dispatch:
-    inputs:
-      template:
-        description: "Packer template to build"
-        type: choice
-        options: [all, ubuntu-2404, windows-server-2022, windows-10-workstation,
-                  kali-linux, pfsense, security-onion]
-      validate_only: { type: boolean, default: false }
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    environment: proxmox
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: hashicorp/setup-packer@ce93c3c08a6c2ff2275bf4b54ff0d9a75f6c9789 # v3.4.0
-      - run: packer init infra/proxmox/packer
-      - name: Build template(s)
-        env:
-          PKR_VAR_proxmox_url: ${{ secrets.PROXMOX_URL }}
-          PKR_VAR_proxmox_username: ${{ secrets.PROXMOX_USERNAME }}
-          PKR_VAR_proxmox_password: ${{ secrets.PROXMOX_PASSWORD }}
-          PKR_VAR_proxmox_node: ${{ secrets.PROXMOX_NODE }}
-          # ... plus storage, iso_storage, bridge; packer-build.yml:82-89
-        run: packer build -force -on-error=cleanup "${{ inputs.template }}.pkr.hcl"
-```
+The Proxmox Packer workflow (`packer-build.yml`) and the Proxmox Terraform tree and
+workflow were removed (last-mile 1.5): the site is vSphere-only (ADR 0009). The vSphere
+golden templates are only fmt/validate-syntax checked in CI (`ci.yml` job `packer-vsphere`);
+a full validate needs a filled `lab.auto.pkrvars.hcl`, and builds run on site.
 
 ---
 
-## Terraform Workflows
+## Terraform
 
-### Terraform Module Structure
-
-```
-infra/proxmox/terraform/       # make tf-plan / tf-validate (Makefile:160-165); CI plans on PR
-+-- main.tf                    # telmate/proxmox provider
-+-- variables.tf
-+-- modules/dns/, modules/networking/
-
-infra/vsphere/terraform/       # the range builder's target (ADR 0009)
-+-- main.tf, variables.tf
-
-infra/hyperv/terraform/
-+-- main.tf, variables.tf
-```
-
-There are no `environments/` overlays and no `modules/range` — each
-hypervisor's tree is the module.
-
-### Terraform Commands
-
-```bash
-# Plan (review changes) — make tf-plan, Makefile:160-162
-cd infra/proxmox/terraform
-terraform init -input=false
-terraform plan
-
-# Validate — make tf-validate
-cd infra/proxmox/terraform && terraform init -input=false && terraform validate
-```
-
-Range provisioning is **not** done through Terraform any more: the Terraform
-provisioner backends were removed — the worker image has no terraform binary
-and ADR 0009 rules `terraform_vsphere` out as a range builder
-(`control-plane/worker/worker/provisioners/__init__.py:5-9`). The supported
-backends are `mock` and `vsphere_api`, with `proxmox_api` and `hyperv`
-experimental; they call the hypervisor APIs directly.
-
-### State Management
-
-Local state by default. `infra/proxmox/terraform/main.tf:15-34` carries a
-**commented-out** S3/MinIO backend ("enable this block and configure for
-production"); `infra/vsphere/terraform/main.tf:5` notes the module "has no
-backend any more (removed 2026-10, ADR 0009)". There is no DynamoDB lock
-configuration anywhere.
+Range provisioning is **not** done through Terraform: the worker image has no terraform
+binary and ADR 0009 rules `terraform_vsphere` out as a range builder
+(`control-plane/worker/worker/provisioners/__init__.py`). The supported backends are `mock`
+and `vsphere_api`; they call the hypervisor APIs directly. `infra/vsphere/terraform/` and
+`infra/hyperv/terraform/` remain as reference only, with no state backend (ADR 0009).
 
 ---
 
