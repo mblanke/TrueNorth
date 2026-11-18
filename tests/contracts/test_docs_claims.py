@@ -133,3 +133,40 @@ def test_the_clean_room_protocol_has_both_phases():
         assert placeholder in ops, f"06 section 4 no longer uses {placeholder}: drop the row from 02"
         assert placeholder in install, f"02's site-values table must define {placeholder}"
     assert "tn_provisioner_backend: mock" in install
+
+
+def _release_key(tag: str) -> tuple[int, int, int, int]:
+    """v1.2.0-rc21 -> (1, 2, 0, 21); a final release sorts after its candidates."""
+    m = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)(?:-rc(\d+))?", tag)
+    assert m, f"not a release tag: {tag!r}"
+    major, minor, patch, rc = m.groups()
+    return int(major), int(minor), int(patch), int(rc) if rc else 10**6
+
+
+def test_every_guide_carries_the_same_version_stamp_and_it_is_not_stale():
+    """Last-mile 1.11: each guide opens with 'Version / Applies to / Last reviewed'. All name
+    the same release; if the repository knows its tags, that release is at most two release
+    candidates behind the newest (so a cut tag asks for a re-read, not on the very next PR)."""
+    import subprocess
+
+    stamp = re.compile(r"^Version: \S+ · Applies to: (v\d+\.\d+\.\d+(?:-rc\d+)?) · Last reviewed: (\d{4}-\d{2}-\d{2})$", re.M)
+    found = {}
+    for path in sorted((ROOT / "docs/guides").glob("*.md")):
+        m = stamp.search(path.read_text(encoding="utf-8")[:600])
+        assert m, f"{path.name} has no 'Version: .. · Applies to: .. · Last reviewed: ..' line near its top"
+        found[path.name] = m.group(1)
+    assert len(set(found.values())) == 1, f"the guides name different releases: {found}"
+    applies = next(iter(found.values()))
+    try:
+        out = subprocess.run(
+            ["git", "tag", "--list", "v*"], cwd=ROOT, capture_output=True, text=True, check=True, timeout=20
+        ).stdout.split()
+    except (OSError, subprocess.SubprocessError):
+        return
+    tags = [t for t in out if re.fullmatch(r"v\d+\.\d+\.\d+(?:-rc\d+)?", t)]
+    if not tags:
+        return  # a shallow checkout carries no tags
+    newest = max(tags, key=_release_key)
+    a, n = _release_key(applies), _release_key(newest)
+    stale = a[:3] < n[:3] or (a[:3] == n[:3] and n[3] - a[3] > 2)
+    assert not stale, f"the guides apply to {applies} but {newest} exists: re-read them and bump the stamp"

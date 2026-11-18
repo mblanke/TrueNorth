@@ -1,5 +1,7 @@
 # Clean-room install: acceptance protocol
 
+Version: 1.1 · Applies to: v1.2.0-rc22 · Last reviewed: 2026-11-18
+
 For the colleague doing the clean-room install, and for whoever observes it. This is not
 another guide. It is the test of the guides: **can someone other than the owner go from the
 signed release to a running class using only the documents?**
