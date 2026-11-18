@@ -1,3 +1,7 @@
+> **Lab-specific values.** The example names, addresses and datastores in this file are the
+> reference lab's. Another site supplies its own through `lab.auto.pkrvars.hcl` and
+> guide 06 §4 (port templates) instead of building from ISO.
+
 # TrueNorth Range — vSphere Packer template library
 
 Self-contained Packer library that builds the TrueNorth golden-image catalogue on the
@@ -427,6 +431,5 @@ recorded as an open item in `docs/vm-build-sheet.md` §8.
 a filled var file. CI (`.github/workflows/ci.yml`, job `packer-vsphere`, Packer 1.16.0) runs
 `packer init`, `packer fmt -check -recursive` and `packer validate -syntax-only` on every
 push and pull request to `main`, with no secrets and no vCenter, so variable values,
-ISO names and the builds themselves are not checked there. (`packer-build.yml` is the
-older, manually dispatched Proxmox workflow; it does not touch this directory.)
+ISO names and the builds themselves are not checked there.
 `tests/contracts/test_packer_replicate.py` runs `build.sh replicate` against a stub govc.

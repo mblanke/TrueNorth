@@ -82,7 +82,7 @@ Capture the exit code: piping into `tail` hides failures.
 Other workflows: `release.yml` (tag `v*`: images by digest, Trivy gate, SBOMs,
 `release-manifest.json`), `lab.yml` (live vSphere on a self-hosted runner; manual only,
 the nightly is off until the runner is registered: `docs/runbooks/lab-runner.md`),
-`packer-build.yml` (manual), `terraform-plan.yml` (Proxmox PRs). `deploy-dev.yml` and
+`deploy-dev.yml` and
 `deploy-prod.yml` were deleted on 2026-10-08 (they could not work; see
 `docs/release.md`). **Nothing in CI deploys.** The installer (`install/`) deploys.
 

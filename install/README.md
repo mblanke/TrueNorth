@@ -13,20 +13,20 @@ local bootstrap administrator ("Without Active Directory").
 
 This installs the **application**. The ESXi hosts, vCenter, the vDS and the
 management VMs beneath it are built by the PowerCLI tooling in the deployment
-repo (`COTE/TrueNorth-Demo`).
+repo (the site's own infrastructure repository).
 
-Ansible starts at TN-MGMT01 because that is the first host in the stack it can
+Ansible starts at the platform host because that is the first host in the stack it can
 actually manage. ESXi has no package manager and no Python; it is configured
 through the vSphere API instead, which is why there is no Ansible for it and
 why the previous version of this directory — which targeted Proxmox over SSH —
-did not fit the lab that exists.
+did not fit the sites that exist.
 
 | Layer | Built by | Where |
 |---|---|---|
 | ESXi hosts, vCenter, vDS, datastores | PowerCLI / govc | deployment repo |
-| TN-MGMT01, TN-DC01 (AD DS, AD CS, LDAPS) | PowerCLI | deployment repo |
+| The platform host and the domain controller (AD DS, AD CS, LDAPS) | PowerCLI | deployment repo |
 | TrueNorth platform (this) | Ansible → Docker Compose | here |
-| Ranges, VLANs 100–199 | TrueNorth itself, via the vSphere provisioner | the app |
+| Ranges, the range VLAN block (guide 01 §3) | TrueNorth itself, via the vSphere provisioner | the app |
 
 ## Prerequisites
 
@@ -37,9 +37,8 @@ pip install ansible-core
 ansible-galaxy collection install -r requirements.yml
 ```
 
-On the **platform host** (TN-MGMT01): Ubuntu 24.04 and your SSH key in
-`~tnadmin/.ssh/authorized_keys` (the inventory expects `~/.ssh/id_ed25519_lab` on the
-control node). In `git` mode it also needs HTTPS out to github.com; without it, use
+On the **platform host**: Ubuntu 24.04 and your SSH key in
+`~tnadmin/.ssh/authorized_keys` (the inventory's `ansible_ssh_private_key_file`, `~/.ssh/id_ed25519` unless you change it). In `git` mode it also needs HTTPS out to github.com; without it, use
 `local` mode (below). Preflight checks both.
 
 **Docker is not a manual prerequisite on Ubuntu 24.04.** `00-docker` (roles/tn_docker,
@@ -126,7 +125,7 @@ typing it on a command line.
 Then browse to `https://<tn_domain_fqdn>`, **by name, never by IP address**. Keycloak's
 issuer and redirect URIs are the hostname, so opening `https://<ip>` loads an empty page
 (the sign-in check is refused as `invalid_redirect_uri`). The workstation must resolve the
-name: use the AD DNS (TN-DC01), or add a hosts-file line for the platform host.
+name: use the AD DNS, or add a hosts-file line for the platform host.
 
 A production install starts with an empty catalogue; see
 [Shipped content](#shipped-content-optional) to load the repository's.
@@ -299,7 +298,7 @@ docker compose -f compose.prod.yml --env-file /srv/truenorth/config/.env.product
 **One node, no replicas.** OpenSearch runs as a single node, which can never assign a
 replica: an index asking for one leaves the cluster yellow, and readiness in
 `95-smoke-test` fails ("Readiness: degraded … opensearch Cluster status: yellow"; on
-TN-MGMT01 it was the job-scheduler plugin's `.opendistro-job-scheduler-lock`). OpenSearch
+the reference lab it was the job-scheduler plugin's `.opendistro-job-scheduler-lock`). OpenSearch
 2.13 ignores `cluster.default_number_of_replicas` as a node setting when it creates an
 index, so `70-telemetry` (and `95-smoke-test`, again, before readiness) runs
 `roles/tn_telemetry/tasks/replicas.yml` in the opensearch container, authenticated with the
@@ -367,7 +366,7 @@ stops the install unless `-e tn_allow_downgrade=true` (the runbook says when tha
 ## Without Active Directory
 
 `tn_ldap_enabled: false` (the default in `group_vars`; `inventory/hosts.yml` turns it on for
-TN-MGMT01): no resolver drop-in, no TN-DC01 checks, no LDAPS bind, no Keycloak federation
+the reference lab's platform host): no resolver drop-in, no domain-controller checks, no LDAPS bind, no Keycloak federation
 and no AD import check. Instead `60-keycloak` creates the `tn_ad_groups` as local Keycloak
 groups and `tn_bootstrap_admin_upn` as a local account in `TN-Platform-Admins`, with the
 generated password `bootstrap_admin_password` (`/srv/truenorth/config/secrets/`). The smoke
@@ -381,7 +380,7 @@ kept, mode 0600, next to the admin's: `/srv/truenorth/config/secrets/demo_instru
 `demo_trainee1_password` … `demo_trainee3_password`, `demo_observer_password`
 (`sudo cat` one to sign in; delete one and re-run `60-keycloak` to rotate it). Re-runs reuse
 them. Never turn the demo on where Students train.
-`inventory/staging.yml` is such a site (tn-staging, 192.168.1.240):
+`inventory/staging.yml` is such a site (the reference lab's staging host):
 
 ```bash
 ansible-playbook -i inventory/staging.yml site.yml -K --ask-vault-pass \
@@ -406,7 +405,7 @@ Directory-backed sign-in is qualified in two places (plan M2), and the record ke
 apart: **Samba-tested** is not **Windows AD / AD CS qualified**.
 
 - **The AD test domain** (`tools/ad-test-dc/`, CI job `ad`): a Samba AD DC with its own test
-  CA, TN-DC01's OUs, groups and bind account, and test users (one per TN-* group, nested,
+  CA, the reference lab's OUs, groups and bind account, and test users (one per TN-* group, nested,
   disabled, email collision), beside the pinned Keycloak, all on loopback under compose
   project `tn-ad-test`. The realm and federation are made by this role's own task files
   (`local_identity.yml`, `ldap_federation.yml`, `identity_scope.yml`, `ldap_sync.yml`), then
@@ -415,7 +414,7 @@ apart: **Samba-tested** is not **Windows AD / AD CS qualified**.
   Moodle SSO subject and the local recovery path with the DC stopped. It is never deployed
   on staging. Results and measured timings: `tools/ad-test-dc/README.md`.
 - **AD on staging**: the owner's Windows AD DS / AD CS DC on the home LAN, mirroring
-  TN-DC01 (`corp.tnrange.lab`, `OU=TrueNorth`, the TN-* groups, the bind account). Staging
+  the reference lab's domain controller (`OU=TrueNorth`, the TN-* groups, the bind account). Staging
   uses the normal `tn_ldap_*` path: the bind password from the vault, the root CA from
   `files/corp-root-ca.cer`. The same test file runs against it in external mode.
 
@@ -430,28 +429,8 @@ What the measurements mean for operators:
 | A local account with an AD account's email | Keycloak refuses to create it once AD is federated, so `60-keycloak` creates the local recovery administrator **before** federating. |
 | DC unreachable | AD sign-ins fail after `connectionTimeout` (5 s; without it they hung past 60 s). Local accounts are unaffected. |
 
-### AD on staging: turning it on (coordinator)
-
-1. In `inventory/staging.yml` (the M2 block): `tn_ldap_enabled: true`, and uncomment
-   `tn_dc_host: tn-dc01.corp.tnrange.lab`, `tn_dc_ip: 192.168.1.224`,
-   `tn_dns_servers: ["192.168.1.224"]` (TN-DC01). Leave `tn_keycloak_local_admin: true`.
-2. `ansible-vault edit inventory/group_vars/all/vault.yml`: `vault_ldap_bind_password` (the
-   `TrueNorth Keycloak Bind` account's). Preflight refuses it empty or `CHANGE_ME`.
-3. The enterprise root CA `corp-TN-DC01-CA` (DER or PEM) at `install/files/corp-root-ca.cer`.
-   TN-DC01's LDAPS certificate must name `tn-dc01.corp.tnrange.lab` (hostname is verified).
-4. DNS (done on TN-DC01 2026-10-12): forwarders 192.168.1.21 and 192.168.1.1 (staging will
-   resolve everything through it), A record `tn-staging.corp.tnrange.lab → 192.168.1.240`
-   and the PTRs (preflight asks the DC).
-5. `ansible-playbook -i inventory/staging.yml site.yml -K --ask-vault-pass -e tn_release_version=<tag>`
-   (a full run; or `--tags preflight,base,config,tls,stack,keycloak,seed,smoke,validate`).
-   40-tls proves an LDAPS bind as the service account before Keycloak changes;
-   60-keycloak keeps `tnadmin@tn-staging.local` local, federates, syncs, **fails unless all
-   six TN-* groups are found in `OU=Groups,OU=TrueNorth`**, and reports any AD user it could
-   not import. The smoke test signs in as the local administrator and warns that this does
-   not prove AD; add `-e tn_smoke_username=<AD account in a TN-* group>
-   -e tn_smoke_password=…` (from a vaulted file) to prove an AD sign-in and its claims.
-6. Qualify: `tests/integration/test_ad_directory.py` in external mode
-   (`tools/ad-test-dc/README.md`) with test accounts on the DC.
+Turning AD on at the reference lab's staging host is lab-specific and lives in
+[`lab/README.md`](lab/README.md#ad-on-staging-turning-it-on).
 
 `tn_keycloak_local_admin` (with AD) keeps the bootstrap administrator a **local** Keycloak
 account in `TN-Platform-Admins` with its generated password, beside the directory. Keycloak
@@ -463,7 +442,7 @@ unmanaged sign-in stays behind. Preflight refuses a
 
 ## Work-domain cut-over and rollback
 
-The cut-over from the staging DC to the work domain (TN-DC01, or any production AD) is a
+The cut-over from the staging DC to the work domain (or any production AD) is a
 change of the same variables, never of code. Do it in a window: sessions end.
 
 **Before**: the work domain's AD CS root CA, the bind account's password (vault), the DC's
@@ -1125,7 +1104,7 @@ once; Mark reviewed clears it. **Off on a fresh install.**
 | Variable | Default | Effect |
 |---|---|---|
 | `tn_feeds_mode` | `off` | `off`; `online`: worker-provision pulls endoflife.date, CISA KEV and the NVD CVE API once a day (04:10 UTC); `bundle`: air-gapped, a platform admin imports signed feed bundles |
-| `tn_feeds_http_proxy` | `""` | Optional. The site's HTTP proxy for the daily pull (TN-MGMT01 or the depot). Empty: the worker's `HTTPS_PROXY`, if its environment has one, else direct. No other proxy variable is read |
+| `tn_feeds_http_proxy` | `""` | Optional. The site's HTTP proxy for the daily pull (the platform host or the depot). Empty: the worker's `HTTPS_PROXY`, if its environment has one, else direct. No other proxy variable is read |
 | `tn_feeds_bundle_public_key` | `""` | `bundle` mode: the Ed25519 public key (base64) bundles must be signed with. Without it none is accepted |
 | `tn_feeds_nvd_api_key` | `vault_feeds_nvd_api_key` | Optional; raises NVD's rate limit. Given to worker-provision only (the worker that pulls), never logged |
 | `tn_feeds_nvd_min_cvss` | `9.0` | NVD CVEs below this CVSS base score are not flagged |
@@ -1188,14 +1167,14 @@ actually change:
 | `tn_app_git_repo` | `github.com/mblanke/TrueNorth` (public) | |
 | `tn_app_git_version` | *(empty: the installer's own commit)* | The installer and the app stay the same revision. In release mode the manifest's `git_sha` replaces it. |
 | `tn_allow_downgrade` | `false` | Deliberate rollback only (docs/runbooks/upgrade.md). |
-| `tn_ldap_enabled` | `false` (`true` for TN-MGMT01 in `hosts.yml`) | "Without Active Directory". |
+| `tn_ldap_enabled` | `false` (`true` for the reference lab in `hosts.yml`) | "Without Active Directory". |
 | `tn_ai_enabled` | `true` | `false`: install without AI; AI features say "not configured" ("AI (optional)"). |
 | `tn_ai_base_url` | *(empty — required unless `tn_ai_enabled: false`)* | The LiteLLM endpoint; no committed default. Key: `vault_openai_api_key`. |
 | `tn_backup_escrow_pubkey` / `tn_backup_escrow` | *(empty — one required)* | "Backups". |
 | `tn_backup_min_free_gb` / `tn_backup_max_total_gb` | `20` / `200` | Backup disk floor and cap. |
 | `tn_opensearch_snapshot_repo` / `tn_opensearch_snapshot_keep` | `tn_snapshots` / `14` | Telemetry snapshots per backup ("Backups"); `""` = none. |
 | `tn_upgrade_inflight` / `tn_pre_upgrade_backup` | `drain` / `true` | "Upgrades". |
-| `tn_vsphere_verify_ssl` | `true` | TN-MGMT01 overrides it to `false` in `hosts.yml` (VMCA chain not yet trusted). |
+| `tn_vsphere_verify_ssl` | `true` | The reference lab overrides it to `false` in `hosts.yml` (VMCA chain not yet trusted). |
 | `tn_image_source` | `release` | `build` only for a lab ("Images") |
 | `tn_release_version` | *(empty — required in release mode)* | The release tag to install, e.g. `v1.2.3` |
 | `tn_release_dir` / `tn_image_archive_dir` | *(empty)* | Air-gapped: the release files, and `docker save` tarballs |

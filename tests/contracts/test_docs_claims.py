@@ -87,6 +87,17 @@ def test_the_guides_agree_on_who_signs_in_first():
     assert "break-glass" in readme
 
 
+def test_the_install_readme_carries_no_lab_specific_names():
+    """install/README.md is for any site; the reference lab's names live in install/lab/
+    (last-mile 1.5). Also the removed Proxmox workflows must not come back."""
+    text = (ROOT / "install/README.md").read_text(encoding="utf-8")
+    lab = ("TN-MGMT01", "TN-DC01", "COTE/TrueNorth-Demo", "id_ed25519_lab", "192.168.1.", "tn-staging")
+    found = [w for w in lab if w in text]
+    assert not found, f"lab-specific text in install/README.md (move it to install/lab/): {found}"
+    for gone in (".github/workflows/terraform-plan.yml", ".github/workflows/packer-build.yml", "infra/proxmox/terraform"):
+        assert not (ROOT / gone).exists(), f"{gone} was removed with the Proxmox path; do not restore it"
+
+
 def test_the_clean_room_protocol_has_both_phases():
     """A site with no test site cannot finish the install in one pass: Phase A (mock
     provisioner) needs nothing from the owner, Phase B (real vCenter) needs ported templates
