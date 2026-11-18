@@ -1,5 +1,7 @@
 # TrueNorth guides (v1.2.0)
 
+Version: 1.1 · Applies to: v1.2.0-rc22 · Last reviewed: 2026-11-18
+
 The guides for people who install, run and use TrueNorth, one per role. Read them in this
 order; each ends with a one-page checklist to print.
 
