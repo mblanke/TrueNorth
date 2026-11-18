@@ -6,7 +6,9 @@ import { MatButtonModule } from '@angular/material/button';
 import { catchError, of } from 'rxjs';
 import { NotificationService } from '@core/services/notification.service';
 import { KbStylesComponent } from '@shared/kb-styles.component';
-import { BoardColumn, STATUS_LABELS, SupportQueue, TicketSummary, TicketsApiService } from '@core/services/tickets-api.service';
+import {
+  BoardColumn, STATUS_LABELS, SupportQueue, TicketSummary, TicketsApiService, labelList,
+} from '@core/services/tickets-api.service';
 
 /** Kanban: one column per status; dragging a card changes its status and position. */
 @Component({
@@ -44,6 +46,16 @@ import { BoardColumn, STATUS_LABELS, SupportQueue, TicketSummary, TicketsApiServ
             @for (t of col.tickets; track t.id) {
               <a class="tn-kb-card" cdkDrag [cdkDragData]="t" [routerLink]="['/support', t.id]">
                 <div>{{ t.subject }}</div>
+                @if (labelList(t.labels).length) {
+                  <div class="tn-kb-chips" style="margin:6px 0 0">
+                    @for (l of labelList(t.labels).slice(0, 3); track l) {
+                      <span class="tn-kb-chip" style="padding-right:7px">{{ l }}</span>
+                    }
+                    @if (labelList(t.labels).length > 3) {
+                      <span class="tn-kb-chip tn-kb-muted" style="padding-right:7px">+{{ labelList(t.labels).length - 3 }}</span>
+                    }
+                  </div>
+                }
                 <div class="meta">
                   <span class="tn-kb-key">{{ t.key }}</span>
                   <span>
@@ -66,6 +78,7 @@ export class TicketBoardComponent implements OnInit {
   private readonly notify = inject(NotificationService);
 
   readonly labels = STATUS_LABELS;
+  readonly labelList = labelList;
   readonly columns = signal<BoardColumn[]>([]);
   readonly queues = signal<SupportQueue[]>([]);
   queueId = '';
