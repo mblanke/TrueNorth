@@ -61,7 +61,7 @@ SKIP_FILES = {
     "control-plane/worker/worker/tasks.py",
 }
 GENERATED_RE = re.compile(r"GENERATED from|@generated|DO NOT EDIT|auto-generated", re.I)
-HEADER_RE =re.compile(r"^(#|//) Author: .+\n(#|//) Created: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", re.M)
+HEADER_RE = re.compile(r"^(#|//) Author: .+\n(#|//) Created: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", re.M)
 
 
 def tracked_sources() -> list[str]:
@@ -131,7 +131,9 @@ def main() -> int:
         for name in missing:
             print(f"no authorship header: {name}")
         if missing:
-            print(f"\n{len(missing)} file(s) lack one. Run: python scripts/authorship_headers.py --fix", file=sys.stderr)
+            print(
+                f"\n{len(missing)} file(s) lack one. Run: python scripts/authorship_headers.py --fix", file=sys.stderr
+            )
         return 1 if missing else 0
 
     times = first_commit_times()
