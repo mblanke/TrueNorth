@@ -54,6 +54,14 @@ def test_user_guide_lists_what_is_missing():
     assert "\n## Not in v1.2.0\n" in GUIDE.read_text(encoding="utf-8")
 
 
+def test_the_rc_upgrade_notes_exist_and_state_the_migration_fact():
+    """06 section 2.1 points at per-release notes; rc21's say whether a migration is needed
+    (last-mile 1.6). Presence only: the fact itself was checked by diffing the two tags."""
+    notes = (ROOT / "docs/release-notes/v1.2.0-rc21.md").read_text(encoding="utf-8")
+    assert "no migration" in notes.lower() and "rc19" in notes and "rc20" in notes
+    assert "v1.2.0-rc21.md" in (ROOT / "docs/guides/06-operations-runbook.md").read_text(encoding="utf-8")
+
+
 def test_the_role_guides_are_checked():
     names = {p.name for p in ROLE_GUIDES}
     assert {"03-admin-first-day.md", "04-instructor-guide.md", "05-student-quick-start.md"} <= names
@@ -85,14 +93,6 @@ def test_the_guides_agree_on_who_signs_in_first():
     for name in ("02-install-guide.md", "03-admin-first-day.md"):
         assert "break-glass" in guides[name], f"{name} must name the break-glass bootstrap account"
     assert "break-glass" in readme
-
-
-def test_the_rc_upgrade_notes_exist_and_state_the_migration_fact():
-    """06 section 2.1 points at per-release notes; rc21's say whether a migration is needed
-    (last-mile 1.6). Presence only: the fact itself was checked by diffing the two tags."""
-    notes = (ROOT / "docs/release-notes/v1.2.0-rc21.md").read_text(encoding="utf-8")
-    assert "no migration" in notes.lower() and "rc19" in notes and "rc20" in notes
-    assert "v1.2.0-rc21.md" in (ROOT / "docs/guides/06-operations-runbook.md").read_text(encoding="utf-8")
 
 
 def test_the_clean_room_protocol_has_both_phases():
