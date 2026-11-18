@@ -150,8 +150,8 @@ interface AutoAssessment {
                   <td mat-cell *matCellDef="let e">{{ e.activity_type }}</td>
                 </ng-container>
                 <ng-container matColumnDef="score">
-                  <th mat-header-cell *matHeaderCellDef>Score</th>
-                  <td mat-cell *matCellDef="let e">{{ e.grade || (e.score !== null ? e.score + '%' : '-') }}</td>
+                  <th mat-header-cell *matHeaderCellDef>Result</th>
+                  <td mat-cell *matCellDef="let e" [attr.data-result]="result(e)">{{ result(e) }}</td>
                 </ng-container>
                 <ng-container matColumnDef="completed">
                   <th mat-header-cell *matHeaderCellDef>Completed</th>
@@ -362,6 +362,18 @@ export class MyProgressComponent implements OnInit {
   assessments = signal<AutoAssessment[]>([]);
   generatingRec = signal(false);
   transcriptColumns = ['source', 'title', 'type', 'score', 'completed'];
+
+  /**
+   * What the transcript says about one record: Pass, Fail, or a dash when there is no result
+   * yet. A grade of F is a fail and any other grade a pass; with no grade, a completed record
+   * is a pass. A raw score alone never decides it: the pass mark belongs to the activity,
+   * and the transcript does not carry it.
+   */
+  result(e: { grade?: string | null; completed_at?: string | null }): 'Pass' | 'Fail' | '-' {
+    const grade = (e.grade ?? '').trim().toUpperCase();
+    if (grade) return grade === 'F' ? 'Fail' : 'Pass';
+    return e.completed_at ? 'Pass' : '-';
+  }
   private readonly auth = inject(AuthService);
   // Was hardcoded to the dev-admin UUID, so every learner saw the same
   // transcript regardless of who was signed in.
