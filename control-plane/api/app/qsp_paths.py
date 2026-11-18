@@ -15,21 +15,18 @@ import json
 from sqlalchemy.orm import Session
 
 from . import range_topology
-from .qsp_scope import tenant_uuid_or_none, visible_qualifications
-from .scheduler import service as scheduler
-
 from .models import (
-    CompetencyFramework,
     Competency,
+    CompetencyFramework,
     Course,
     CourseModule,
     EnablingObjective,
     Enrollment,
     Exercise,
     ExerciseState,
+    LearningPath,
     Lesson,
     LessonObjective,
-    LearningPath,
     ModuleContent,
     ModuleContentType,
     Objective,
@@ -42,6 +39,8 @@ from .models import (
     Scenario,
     Template,
 )
+from .qsp_scope import tenant_uuid_or_none, visible_qualifications
+from .scheduler import service as scheduler
 
 # Developmental progression derived from the QSP rank titles (see qsp_source/INDEX.md).
 # Not a fixed DP1-5 scale — a rank ladder (progression) plus parallel specialty streams.

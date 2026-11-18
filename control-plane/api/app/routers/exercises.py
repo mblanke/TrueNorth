@@ -133,7 +133,7 @@ def create_exercise(
     user: CurrentUser = Depends(require_permission(Permission.EXERCISE_CREATE)),
 ) -> Exercise:
     """Create a new exercise.  **Permission: exercise:create**"""
-    rng = get_owned(db, Range, body.range_id, user, not_found="Range not found")
+    get_owned(db, Range, body.range_id, user, not_found="Range not found")
     sc = get_owned(db, Scenario, body.scenario_id, user, not_found="Scenario not found")
     ex = Exercise(
         name=body.name,
