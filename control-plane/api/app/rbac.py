@@ -17,7 +17,7 @@ from collections.abc import Callable
 from enum import Enum
 from typing import Any
 
-from fastapi import Depends, HTTPException, Path, status
+from fastapi import Depends, HTTPException, Path, Request, status
 from sqlalchemy.orm import Session
 
 from .auth import CurrentUser, get_current_user
@@ -388,8 +388,10 @@ def require_any_permission(*permissions: Permission) -> Callable[..., Any]:
 def require_tenant_access(tenant_id_param: str = "tenant_id") -> Callable[..., Any]:
     """FastAPI dependency — ensures the user belongs to the specified tenant.
 
-    Admins bypass the check and may access any tenant.  The *tenant_id_param*
-    is the **name of the path/query parameter** that carries the tenant UUID.
+    Only the platform administrator (``is_platform_admin``) may reach another tenant;
+    an admin of an ordinary tenant is checked like everyone else.  The *tenant_id_param*
+    is the **name of the path parameter** that carries the tenant UUID; a route without
+    it is refused (500), never passed.
 
     Usage::
 
@@ -401,19 +403,30 @@ def require_tenant_access(tenant_id_param: str = "tenant_id") -> Callable[..., A
     """
 
     async def _check(
+        request: Request,
         user: CurrentUser = Depends(get_current_user),
         db: Session = Depends(get_db),
-        **kwargs: Any,
     ) -> CurrentUser:
         # Only the platform operator skips tenant isolation: admins are per tenant.
         if is_platform_admin(user, db):
             return user
 
-        # Resolve the target tenant_id from path params via FastAPI injection
-        # This function is meant to be used alongside a path parameter of the
-        # same name; FastAPI will inject it as a keyword argument.
-        target_tenant_id: str | None = kwargs.get(tenant_id_param)
-        if target_tenant_id is not None and str(target_tenant_id) != user.tenant_id:
+        # The target comes from the request's path parameters. FastAPI never injects a path
+        # parameter into a dependency's **kwargs (that only made a bogus required query
+        # parameter and left this check always passing, audit #443).
+        target = request.path_params.get(tenant_id_param)
+        if target is None:
+            # Wired to a route with no such parameter: a programming error, never a pass.
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Route has no '{tenant_id_param}' path parameter to check tenant access against",
+            )
+        try:
+            target = str(uuid.UUID(str(target)))
+            caller = str(uuid.UUID(str(user.tenant_id)))
+        except ValueError:
+            target, caller = str(target), str(user.tenant_id)
+        if target != caller:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have access to this tenant's resources",
