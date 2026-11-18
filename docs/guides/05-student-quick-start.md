@@ -3,10 +3,7 @@
 Everything you need to take a class or a self-serve lab on TrueNorth Range. Your instructor's
 side is in [04-instructor-guide.md](04-instructor-guide.md).
 
-Checked end to end against the source at `d5851f6d` (2026-11-07). Earlier checks: `main` at
-`fd4f79a6` (2026-10-27, v1.2.0); the sign-out, welcome, My classes, Console and "Labs are
-busy" parts reconciled at `353339c2` (2026-11-02); the Console and lab-console parts at
-`eec53906` (2026-11-05).
+Written for release `v1.2.0-rc17`; labels checked against the source on 2026-11-07.
 
 ---
 

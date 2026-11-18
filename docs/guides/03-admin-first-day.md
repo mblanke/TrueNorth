@@ -5,14 +5,8 @@ installer has finished ([02-install-guide.md](02-install-guide.md)) and ends whe
 can run classes. Day-to-day upkeep (backups, upgrades, porting golden images, alerts) is in
 [06-operations-runbook.md](06-operations-runbook.md).
 
-Checked against tag `v1.2.0-rc17` (`dd98ace1`, 2026-11-05): every
-UI label, route and installer variable named below was verified in that tree. Sections 5 to
-8 and 11 were re-read label by label against the tag on 2026-11-05 (the modules behind them
-are unchanged since `dd98ace1`). Earlier reads:
-checked against `main` at `fd4f79a6` (2026-10-27, v1.2.0); reconciled with `main` at
-`353339c2` (2026-11-02) for site setup, the platform tenant, time zone, classes, roll-call
-domains, users, email help, unit readiness and content port.
-Words follow
+Written for release `v1.2.0-rc17`; the labels, routes and installer variables named below
+were checked against that tag. Words follow
 [GLOSSARY.md](../GLOSSARY.md). UI paths are written as **sidebar section → item → tab or
 card → button**.
 
@@ -516,6 +510,17 @@ time, and an email as well if the site has email on. You are not notified of you
 decision.
 
 ---
+
+## 13. Moodle (optional)
+
+Moodle is off unless the installer was run with `tn_moodle_enabled: true` (02 §6.5). It
+matters for one thing: **self-serve labs start only from a Moodle "Start lab" activity**
+(guide 04 §11), so a site without Moodle runs classes (booked ranges) but no self-serve labs.
+Check: Learn → Learning → Courses → a course shows **Open in Moodle** only when the site has
+Moodle **and** the course has been published to it. To turn it on, set the variable in
+`inventory/site.yml`, re-run the installer, open TCP 8443 where 443 is open, then follow
+[`docs/runbooks/moodle.md`](../runbooks/moodle.md) to publish a course. Nothing in sections 1
+to 12 changes.
 
 ## Using the API for the API-only steps
 

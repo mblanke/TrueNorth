@@ -11,13 +11,8 @@ first sign-in Keycloak asks you to enrol a second factor (**Mobile Authenticator
 instructors need one by default, like admins, range ops and observers) and to sign the
 Rules of use. Guide 03 §1 walks through it; this guide picks up after that.
 
-Checked against `main` at `fd4f79a6` (2026-10-27, v1.2.0); sections 1 to 9 and the exercise
-templates part of section 12 were reconciled with `main` at `353339c2` (2026-11-02), and
-section 7's console parts with the source at `eec53906` (2026-11-05); sections 10, 11 and the
-rest of 12 were not re-read end to end. The release it was checked against is `v1.2.0-rc17`: apart from
-section 7's console parts and the reconciliation edits of 2026-11-05 made to this guide, its
-text is rc17's verbatim, and those console parts describe the source after rc17 — on rc17
-itself a console opens as a one-time ticket from the hypervisor, not relayed through
+Written for release `v1.2.0-rc17`, with the console parts (section 7) describing the later
+relay: on rc17 itself a console opens as a one-time ticket from the hypervisor, not through
 TrueNorth. Words follow
 [GLOSSARY.md](../GLOSSARY.md). UI paths are written as **sidebar section → item → card →
 button**.
