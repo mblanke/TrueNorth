@@ -226,11 +226,6 @@ class TestAuthZonePlatformDefaults:
 # ── exercise_forge.py:238 (medium) — fallback binds a live lab range ─────
 class TestForgeDefaultRange:
     @patch("app.routers.exercise_forge._call_forge_ai", new_callable=AsyncMock)
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: forge with no range_id binds the exercise to an arbitrary "
-        "tenant range, including a Student's live lab range (exercise_forge.py:238)",
-    )
     def test_forge_fallback_never_binds_a_live_lab_range(self, mock_ai, client, db_session):
         """exercise_forge.py:238 (medium): with no range_id the fallback takes the
         tenant's first range with no state filter and no lab-session exclusion, so a
@@ -322,6 +317,91 @@ class TestForgeDefaultRange:
             f"forge bound the exercise to the Student's live lab range (HTTP {resp.status_code}); "
             "Run would fire the scenario on it"
         )
+
+    @patch("app.routers.exercise_forge._call_forge_ai", new_callable=AsyncMock)
+    def test_forge_skips_a_lab_range_for_a_normal_one_and_refuses_naming_it(self, mock_ai, client, db_session):
+        """With a normal range beside the live lab, the fallback binds the normal one; naming
+        the lab's range explicitly is refused (409), as ranges._changeable_range refuses it."""
+        tid = uuid.UUID(DEV_TENANT)
+        tpl = Template(name="Lab TPL 2", version="1.0", yaml="nodes: []", tenant_id=tid)
+        student = User(
+            id=uuid.uuid4(),
+            keycloak_id=f"kc-{uuid.uuid4().hex}",
+            email=f"{uuid.uuid4().hex[:10]}@example.test",
+            display_name="student",
+            role=UserRole.student,
+            tenant_id=tid,
+        )
+        course = Course(name="Lab course 2", tenant_id=tid)
+        db_session.add_all([tpl, student, course])
+        db_session.flush()
+        sha = uuid.uuid4().hex * 2
+        db_session.add(CourseReleaseBlob(sha256=sha, size=1, data=b"x"))
+        db_session.flush()
+        release = CourseRelease(
+            id=uuid.uuid4(),
+            tenant_id=tid,
+            course_id=course.id,
+            catalogue_code="c",
+            arc2_code="a",
+            run_id="r",
+            slug="s2",
+            title="T",
+            version=1,
+            release_digest=sha,
+            learner_digest=sha,
+            platform_digest=sha,
+            instructor_digest=sha,
+            blob_sha256=sha,
+            meta="{}",
+        )
+        db_session.add(release)
+        db_session.flush()
+        lab = Range(name="lab-student-live-2", template_id=tpl.id, tenant_id=tid, state=RangeState.running)
+        normal = Range(name="class-range", template_id=tpl.id, tenant_id=tid, state=RangeState.running)
+        db_session.add_all([lab, normal])
+        db_session.flush()
+        db_session.add(
+            LabSession(
+                tenant_id=tid,
+                user_id=student.id,
+                release_id=release.id,
+                activity_id="mod_001",
+                state=LAB_ACTIVE,
+                profile_id="p",
+                profile_digest="0" * 64,
+                backend="mock",
+                range_id=lab.id,
+            )
+        )
+        db_session.commit()
+        mock_ai.return_value = (
+            "name: Replay\ntimeline:\n  - inject: c2_beacon\n    t: '0:05'\nobjectives:\n  - x",
+            "gpt-4o",
+        )
+        payload = {
+            "indicators": [
+                {
+                    "indicator_type": "domain",
+                    "value": "evil-c2.example.com",
+                    "severity": "critical",
+                    "mitre_attack_ids": ["T1059.001"],
+                }
+            ],
+            "difficulty": "advanced",
+            "duration_minutes": 120,
+            "objective_count": 5,
+        }
+        resp = client.post("/exercise-forge/generate", json=payload)
+        assert resp.status_code == 200, resp.text
+        assert db_session.get(Exercise, resp.json()["exercise_id"]).range_id == normal.id
+        named = client.post("/exercise-forge/generate", json={**payload, "range_id": str(lab.id)})
+        assert named.status_code == 409, named.text
+        # A destroyed or soft-deleted range is no target either, named or by fallback.
+        normal.state = RangeState.destroyed
+        db_session.commit()
+        assert client.post("/exercise-forge/generate", json={**payload, "range_id": str(normal.id)}).status_code == 409
+        assert client.post("/exercise-forge/generate", json=payload).status_code == 409
 
 
 # ── templates.py:274 / scenarios.py (low) — listed but unreadable ────────
