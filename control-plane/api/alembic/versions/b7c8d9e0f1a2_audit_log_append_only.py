@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """audit_logs append-only; audit_exports for the signed daily exports (ADR 0011)
 
 Revision ID: b7c8d9e0f1a2

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-21T04:28:32Z
 """Bridge to the scenario-engine package that ships alongside this API.
 
 The scenario engine owns the canonical scenario/template JSON Schemas and the

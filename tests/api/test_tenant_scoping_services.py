@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:41:13Z
 """Second-tenant behaviour for the leaks the widened scoping guard found outside routers
 (security sweep M4, 2026-10-08).
 

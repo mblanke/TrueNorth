@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-04-17T20:21:24Z
 """TrueNorth Range — Chaos engineering hooks for resilience testing.
 
 Provides configurable failure injection for Celery tasks:

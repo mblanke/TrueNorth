@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-20T02:44:52Z
 /**
  * How an exercise objective reads to a person (issue #201): its name rather than its ref
  * id, who judges it, and its evidence as a sentence rather than the stored JSON.

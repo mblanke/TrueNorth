@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """End-to-end API integration tests for TrueNorth Range."""
 
 import uuid

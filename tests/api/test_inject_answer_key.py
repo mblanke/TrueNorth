@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:29:36Z
 """Students do not see what an inject did, over HTTP or WebSocket (H3).
 
 Before: GET /exercises/{id}/injects returned action, detail and MITRE technique to anyone

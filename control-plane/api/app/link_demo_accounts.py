@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:19:07Z
 """Point the shipped demo people's roster rows at their Keycloak accounts (staging/demo only).
 
 scripts/load_content.py's demo layer creates the demo people as roster rows with a

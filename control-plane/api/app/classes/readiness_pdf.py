@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T20:01:42Z
 """The unit readiness page as a PDF, with the AAR's machinery (fpdf2 core fonts and
 ``aar_html.pdf_text``, which transliterates what latin-1 cannot draw). Landscape A4: a
 summary, the qualifications earned, then each class and its Students. Pass/fail only."""

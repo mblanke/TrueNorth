@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-09-23T17:24:51Z
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T20:00:41Z
 """scripts/check_course.py: the oracle a TAZ-drafted course must pass.
 
 Each test builds a small content tree (one range template, two scenarios, a reference

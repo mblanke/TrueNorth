@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-22T04:01:33Z
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';

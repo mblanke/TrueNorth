@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T00:10:51Z
 """add detection submissions
 
 Revision ID: e3a4b5c6d7e8

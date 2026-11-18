@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T02:20:29Z
 """API code must not index Path.parents past what the api image has.
 
 The image copies control-plane/api to /app, so /app/app/routers/x.py has parents up to

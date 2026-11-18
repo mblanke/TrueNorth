@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:25:54Z
 """The telemetry search language: a small, closed grammar instead of raw query_string.
 
 ``GET /telemetry/{range_id}/search?q=`` used to hand ``q`` to OpenSearch's

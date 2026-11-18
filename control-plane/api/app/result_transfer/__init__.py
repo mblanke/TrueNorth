@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T19:03:59Z
 """Classification-safe result packages for independent TrueNorth enclaves."""
 
 from .contract import (

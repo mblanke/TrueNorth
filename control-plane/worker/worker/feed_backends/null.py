@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """A feed source that fetches nothing (offline sites, tests)."""
 
 from __future__ import annotations

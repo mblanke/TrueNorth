@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T19:01:25Z
 """network_reservations: external reservations (no range, no tenant)
 
 Revision ID: e0f1a2b3c4d5

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:00:31Z
 """The AD path the CI `ad` lane qualifies is the path the installer runs (plan M2).
 
 tests/integration/test_ad_directory.py proves the behaviour against a directory; these

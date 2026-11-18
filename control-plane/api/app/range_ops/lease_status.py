@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T19:13:09Z
 """Whether a range's lease can be force-released, and the proof (R0-B recovery controls).
 
 A lease tombstone (``abandoned:<action>:<token>``, app/range_ops/service.py fence_lease)

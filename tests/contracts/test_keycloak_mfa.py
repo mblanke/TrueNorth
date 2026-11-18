@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:26:37Z
 """MFA in Keycloak: what the installer configures, held against the API's rule (v1.2.0).
 
 The behaviour itself is proven on the pinned Keycloak image by scripts/check_keycloak_mfa.sh

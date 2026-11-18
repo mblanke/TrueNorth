@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-06-11T01:47:57Z
 import { Directive, ElementRef, OnDestroy, OnInit, inject } from '@angular/core';
 import gsap from 'gsap';
 

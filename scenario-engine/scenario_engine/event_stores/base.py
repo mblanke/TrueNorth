@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T03:01:44Z
 from __future__ import annotations
 
 from abc import ABC, abstractmethod

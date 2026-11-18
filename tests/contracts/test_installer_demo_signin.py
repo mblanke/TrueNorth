@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:19:07Z
 """Demo sign-in: with tn_load_shipped_demo (staging, demo hosts), the demo people can sign in.
 
 60-keycloak gives each shipped demo person a local Keycloak account whose password is a

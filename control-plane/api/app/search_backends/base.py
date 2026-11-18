@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T00:59:40Z
 """TrueNorth Range — Abstract search/telemetry backend interface.
 
 Abstracts bulk event ingestion and free-text search so the control plane

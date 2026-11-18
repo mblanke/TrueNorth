@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-15T17:53:09Z
 """POST /ai-config/backends/{id}/discover probes registered fleet nodes only (TN-MGMT01, 2026-10-15).
 
 Until then discovery probed a hard-coded home-lab node ("r7725", "2x NVIDIA H200 NVL",

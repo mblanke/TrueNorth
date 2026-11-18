@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:19Z
 """Tripwire tests for docs/adr/0003-mosa-ratchet.md.
 
 Each test pins one DECISION the ADR states, quoting the line it pins in its docstring,

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T13:16:52Z
 """cmi5 AUs launched from an LMS over LTI 1.3, with the result in the LMS's gradebook (AGS).
 
 app/cmi5/lti.py (launch, deep-linking items), app/cmi5/ags.py (grade pass-back) and their

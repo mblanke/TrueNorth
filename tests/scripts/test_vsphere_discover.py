@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:52:40Z
 """scripts/vsphere-discover.py: analysis, rendering and the read-only contract.
 
 The fixture mirrors the real lab as discovered on 2026-08-18 (4 x Supermicro

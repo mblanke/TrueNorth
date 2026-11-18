@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T12:53:56Z
 """An exercise template is proven, and ported, like the content it builds on (ADR 0017).
 
 Proven: a range built from its range template reached Certified, an exercise MADE FROM THE

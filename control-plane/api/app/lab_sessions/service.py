@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:29:45Z
 """Lab-session lifecycle.
 
     launch     key (tenant, user, release, activity, attempt) -> the live session, or a new

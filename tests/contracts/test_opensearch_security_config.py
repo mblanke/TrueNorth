@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:43:56Z
 """Production OpenSearch runs its security plugin; only dev/itest and an explicit override don't.
 
 compose.prod.yml once defaulted the plugin off ("every client talks plain http"). These

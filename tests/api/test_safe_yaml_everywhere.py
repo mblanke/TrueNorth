@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T22:14:48Z
 """Every YAML parse in the API goes through ``app.safe_yaml`` (security sweep M4, follow-up to PR #112).
 
 PR #112 moved scenario create/update/validate and template validate to ``safe_yaml.load``

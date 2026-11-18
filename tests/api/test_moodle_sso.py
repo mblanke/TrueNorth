@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:13:50Z
 """Single sign-on from the TrueNorth app into the tenant's Moodle.
 
 TrueNorth decides who may open a course; Moodle (``local_truenorth``'s ``sso.php``)

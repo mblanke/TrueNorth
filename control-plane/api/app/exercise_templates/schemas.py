@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T12:53:56Z
 """Wire shapes of the exercise template (kept out of ``app.schemas``, ADR 0003).
 
 ``ExerciseTemplateCore`` is the portable part of a template, strict (unknown fields are refused) and

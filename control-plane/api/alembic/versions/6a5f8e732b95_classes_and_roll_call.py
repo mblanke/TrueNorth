@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T02:43:58Z
 """classes, class staff and roll call
 
 Revision ID: 6a5f8e732b95

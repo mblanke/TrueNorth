@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:23:31Z
 """The AD status sync panel: last runs, counts, deactivated accounts, "run now" (#290).
 
 Administrators only, and only their own tenant: a nightly run covers every tenant, but each

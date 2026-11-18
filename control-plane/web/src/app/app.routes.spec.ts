@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-11-04T15:16:40Z
 import { Routes } from '@angular/router';
 
 import { routes } from './app.routes';

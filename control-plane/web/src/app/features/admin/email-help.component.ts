@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-28T11:45:59Z
 import { Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T00:41:05Z
 """The runner's model backends (tools/arc2/runner.py ModelConfig): ARC2_MODE.
 
 subscription runs Claude; local runs only an Anthropic-compatible gateway (ARC2_LOCAL_*)

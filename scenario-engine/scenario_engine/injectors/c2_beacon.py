@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range - Command & Control beacon injector.
 
 Simulates C2 communication patterns for training scenarios:

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T03:04:55Z
 """The content clock (ADR 0014 decisions 22-24, issue #286).
 
 Importing this package registers its tables on ``Base.metadata``. The feeds (issue #287)

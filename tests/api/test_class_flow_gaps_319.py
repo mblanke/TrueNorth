@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T12:13:13Z
 """GA gaps B: the class flow against ADR 0014 (issue #319).
 
 The rules under test:

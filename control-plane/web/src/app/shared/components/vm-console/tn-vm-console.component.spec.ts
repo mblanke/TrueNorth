@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-11-04T14:56:48Z
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed, discardPeriodicTasks, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';

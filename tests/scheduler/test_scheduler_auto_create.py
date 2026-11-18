@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """A booking links or creates its range and exercise (ADR 0004 slice 11, decided 2026-10-06).
 
 - With a template and no range, the clock creates the range at the provisioning lead

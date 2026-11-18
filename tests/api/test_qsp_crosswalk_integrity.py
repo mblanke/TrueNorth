@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-18T18:17:12Z
 """Integrity checks on the QSP crosswalk — the accreditation contract.
 
 crosswalk.csv is what an auditor reads to see that each performance objective traces

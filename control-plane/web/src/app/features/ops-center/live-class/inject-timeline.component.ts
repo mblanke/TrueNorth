@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-20T11:01:01Z
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import type { InjectRecord } from '@core/models';
 import { tplus } from './live-class';

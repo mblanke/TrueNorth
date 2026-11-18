@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:49:43Z
 """Read and verify an ARC² release tarball (``tools/arc2/release.py`` writes it).
 
 Nothing in the upload is trusted: every file's sha256, each part's digest and the release

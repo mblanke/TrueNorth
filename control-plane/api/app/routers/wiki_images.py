@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T15:57:47Z
 """TrueNorth Range — images in wiki pages (issue #379).
 
 ==================================================  ==========================

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:19Z
 """ADR 0020 tripwires: instructors judge team exercises (docs/adr/0020).
 
 Each test pins one decision of the ADR to the code that enforces it, so the day the code

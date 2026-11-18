@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-28T01:03:53Z
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';

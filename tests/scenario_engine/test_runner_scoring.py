@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T13:09:18Z
 """The CLI runner scores objectives through the ScoringEngine.
 
 Until 2026-10-03 ``evaluate_objectives`` imported ``scenario-engine.validators``, a name no

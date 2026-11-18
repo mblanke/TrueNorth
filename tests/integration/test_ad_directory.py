@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:00:31Z
 """Directory-backed (AD) sign-in, qualified against a real directory (plan M2).
 
 Two modes, one suite:

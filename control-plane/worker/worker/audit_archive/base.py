@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """Where signed audit exports are kept (ADR 0001 adapter, ADR 0011)."""
 
 from __future__ import annotations

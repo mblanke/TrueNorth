@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:26:18Z
 """cmi5 package emission and checks for ARC².
 
 The Package Builder does not hand-write ``cmi5.xml``. This module derives the package from the

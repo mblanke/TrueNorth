@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Regression oracle for the confirmed audit findings of #443 (card TN10X-AUDIT-tests-classes).
 
 One test per finding that is still present at base 280a838b. Each asserts the *correct*

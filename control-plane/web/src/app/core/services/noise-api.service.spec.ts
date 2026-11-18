@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-07T14:14:37Z
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { ApiService } from './api.service';

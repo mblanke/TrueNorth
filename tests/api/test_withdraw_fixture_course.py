@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T23:22:25Z
 """POST /admin/fixture-courses/{code}/withdraw: retire C105 on a host that published it
 before #147 (app/course_publishing/withdraw.py), against the in-memory Moodle.
 

@@ -1,4 +1,6 @@
 #!/bin/sh
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:02:59Z
 set -eu
 # Moodle compares PHP's SERVER_PORT with SITE_URL. A farm node publishes
 # <public port>:8080, so report the public port for direct requests that carry

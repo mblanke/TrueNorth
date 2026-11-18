@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-14T13:46:21Z
 """Installer contracts for tn_ai_enabled, both modes.
 
 On (the default): preflight requires tn_ai_base_url and probes it, the env file carries the

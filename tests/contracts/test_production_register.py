@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T00:41:23Z
 """The production register tracks every catalogue course exactly once, and only those."""
 
 from __future__ import annotations

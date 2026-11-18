@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T00:59:40Z
 """TrueNorth Range — xAPI LRS backend.
 
 Works with any xAPI 1.0.3-compliant LRS:

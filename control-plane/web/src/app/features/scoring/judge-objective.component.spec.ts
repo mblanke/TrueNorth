@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-11-04T15:21:32Z
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';

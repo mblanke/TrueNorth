@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T18:09:45Z
 """scripts/register_golden_image_inprocess.py against the real /golden-images router.
 
 The contract tests (tests/contracts/test_work_site_template_kit.py) use a fake API; this

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Booking lifecycle (ADR 0004, "Lifecycle").
 
     draft -> scheduled -> provisioning -> active -> completed

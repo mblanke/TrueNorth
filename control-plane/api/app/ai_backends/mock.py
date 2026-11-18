@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:09:21Z
 """Mock engine adapter: no network, deterministic echo."""
 
 from __future__ import annotations

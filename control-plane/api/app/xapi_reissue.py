@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """Re-issue pre-switch xAPI statements under the account actor, on an operator's decision.
 
 Statements in an LRS are immutable. The ones TrueNorth sent before migration

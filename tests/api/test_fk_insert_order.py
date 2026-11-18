@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T15:06:37Z
 """Foreign keys and the unit of work's write order.
 
 With no relationship() between two mappers, SQLAlchemy does not know one row depends on the

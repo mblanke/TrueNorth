@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:29:45Z
 """The console seam: a short-lived URL that opens one VM's screen in a browser."""
 
 from __future__ import annotations

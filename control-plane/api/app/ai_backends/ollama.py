@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:09:21Z
 """Ollama engine adapter: ``/api/generate`` for completions, LAN node probing."""
 
 from __future__ import annotations

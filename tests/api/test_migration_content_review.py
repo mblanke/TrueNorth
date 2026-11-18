@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T03:04:55Z
 """c1465c4964a6 adds the content clock's four tables, and only those (ADR 0014, issue #286).
 
 Upgrade from its parent onto a database that already holds a tenant and a course: the

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T14:52:28Z
 """A failed OpenSearch snapshot never costs the backup of the data.
 
 The snapshot is on by default, so an OpenSearch outage at 02:17 must not throw away that

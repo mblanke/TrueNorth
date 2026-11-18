@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """The feeds' settings (the installer's ``tn_feeds_*``, rendered into the env file).
 
 * ``TN_FEEDS_MODE``: ``off`` (the default on a fresh install), ``online`` (the daily pull),

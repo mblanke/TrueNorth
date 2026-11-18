@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:02:59Z
 """Publish ARC² releases into a real Moodle and play a student through them.
 
 Runs against the disposable Moodle in infra/platform/docker/compose.moodle-test.yml (see

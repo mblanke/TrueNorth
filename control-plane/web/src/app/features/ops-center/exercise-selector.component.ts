@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-09-27T17:22:36Z
 import { Component, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';

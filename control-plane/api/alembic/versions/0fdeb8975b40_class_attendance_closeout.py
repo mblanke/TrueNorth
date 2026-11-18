@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T15:55:05Z
 """class attendance and close-out: attendance per session, results, close-out marks
 
 Revision ID: 0fdeb8975b40

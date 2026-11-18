@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T18:33:28Z
 """Ensure the cmi5 AU credential exists on the platform's lrsql LRS (roles/tn_cmi5).
 
 Run by the installer inside the api image (`docker compose run ... api python -c`), on the

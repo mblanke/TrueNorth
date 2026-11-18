@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T02:24:15Z
 """Golden-image builds: list them, and promote one (ADR 0013 §2).
 
 GET  /golden-images/{image_id}/builds                     INFRA_READ

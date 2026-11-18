@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T11:01:01Z
 """The live class: who is in an exercise and how each Student is doing (issue #199, R1 F2).
 
 One read model for the Ops Center live view: the roster (``aar_access.participants`` plus

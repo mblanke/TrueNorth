@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """SMTP notification channel using aiosmtplib.
 
 Settings come from the environment (the installer's ``tn_smtp_*``, Helm's

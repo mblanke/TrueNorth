@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T00:57:34Z
 """In-memory vector store: offline/air-gapped ranges and tests. Full-text only."""
 
 from __future__ import annotations

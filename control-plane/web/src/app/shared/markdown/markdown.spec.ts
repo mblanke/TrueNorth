@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-07T14:35:36Z
 import { WIKI_IMAGE_ATTR, isAppPath, isSameOrigin, renderMarkdown } from './markdown';
 
 /** Wiki pages and ticket text are written by users and read by everyone in the tenant. */

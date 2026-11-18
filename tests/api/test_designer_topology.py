@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-09-27T13:32:29Z
 """Range Designer edits must be what gets provisioned.
 
 Before this, the designer saved a JointJS graph the worker never read, and its YAML

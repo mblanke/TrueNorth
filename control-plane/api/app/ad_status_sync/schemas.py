@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:23:31Z
 """Wire schemas for the AD status sync panel (#290)."""
 
 from __future__ import annotations

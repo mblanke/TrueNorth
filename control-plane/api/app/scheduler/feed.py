@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Per-user calendar feed (ADR 0004 §6, "Feed security").
 
 Calendar clients (Outlook "Subscribe from web", Apple Calendar, Thunderbird, Google)

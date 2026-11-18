@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:19:06Z
 """Which provisioner backend a new range is built with, and whether it may be.
 
 A range records its backend when it is created (``PROVISIONER_BACKEND``); the worker

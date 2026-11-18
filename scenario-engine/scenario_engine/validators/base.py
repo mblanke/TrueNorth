@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 from abc import ABC, abstractmethod
 from typing import Any
 

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Creating and withdrawing an exercise for a booking: the exercises section's side of
 the scheduler (ADR 0004 slice 11). The scheduler never writes the exercises table
 itself; it asks here."""

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:26:18Z
 """QA depth for ARC² runs: the repo's own content rules, applied before a promotion PR finds them.
 
 ``arc2.check`` calls :func:`check_run`. The rules mirror ``tests/api/test_course_content_ingest.py``

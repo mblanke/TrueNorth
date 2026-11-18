@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T21:07:27Z
 """S7 interruption exercise: range operations against a real broker and a real worker.
 
 Carved from hardening/s7-interruption-exercise (#23) onto main of 2026-10-07 (the R-series

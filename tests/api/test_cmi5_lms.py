@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """TrueNorth as the cmi5 LMS for its own releases (app/cmi5): launch, fetch, the AU's LRS,
 moveOn, satisfied, abandon, waive, and the refusals the cmi5 spec requires.
 

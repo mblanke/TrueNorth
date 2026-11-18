@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-15T17:02:31Z
 # Single-node OpenSearch: no index may ask for a replica (roles/tn_telemetry/tasks/replicas.yml).
 #
 # Runs inside the opensearch container (docker compose exec -T opensearch sh -s), from its

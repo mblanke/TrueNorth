@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:27:27Z
 """GET /email/status and POST /email/test (#306; install/README.md "Email (SMTP)").
 
 - Every signed-in role learns whether email is configured, and nothing else.

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:02:03Z
 """Installer v1.0.0 contracts (install/README.md; docs/release.md; docs/runbooks/).
 
 Each test pins one fix from the pre-release review, so it cannot quietly regress:

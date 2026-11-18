@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T19:03:59Z
 """Persistence rules for the Unclassified outbox and Secret authoritative ledger."""
 
 from __future__ import annotations

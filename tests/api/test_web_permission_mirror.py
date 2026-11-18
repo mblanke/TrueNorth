@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T18:45:07Z
 """The web app's copy of ROLE_PERMISSIONS must equal rbac.py's.
 
 control-plane/web/src/app/core/auth/permissions.ts decides which menu entries, routes and

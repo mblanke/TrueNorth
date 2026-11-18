@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T20:52:05Z
 """The PostgreSQL fixture (tests/conftest.py ``postgres_engine``) is the schema production
 runs: built by ``alembic upgrade head``, so its constraints are the migrations', not
 ``create_all``'s. The concurrency tests for releases, publications and labs (CR1-13 in

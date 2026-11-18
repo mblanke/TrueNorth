@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T03:43:42Z
 """TAZ bakeoff runner: replay one merged ticket against one local model.
 
     python tools/taz/bakeoff/runner.py --task invite-tenant-scope \\

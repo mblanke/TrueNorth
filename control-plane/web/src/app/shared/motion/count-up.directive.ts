@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-06-11T01:47:57Z
 import { Directive, ElementRef, Input, OnChanges, OnDestroy, SimpleChanges, inject } from '@angular/core';
 
 import { MotionService } from './motion.service';

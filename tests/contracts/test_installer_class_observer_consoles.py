@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:32:33Z
 """CLASS_OBSERVER_CONSOLES reaches the api from the installer and compose (owner decision 2026-10-28).
 
 Observer consoles are off by default; observers get live status only. The API reads

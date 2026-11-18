@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:29:36Z
 """YAML from users is parsed without aliases and under a size cap (security sweep M4).
 
 ``engine_bridge.validate_yaml`` (POST /scenarios/validate, /templates/validate; a Student

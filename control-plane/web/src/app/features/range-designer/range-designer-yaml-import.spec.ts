@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-10T01:19:07Z
 import * as joint from '@joint/core';
 import { firstValueFrom, Observable, of, throwError } from 'rxjs';
 import { upgradeDiagramJson } from './diagram-compat';

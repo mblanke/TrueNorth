@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T13:55:07Z
 """Second adversarial review of #342 (ADR 0017): the VM cap counts scaling rules too, no
 tenant-private name leaks to a platform administrator's view or an export refusal, the redaction
 is case-insensitive and whole-name, a deleted exercise stops proving, and an import locks the

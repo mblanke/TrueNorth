@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:13:40Z
 """add network_reservations: collision-free addresses and VLANs on shared networks
 
 Revision ID: c0d1e2f3a4b5

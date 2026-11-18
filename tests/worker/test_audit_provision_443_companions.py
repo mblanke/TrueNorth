@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Companion oracles for audit tracking issue #443 (card TN10X-AUDIT-tests-provision):
 one companion per strict-xfail oracle in ``test_audit_provision_443.py`` — a second
 input that pins the same secure behaviour of the same finding from another angle (a

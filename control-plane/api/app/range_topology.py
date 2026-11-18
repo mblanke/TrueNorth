@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-07-19T14:26:35Z
 """Generate a JointJS `diagram_json` topology for a PO's range.
 
 The 2D range-designer (`graph.fromJSON`) and the 3D topology viewer both render

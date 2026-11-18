@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-03T22:06:26Z
 """Ticket categories (a fixed list) and labels (staff-only triage tags). Issue #376.
 
 The reporter picks a category when filing; labels are for staff and must never reach the

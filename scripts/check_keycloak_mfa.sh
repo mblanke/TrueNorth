@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:26:37Z
 # Prove the MFA configuration on the Keycloak image compose.prod.yml pins (CI job
 # keycloak-mfa). A throwaway Keycloak imports infra/keycloak/realm-truenorth.json (with
 # the truenorth login theme mounted when it exists), scripts/keycloak_mfa.py applies

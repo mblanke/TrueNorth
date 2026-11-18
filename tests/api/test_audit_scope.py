@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T21:03:43Z
 """``GET /audit-log`` is scoped per tenant; only the platform administrator crosses tenants.
 
 Before v1.2.0 the cross-tenant decision was ``user_has_permission(TENANT_READ)``. Every

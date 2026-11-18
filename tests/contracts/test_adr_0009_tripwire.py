@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:19Z
 """ADR 0009 tripwire: tests that go red the day the code drifts from the ADR.
 
 Each test pins one DECISION of docs/adr/0009-vsphere-provisioning-path.md (the

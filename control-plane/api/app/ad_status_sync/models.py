@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:23:31Z
 """AD status sync tables (ADR 0014 decision 6; issue #290).
 
 New tables go in their section, never into the shared ``app.models`` (ADR 0003).

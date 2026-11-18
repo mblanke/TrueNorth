@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:46:01Z
 """Build a breadcrumb payload with the scenario engine's greyspace_breadcrumb injector.
 
     crumb_payload.py --params PARAMS.json --exercise ID --out PAYLOAD.json

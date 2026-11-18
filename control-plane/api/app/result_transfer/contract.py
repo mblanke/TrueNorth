@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T19:03:59Z
 """Signed, destination-bound and encrypted low-to-high result packages.
 
 The outer document contains only routing data, an opaque subject id and pass/fail. The

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:20:35Z
 """LOG_FORMAT=json emits one JSON object per line; the default stays plain text."""
 
 from __future__ import annotations

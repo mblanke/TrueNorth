@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T19:01:25Z
 """Site networks a range's own subnets may not overlap (TN_RANGE_RESERVED_CIDRS).
 
 A range network that reuses the management, build or depot-uplink subnet would route

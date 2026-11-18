@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T20:25:04Z
 # TrueNorth work site - tidy TrueNorth's objects in vCenter: one TrueNorth folder tree and
 # tn-* tags (ADR 0012 follow-up). Idempotent; run it on TN-MGMT01 once the templates are built.
 #

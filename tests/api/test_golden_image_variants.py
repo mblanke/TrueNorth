@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:52:40Z
 """Custom variant images (infra/vsphere/packer/variants/) in the golden-image registry.
 
 `build.sh` registers each built variant through ``POST /golden-images``. These cover:

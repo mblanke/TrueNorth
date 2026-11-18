@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:36:06Z
 """ARC² Course Studio: a run belongs to the tenant that created it.
 
 Course authors in one tenant must not see, read, download, retry or steer another

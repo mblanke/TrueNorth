@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:33:17Z
 """Maintenance windows (ADR 0013 §7, range certification S7).
 
 Importing this package registers its table on ``Base.metadata``. Other sections use

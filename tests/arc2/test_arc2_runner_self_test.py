@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T20:45:24Z
 """``python -m arc2.runner --self-test``: could a job run here, without spending anything?
 
 The installer (install/roles/tn_arc2) runs it before the runner service starts, so a host

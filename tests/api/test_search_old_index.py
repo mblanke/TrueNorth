@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """What a Student's free-text search returns on a pre-v1.0 index (row 14 of #435, "index-migration-unproven").
 
 Fresh v1.0 installs store the inject labels under ``tn_ground_truth`` with ``enabled: false``

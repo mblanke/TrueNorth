@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """COV-I: scripts/content_port_inprocess.py — the branches the CLI tests never reach.
 
 Whole-slice coverage before this file: 82.8% (159/192 statements). Missing were the offline

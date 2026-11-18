@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T03:26:11Z
 """The vCenter a range lives on, as the API resolves it (the browser console).
 
 The API's copy of the worker's rules (worker/connection_binding.py; the API cannot import

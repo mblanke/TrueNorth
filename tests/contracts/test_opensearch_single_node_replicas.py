@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-15T17:02:31Z
 """Single-node OpenSearch: the installer keeps every index at 0 replicas.
 
 TN-MGMT01 (2026-10-15): a plugin index (.opendistro-job-scheduler-lock) was created with

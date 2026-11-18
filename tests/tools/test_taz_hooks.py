@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T15:57:49Z
 """TAZ write gate (rings 1-6) and DoD stop gate: tools/taz/hooks.
 
 Every test runs the hook the way Claude Code does: a JSON payload on stdin, a fake

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T13:52:50Z
 """TrueNorth's own Moodle farm nodes: what being one allows, and binding their accounts.
 
 A farm node (``ManagedMoodleNode``) is a Moodle the installer started and registered from

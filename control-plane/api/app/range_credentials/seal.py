@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T15:09:55Z
 """Seals for range passwords, each bound to what it belongs to (ADR 0013 §3).
 
 ``app/secretbox.py`` seals hypervisor, AI and LTI secrets with one key; nothing it sealed is

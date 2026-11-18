@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-04-17T20:21:24Z
 """TrueNorth Range — Adaptive Learning router.
 
 Provides endpoints for auto-assessed competency results, AI-powered

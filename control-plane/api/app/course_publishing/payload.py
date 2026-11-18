@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:02:59Z
 """The Moodle course a release becomes (pure: release bundle in, payload out).
 
     release module mod_NNN       -> section "N. <title>", summary = its objectives

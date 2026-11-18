@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-21T22:42:51Z
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { RangeCredentialsApiService, TemplateIssue } from '@core/services/range-credentials-api.service';

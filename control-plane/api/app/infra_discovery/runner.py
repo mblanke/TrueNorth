@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T18:15:02Z
 """The scheduled rediscovery loop, started from the API's lifespan (app/main.py).
 
 Every ``INFRA_DISCOVERY_SECONDS`` (default 300; 0 turns it off) one round runs in a

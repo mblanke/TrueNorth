@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range — Fine-grained RBAC enforcement.
 
 Extends the role-based ``require_role`` guard in ``auth.py`` with a

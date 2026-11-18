@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:34:33Z
 """The self-serve lab capacity gate under concurrency, on PostgreSQL (ADR 0014 §18, #288).
 Skipped without TEST_POSTGRES_ADMIN_URL.
 

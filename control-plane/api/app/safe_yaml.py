@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:29:36Z
 """Parsing YAML someone else wrote, without a billion laughs.
 
 ``yaml.safe_load`` refuses tags that build objects, but it still expands anchors and

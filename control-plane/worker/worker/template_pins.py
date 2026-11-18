@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T02:24:15Z
 """Pin every range VM to its golden image's promoted build (ADR 0013 §2).
 
 Runs in the provision task after the topology is rendered (and gs-core planned), before

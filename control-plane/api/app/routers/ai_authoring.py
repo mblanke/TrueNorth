@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-21T04:28:32Z
 """TrueNorth Range — AI authoring proxies.
 
 Thin, tenant-guarded pass-throughs to the AI orchestrator's authoring helpers.

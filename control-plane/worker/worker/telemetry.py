@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T21:03:21Z
 """Range telemetry as the event store keeps it, stamped with the server's own ingest time.
 
 ``truenorth.ingested_at`` is the clock detection credit trusts (ADR 0005): the exercise

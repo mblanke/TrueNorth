@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-19T19:18:25Z
 """Guards on authored course content (content/courses/*.yaml).
 
 The IoT Security Foundations course is a recovered fleet-authored draft. Its

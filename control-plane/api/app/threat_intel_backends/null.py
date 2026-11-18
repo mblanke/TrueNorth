@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:20:13Z
 """TrueNorth Range — null threat intelligence feed backend.
 
 The offline backend every seam carries (ADR 0001 rule 4): it fetches nothing and returns

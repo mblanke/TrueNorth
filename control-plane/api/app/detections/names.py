@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T21:11:59Z
 """One spelling per validator.
 
 Content and objective rows have said ``opensearch_query``, ``validate.opensearch_query``,

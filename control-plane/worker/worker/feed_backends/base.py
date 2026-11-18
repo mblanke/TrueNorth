@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """The content feeds' adapter interface (ADR 0001; ADR 0014 decision 25, issue #287).
 
 A feed source reads one public release or vulnerability feed (endoflife.date, CISA KEV,

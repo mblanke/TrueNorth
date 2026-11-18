@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-07-19T14:26:35Z
 # Scaffold a new scenario dir from templates for a crosswalk PO. Files only.
 set -euo pipefail
 PO="${1:?usage: new_scenario.sh PO_007}"

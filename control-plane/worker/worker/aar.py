@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T03:25:04Z
 """After-action report body built by the worker's ``generate_aar`` task.
 
 Uses the API's report shape (``control-plane/api/app/aar_report.py``): its PDF and HTML

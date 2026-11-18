@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-09-24T10:32:53Z
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 

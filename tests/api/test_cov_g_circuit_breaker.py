@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """Round-3 coverage for app/circuit_breaker.py (whole-slice rank: 64.0% before this file).
 
 The breaker around every external call (Proxmox, Keycloak, OpenSearch) was only reached

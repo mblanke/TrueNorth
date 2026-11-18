@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """Integration test: range lifecycle against live services.
 
 Create -> provision -> snapshot -> restore -> destroy, driven through the real API.

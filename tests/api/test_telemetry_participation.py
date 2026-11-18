@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:29:36Z
 """A Student searches only telemetry they are part of (security sweep M2).
 
 ``GET /telemetry/{range_id}/search`` checked sign-in and tenant only: any Student read any

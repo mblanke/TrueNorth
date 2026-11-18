@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T20:00:41Z
 """Print the taz-card JSON for one course: TAZ may write that course file and its
 instructor pack, and nothing else.
 

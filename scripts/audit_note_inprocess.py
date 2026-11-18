@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:26:37Z
 """Write one audit_logs row for a host-side action, from inside the api image.
 
 Used by playbooks/breakglass-reset-mfa.yml (roles/tn_keycloak/tasks/breakglass.yml) to

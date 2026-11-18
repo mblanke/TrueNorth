@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:59Z
 """The per-range pfSense config.xml (worker/pfsense_config.py) and its boot script.
 
 The generator is pure, so these tests parse the XML it produces. The boot script

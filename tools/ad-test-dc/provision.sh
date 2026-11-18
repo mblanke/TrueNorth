@@ -1,4 +1,6 @@
 #!/bin/bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:00:31Z
 # Populate a freshly provisioned test realm with TN-DC01's layout:
 #
 #   OU=TrueNorth

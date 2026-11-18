@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T20:25:04Z
 """A hypervisor connection's VMs, grouped by TrueNorth's ``tn-type`` vCenter tag.
 
 The adapter reads them (``hypervisor_backends``, ``list_vms``); this groups them for the

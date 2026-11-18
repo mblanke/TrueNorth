@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:19:07Z
 """Only an exercise's participants submit detections (ADR 0005 open question, sweep M3).
 
 Any Student of the tenant holding detection:submit could submit on any running exercise

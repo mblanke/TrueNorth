@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T14:56:09Z
 """The worker cannot credit a team-exercise objective or close an exercise (ADR 0020).
 
 Instructors judge every objective (app/exercise_judging.py) and the API closes exercises

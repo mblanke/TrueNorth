@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:31:01Z
 """Greyspace: a simulated internet a range can attach (ADR 0007, docs/greyspace-plan.md).
 
 ``manifest``, ``fixture`` and ``config`` are pure standard library so the runtime

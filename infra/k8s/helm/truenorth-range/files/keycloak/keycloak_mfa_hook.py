@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:26:37Z
 """The Helm hook's runner (templates/job-keycloak-mfa.yaml): wait for Keycloak, take an
 admin token, and run keycloak_mfa.py with it on stdin, as the installer's 60-keycloak does.
 

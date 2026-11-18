@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """A ``typ: lti-session`` token opens no WebSocket (row 13 of the #435 inventory, "ws-rejects-lti").
 
 The LTI hand-off mints RS256 session tokens that ``auth.get_token_identity`` accepts on every

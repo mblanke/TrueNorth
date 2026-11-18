@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T00:59:40Z
 """TrueNorth Range — Disabled auth backend (dev / offline mode).
 
 Used when AUTH_DISABLED=true or AUTH_BACKEND=disabled.

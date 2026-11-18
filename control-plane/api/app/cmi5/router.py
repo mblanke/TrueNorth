@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """cmi5 routes: the served course structure, the AU runtime's content, and TrueNorth's LMS
 side (launch, fetch, the AU's LRS, abandon, waive). docs/cmi5.md.
 

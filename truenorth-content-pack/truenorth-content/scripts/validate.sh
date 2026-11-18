@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-07-19T14:26:35Z
 # Per-scenario self-check loop. Files only — never provisions.
 set -euo pipefail
 S="${1:?usage: validate.sh scenarios/PO_XXX}"

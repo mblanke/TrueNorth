@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T03:43:42Z
 """Aggregate bakeoff result.json files into a markdown leaderboard, one row per model.
 
     python tools/taz/bakeoff/score.py /data/bakeoff/work --out leaderboard.md

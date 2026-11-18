@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T03:20:32Z
 """Real-signature tests for every place the API trusts a JWT.
 
 The backend tests in test_auth_backends.py stub `jwt.decode`, so until now nothing

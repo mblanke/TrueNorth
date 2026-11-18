@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-08-21T11:45:38Z
 /**
  * The scenario dialect the engine actually runs, as a typed model plus a
  * serializer and a loader.

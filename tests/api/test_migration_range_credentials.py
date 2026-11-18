@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T15:00:52Z
 """c8d9e0f1a2b3 adds range_credentials and wiki_spaces.system_owned, and only that (ADR 0012).
 
 Upgrade from its parent onto a database that already holds a tenant, a template, a range

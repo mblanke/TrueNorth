@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:38:08Z
 """Inside a Linux job's private network namespace: the only routes out.
 
 ``bwrap --unshare-net`` gives a job a network namespace with nothing but its own

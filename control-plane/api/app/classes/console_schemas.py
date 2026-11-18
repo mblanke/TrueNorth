@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T01:18:22Z
 """Wire shapes of a class's consoles and its live view (``console_router.py``; #313, #321)."""
 
 from __future__ import annotations

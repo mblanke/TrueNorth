@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-24T10:49:37Z
 """List or check learner identity/result columns against the accepted remediation baseline."""
 
 from __future__ import annotations

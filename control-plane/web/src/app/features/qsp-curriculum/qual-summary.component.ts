@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-09-24T20:57:51Z
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';

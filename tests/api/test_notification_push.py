@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-03T22:21:32Z
 """Live push of notifications to the bell (issue #377).
 
 A notification committed for someone is pushed to that person's own sockets, on the channel

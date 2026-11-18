@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T20:22:56Z
 """How a feed bundle is signed and verified (ADR 0014 decision 25).
 
 Ed25519, the range certification export's helpers (``range_certification.signing``:

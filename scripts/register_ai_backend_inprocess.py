@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-15T17:53:09Z
 """Register the installer's AI endpoint as an AI backend, from inside the api image.
 
 The installer configures the AI orchestrator's endpoint (tn_ai_base_url,

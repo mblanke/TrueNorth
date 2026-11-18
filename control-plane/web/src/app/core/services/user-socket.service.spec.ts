@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-11-03T22:21:32Z
 import { TestBed, fakeAsync, flushMicrotasks, tick } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { AuthService } from './auth.service';

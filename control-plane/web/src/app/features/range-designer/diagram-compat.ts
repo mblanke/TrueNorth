@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-04T03:48:48Z
 /**
  * Saved diagrams are JointJS graph JSON, and JointJS serialises each element's port
  * groups into it. jointjs 3 accepted a bare string for a port label position

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T22:17:33Z
 """The installer's Moodle hooks (app.moodle_backends.install_cli, install/roles/tn_moodle).
 
 The installer registers the Moodle it runs as platform ``moodle-<node>`` in the tenant,

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T20:12:19Z
 # Install the chart into a kind cluster and prove it comes up: the migration hook Job
 # succeeds, every Deployment rolls out, the api answers /health/ready (database, Redis
 # and OpenSearch), and `helm test` passes. Then uninstall.

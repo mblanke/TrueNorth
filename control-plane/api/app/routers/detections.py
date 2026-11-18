@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T00:10:51Z
 """Student detections in a team exercise: evidence for the instructor, never a grade (ADR 0020).
 
   POST /exercises/{id}/objectives/{ref}/detections   a participant submits a detection query;

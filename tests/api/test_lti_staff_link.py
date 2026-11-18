@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:23:41Z
 """Staff deep linking: an LMS account becomes a staff account only by an explicit, one-time
 link the staff member confirms signed in to TrueNorth (app/lti_identity/links.py).
 

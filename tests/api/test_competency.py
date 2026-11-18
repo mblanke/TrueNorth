@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:07:41Z
 """Competency framework, profiles, skill gaps, assertions, certifications, heatmap.
 
 ``app.routers.competency`` had no tests and no authorization beyond "signed in": any

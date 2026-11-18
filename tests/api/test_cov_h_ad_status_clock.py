@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """The nightly AD status sync clock (app/ad_status_sync/clock.py).
 
 An asyncio task started from the API lifespan: sleep a tick, skip while Keycloak's Admin

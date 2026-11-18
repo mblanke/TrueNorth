@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Companion oracles for the strict-xfail audit-#443 tests in test_audit_tenancy_443.py.
 
 One companion per REAL oracle: a second input that pins the same secure behaviour from

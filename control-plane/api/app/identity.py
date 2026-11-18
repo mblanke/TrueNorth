@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-28T01:34:17Z
 """Claim interpretation for AD-federated identities.
 
 Kept out of ``auth.py`` on purpose. ``auth.py`` stays a thin resolver; the

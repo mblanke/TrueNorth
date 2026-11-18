@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Strict-xfail oracle tests for audit #443 (TN10X-AUDIT2-tests-scheduler).
 
 One test per finding of audit #443 that reproduces at the base commit: each test below

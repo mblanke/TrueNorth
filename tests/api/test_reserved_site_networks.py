@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T19:01:25Z
 """Range certification S1: a range template may not put a subnet on the site's own networks
 (TN_RANGE_RESERVED_CIDRS, installer tn_range_reserved_cidrs).
 

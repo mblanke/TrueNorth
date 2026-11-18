@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:33:17Z
 """Maintenance windows and Student lab sessions (ADR 0013 §7, range certification S7).
 
 A lab's reset (a snapshot restore or a rebuild) is refused inside a window, and a new lab

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Regression tests for the confirmed multi-tenant findings of audit #443.
 
 One test per finding, each failing at the base commit (280a838b); the fix is owned by

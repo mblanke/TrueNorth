@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T11:01:01Z
 """Wire shapes of ``GET /ops/exercises/{id}/class`` (published in docs/interfaces/openapi.json)."""
 
 from __future__ import annotations

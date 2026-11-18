@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T04:05:45Z
 """The content clock's row locks against the worker's sync, on PostgreSQL (ADR 0014, #286).
 
 SQLite ignores row locks, so these run only with TEST_POSTGRES_ADMIN_URL (CI's test-python

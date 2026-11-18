@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:26:37Z
 """MFA by role, enforced by the API on every request (v1.2.0, S2; F2 in the S-track spec).
 
 Before v1.2.0 no route checked amr/acr: ``auth_zone_denial`` had one caller (registration).

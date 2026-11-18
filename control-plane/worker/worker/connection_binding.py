@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T03:26:11Z
 """Which hypervisor endpoint a range lives on: decided once, at build, and kept.
 
 Review of #131 (per-tenant vCenter credentials), 2026-10-11: every operation re-resolved

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T15:57:47Z
 """Smallest valid-enough image files for the wiki image tests (no imaging library needed)."""
 
 import struct

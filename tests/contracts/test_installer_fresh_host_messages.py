@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T10:48:49Z
 """A fresh host has no deployment record, and messages must still render.
 
 ansible-core templates an assert's fail_msg/success_msg even when the assertion passes, so

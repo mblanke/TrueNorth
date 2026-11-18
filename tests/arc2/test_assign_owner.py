@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:36:06Z
 """tools/arc2/assign_owner.py: give unowned Course Studio runs a tenant.
 
 Runs started from Claude Code, or created before the Studio recorded ownership, have no

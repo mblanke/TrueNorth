@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T14:33:01Z
 """Telemetry is in the backup: an OpenSearch snapshot repository is set up by default.
 
 On an installed host scripts/backup/backup.sh warned "opensearch: not backed up

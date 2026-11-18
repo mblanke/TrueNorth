@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:27:27Z
 """Email status and a test message (#306).
 
 =====================  =========================================================

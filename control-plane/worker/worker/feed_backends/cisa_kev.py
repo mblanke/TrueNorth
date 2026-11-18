@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """CISA's Known Exploited Vulnerabilities catalogue.
 
 One ``GET`` of the whole catalogue (JSON, ~1.8 MB). Only the vulnerabilities whose

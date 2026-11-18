@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T16:44:41Z
 """Wiki search through the search backend (#380): ranking from OpenSearch, visibility from the database.
 
 The test that matters most: whatever ids the backend returns, nobody sees a page they may not

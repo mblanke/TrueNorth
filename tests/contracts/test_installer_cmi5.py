@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T18:33:28Z
 """The installer gives the api everything cmi5 needs in production (v1.2.0-rc4: staging had
 no CMI5_LRS_AUTH, so every cmi5 launch answered 503).
 

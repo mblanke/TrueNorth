@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-12T18:45:07Z
 /**
  * What each role may do, as the API decides it.
  *

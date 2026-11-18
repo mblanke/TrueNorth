@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """Audit log integrity (ADR 0011): the signed daily exports of audit_logs.
 
 Importing this package registers its table on ``Base.metadata``. The export, signing and

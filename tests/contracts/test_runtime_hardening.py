@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T20:23:50Z
 """Production runtime rules for compose.prod.yml, the worker and the installer (WP-C).
 
 Static checks, no Docker: the bring-up that proved them is recorded in the commit

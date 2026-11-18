@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:34:43Z
 """TrueNorth Range — In-app notifications for the signed-in user.
 
 Every endpoint works on the caller's own notifications only (user id and tenant both

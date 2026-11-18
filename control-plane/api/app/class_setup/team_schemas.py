@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T11:54:17Z
 """Team request and response schemas (routers/admin.py), moved out of app/schemas.py (ADR 0003).
 
 ``TeamFullIn.exercise_id`` (#200): the exercise a team is for. An instructor creates a team

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:29:45Z
 """Browser console access to a lab VM (ADR 0001).
 
 Usage:

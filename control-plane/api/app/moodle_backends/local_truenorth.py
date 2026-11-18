@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:02:59Z
 """Moodle with the local_truenorth plugin (infra/platform/moodle/local_truenorth).
 
 Every call is one POST to ``/local/truenorth/api.php`` carrying a ticket signed with the

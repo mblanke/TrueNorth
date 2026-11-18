@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T15:00:52Z
 """Keep a range's credentials in step with its template, rotate them, and decide who reads them.
 
 Rows (``RangeCredential``) are written:

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:22:03Z
 """Reserving a build's VLANs and uplink address on network_reservations (worker/range_alloc.py),
 and the tasks.py hooks around it.
 

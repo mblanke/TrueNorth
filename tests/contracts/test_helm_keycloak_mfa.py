@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:26:37Z
 """The chart configures Keycloak for MFA before the api starts (CI helm-kind, v1.2.0).
 
 Before this, a Helm install against a realm the installer never touched crash-looped: the

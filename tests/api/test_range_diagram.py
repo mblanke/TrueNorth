@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T18:13:16Z
 """Every range has a picture: GET /ranges/{id}/diagram draws one from the template.
 
 Ranges created from a template (all of them, until someone opens the designer and

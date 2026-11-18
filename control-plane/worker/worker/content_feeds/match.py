@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """Which feed entries make which content stale (ADR 0014 decision 25): pure, no database.
 
 An entry flags an item when it names one of the item's products (``FeedProduct.covers``) and:

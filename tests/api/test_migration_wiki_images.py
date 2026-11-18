@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T15:57:47Z
 """c5e7a9b1d3f4: per-user notification preferences, for ticket email (#378).
 
 Upgrade from its parent adds ``wiki_images`` with no rows; a second upgrade is a no-op; downgrade drops it and re-upgrade restores it. SQLite here;

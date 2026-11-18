@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:20:13Z
 """TrueNorth Range — threat intelligence feed backend interface (ADR 0001).
 
 A feed backend turns a feed source (a URL it fetches, or content an operator uploaded)

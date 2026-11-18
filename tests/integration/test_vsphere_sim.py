@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:22:03Z
 """The vsphere_api provisioner against vcsim, govmomi's vCenter simulator (v0.56.0).
 
 tests/worker/test_vsphere_provision.py drives the provisioner through hand-made fakes. Here

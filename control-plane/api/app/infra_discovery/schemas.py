@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T18:15:02Z
 """Response shapes for ``GET /hypervisors/discovery`` (kept out of app/schemas.py, ADR 0003)."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:00:31Z
 """app.bootstrap_admin.ensure_admin adopts by email only what is safe to adopt (M2).
 
 80-seed makes the nominated Keycloak account TrueNorth's administrator. When no row has

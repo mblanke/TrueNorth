@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:59Z
 """TrueNorth Range - a per-range pfSense ``config.xml``, rendered by the worker.
 
 Pure functions: the vSphere provisioner calls :func:`build_config` with one rendered

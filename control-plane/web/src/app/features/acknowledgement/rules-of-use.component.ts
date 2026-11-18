@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-23T05:28:59Z
 import { Component, ElementRef, OnInit, ViewChild, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';

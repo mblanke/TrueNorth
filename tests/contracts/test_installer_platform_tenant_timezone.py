@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T01:20:46Z
 """PLATFORM_TENANT_ID and SITE_TIMEZONE reach the api from the installer, compose and Helm (#318).
 
 Before, the installer never set PLATFORM_TENANT_ID (#273): a second tenant left nobody the

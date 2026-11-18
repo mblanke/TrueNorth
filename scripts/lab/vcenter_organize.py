@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T20:25:04Z
 """TrueNorth's vCenter objects: one ``TrueNorth`` folder tree and tn-* tags (ADR 0012 follow-up).
 
 Run through scripts/lab/vcenter-organize.sh (credentials, preflight, the TrueNorth range

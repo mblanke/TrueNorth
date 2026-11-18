@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """COV-I: scenario_engine/scoring/engine.py — the evaluate() aggregation, unknown
 objectives, dependency gating, the scoreboard, partial credit and the time bonus.
 

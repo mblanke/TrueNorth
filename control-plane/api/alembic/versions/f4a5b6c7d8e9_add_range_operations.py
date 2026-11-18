@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T01:32:44Z
 """add range operations
 
 Revision ID: f4a5b6c7d8e9

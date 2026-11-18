@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range -- Seed data for nations, coalitions, auth zones, AI.
 
 42 nations (32 NATO + 10 key partners), 5 coalitions, 3 default auth zones,

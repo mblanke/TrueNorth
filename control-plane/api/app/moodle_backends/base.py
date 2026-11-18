@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:02:59Z
 """The Moodle course-publishing seam (ADR 0001).
 
 A backend converges one Moodle course on a TrueNorth payload and reports what Moodle

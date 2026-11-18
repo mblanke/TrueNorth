@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:29:36Z
 """The detection query language: what a Student may submit as a detection (ADR 0005).
 
 Detection credit used to run a Student's query through OpenSearch ``query_string`` as

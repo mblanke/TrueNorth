@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Scheduler: bookings, their lifecycle and the calendar (docs/adr/0004-scheduler-module.md).
 
 Other sections use :mod:`app.scheduler.service`; nothing outside this package reads

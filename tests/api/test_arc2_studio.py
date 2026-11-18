@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:32:49Z
 """ARC² Course Studio API: runs on disk, jobs queued for the host runner.
 
 Nothing here runs the engine. The runs directory is a temp dir; "the runner" is

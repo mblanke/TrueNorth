@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T15:55:05Z
 """Classes 6: automatic attendance and instructor close-out (ADR 0014 §12-13; issue #283).
 
 The rules under test:

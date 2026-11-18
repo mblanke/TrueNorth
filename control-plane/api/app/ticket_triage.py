@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T15:19:32Z
 """AI triage suggestions for a support ticket (issue #381).
 
 Staff ask for a suggestion on one ticket; the platform's primary AI backend (the one

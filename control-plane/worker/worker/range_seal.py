@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:33Z
 """Open stored range credentials (``tnsec:rk1:``, ADR 0013 §3).
 
 The API seals every stored range password with a key derived for stored credentials only

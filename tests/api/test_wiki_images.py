@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T15:57:47Z
 """Images in wiki pages (#379): who can upload, who can see, and that nothing hostile gets through.
 
 The negatives matter most: another tenant, a staff-only space, an unpublished page, a deleted

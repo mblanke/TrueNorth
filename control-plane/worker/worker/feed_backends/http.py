@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """GET-only HTTP for the content feeds (ADR 0014 decision 25, issue #287).
 
 Every feed request goes through ``FeedHttp``: GET, JSON back, through the site's HTTP proxy

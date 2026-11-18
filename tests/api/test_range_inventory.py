@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T07:24:37Z
 """Range certification S5 (ADR 0013 §5, issue #243), API side.
 
 * GET /ranges/{id}/inventory-checks: staff see the last teardown verification and drift;

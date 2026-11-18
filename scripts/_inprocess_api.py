@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:56:43Z
 """Drive the TrueNorth API in-process, as a named administrator, from inside the api image.
 
 Shared by scripts/load_content_inprocess.py and scripts/arc2_batch_inprocess.py. An

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T23:15:42Z
 """Range tasks act only for the request that was recorded, one execution at a time
 (CR1-06 and CR1-11 in docs/review/codereview1.md).
 

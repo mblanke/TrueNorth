@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T03:04:55Z
 """content clock: review state, dependency edges, theme tags and review cycles
 
 Revision ID: c1465c4964a6

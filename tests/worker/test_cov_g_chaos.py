@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """Round-3 coverage for worker/chaos.py (whole-slice rank: 50% before this file).
 
 The Celery chaos hooks are registered at import but never driven by the slice's tests.

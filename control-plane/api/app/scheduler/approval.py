@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T05:38:37Z
 """Approving class sessions (ADR 0014 §14-16; issue #281).
 
 Every class session is booked ``pending_approval``. Until an approver acts, nothing happens:

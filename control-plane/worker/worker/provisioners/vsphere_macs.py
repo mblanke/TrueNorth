@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T18:32:44Z
 """TrueNorth Range - explicit NIC MAC addresses for vSphere range VMs.
 
 Why explicit (manual) MACs, not the ones vCenter generates

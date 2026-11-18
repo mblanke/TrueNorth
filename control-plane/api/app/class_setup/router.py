@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T11:54:17Z
 """GET /class-setup/mine: the courses you teach and the exercises you run (#200).
 
 The web app reads it to show an instructor the enrol, withdraw and team controls on the

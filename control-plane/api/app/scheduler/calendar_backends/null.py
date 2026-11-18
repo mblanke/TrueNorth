@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """No external calendar: the feed and emailed invites are the only delivery paths.
 
 The default (CALENDAR_BACKEND=null), and the right choice on air-gapped networks.

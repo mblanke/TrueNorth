@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T02:40:35Z
 """course publication lease holder
 
 Revision ID: b6c7d8e9f0a1

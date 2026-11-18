@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:59Z
 """Deploy-time software: the catalogue, the guest commands, guest-ops sessions, uplink pool.
 
 The end-to-end provision flow (customization -> guest ops -> result) is in

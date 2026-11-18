@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T01:15:35Z
 """``GET /schedule/settings``: the scheduler settings the UI shows in words (#318).
 
 The Classes and Schedule pages said "built 30 minutes before" and the approval queue said

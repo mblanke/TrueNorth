@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:51:53Z
 """POST /integrations/platforms/{id}/test goes through app.net_guard (PR #112 review).
 
 Before: it GET the stored base_url with a plain httpx client (any address, redirects

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T12:53:56Z
 """exercise templates: the reusable exercise, and which exercises came from which
 
 Revision ID: 9d4e7a2b5c18

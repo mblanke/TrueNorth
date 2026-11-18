@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T00:59:40Z
 """TrueNorth Range — Keycloak OIDC auth backend.
 
 Validates RS256 JWTs issued by Keycloak, fetching the JWKS from the

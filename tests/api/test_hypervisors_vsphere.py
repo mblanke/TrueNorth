@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-09-24T11:12:00Z
 """vSphere is the range platform. These cover what the dashboard relies on.
 
 - Discovery against a (mocked) vCenter records each ESXi host with its real VM count,

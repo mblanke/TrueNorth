@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T13:46:51Z
 """Host-local copies of golden templates (ADR 0012 decision 6, ADR 0013 §2): names,
 build stamps and pruning rules.
 

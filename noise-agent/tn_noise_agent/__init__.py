@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """tn-noise: the TrueNorth background-noise agent.
 
 Runs inside a range VM as white-cell infrastructure. It is out of bounds for students:

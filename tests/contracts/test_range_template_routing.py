@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T19:10:50Z
 """Every shipped range template routes between its networks the way the worker builds it.
 
 PR #230 (range diagrams) found the Medium Enterprise firewall declared no ``interfaces``:

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T20:23:35Z
 """Keycloak token, session, password and client rules: the realm file and the installer.
 
 infra/keycloak/realm-truenorth.json is what a fresh install imports; install/roles/

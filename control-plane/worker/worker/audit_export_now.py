@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-14T03:37:48Z
 """Run the daily signed audit export once, now (ADR 0011): ``python -m worker.audit_export_now``.
 
 The installer runs this in worker-scenario at the end of every install or upgrade

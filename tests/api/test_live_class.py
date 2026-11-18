@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T11:01:01Z
 """The live class roster in the Ops Center (issue #199): ``GET /ops/exercises/{id}/class``.
 
 Who is on it is the AAR's participant rule, kept to enrolments still being studied (an

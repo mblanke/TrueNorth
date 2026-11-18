@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T18:15:02Z
 """INFRA_DISCOVERY_SECONDS reaches the api from the installer and compose (app/infra_discovery).
 
 The scheduled rediscovery runs in the api (the discovery backends and sealed connection

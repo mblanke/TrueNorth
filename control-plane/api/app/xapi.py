@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range — xAPI 1.0.3 statement builder.
 
 Every statement TrueNorth emits server-side is built here. The rules, and why

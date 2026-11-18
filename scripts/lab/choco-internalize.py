@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:52:40Z
 """Internalize Chocolatey packages into the depot, so they install with no internet.
 
 Runs on TN-BUILD01 (internet + the depot), from the TrueNorth checkout, called by the

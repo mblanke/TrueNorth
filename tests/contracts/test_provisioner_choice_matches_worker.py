@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:19:06Z
 """The API's list of provisioner backends must equal the worker's registry.
 
 The API may not import the worker (ADR 0001/0003), so app/provisioner_choice.py names the

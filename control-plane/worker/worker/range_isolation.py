@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T08:32:46Z
 """Isolation evidence per security zone (range certification S4, ADR 0013 §4, issue #242).
 
 After a build is ready, one probe VM in **every** range network (zone) runs the probes of

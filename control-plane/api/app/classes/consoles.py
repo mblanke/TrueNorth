@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T01:18:22Z
 """Browser consoles on a class's ranges: the Student's own, and the observers' live view
 (ADR 0014 §19-20; issues #313, #321).
 

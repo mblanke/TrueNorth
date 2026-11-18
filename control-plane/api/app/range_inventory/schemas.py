@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T07:24:37Z
 """Request and response shapes of the range inventory endpoints (docs/interfaces/openapi.json)."""
 
 from __future__ import annotations

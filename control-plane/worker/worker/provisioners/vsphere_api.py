@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T00:59:40Z
 """TrueNorth Range - VMware vSphere provisioner.
 
 Builds an isolated range: per-range port groups on physical VLANs from a pool

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-07-19T14:46:43Z
 """MESL (Master Event Sequence List) ingest.
 
 Parses an uploaded MESL spreadsheet (CSV) into structured serials linked to

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T08:32:46Z
 """The in-guest isolation probes (range certification S4, ADR 0013 §4), as guest steps.
 
 Guest operations report only a process's exit code (``run_in_guest``), so each step runs

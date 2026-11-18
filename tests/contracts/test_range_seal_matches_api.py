@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:33Z
 """The worker opens every stored range credential the API seals (ADR 0013 §3), and only
 with the binding it was sealed for.
 

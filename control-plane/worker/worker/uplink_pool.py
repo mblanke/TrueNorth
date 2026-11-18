@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:59Z
 """WAN addresses for ranges' edge firewalls on the depot uplink network.
 
 With VSPHERE_RANGE_UPLINK_NETWORK set (lab: ``dPG-TN-SVC``), each range's edge firewall

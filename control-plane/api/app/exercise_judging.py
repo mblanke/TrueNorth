@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T14:56:09Z
 """Instructors judge a team exercise's objectives (ADR 0020).
 
 The only way an exercise objective is achieved: an instructor acknowledges it, with a note

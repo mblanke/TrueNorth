@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T06:21:31Z
 """TrueNorth Range - did a Windows VM's guest customization (Sysprep) succeed? (#255)
 
 Every Windows range VM is cloned from a golden template that still has its build

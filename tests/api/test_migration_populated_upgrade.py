@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T21:07:27Z
 """Upgrading a populated production schema (PostgreSQL) loses nothing and runs the new code.
 
 The empty-database chain test (test_migration_completeness.py) proves a fresh install.

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """The statements a quiz submit really emits: registration, language, pass mark, result.
 
 ``POST /quizzes/attempts/{id}/submit`` is the busiest xAPI producer. These run the real

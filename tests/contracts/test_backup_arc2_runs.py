@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T02:44:10Z
 """Backups hold the ARC² Course Studio runs when the host runs the Studio (tn_arc2_enabled).
 
 Every Studio run (request, staged course, QA report, cmi5 package) lives only in the

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Scheduler request and response shapes. The names are part of the published contract
 (docs/interfaces/openapi.json), so they are kept as they were in ``routers/scheduling.py``."""
 

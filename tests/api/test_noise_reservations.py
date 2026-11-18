@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """Noise agents' management addresses are reserved, not derived from template order (S4b).
 
 Every noise-enabled range puts its agents on one shared management portgroup. The

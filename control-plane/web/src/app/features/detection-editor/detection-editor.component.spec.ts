@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-08-21T11:45:38Z
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { MatChipInputEvent } from '@angular/material/chips';

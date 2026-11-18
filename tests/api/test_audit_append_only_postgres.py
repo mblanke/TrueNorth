@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """audit_logs is append-only in PostgreSQL itself (migration b7c8d9e0f1a2, ADR 0011).
 
 Each test runs on a fresh database built by ``alembic upgrade head`` (tests/conftest.py

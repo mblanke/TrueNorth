@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T00:10:51Z
 """Every detection a Student submits to a team exercise, kept as evidence (ADR 0005, 0020).
 
 Rows are written only by the API, from the authenticated request plus the server's own

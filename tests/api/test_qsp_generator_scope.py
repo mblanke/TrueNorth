@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T01:49:50Z
 """Issue #257: the QSP generators read only qualifications the caller's tenant may read.
 
 ``POST /qsp/generate-learning-paths`` built courses and paths for the caller's tenant

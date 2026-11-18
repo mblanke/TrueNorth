@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-08-21T11:45:38Z
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';

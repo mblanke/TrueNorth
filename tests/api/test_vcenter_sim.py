@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T02:10:52Z
 """tools/vcenter-sim serves what the vSphere dashboards and the installer read.
 
 The real dashboard backend (hypervisor_backends/vsphere.py) runs against the simulator:

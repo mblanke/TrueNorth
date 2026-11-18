@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:40:50Z
 """After-action report: the data it is built from, the HTML page, the PDF, and who may read them.
 
 The AAR used to be a one-line ``<h1>AAR: {name}</h1>`` with the name unescaped, every read

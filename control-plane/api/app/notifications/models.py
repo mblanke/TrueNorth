@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:34:43Z
 """TrueNorth Range - In-app notifications ORM model.
 
 Maps the ``notifications`` table that migration b2c3d4e5f6a1 created long before

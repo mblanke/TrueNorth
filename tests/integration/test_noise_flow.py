@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:40Z
 """Integration test: background noise on a mock-provisioned range, through the real API.
 
 Template with a ``noise:`` block -> provision (mock backend) -> the agent node holds a

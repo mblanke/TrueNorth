@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T18:09:45Z
 """The work-site template kit (ADR 0012): TN-MGMT01 builds the golden templates on esx04.
 
 Contracts kept here, in CI, where there is no vCenter, govc or TN-MGMT01:

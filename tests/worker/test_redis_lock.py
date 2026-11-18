@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T07:37:32Z
 """The drift sweep's Redis lock (worker/redis_lock.py; range certification S5 review).
 
 Replaces a session-level PostgreSQL advisory lock that pgbouncer's transaction pooling would

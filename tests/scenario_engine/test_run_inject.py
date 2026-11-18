@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:23:33Z
 """run_inject: the registry bridge the worker's inject dispatch calls."""
 
 from __future__ import annotations

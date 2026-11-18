@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T02:43:58Z
 """Class and roll-call request and response shapes (published in docs/interfaces/openapi.json)."""
 
 from __future__ import annotations

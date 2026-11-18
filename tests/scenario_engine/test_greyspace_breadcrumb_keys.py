@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T03:02:57Z
 """Greyspace breadcrumb tokens are keyed, and scored by the scoring engine (review of #133).
 
 Until 2026-10-11 a token was SHA-256("greyspace-crumb:{salt}:{exercise}:{crumb_id}") with

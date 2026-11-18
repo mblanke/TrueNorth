@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-04-17T20:58:38Z
 """add range diagram_json column
 
 Revision ID: f6a1b2c3d4e5

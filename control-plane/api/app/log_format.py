@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:20:35Z
 """Process logging setup, with opt-in JSON lines.
 
 ``LOG_FORMAT=json`` writes one JSON object per record (for a log shipper); anything

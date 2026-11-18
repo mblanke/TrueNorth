@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:34:33Z
 """Self-serve labs use only the capacity left after approved classes (ADR 0014 §18, #288).
 
 * Start lab is refused with "Labs are busy, next free at HH:MM" (the site's time) when

@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-08-21T11:45:38Z
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';

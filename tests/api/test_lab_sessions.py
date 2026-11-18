@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:29:45Z
 """Lab sessions against a fake worker (the dispatched range tasks applied to the test DB).
 
 Proves the contract in docs/arc2-44-course-programme.md §6 "Small individual range":

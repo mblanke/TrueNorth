@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T00:57:34Z
 """Hyper-V connection backend via WinRM (legacy; vSphere is the range platform)."""
 
 from __future__ import annotations

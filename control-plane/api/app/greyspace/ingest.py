@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:46:01Z
 """Greyspace corpus ingest: WARC archives -> a corpus tree (plan slice 8, ADR 0007).
 
 The offline half of corpus operations. A crawl (wget --warc-file, Heritrix, Browsertrix,

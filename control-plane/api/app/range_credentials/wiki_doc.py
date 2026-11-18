@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T15:00:52Z
 """The generated range page (ADR 0012 §14 as amended by ADR 0013 §3): one wiki page per range, staff only.
 
 Written in the tenant's **Ranges** space: the space marked ``system_owned``, created by

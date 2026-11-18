@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T12:13:13Z
 """Telling the instructor what the approver decided (ADR 0014 §16; issue #319).
 
 When an approver approves, rejects or proposes another time for a class session, its

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T19:01:25Z
 """Range certification S1: atomic VLAN allocation against the live switch.
 
 * vsphere_vlans: what the live switch carries (trunks expanded, uplink port groups skipped)

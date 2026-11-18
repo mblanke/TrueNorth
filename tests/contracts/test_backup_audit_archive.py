@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """Backups hold the signed audit export archive and verify it (ADR 0011).
 
 backup.sh copies AUDIT_ARCHIVE_PATH into ``audit-archive/``, verifies every manifest's

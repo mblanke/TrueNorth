@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T21:03:43Z
 """``mfa_policy.mfa_satisfied`` and the IdP ``tn_session`` strip (v1.2.0, F1 and F6).
 
 F1: identity.py treated any ``acr`` other than "" or "0" as MFA, and Keycloak issues

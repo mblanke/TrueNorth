@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-03T15:59:22Z
 """The console relay: ``/ws/console/{grant}`` (app/console_relay, #366).
 
 A browser reaches a VM's screen only through the API. The grant is the user's permission to

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:23:41Z
 """Moodle -> TrueNorth results: completions and quiz grades land on enrolments, module
 progress and quiz attempts, idempotently, and only for what is the platform's own business.
 

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:46:28Z
 """No log call in the API or worker passes an email address as an argument.
 
 Registration, approval, LTI just-in-time provisioning, the bootstrap admin and a

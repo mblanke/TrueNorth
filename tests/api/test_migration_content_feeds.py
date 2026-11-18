@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """4f2e4c9cd1a0 adds the content feeds' three tables, and only those (ADR 0014 §25, issue #287).
 
 Upgrade from its parent onto a database holding a review row: the tables appear with their

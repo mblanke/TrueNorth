@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:46:01Z
 """gs-core: the VM a hypervisor backend runs a range's Greyspace stack on (ADR 0007, slice 0).
 
 ``host_vm(range_id, block, template)`` turns a range's Greyspace block into one more

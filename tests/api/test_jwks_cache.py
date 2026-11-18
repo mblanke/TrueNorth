@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:35:38Z
 """JWKS caching across IdP signing-key rotation.
 
 The OIDC backends are singletons. They used to fetch the JWKS once per process, so a

@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-10T01:46:01Z
 import { GREYSPACE_DEFAULTS, GREYSPACE_KEYS, greyspaceBlock, greyspaceSettings } from './greyspace-stencil';
 
 describe('greyspace-stencil', () => {

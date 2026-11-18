@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T13:37:26Z
 """Fail when a pytest JUnit report shows no test actually passed.
 
     python scripts/junit_require_pass.py report.xml

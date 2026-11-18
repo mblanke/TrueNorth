@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Booking against capacity (ADR 0004 slice 2).
 
 - A booking's size comes from its template's VM specs, not typed totals.

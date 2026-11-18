@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-28T01:41:02Z
 """Create the tenant and the first administrator, for a production install.
 
 Registration is the only path that creates a trainee, and it requires an

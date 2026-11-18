@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:56:43Z
 """Batch ARC² on a TEST host: every catalogue course → ARC² run → release → accepted (→ published).
 
 For staging only, where the runner accepts the outline and preview gates by itself

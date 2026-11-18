@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:29:45Z
 """Console for the mock provisioner: the relay's real path against an in-process RFB stub.
 
 ``dial`` starts (once per process) a WebSocket server on 127.0.0.1 and hands the relay its

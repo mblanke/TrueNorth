@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T16:29:26Z
 """TrueNorth Range — Curriculum Forge router.
 
 Upload courseware (PDF/DOCX/PPTX/Markdown/text) or register URLs, ingest it

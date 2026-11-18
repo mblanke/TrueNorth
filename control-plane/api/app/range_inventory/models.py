@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T07:24:37Z
 """The latest inventory checks of each range (ADR 0013 §5, range certification S5, #243).
 
 One row per (range, kind), overwritten by the worker each time it checks:

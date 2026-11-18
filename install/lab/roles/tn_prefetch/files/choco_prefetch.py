@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:52:40Z
 """Fill the depot's chocolatey-hosted repository with every catalogue package and its dependencies.
 
 Runs on TN-BUILD01 (stdlib only). For each Chocolatey id in the software catalogue:

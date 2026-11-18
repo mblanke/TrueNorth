@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Starting a range build or teardown on the scheduler's behalf (ADR 0004 §5).
 
 The ranges router and the scheduler share one path for this: ``app/range_ops`` (CR1-06).

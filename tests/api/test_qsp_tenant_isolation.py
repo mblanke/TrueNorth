@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-09-27T14:12:34Z
 """Second-tenant 404s for the lookups the widened scoping guard found (2026-09-27).
 
 The static guard (test_tenant_scoping_guard.py) only matched `.first()/.all()` with

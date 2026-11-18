@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:06:30Z
 """The orchestrator reaches every model server through a BaseAIBackend.
 
 Covers the Ollama node backend, the embeddings capability on the ABC (OpenAI,

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T18:34:07Z
 """The vSphere Packer tree against TN-DEPOT01 and ADR 0012 (no vCenter here).
 
 Gaps the work-site kit left open, now closed and kept closed:

@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-03-04T22:24:49Z
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:29:36Z
 """Who may search a range's telemetry (``GET /telemetry/{range_id}/search``).
 
 Until 2026-10-08 (security sweep M2) any signed-in user of the tenant could search any of

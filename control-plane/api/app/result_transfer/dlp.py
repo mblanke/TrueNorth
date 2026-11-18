@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-24T10:49:37Z
 """Schema-level inventory for data prohibited from an Unclassified deployment.
 
 This is a ratchet, not a claim that the current schema is compliant.  It identifies

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T03:04:55Z
 """The content clock's rules (ADR 0014 decisions 23 and 24, issue #286).
 
 ``app/content_review/staleness.py`` is pure: no database, no clock of its own. These tests

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:34:33Z
 """lab session idle warning, disk and booking
 
 Revision ID: 3e8b1c7a9d42

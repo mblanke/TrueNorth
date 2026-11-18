@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-20T18:15:02Z
 import { ConnectionDiscovery, HypervisorConnection } from '@core/models';
 
 /** How often the page re-reads the stored inventory while it is visible. The API itself

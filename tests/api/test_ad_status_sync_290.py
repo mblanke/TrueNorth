@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:23:31Z
 """Identity 13: nightly AD status sync and the 90-day rule for local accounts (ADR 0014 §6; #290).
 
 The rules under test (app/ad_status_sync):

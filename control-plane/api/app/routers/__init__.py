@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range - API Router package."""
 
 from .ad_sync import router as ad_sync_router

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T07:48:36Z
 """32270311dba6 adds the roll-call seat forfeit, and only that (ADR 0014 §4, issue #280).
 
 Upgrade from its parent onto a database that already holds a roll call: ``class_roll_call``

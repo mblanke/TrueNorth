@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:40:50Z
 """worker/aar.py build_report: the report dict and the HTML page stored with it."""
 
 from __future__ import annotations

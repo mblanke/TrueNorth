@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """In-app notification channel — stores in DB and optionally pushes via WebSocket."""
 
 from __future__ import annotations

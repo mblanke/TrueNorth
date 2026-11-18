@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:13:40Z
 """Network reservations: collision-free addresses and VLANs on networks shared by ranges.
 
 Importing this package registers its table on ``Base.metadata``. The service

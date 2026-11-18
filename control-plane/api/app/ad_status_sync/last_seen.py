@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:23:31Z
 """When TrueNorth last saw an account, and the break-glass sign-in alert (#290).
 
 **Why TrueNorth's own record, not Keycloak's.** The 90-day rule asks whether a local

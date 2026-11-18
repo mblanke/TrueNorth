@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-21T04:28:32Z
 """Tests for the authoring enabler endpoints: schema validation + inject catalogue.
 
 These are the contract the Scenario Studio builds against: the engine's own

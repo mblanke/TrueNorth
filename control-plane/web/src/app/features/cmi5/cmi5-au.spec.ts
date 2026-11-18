@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-10T11:52:51Z
 import { Cmi5Au, Cmi5Error, FetchFn, isCmi5Launch, isoDuration } from './cmi5-au';
 
 const ENDPOINT = 'https://lms.example/xapi/';

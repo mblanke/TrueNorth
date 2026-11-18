@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:32:49Z
 """Synthetic teaching captures: tools/arc2/pcapgen.py and the engine checks around it.
 
 The point of the design is that an agent writes a reviewable spec and never packet bytes.

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """The webhook notification channel (app/notifications/webhook.py).
 
 Notifications can go out as a signed HTTP POST: JSON payload, HMAC-SHA256 signature in

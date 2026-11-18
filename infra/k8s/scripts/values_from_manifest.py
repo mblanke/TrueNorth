@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T20:12:19Z
 """Helm values that pin every TrueNorth image to a release's digests.
 
 Reads a release's ``release-manifest.json`` (docs/release.md, "Installing by digest")

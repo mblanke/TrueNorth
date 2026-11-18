@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T13:06:06Z
 """The installer renders truenorth-web's redirect URIs from tn_domain_fqdn.
 
 infra/keycloak/realm-truenorth.json lists every documented origin (dev, itest, Helm,

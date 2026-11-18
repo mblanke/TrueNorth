@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:23:37Z
 """e6f7a8b9c0d1 and f7a8b9c0d1e2 downgrade for real, and the chain round-trips through them.
 
 Both used to have ``pass`` downgrades, so ``alembic downgrade`` below them left the 35

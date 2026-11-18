@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T19:46:09Z
 """moodle results: the release and Moodle attempt each recorded fact came from
 
 Revision ID: 2b3c4d5e6f72

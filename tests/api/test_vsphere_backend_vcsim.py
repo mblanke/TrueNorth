@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T02:08:43Z
 """The API's vSphere connection backend against vcsim, govmomi's vCenter simulator (v0.56.0).
 
 vcsim has no ``/api`` (``POST /api/session`` is 404) and, of the legacy ``/rest`` API, only

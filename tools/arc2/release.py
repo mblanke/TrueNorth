@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:49:43Z
 """Build a release candidate from an accepted ARC² run.
 
     python -m arc2.release build <run> [--out <file.tar.gz>]

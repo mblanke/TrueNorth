@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-03-04T22:24:49Z
 import { TestBed } from '@angular/core/testing';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { HTTP_INTERCEPTORS, HttpRequest, HttpHandler, HttpInterceptor, provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';

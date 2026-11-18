@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T00:41:05Z
 """Test-host auto-accept (tools/arc2/runner.py maybe_auto_accept, ARC2_AUTO_ACCEPT_GATES).
 
 On a test host the runner accepts the outline and preview gates itself when a job stops

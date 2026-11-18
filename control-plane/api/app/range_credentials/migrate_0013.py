@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:33Z
 """The ADR 0013 §3 data migration (Alembic 0a2276639b3c): existing ranges keep working,
 nothing holds a credential it should not.
 

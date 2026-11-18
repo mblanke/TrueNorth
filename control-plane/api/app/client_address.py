@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:27:44Z
 """The address a request came from, believing ``X-Forwarded-For`` only from our own proxies.
 
 Anyone can send ``X-Forwarded-For``. Taking its first entry at face value let a client

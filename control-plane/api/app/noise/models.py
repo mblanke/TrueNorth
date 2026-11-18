@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """Noise engine tables.
 
 Kept out of ``app/models.py`` so the noise section can change without touching the

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-18T15:21:56Z
 """Tests for the QSP career map: /qsp/curriculum-map.
 
 Covers the shape the UI draws from (stages, lanes, derived edges), the learner

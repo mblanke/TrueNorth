@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:29:45Z
 """Readiness probes from a lab profile's ``health_checks``.
 
 A lab is ready when every check passes, not when the provisioner returned VM ids:

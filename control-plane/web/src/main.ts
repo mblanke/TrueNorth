@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-03-04T22:24:49Z
 import { bootstrapApplication } from '@angular/platform-browser';
 import { AppComponent } from './app/app.component';
 import { buildAppConfig } from './app/app.config';

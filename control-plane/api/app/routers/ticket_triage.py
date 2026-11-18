@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T15:19:32Z
 """TrueNorth Range — AI triage suggestions for tickets (issue #381).
 
 ==================================================  ==========================

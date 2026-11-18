@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """Shared pieces for the cmi5 API tests: an in-memory LRS, the C105 release, and an AU.
 
 ``MemoryLRS`` answers the xAPI resources the cmi5 code uses the way yetanalytics/lrsql

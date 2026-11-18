@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-07T16:32:49Z
 /** ARC² Course Studio: the API's shapes and the page's view rules (pure, so they are tested). */
 
 export type Phase =

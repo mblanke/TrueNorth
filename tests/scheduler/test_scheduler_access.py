@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Who may see and change the schedule (docs/adr/0004-scheduler-module.md).
 
 Everyone but Students reads it; only admins and instructors write it; every event list

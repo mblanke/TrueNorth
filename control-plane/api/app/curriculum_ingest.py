@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T16:29:26Z
 """TrueNorth Range — Curriculum Forge ingestion pipeline.
 
 Extract text from uploaded courseware (PDF / DOCX / PPTX / Markdown / text /

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T16:43:30Z
 """The view-only allowlist for a console's RFB input (app/console_relay/rfb_filter.py, #369).
 
 Pure byte-stream tests, no sockets. The aim is that no KeyEvent (4), PointerEvent (5) or

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:01:33Z
 """range_certification_records / _entries: the append-only Range Certification Record
 
 Revision ID: 68d00729cc34

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T12:47:52Z
 """scripts/junit_require_pass.py fails a lane that ran nothing, and one with failures."""
 
 from __future__ import annotations

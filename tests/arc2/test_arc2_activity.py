@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:37:21Z
 """Activities: theory and practical modules need no range; range modules need range evidence.
 
 A theory-only run marks the range stages not_applicable, passes QA and packages. Turning one of

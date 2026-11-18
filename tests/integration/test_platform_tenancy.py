@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:20:35Z
 """Directory, auth-zone and storage CRUD against the live API.
 
 Single-tenant only. The integration stack runs with AUTH_DISABLED=true, where every

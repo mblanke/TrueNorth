@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T22:16:44Z
 """Load the shipped content (content/) into an installed TrueNorth, from inside the api image.
 
 scripts/load_content.py talks to the API over HTTP with a bearer token. An installed host

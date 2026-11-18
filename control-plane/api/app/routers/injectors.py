@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-21T04:28:32Z
 """TrueNorth Range — Inject catalogue router.
 
 Read-only introspection of the scenario-engine injector registry, so authoring

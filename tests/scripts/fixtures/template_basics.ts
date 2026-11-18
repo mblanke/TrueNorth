@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-11-18T02:58:36Z
 /* Fixture for tests/scripts/test_count_ui_literals.py — class A/B scanner
    policies on a miniature inline template. Not compiled by Angular; the real
    components live under control-plane/web/src/app. Each line pins one policy

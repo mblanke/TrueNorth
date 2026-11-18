@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:33:32Z
 """TrueNorth Range — Greyspace (simulated internet) router. ADR 0007.
 
 =========================================  ==============

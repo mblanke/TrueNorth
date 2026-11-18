@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range - Mock provisioner for development and testing.
 
 Simulates infrastructure operations with configurable delays and failure rates.

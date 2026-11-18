@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-28T01:34:47Z
 """Static guards on authentication coverage and role vocabulary.
 
 Two bug classes live here, both of which have actually happened in this repo:

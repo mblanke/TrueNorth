@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T19:03:59Z
 """Durable low-side outbox and high-side authoritative result records.
 
 The outbox contains the signed ciphertext plus the exact public projection; it has no

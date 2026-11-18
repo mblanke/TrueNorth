@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:46:28Z
 """Deployment environment and the settings production refuses to start without.
 
 ``TN_ENV`` names the environment: ``development`` (the default), ``test`` or

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """Tests for AI Orchestrator fleet management, model tagging, and size hints."""
 
 import importlib.util

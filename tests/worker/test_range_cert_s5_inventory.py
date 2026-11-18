@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T07:24:37Z
 """Range certification S5 (ADR 0013 §5, issue #243): teardown by independently identified
 inventory, and drift. Worker side, against fakes and SQLite; the same paths against vcsim
 are in tests/integration/test_vsphere_sim.py (``test_s5_*``).

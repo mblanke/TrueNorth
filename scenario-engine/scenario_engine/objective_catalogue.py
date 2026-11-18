@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T19:38:08Z
 """Which objective validators can be judged, by whom, which are refused, and a scenario check.
 
 The scoring engine (scoring/), the API's scenario validation and create/update

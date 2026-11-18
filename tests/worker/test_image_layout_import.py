@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T15:15:19Z
 """Worker modules must import when laid out as in the Docker image.
 
 The image copies control-plane/worker/worker to /app/worker, so a module that looks

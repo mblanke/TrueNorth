@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T15:55:05Z
 """0fdeb8975b40 adds class attendance and close-out, and only that (ADR 0014 §12-13, issue #283).
 
 Upgrade from its parent onto a database that already holds a class with a roll call and a

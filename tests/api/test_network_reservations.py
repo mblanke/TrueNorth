@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:13:40Z
 """Shared-network addresses and VLANs: unique across tenants, idempotent, capacity-checked.
 
 The noise engine gave each agent's management NIC ``.10 + its index in the template`` on

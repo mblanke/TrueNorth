@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-04T03:48:48Z
 import * as joint from '@joint/core';
 import { upgradeDiagramJson, withoutRuntime } from './diagram-compat';
 

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:25:06Z
 """Moodle sign-in tickets are bound to one tenant (security sweep H3).
 
 One tool key signs every tenant's tickets, and ``local_truenorth``'s ticket.php checked

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-19T15:16:49Z
 """Static guard: no unscoped by-id lookup on a tenant-owned model may reach main.
 
 This is the test that stops the bug class coming back. The original leak survived

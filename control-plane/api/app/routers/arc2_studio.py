@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:32:49Z
 """ARC² Course Studio: the web side of the ARC² authoring engine.
 
 The engine (``tools/arc2/``, the seven ``arc2-*`` agents and ``/arc2``) runs on the

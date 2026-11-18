@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-07T14:21:06Z
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MySession, SchedulerApiService } from '@core/services/scheduler-api.service';

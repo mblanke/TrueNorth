@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T12:53:56Z
 """The exercise template: a reusable exercise (ADR 0017, docs/GLOSSARY.md).
 
 Objectives, MESL, scenario, range template, teams and the instructor's notes live here once;

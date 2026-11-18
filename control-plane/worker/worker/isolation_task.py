@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T08:32:46Z
 """Re-run a ready range's isolation probes on demand (range certification S4, issue #242).
 
 The API sends ``check_range_isolation`` (POST /ranges/{id}/certification/isolation-check)

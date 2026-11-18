@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-03T19:31:46Z
 """This directory's conftest.py, importable by a name that is its own.
 
 `from conftest import X` finds whichever conftest.py pytest registered last, which depends

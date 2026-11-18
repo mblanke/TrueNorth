@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:01:33Z
 """The record's sections and the verdict (ADR 0013 §6). Pure functions, no database.
 
 A section's state is its **latest** entry (highest ``seq``); a correction is just a later

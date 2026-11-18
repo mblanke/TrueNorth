@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """COV-I: scenario-engine/runner/run.py — the standalone CLI runner.
 
 Whole-slice coverage before this file: 73.6% (95/129 statements); the missing lines were

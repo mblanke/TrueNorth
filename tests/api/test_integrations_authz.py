@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-09-23T17:03:20Z
 """Authorization on the endpoints an LMS integration (Moodle over LTI 1.3) relies on.
 
 Before this, every one of these routes required only a logged-in user:

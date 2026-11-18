@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T15:57:49Z
 """taz-guard: check a TAZ pull request against its task card (layer 5 of the TAZ plan).
 
 The CI job (.github/workflows/taz-guard.yml) runs this from the BASE branch's checkout and

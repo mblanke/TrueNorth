@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """UI literal counter: user-facing hard-coded strings on the two critical journeys.
 
 Turns the #436 literal inventory (TN10X-F6-literal-inventory) into a re-runnable

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:27Z
 """Template-kit safety, from the adversarial review of PR #247.
 
 * Linux: the worker configures a Linux range VM ONLY through cloud-init's VMware datasource

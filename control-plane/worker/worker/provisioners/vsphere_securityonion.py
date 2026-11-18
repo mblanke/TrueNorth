@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T15:20:30Z
 """TrueNorth Range - Security Onion 2.4 per-range setup, over VMware guest operations.
 
 The ``securityonion`` golden template is the OS only: the Security Onion 2.4 ISO's Oracle

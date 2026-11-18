@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T15:47:16Z
 """Every build of the api and worker images supplies the named contexts their Dockerfiles need.
 
 The worker Dockerfile copies ``scenario_engine`` from a named build context

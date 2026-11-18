@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T19:38:08Z
 """Scenario create/update refuse objectives that could never be judged honestly (R0-B).
 
 ``POST /scenarios/validate`` reported them, but create and update only parsed the YAML, so

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:34:43Z
 """Trouble tickets: filing, triage, the board, comments, attachments, history.
 
 A student sees only tickets they reported and never internal notes. Anyone else's

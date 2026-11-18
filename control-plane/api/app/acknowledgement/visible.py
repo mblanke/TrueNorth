@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T05:53:29Z
 """Does a rules-of-use text show anything to read once rendered?
 
 A version that renders blank (spaces, an HTML comment, ``---``, an image only) would leave

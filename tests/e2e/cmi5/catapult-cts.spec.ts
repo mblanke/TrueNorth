@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-10T11:52:51Z
 /**
  * cmi5 conformance of TrueNorth's AU runtime, judged by ADL's CATAPULT Content Test Suite.
  *

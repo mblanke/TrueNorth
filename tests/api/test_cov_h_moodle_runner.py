@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """The Moodle results pull runner (app/moodle_results/runner.py).
 
 The runner is the API-side loop that claims each active Moodle's cursor once per interval

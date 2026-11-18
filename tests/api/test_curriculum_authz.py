@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:54:12Z
 """Curriculum Forge (``app.routers.curriculum``): who may touch a curriculum.
 
 What these pin down:

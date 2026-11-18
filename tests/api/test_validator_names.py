@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T21:11:59Z
 """One spelling per validator (review finding 4)."""
 
 from __future__ import annotations

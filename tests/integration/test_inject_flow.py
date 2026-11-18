@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:23:46Z
 """Integration test: an exercise's timeline fires its injects (mock backend).
 
 create range -> provision -> scenario with a timeline -> exercise -> start -> completed

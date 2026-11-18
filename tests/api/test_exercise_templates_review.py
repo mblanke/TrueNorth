@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T13:27:06Z
 """Regression tests from the adversarial review of #342 (ADR 0017).
 
 B1: proven follows the template across edits. M1: a shared item never names another tenant's

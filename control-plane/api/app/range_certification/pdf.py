@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:01:33Z
 """The certification record as a PDF, with the AAR's machinery (fpdf2 core fonts and
 ``aar_html.pdf_text``). The PDF is a readable copy, not the evidence: it prints the
 record's ``record_sha256``, which every signed JSON export of the record in this state

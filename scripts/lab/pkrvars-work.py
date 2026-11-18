@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T18:09:45Z
 """Write infra/vsphere/packer/lab.auto.pkrvars.hcl for the work site, on TN-MGMT01 (ADR 0012).
 
     sudo python3 scripts/lab/pkrvars-work.py                 # offline bases (no depot)

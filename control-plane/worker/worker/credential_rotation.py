@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:33Z
 """Set new range passwords inside running guests (ADR 0013 §3; supersedes #198).
 
 The API records each change as pending (app/range_credentials/service.py): the row's

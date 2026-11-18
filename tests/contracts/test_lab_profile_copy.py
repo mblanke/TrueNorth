@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:49:43Z
 """The lab-profile rules exist twice: tools/arc2 (QA of a run) and the API (verification of a
 release and, later, of each provisioned lab). They must be the same bytes, or a profile that
 passed QA could be refused at upload, or worse, accepted at upload and refused at launch."""

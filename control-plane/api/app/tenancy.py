@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-19T15:16:49Z
 """Tenant-scoped lookups.
 
 Every by-id fetch of a tenant-owned row must go through here.

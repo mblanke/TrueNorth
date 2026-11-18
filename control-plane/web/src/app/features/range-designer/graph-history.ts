@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-08-21T11:45:38Z
 /**
  * Undo/redo stack for the Range Designer.
  *

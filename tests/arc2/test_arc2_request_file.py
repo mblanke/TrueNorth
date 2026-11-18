@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T01:28:05Z
 """Where a new run's request lives, and why a confined job never writes the runs root.
 
 The first real Course Studio job on a Linux runner (bubblewrap) stopped at ``/arc2``

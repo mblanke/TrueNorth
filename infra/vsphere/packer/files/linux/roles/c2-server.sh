@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:35Z
 # TrueNorth derived image: C2 teamserver (open source: Sliver + Mythic) on ubuntu-lts.
 # DISABLED in the catalogue (enabled=no): building/deploying this requires the
 # instructor/Standards sign-off recorded in vm_iso_catalogue.csv. Included for completeness.

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-09-27T11:56:57Z
 """DELETE /ranges/{id}: refuse while anything depends on the range, never a 500.
 
 It used to call db.delete() and let the database decide. A range with an exercise,

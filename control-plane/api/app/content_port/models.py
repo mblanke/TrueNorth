@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T00:59:08Z
 """The content port's tables (owner decision 2026-10-27, v1.2.0 GA; docs/content-port.md).
 
 New tables go in their section, never into the shared ``app.models`` (ADR 0003).

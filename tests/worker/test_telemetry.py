@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T21:03:21Z
 """Worker ingest: server-stamped ingest time and the store's credentials (ADR 0005, review finding 2).
 
 worker/telemetry.py holds the pieces; telemetry_tasks.ingest_telemetry_batch is the one writer.

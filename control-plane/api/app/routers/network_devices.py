@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """Network device CRUD.
 
 Physical network inventory (management IPs, firmware): infrastructure, so reads need

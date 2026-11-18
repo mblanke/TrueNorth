@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:33:32Z
 """The range Greyspace table: which ranges have a simulated internet attached (ADR 0007)."""
 
 from __future__ import annotations

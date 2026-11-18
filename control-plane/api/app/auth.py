@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range — Auth middleware (Keycloak OIDC JWT validation).
 
 Two dependencies, deliberately separate:

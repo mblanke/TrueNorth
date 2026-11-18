@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T02:43:58Z
 """Who sees and who changes a class (ADR 0014 §5, §8).
 
 - Everything is tenant-scoped: another tenant's class is not found (404), whoever asks.

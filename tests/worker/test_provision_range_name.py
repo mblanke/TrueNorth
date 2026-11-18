@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T20:25:04Z
 """provision_range hands the provisioner the range's own name (``allocations["range_name"]``):
 the vSphere provisioner names the range's VM folder and tn-range tag ``<name>-<id8>`` from it
 (provisioners/vsphere_tags.py). The template's name is not the range's."""

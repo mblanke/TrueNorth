@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T15:57:49Z
 """Stop hook: refuse to end a turn that changed code without a green DoD on that state.
 
 Vendored from TAZ's dod-stop-gate.py. The 2026-08-19 incident did not end with a crash.

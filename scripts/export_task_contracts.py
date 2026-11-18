@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T01:01:50Z
 """Publish the API -> worker task contract.
 
 Source: control-plane/worker/worker/contracts.py. Writes

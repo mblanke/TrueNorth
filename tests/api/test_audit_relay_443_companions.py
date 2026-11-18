@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Companion oracles for the confirmed audit findings of #443, one per strict-xfail test in
 ``test_audit_relay_443.py`` (integrator standing order, card #450). Each pins the *same*
 secure behaviour as its oracle from a second angle — a second role, or the second handshake

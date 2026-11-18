@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:34:43Z
 """TrueNorth Range - Wiki / knowledge base ORM models.
 
 Kept out of ``models.py`` so the wiki section can change without touching the shared

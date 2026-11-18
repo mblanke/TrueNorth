@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T08:36:08Z
 """The appliance boot hooks that put a range's admin password in force (issue #248).
 
 * pfSense / OPNsense: ``tn-pfsense-config boot`` (PHP) reads the bcrypt hash the worker

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:27:44Z
 """client_ip believes X-Forwarded-For only from a trusted proxy (security sweep M1).
 
 It used to take the header's first entry from anyone, so a client chose the address the

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-19T19:18:25Z
 """Programme catalogue parsing + import guards.
 
 The cyber-operator programme catalogue is an *unsourced draft*: its course codes,

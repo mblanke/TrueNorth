@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """The restore drill's audit export archive (ADR 0011), with the worker's own code.
 
     drill_audit_archive.py seed <dir>     write five days of signed exports (SQLite, a drill seed)

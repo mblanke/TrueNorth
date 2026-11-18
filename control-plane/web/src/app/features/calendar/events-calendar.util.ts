@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-27T15:44:55Z
 /**
  * Pure helpers of the calendar's Events view (ADR 0014 decision 21, issue #285): what kind
  * of booking a session is and how it is drawn, where it sits on the week's timed grid,

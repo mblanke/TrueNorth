@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-07T14:07:43Z
 import { Component, Input } from '@angular/core';
 import { ComponentFixture, TestBed, fakeAsync, tick, discardPeriodicTasks } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';

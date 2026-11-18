@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:40:50Z
 """The AAR renderer exists twice: the API renders ``/aar/html`` from it and the worker's
 ``generate_aar`` stores ``report_html`` from it. The services ship as separate images, so
 the file is copied, and the copies must be the same bytes or the stored page and the

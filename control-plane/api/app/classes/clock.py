@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T02:43:58Z
 """The day-before reminder (ADR 0014 §2).
 
 Every roll-call Student who has not signed in yet (``invited``) is emailed once, the day

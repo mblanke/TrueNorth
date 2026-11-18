@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:23:41Z
 """LTI gaps #1 and #3-#5 (docs/moodle-integration.md): what a launch does after it is verified.
 
 #1 A Student the launch created (no TrueNorth sign-in) gets a single-use, two-minute code,

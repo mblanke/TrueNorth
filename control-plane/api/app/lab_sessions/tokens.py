@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:29:45Z
 """Lab access tokens: what a student's browser carries after an LTI launch from Moodle.
 
 An LTI launch proves who the student is to the API, but the browser it redirects has no

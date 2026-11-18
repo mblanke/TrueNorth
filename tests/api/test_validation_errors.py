@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:34:43Z
 """A request that fails validation is a 422, even when it carries NaN or Infinity.
 
 Python's JSON parser accepts NaN/Infinity/-Infinity; Starlette's JSONResponse refuses to

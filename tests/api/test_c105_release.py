@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:30:18Z
 """The committed C105 release (content/releases/) is the one the programme owner accepted,
 and the API takes it end to end: upload → candidate → accept → the catalogue course
 delivers its six theory modules.

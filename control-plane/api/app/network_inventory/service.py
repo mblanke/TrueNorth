@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:13:40Z
 """Reserve addresses and VLANs on shared networks, without collisions, for a range.
 
 ``reserve`` gives each holder (node, NIC) in a range a value from a pool, the lowest that

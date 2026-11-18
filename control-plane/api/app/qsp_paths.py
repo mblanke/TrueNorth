@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-07-19T14:26:35Z
 """QSP → curriculum + learning plans, with NICE and NIST CSF 2.0 crosswalks.
 
 All framework mappings are a curated, deterministic seed (no LLM) so the

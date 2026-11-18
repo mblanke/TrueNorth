@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:26:37Z
 """The API's startup check of the realm's MFA configuration (review S1-5).
 
 A deployment that upgrades the API without configuring its realm (Helm against an

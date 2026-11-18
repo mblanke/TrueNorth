@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-24T12:03:23Z
 from __future__ import annotations
 
 import uuid

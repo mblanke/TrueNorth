@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T01:21:41Z
 """Helpers shared by test modules in different directories.
 
 tests/ is on sys.path (its conftest.py puts it there under pytest's default import mode),

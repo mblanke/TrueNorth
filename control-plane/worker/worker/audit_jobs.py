@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T04:15:41Z
 """Audit log export and retention, the work itself (ADR 0011): no Celery here.
 
 The Celery tasks in audit_tasks.py are thin wrappers that load the key and open a

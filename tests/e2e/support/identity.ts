@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-07T14:07:16Z
 /**
  * A stand-in for Keycloak's browser endpoints, so the journeys can reach guarded pages.
  *

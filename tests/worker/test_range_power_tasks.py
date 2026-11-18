@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T23:33:50Z
 """The worker's stop_range / start_range (worker/power_tasks.py; CR1-05): fenced on the
 state the API recorded, and the outcome written only once the hypervisor has done it."""
 

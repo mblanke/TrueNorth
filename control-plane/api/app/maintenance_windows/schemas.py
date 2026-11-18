@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:33:17Z
 """Maintenance window request and response shapes (published in docs/interfaces/openapi.json)."""
 
 from __future__ import annotations

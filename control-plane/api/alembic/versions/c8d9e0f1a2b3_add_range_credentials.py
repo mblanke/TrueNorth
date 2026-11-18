@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T15:00:52Z
 """range_credentials: the accounts a range's template declares, sealed (ADR 0012 §12-14)
 
 Revision ID: c8d9e0f1a2b3

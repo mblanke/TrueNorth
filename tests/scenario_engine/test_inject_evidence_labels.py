@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T19:38:08Z
 """Simulated injects are labelled synthetic, seeded per exercise, and claim no host effect (R0-B).
 
 Every injector in the engine builds records and touches nothing (execution_mode

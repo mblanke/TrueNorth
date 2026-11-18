@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T02:48:39Z
 """Lab sessions under concurrency, on PostgreSQL (R3: CR1-12, CR1-16; F15 in
 docs/review/codereview1.md). Skipped without TEST_POSTGRES_ADMIN_URL.
 

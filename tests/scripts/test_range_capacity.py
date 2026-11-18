@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:52:40Z
 """scripts/range-capacity.py: per-range sums and the lab fit check."""
 
 from __future__ import annotations

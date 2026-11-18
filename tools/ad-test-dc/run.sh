@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:00:31Z
 # TrueNorth AD test DC: the CI `ad` lane's steps, runnable the same way on a laptop.
 #
 #   tools/ad-test-dc/run.sh secrets    generate every password (0600, never printed)

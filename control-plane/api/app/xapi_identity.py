@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """The xAPI identity switch: who each pre-switch LRS statement was about.
 
 Until migration ``5a1e9c3d7b20`` TrueNorth identified people in xAPI by email

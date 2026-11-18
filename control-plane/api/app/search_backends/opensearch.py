@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T00:59:40Z
 """TrueNorth Range — OpenSearch search/telemetry backend.
 
 Works with OpenSearch 2.x and Elasticsearch 7/8 (compatible APIs).

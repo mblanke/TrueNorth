@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:34:33Z
 """Self-serve labs use only the capacity left after approved classes (ADR 0014 §18, #288).
 
 **A class's own labs.** A Student on the roll call of a class whose approved session of the

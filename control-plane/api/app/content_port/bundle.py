@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T00:59:08Z
 """The content-port bundle: what an item's content is, and reading a bundle safely.
 
 One JSON document, signed (``signing.py``)::

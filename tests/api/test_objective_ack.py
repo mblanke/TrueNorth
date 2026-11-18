@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-06T20:58:43Z
 """POST /exercises/{id}/objectives/{ref_id}/ack — instructor-only and tenant-scoped (ADR 0005 §4).
 
 Acknowledging an objective awards its points. It used to require exercise:complete, which

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T15:57:47Z
 """wiki images
 
 Revision ID: c5e7a9b1d3f4

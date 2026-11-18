@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """Shared pytest fixtures for TrueNorth Range tests."""
 
 import os

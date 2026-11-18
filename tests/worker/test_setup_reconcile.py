@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T03:13:31Z
 """The setup reconcile task (worker/setup_reconcile.py): it reads a ``running`` product /
 Security Onion setup's status in the guest later and records the real outcome, with secrets
 re-derived each run (never stored). The guest reads themselves are the provisioner's

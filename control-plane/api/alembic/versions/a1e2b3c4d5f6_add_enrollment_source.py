@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T18:45:08Z
 """add enrollments.source: a Student's own self-enrolment vs an assigned one
 
 Revision ID: a1e2b3c4d5f6

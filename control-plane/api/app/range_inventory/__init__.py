@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T07:24:37Z
 """Range inventory checks: teardown by identified inventory, and drift (ADR 0013 §5,
 range certification S5, issue #243).
 

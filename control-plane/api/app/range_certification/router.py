@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:01:33Z
 """The Range Certification Record endpoints (ADR 0013 §6, issue #244).
 
 ==============================================  ==========================================

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T00:57:34Z
 """Proxmox VE connection backend (legacy; vSphere is the range platform)."""
 
 from __future__ import annotations

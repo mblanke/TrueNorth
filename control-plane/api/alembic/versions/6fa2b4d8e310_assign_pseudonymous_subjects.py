@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-24T12:03:23Z
 """assign imported subject credentials to pseudonymous users
 
 Revision ID: 6fa2b4d8e310

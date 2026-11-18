@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:33:32Z
 """Greyspace provisioning seam (ADR 0007): what the worker does with a range's Greyspace block.
 
 ``after_provision(range_id, backend, template)`` is called by ``tasks.provision_range``

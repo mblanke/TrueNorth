@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:35:38Z
 """A JWKS cache that survives signing-key rotation.
 
 The OIDC backends are process-wide singletons and used to fetch the JWKS once and keep

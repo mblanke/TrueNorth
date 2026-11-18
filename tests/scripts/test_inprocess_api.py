@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:26:37Z
 """The in-process harness (scripts/_inprocess_api.py) and MFA (v1.2.0).
 
 Its identities carry ``tn_session="inprocess"``, which app/mfa_policy.py exempts: the

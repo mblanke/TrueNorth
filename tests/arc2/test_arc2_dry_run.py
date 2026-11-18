@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:26:18Z
 """`check --dry-run`: the qa-tester's view of the verdict must not move the run.
 
 A recording check on a fail resets stages to pending; if the qa-tester ran that, the

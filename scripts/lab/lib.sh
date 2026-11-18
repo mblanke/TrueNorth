@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:52:40Z
 # shellcheck shell=bash
 # TrueNorth lab - shared helpers for scripts/lab/*.sh. Source it; do not run it.
 #

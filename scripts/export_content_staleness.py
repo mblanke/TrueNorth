@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T03:41:28Z
 """Generate the worker's copy of the content clock's rules (ADR 0014, issue #286).
 
 ``control-plane/api/app/content_review/staleness.py`` is the source; the worker's hourly sync

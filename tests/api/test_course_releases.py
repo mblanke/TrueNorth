@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:49:43Z
 """Course releases: upload verification, acceptance, supersession, pinning, part separation,
 immutability, roles and tenancy. Tarballs come from tools/arc2/release.py (see _release_kit)."""
 

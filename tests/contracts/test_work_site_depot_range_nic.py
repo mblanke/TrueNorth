@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T13:09:42Z
 """TN-DEPOT01's third NIC on the range uplink network at the work site (#214).
 
 Owner decision 2026-10-20: the depot gets a NIC at 10.30.32.10 on the range uplink network,

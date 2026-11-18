@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-09-24T10:32:53Z
 """Load everything under content/ into a running TrueNorth API, so every page has data.
 
 A fresh `make dev` database is empty: nothing loads content at start-up. This puts in,

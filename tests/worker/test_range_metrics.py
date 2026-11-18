@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T04:21:17Z
 """collect_range_metrics publishes measured figures or nothing (worker/range_metrics.py).
 
 Until 2026-10-11 it published ``random.uniform`` CPU, memory, disk and network numbers

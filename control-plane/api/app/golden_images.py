@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-07-19T14:26:35Z
 """Golden-image (template library) import + resolution.
 
 Seeds the GoldenImage registry from vm_iso_catalogue.csv and resolves a topology

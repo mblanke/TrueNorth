@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T01:26:37Z
 """Is the Keycloak realm configured for the MFA the API enforces? Checked at startup.
 
 The API refuses privileged roles without a second factor (app/mfa_policy.py). That only

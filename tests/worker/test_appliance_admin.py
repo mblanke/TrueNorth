@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T08:36:08Z
 """Range appliances never keep the template password (issue #248, ADR 0013 §3).
 
 pfSense, OPNsense and VyOS get their range's generated admin password at deploy as a

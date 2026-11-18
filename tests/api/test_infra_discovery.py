@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T18:15:02Z
 """Scheduled rediscovery of hypervisor connections (app/infra_discovery).
 
 The Infrastructure page's figures used to change only when someone pressed Discover. The

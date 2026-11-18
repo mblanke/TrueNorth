@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T02:24:15Z
 """Recording and promoting golden-image builds (ADR 0013 §2).
 
 * ``record_build``: the template kit registers a build (PATCH /golden-images/{id} with a

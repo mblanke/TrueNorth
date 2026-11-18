@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:23:41Z
 """Pull what students did in Moodle and record it on their TrueNorth learning records.
 
     pull(db, platform)   claim the Moodle's cursor, ask the backend for the next pages

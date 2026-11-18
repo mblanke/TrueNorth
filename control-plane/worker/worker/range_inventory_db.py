@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T07:24:37Z
 """Database reads and writes of range certification S5 (ADR 0013 §5, issue #243).
 
 Through the generated table mirror (tables.py), SQLAlchemy Core only: no raw SQL in the

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T03:26:11Z
 """The API's copy of the worker's vCenter rules must equal the worker's.
 
 The API may not import the worker (ADR 0001/0003). The browser console resolves a range's

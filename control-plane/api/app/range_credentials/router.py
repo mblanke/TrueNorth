@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T15:00:52Z
 """A range's credentials: the list, one password's reveal, an admin's rotation (ADR 0013 §3).
 
 ==================================================  =========================================

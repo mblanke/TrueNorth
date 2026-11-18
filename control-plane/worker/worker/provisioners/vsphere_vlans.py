@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T19:01:25Z
 """TrueNorth Range - which VLANs the live range switch already carries (range certification S1).
 
 Two checks use it, both against what vCenter says now, not against what TrueNorth recorded:

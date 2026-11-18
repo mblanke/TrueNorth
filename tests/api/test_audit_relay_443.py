@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Oracle tests for the confirmed audit findings of tracking issue #443 (console relay and
 its logging), one test per finding, marked ``audit443``. Each test asserts the *correct*
 behaviour, so it fails at the base commit the finding was confirmed on. Failing tests carry

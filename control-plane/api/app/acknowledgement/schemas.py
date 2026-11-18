@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T05:28:59Z
 """Acknowledgement request and response shapes (published in docs/interfaces/openapi.json)."""
 
 from __future__ import annotations

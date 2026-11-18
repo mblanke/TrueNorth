@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """Integration test: scenario execution.
 
 create range -> provision -> load scenario -> execute -> verify timeline + objectives.

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T21:25:57Z
 """The range lease is renewed while its task runs, expires soon after its worker dies,
 and an abandon fences a still-running execution out without handing the range to a new
 operation under its in-flight work (worker/fencing.py).

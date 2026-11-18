@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T16:29:26Z
 """add curriculum forge and quiz engine tables
 
 Revision ID: a7b8c9d0e1f2

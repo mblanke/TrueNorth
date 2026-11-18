@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:33Z
 """Setting rotated range passwords inside running guests (ADR 0013 §3; issue #241).
 
 * ``credential_rotation.plan``: which VMs, which admin login (snapshot-time password first,

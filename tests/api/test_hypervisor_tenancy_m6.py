@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:29:37Z
 """Hypervisor control is tenant-scoped, and TLS is verified by default (security sweep M6).
 
 /proxmox/vms/{node}/{vmid}/* needed only infra:control: a range_ops user of one tenant

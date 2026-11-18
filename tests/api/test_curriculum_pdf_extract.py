@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T03:02:09Z
 """PDF text extraction for curriculum uploads.
 
 `_extract_pdf` is the only pypdf call site. It reads untrusted uploads, so pypdf is

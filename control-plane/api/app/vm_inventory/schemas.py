@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T20:25:04Z
 """The Infrastructure page's live VM list (``GET /hypervisors/connections/{id}/vms``)."""
 
 from __future__ import annotations

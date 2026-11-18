@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:29:45Z
 """Lab sessions: one student's (or team's) own small range for one range activity.
 
 A session is keyed by (tenant, user, release, activity, attempt): launching twice, a

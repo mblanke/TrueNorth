@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T02:43:58Z
 """Classes 1: the Class record, its roll call and roll-call onboarding (ADR 0014; #278, #272).
 
 The rules under test:

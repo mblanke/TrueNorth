@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:26:18Z
 """cmi5 emission tests: the derived block, the cmi5.xml writer, the structural and XSD ladder,
 the package layout checks, and parity with the knowledge pack's AU runtime.
 

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:30:18Z
 """The accepted C105 release, imported through the live API, is what the course delivers.
 
 Happy path against the real stack (scripts/itest.sh: Postgres, alembic schema, the API

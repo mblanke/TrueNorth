@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:23:46Z
 """TrueNorth Range — scenario execution: run a scenario's timeline against a range, no exercise.
 
 The worker (``run_scenario_execution``) fires each timeline event through the same inject

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T15:55:05Z
 """Attendance and close-out shapes (ADR 0014 §12-13; published in docs/interfaces/openapi.json)."""
 
 from __future__ import annotations

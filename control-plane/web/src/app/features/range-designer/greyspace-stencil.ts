@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-10T01:46:01Z
 /**
  * Range Designer: the Internet/Cloud stencil is the range's Greyspace block (ADR 0007,
  * plan slice 7). Dropping it puts `nodeData.greyspace` on the cell; export

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:44:08Z
 # =============================================================================
 # TrueNorth Range — shared helpers for scripts/backup/{backup,restore,drill}.sh
 # =============================================================================

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:59Z
 """TrueNorth Range - deploy-time software installs inside range VMs, over VMware guest operations.
 
 Ranges have no route from the worker (VLAN-isolated, no egress), so nothing here uses

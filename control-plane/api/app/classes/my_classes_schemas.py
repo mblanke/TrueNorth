@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:16:39Z
 """A Student's "My classes" page: response shapes (ADR 0014 §20; issue #284).
 
 Published in docs/interfaces/openapi.json (ADR 0002). Nothing here names another Student,

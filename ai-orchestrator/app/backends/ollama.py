@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:06:30Z
 """TrueNorth Range AI Orchestrator — Ollama node backend.
 
 One instance speaks to ONE Ollama server. The fleet manager in ``main.py``

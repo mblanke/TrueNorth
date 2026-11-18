@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """The MinIO/S3 object storage helper (app/object_store.py).
 
 Curriculum Forge keeps uploaded courseware here. The module builds a fresh ``Minio``

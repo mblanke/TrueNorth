@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T20:25:04Z
 """A vCenter's VMs with TrueNorth's tn-* tags, for the Infrastructure page (plain httpx).
 
 Read only. The tags are the ones the worker's provisioner (range VMs) and the template kit

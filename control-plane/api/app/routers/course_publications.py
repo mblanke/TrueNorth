@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:02:59Z
 """Publish accepted course releases to the tenant's Moodle (app/course_publishing).
 
 Publishing is a job: the request records it (once per release and Moodle) and returns;

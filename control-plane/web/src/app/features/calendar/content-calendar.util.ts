@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-23T03:04:55Z
 /**
  * Pure helpers of the calendar's Content view (ADR 0014 decisions 22-24): the grid's days,
  * the heading, the clock badge's words, colours and labels. Dates are the browser's own

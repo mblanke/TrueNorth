@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T22:25:55Z
 """Installer contracts for the container runtime role (install/roles/tn_docker).
 
 The installer used to assume Docker was already on the platform host. 00-docker now

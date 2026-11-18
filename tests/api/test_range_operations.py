@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T01:32:44Z
 """Range operations (app/range_ops; CR1-06 and F19 in docs/review/codereview1.md).
 
 On main a provision or destroy was a state change plus a best-effort send: a broker that

@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-04-17T20:21:24Z
 import { Component, OnInit, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Companion oracles for audit issue #443 (range credentials and rotation).
 
 One companion per REAL oracle in ``test_audit_credentials_443.py``: the same secure

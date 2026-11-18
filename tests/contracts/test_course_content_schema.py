@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:30:18Z
 """Every authored course file conforms to ``docs/interfaces/course-content.schema.json``,
 and no two of them are the same course.
 

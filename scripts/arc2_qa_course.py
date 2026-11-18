@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T13:40:58Z
 """Run ARC²'s QA stage over an existing course file and its instructor pack, with no model call.
 
     python scripts/arc2_qa_course.py content/courses/c103-intro-to-networking.yaml

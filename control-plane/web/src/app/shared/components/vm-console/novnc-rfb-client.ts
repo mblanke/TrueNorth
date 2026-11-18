@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-11-04T14:56:48Z
 import RFB from '@novnc/novnc/lib/rfb';
 
 import { RfbClient, RfbConnectOptions, RfbEvents, relayProtocols } from './rfb-client';

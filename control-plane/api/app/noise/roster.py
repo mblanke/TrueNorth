@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """The built-in roster: plausible personas with no LLM.
 
 AI-generated org packs (with bios and portraits) replace this later; this is the

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T03:13:31Z
 """TrueNorth Range - deploy-time setup of the Exchange 2019, SharePoint (SE and 2019) and MECM role images.
 
 The role images ``srv2022-exchange2019``, ``srv2022-sharepointse``, ``srv2022-sharepoint2019``

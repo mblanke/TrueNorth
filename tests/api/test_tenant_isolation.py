@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-18T18:21:42Z
 """Tenant isolation — the leak nothing else would catch.
 
 `tenant_id` appears throughout the models, but a query that simply forgets to filter on

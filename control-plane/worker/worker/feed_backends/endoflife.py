@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """endoflife.date: release cycles, their end-of-life dates and latest point releases.
 
 ``GET https://endoflife.date/api/<product>.json`` once per product in the product map. Each

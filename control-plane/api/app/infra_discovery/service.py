@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-20T18:15:02Z
 """Discover one connection under its lease; one scheduled round over every active one.
 
 ``discover_connection`` is the only way discovery runs: ``POST

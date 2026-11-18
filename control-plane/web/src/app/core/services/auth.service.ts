@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-03-04T22:24:49Z
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import Keycloak from 'keycloak-js';

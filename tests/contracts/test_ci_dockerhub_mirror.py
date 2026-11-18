@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T21:31:45Z
 """Contract: CI pulls Docker Hub images through mirror.gcr.io, not anonymous Docker Hub.
 
 GitHub-hosted runners share egress addresses, so anonymous pulls from registry-1.docker.io

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Emailed calendar invites (ADR 0004 slice 6): REQUEST when a booking becomes real or
 moves (same UID, higher SEQUENCE), CANCEL when it is called off or changes hands."""
 

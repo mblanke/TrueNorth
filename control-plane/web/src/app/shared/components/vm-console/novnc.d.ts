@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-11-04T14:56:48Z
 // @novnc/novnc ships no types; only what novnc-rfb-client.ts uses.
 declare module '@novnc/novnc/lib/rfb' {
   export default class RFB {

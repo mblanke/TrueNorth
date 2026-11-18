@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """Verify the signed audit export archive, and optionally the database against it.
 
     python -m worker.audit_verify [--dir /var/lib/truenorth/audit-archive] [--db] [--json]

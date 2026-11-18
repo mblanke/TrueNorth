@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:20:13Z
 """MITRE ATT&CK identifiers as TrueNorth accepts them from authors and feeds.
 
 Two levels of strictness:

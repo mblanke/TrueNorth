@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T07:24:37Z
 """Teardown by independently identified inventory (ADR 0013 §5, range certification S5, #243).
 
 Two jobs, both outside tasks.py (ADR 0003, its line count is ratcheted):

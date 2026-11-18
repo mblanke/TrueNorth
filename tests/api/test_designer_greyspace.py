@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:46:01Z
 """Range Designer: the Internet/Cloud stencil is the template's ``greyspace:`` block (ADR 0007,
 plan slice 7). Export emits it, import draws it back, and the round trip keeps it."""
 

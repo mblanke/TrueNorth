@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:29:37Z
 """Low findings of the 2026-10-08 security sweep: probe errors, rate-limit keying."""
 
 from __future__ import annotations

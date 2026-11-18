@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:35Z
 # TrueNorth Range — vSphere Packer build driver.
 #
 # Usage:

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Companions to the strict-xfail oracles of ``tests/api/test_audit_authn_443.py`` (audit #443).
 
 One companion per still-failing oracle there, each pinning the same secure behaviour of the

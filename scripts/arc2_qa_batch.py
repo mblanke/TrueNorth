@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T13:40:58Z
 """Run ARC²'s QA over many existing courses and write one summary table.
 
     python scripts/arc2_qa_batch.py 'content/courses/c1*.yaml'

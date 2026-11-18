@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T00:59:08Z
 """The content port's API (owner decision 2026-10-27; docs/content-port.md).
 
 ==============================================================  =========================================

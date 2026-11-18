@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:23:31Z
 """Nightly AD status sync: decide who to deactivate, and do it (ADR 0014 decision 6; #290).
 
 **The rules.** TrueNorth reads AD and never writes to it: only an AD administrator disables

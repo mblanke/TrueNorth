@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:23:41Z
 """API shapes for Moodle results (kept out of app/schemas.py, ADR 0003)."""
 
 from __future__ import annotations

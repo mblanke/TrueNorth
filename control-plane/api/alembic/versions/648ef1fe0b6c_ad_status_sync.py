@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:23:31Z
 """AD status sync: its runs, the accounts they deactivated, and when accounts were last seen
 
 Revision ID: 648ef1fe0b6c

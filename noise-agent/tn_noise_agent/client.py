@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """Controller client: fetch the plan, report what was done. urllib only."""
 
 from __future__ import annotations

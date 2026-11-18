@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:06Z
 """Stage the offline Open-VM-Tools package set for the pfSense template build.
 
 The pfSense Packer build (appliances.pkr.hcl) finishes the template inside the installer

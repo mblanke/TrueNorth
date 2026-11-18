@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """``python -m tn_noise_agent --controller URL --token-file PATH``"""
 
 from __future__ import annotations

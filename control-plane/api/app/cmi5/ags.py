@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T13:16:52Z
 """AU results back to the launching LMS's gradebook (LTI 1.3 Assignment and Grade Services).
 
 A Moodle activity deep-linked to a TrueNorth AU (resource ``cmi5:<release>:<n>``,

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-04-17T20:21:24Z
 """TrueNorth Range — Redis connection helper with Sentinel HA support.
 
 Provides a unified ``get_redis_client()`` that returns either:

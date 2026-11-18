@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-07T14:35:36Z
 import { TestBed, discardPeriodicTasks, fakeAsync, tick } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { signal } from '@angular/core';

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Emailed calendar invites (ADR 0004 §6, slice 6).
 
 Through the existing SMTP channel, as iCalendar over email (RFC 6047): Outlook and other

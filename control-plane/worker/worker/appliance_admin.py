@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T08:36:08Z
 """TrueNorth Range - each router appliance's admin login, per range (issue #248, ADR 0013 §3).
 
 pfSense, OPNsense and VyOS templates are built with the generic build password (ADR 0012

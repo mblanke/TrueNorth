@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T03:26:11Z
 """A hypervisor connection that live ranges are on: what may and may not change.
 
 The worker records, in a range's ``provisioner_output["connection"]``, the connection a

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-12T19:13:09Z
 """The APIs behind the R0-B essential operator screens: team membership and a Student's
 course progress and completion (the range recovery and Moodle results screens are tested
 in test_range_operations.py and test_moodle_results.py).

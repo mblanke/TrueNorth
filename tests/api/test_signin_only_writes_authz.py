@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:54:12Z
 """Endpoints that were "any signed-in user" and now check a permission.
 
 Found by tests/api/test_permission_coverage_guard.py:

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """Tripwires for the limitation inventory (TN10X-F5, the TAZ #435 return).
 
 Every "reproduced-current" row there describes behaviour that is true TODAY and is a

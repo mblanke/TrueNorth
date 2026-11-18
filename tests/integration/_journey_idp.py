@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T21:52:00Z
 """A test identity provider for browser journeys against a real, auth-enforcing API.
 
 Used by tests/integration/test_browser_journeys.py (and shaped as the Idp in

@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-07-19T14:26:35Z
 import { Component, computed, inject } from '@angular/core';
 import {
   ActivatedRoute,

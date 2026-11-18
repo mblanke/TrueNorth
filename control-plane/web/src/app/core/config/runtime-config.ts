@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-08T12:25:02Z
 import { environment } from '@env/environment';
 import type { AppEnvironment } from '@env/app-environment';
 

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T01:15:35Z
 """Who the platform administrator is, as a fresh multi-tenant site meets it (#318, #273).
 
 The installer now renders ``PLATFORM_TENANT_ID`` (``tn_platform_tenant_id``, by default the

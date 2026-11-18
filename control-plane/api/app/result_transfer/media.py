@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T19:03:59Z
 """Bounded, non-overwriting removable-media transport for result packages."""
 
 from __future__ import annotations

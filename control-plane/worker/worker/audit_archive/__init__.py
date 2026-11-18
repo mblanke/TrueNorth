@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """Audit archive backends, by AUDIT_ARCHIVE_BACKEND (default ``filesystem``). ADR 0001:
 a new store (MinIO with object lock, v1.3) is a new module and a registry entry here, and
 its SDK is imported only inside that module."""

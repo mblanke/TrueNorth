@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:13:40Z
 """API shapes for network reservations (GET /ranges/{id}/network-reservations)."""
 
 from __future__ import annotations

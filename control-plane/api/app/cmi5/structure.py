@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """cmi5 course structures: read a release's ``cmi5.xml``, serve it with absolute AU URLs,
 and name the runtime activities TrueNorth uses when it is the LMS.
 

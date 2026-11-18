@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """Students and their own sessions (ADR 0004 slice 10, decided 2026-10-06).
 
 A booking names a course; its active Students attend. They see their own sessions in

@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-12T18:45:07Z
 import { computed, signal } from '@angular/core';
 import type { UserRole } from '../services/auth.service';
 import { PAGE_ACCESS, PageKey, Permission, roleCan, roleHasAccess } from './permissions';

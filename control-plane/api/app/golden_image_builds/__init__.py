@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T02:24:15Z
 """Golden-image builds and promotion (ADR 0013 §2).
 
 Importing this package registers ``golden_image_builds`` on ``Base.metadata``.

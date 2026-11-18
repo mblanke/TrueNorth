@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:27Z
 """Print the cloud-init guestinfo the worker gives a Linux range VM, as govc -e arguments.
 
 scripts/lab/test-clone.sh uses it so a Linux test clone is configured by the SAME code path

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T07:48:36Z
 """Seat forfeit on several API replicas at once, on PostgreSQL (ADR 0014 §4, issue #280).
 
 SQLite serialises writers, so a race there proves nothing. These run only with

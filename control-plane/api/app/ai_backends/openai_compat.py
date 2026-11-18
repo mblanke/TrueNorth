@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:09:21Z
 """OpenAI-compatible engine adapter (LiteLLM, vLLM, OpenAI, Azure OpenAI)."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-21T22:42:33Z
 """Range credentials in the guest (ADR 0013 §3): prove the template password is gone, and
 change passwords in a running range.
 

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-03T15:59:22Z
 """Console grants: issue one with a console, claim it when the browser's socket opens (#366).
 
 A grant is permission to open one VM's console for one user for a few minutes, once at a

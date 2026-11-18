@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:26:18Z
 """ARC² — AI Rapid Course Creator, adapted to TrueNorth.
 
 A run lives under ``build/arc2/<slug>/``. Seven agents each write one ``NN-*/fragment.json``

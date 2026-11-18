@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-04-17T20:21:24Z
 import { defineConfig, devices } from '@playwright/test';
 
 const BASE_URL = process.env.BASE_URL || 'https://localhost';

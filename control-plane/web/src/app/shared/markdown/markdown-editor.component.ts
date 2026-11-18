@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-07T14:35:36Z
 import { ChangeDetectionStrategy, Component, ElementRef, EventEmitter, Input, Output, ViewChild, signal } from '@angular/core';
 import { Observable } from 'rxjs';
 import { MarkdownViewComponent } from './markdown-view.component';

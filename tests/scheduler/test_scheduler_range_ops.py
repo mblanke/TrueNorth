@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:06Z
 """The scheduler builds and tears down ranges through range_ops (CR1-06), like a person.
 
 - A build is a recorded operation: the outbox row, sent after its commit; with the

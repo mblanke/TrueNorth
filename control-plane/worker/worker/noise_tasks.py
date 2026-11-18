@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """Background-noise deployment: install the agent on a range's agent nodes.
 
 The API decides what to deploy (``POST /noise/ranges/{id}/deploy``) and hands this task

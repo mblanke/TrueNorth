@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:02:59Z
 """Run publications outside a request: after a request returns, and on API start for
 jobs a previous process left mid-way. Each run gets its own session."""
 

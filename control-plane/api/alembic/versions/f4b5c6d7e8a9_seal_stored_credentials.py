@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:35:00Z
 """seal stored credentials: hypervisor passwords and tokens, AI engine keys
 
 Revision ID: f4b5c6d7e8a9

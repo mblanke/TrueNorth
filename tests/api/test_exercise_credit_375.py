@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T14:53:38Z
 """Exercise results credit the Students, never the instructor (#375).
 
 An exercise has no owner column; its Students come from what the class records:

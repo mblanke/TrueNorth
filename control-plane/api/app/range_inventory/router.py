@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T07:24:37Z
 """Range inventory checks and the confirm-by-moid of unidentified items (ADR 0013 §5, #243).
 
 =====================================================  =================================

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-09T02:10:40Z
 """A site with no vCenter installs: without vSphere (mock) or against a simulator.
 
 tn_uses_vcenter derives from tn_provisioner_backend. When it is false, preflight skips

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T00:16:50Z
 """Students get the briefing, not the answer key (ADR 0005 §5)."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:13:50Z
 """TrueNorth Range — single sign-on hand-off into the tenant's Moodle.
 
 TrueNorth is the source of truth for who may open a course, so Moodle has no login of

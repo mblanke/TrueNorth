@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """content feeds: release, end-of-life and vulnerability entries, the flags they raised, source status
 
 Revision ID: 4f2e4c9cd1a0

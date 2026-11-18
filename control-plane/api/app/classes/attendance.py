@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T15:55:05Z
 """Automatic attendance per class session (ADR 0014 §12; issue #283).
 
 **The rule.** A Student is *present* at a class session when they signed in and opened their

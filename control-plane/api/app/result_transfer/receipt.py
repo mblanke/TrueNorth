@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T19:03:59Z
 """Signed grade-free receipts returned from Secret to Unclassified."""
 
 from __future__ import annotations

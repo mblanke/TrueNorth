@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:23:33Z
 """Inject dispatch and the scenario run loop, on a real (SQLite) worker database.
 
 Every test here observes recorded outcomes (``inject_records`` rows, exercise state, the

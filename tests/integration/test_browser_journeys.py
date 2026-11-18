@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T21:52:00Z
 """Browser journeys for the rc11 evidence gaps, in Chromium, against an API that enforces auth.
 
 The rc11 evidence record found five areas with no browser journey: wiki and helpdesk,

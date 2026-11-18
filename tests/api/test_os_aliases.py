@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-09-27T12:56:50Z
 """The ubuntu-2204 -> ubuntu-2404 rename must not strand anything already stored.
 
 `ubuntu-lts` is Ubuntu 24.04 (docs/vm-build-sheet.md §8). Ranges, designer diagrams and

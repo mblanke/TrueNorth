@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:23:31Z
 """The directory's view of each account, read from Keycloak. Read-only, always.
 
 TrueNorth never writes to Active Directory (ADR 0014 decision 6): Keycloak federates it

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """The greyspace NPC agent (app/greyspace/npc_agent.py).
 
 Simulated people: each persona picks an action by its profile's weights and does it —

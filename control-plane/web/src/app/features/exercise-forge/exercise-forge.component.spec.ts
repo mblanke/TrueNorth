@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-04-17T20:21:24Z
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';

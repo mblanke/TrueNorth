@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T20:10:40Z
 """The unit readiness queries on PostgreSQL (ADR 0014 decision 7, issue #289).
 
 SQLite accepts SQL that PostgreSQL refuses (DISTINCT over joined columns, enum comparisons,

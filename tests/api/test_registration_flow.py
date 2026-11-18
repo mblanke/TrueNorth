@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-08-28T01:34:17Z
 """Trainee registration: AD login -> registration -> admin approval (ADR 0014 §5).
 
 The property under test throughout is that **AD group membership suggests but

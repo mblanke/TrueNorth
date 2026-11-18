@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:26:18Z
 """Shared fixture for the ARC² contract tests: a tiny repo root with a four-row crosswalk, one
 course that already delivers PO_009, and the range the fixture manifest reuses."""
 

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T01:15:35Z
 """OU and security-group types: the API's enums, on create and on edit (#318).
 
 The Users page offered OU types "department" and "team" and the group type "role", which

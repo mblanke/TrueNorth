@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-19T15:00:52Z
 """A range's accounts are what its VMs get at deploy (ADR 0012 §12, ADR 0013 §3).
 
 On the fake vCenter of test_vsphere_provision.py:

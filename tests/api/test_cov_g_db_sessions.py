@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-18T02:58:36Z
 """Round-3 coverage for app/db.py (whole-slice rank: 53.8% before this file).
 
 The session/health layer underneath every router was only touched incidentally by the

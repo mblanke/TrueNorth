@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-19T15:00:52Z
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Clipboard } from '@angular/cdk/clipboard';

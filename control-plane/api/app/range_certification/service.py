@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-22T04:01:33Z
 """Open, append to and read Range Certification Records (ADR 0013 §6, issue #244).
 
 **Hook points for the other slices.** Every write goes through ``append``; nothing here

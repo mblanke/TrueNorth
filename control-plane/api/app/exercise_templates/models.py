@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T12:53:56Z
 """The exercise template's tables (ADR 0017).
 
 New tables go in their section, never into the shared ``app.models`` (ADR 0003).

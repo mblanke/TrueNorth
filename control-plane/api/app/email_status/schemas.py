@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T18:27:27Z
 """Email status shapes (published in docs/interfaces/openapi.json). No field ever carries
 the relay password."""
 

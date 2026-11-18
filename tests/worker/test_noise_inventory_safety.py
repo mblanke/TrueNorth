@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:29:37Z
 """Noise deploy inputs cannot steer Ansible (security sweep M5).
 
 Node ids went unchecked into INI inventory lines and host_vars file names, and the

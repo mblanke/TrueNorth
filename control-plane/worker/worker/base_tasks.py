@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T02:37:59Z
 """TrueNorth Range - what every task module shares: the retrying base task and the backend lookup.
 
 Kept out of ``tasks.py`` so that ``lab_tasks.py`` can use them without importing

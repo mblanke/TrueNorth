@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:02:59Z
 """Moodle course-publishing backends (ADR 0001).
 
 Usage:

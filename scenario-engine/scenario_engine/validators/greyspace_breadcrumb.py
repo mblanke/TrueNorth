@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T01:46:01Z
 """Greyspace breadcrumb validator: did the team find this exercise's breadcrumb (ADR 0007)?
 
 A breadcrumb's ``{{ token }}`` is keyed per exercise by the installation's secret

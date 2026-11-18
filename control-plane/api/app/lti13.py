@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T16:29:26Z
 """TrueNorth Range — LTI 1.3 tool-provider core.
 
 Native implementation on PyJWT + cryptography + httpx:

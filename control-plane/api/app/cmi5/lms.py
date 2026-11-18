@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """TrueNorth as a cmi5 LMS for its own releases: launch, fetch, the AU's LRS, moveOn.
 
 The sequence (cmi5 §8-10, KB §9.3), and who does what:

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T00:59:08Z
 """The content port (owner decision 2026-10-27, v1.2.0 GA; docs/content-port.md).
 
 Courses, range templates and scenarios move from the test site to a new site **only once

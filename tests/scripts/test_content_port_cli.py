@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T00:59:08Z
 """scripts/content_port_inprocess.py: export, verify offline, preview and import from the
 command line, through the API in-process as a named platform administrator (the same rules
 as the Content view's Port content panel)."""

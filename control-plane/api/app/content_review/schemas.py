@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T03:04:55Z
 """Wire shapes of the content clock (ADR 0014 decisions 22-24). Kept out of ``app.schemas``
 (ADR 0003)."""
 

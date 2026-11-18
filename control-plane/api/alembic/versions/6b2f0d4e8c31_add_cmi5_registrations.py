@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-10T11:52:51Z
 """add cmi5 registrations and sessions
 
 Revision ID: 6b2f0d4e8c31

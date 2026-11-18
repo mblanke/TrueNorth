@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:17:24Z
 """provision_range builds noise management NICs at the addresses the API reserved.
 
 The API reserves each agent node's address when it accepts the provision

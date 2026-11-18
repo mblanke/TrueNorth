@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T00:59:40Z
 """TrueNorth Range AI Orchestrator — Abstract AI backend interface.
 
 Every AI backend (OpenAI, Anthropic, vLLM, Ollama, Mock) must implement this

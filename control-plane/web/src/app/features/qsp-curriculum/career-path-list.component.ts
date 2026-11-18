@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-09-23T17:24:51Z
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatExpansionModule } from '@angular/material/expansion';

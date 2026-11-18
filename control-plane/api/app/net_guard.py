@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:29:36Z
 """TrueNorth Range — fetching a URL someone else chose, without becoming their proxy.
 
 Any API feature that fetches an author-supplied URL (threat-intel CSV feeds, curriculum web

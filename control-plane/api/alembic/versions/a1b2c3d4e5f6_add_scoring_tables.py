@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """add scoring tables
 
 Revision ID: a1b2c3d4e5f6

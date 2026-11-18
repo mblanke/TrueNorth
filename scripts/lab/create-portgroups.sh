@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T20:52:40Z
 # TrueNorth lab - create the build and depot port groups on vDS-10G (runbook §4.1a).
 #
 #   scripts/lab/create-portgroups.sh            # plan only (default): read-only

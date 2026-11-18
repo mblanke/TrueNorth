@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:29:45Z
 """Worker side of lab sessions: leased networks reach the hypervisor, leftovers are found
 by range id and removed, nothing else is touched."""
 

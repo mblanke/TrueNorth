@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-13T02:54:54Z
 """The login banner (NIST AC-8): theme, realm, installer and compose agree (v1.2.0, S2).
 
 The behaviour is proven on the pinned Keycloak image by scripts/check_keycloak_realm.sh

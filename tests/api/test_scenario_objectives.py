@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:31:14Z
 """An exercise created from a scenario carries that scenario's objectives (PR #28).
 
 Found in an end-to-end run (docs/hardening/s7-interruption-exercise-2026-10-04.md): a

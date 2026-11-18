@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-08-21T17:38:07Z
 import {
   ChangeDetectionStrategy,
   Component,

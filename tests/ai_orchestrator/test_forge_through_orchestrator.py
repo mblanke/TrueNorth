@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:11:33Z
 """Control plane -> real orchestrator app (mock backend) -> persisted exercise, in process.
 
 The integration lane proves the same chain over the network

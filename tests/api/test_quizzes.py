@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:05:01Z
 """Quiz engine (``app.routers.quizzes``): authoring, the Student attempt flow, grading.
 
 What these pin down:

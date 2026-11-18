@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T21:07:27Z
 """A range operation accepted while the broker is down still reaches the worker.
 
 S0 defect "dispatch ignored" (docs/hardening/s0-baseline-2026-10-04.md): the range routes

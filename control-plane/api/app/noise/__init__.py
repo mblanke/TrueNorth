@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """Pattern-of-life noise engine.
 
 Synthetic personas whose daily routines produce real background traffic inside a range,

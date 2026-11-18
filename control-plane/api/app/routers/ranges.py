@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """TrueNorth Range — Ranges router.
 
 Handles range CRUD, provision/destroy/stop lifecycle actions, batch

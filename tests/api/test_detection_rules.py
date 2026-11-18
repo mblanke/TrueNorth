@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-09-24T10:32:53Z
 """Detection rules: create through the API.
 
 Nothing tested the create route, which is how it shipped raising TypeError on every

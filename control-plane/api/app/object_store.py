@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-06-11T16:29:26Z
 """TrueNorth Range — MinIO/S3 object storage helper.
 
 Used by Curriculum Forge for uploaded courseware. Configuration:

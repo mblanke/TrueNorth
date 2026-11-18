@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-12T18:45:07Z
 /**
  * R0-B role journeys: for each role, one page it may open and one it may not, by deep
  * link, plus what its menu offers.

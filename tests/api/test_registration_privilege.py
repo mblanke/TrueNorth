@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:29:36Z
 """Registration approval may not mint authority the approver does not hold (C1).
 
 An instructor held registration:approve. Before the fix, ``role`` on the approve body

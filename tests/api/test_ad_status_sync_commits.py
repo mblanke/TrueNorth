@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T20:12:42Z
 """AD status sync with real commits (#309 round 3, item 2).
 
 The ``db_session`` fixture joins an outer transaction that a rollback undoes whole, so it

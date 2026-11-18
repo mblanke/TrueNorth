@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T21:07:27Z
 """Rehearse a code rollback on an upgraded, populated database (PostgreSQL).
 
 1. migrate a scratch database to NEW's head and populate it through NEW's API code;

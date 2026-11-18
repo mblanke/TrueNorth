@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T21:07:12Z
 """Windows Server role catalogue: minimum sizing, install method and placement rules.
 
 A node's ``services`` list is free-form (``rdp``, ``owa``, ``active_directory`` ...).

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T03:43:42Z
 """TAZ bakeoff replay kit (tools/taz/bakeoff): tasks, scope, FALSE_DONE and scoring.
 
 The kit judges local models on replays of merged tickets, so its own mistakes would be

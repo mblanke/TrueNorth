@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:21:35Z
 # TrueNorth Range — Linux variant packages (variants.pkr.hcl, variant-linux).
 # Runs as root on a clone of a Linux base, before the variant scripts.
 #

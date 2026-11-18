@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T19:11:01Z
 """Contract: the nginx configs in front of the platform keep their security posture.
 
 Two configs serve the SPA, the API and Keycloak to browsers:

@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-06-11T01:47:57Z
 /**
  * ECharts styling pulled from the live CSS custom properties so charts
  * re-tint when the user switches themes. Call at option-build time.

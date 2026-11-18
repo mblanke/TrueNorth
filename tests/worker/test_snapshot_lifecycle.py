@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-09-27T03:17:10Z
 """Range snapshot, restore and delete: backends and worker tasks.
 
 Until this file, restore could not succeed anywhere. worker.tasks called

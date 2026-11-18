@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T07:48:36Z
 """Classes 3: seat forfeit 2 hours after the start, and reinstatement (ADR 0014 §4; #280).
 
 The rules under test (app/classes/forfeit.py):

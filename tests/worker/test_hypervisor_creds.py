@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T16:35:00Z
 """The worker logs in to the hypervisor with the real password, of the range's own tenant.
 
 The API stores hypervisor credentials sealed (app/secretbox.py, tests/api/test_secret_storage.py);

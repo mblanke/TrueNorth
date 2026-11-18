@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T12:20:23Z
 """Issue the run id and lease a scenario run task is dispatched with (``ExerciseRun``).
 
 ``begin`` is for start and replay (a new run from event 0); ``resume`` keeps the run and

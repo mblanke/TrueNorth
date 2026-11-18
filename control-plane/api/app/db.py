@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 """Database engine and session configuration.
 
 Tuned for 1,200 concurrent users / 70,000 VMs:

@@ -1,3 +1,5 @@
+// Author: Marc-Andre Blanke
+// Created: 2026-10-15T16:19:22Z
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { NEVER, of } from 'rxjs';

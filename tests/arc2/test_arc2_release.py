@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T17:49:43Z
 """arc2.release: only an accepted, packaged run with a catalogue identity is released, the
 three parts never mix, and the API's verifier reads what the tool writes."""
 

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:13Z
 """Companion oracles for the confirmed audit findings of #443 (card #444).
 
 One companion per strict-xfail oracle in ``tests/api/test_audit_classes_443.py``: a second

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:14:37Z
 """Noise from a range template: which nodes get agents, what personas talk to, and the
 deploy hand-off to the worker.
 

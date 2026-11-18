@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-04T00:57:34Z
 """External learning-platform adapters (docs/adr/0001-adapter-registry.md).
 
 What TrueNorth needs to know about each ``external_platforms.platform_type``. Today

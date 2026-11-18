@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-27T19:42:09Z
 """The content feeds' API (ADR 0014 decision 25, issue #287).
 
 =====================================  ===============================================

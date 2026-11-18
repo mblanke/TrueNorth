@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-04T14:56:09Z
 """A Student's detection as evidence for the instructor who judges the objective (ADR 0020).
 
 Team exercises have no answer key. A submitted detection is run against the range's events

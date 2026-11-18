@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Author: Marc-Andre Blanke
+# Created: 2026-03-04T22:24:49Z
 # ------------------------------------------------------------------
 # setup-realm.sh — Import the TrueNorth realm into a running Keycloak
 # Usage: ./setup-realm.sh [KEYCLOAK_URL] [ADMIN_USER] [ADMIN_PASS]

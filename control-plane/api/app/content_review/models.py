@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-23T03:04:55Z
 """The content clock's tables (ADR 0014 decisions 22-24, issue #286).
 
 New tables go in their section, never into the shared ``app.models`` (ADR 0003).

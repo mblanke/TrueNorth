@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-07-19T14:26:35Z
 """Golden-image / template-library router.
 
 Import the golden-image catalogue, browse the registry, resolve an OS alias to a

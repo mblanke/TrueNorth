@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-11-08T14:47:20Z
 """Course lab steps only name hosts the range template actually builds.
 
 Every course module may carry a ``lab_range`` naming a template under

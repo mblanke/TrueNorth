@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-08T21:29:36Z
 """Students cannot pick out the attack by querying the platform's inject labels (H4).
 
 Inject telemetry was stamped with ``inject_action``, ``exercise_id``, ``truenorth_simulated``,

@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-28T00:59:08Z
 """How a content-port bundle is signed and verified.
 
 The feed bundle's construction (``content_feeds.bundle_signing``: Ed25519 over a one-line

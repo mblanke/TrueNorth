@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-07T14:25:47Z
 """MITRE technique tagging (telemetry_mitre.py), shared by the API and the worker.
 
 The API and worker images share no code, so the tagger is two identical files. The

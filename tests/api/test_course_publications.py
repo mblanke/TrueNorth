@@ -1,3 +1,5 @@
+# Author: Marc-Andre Blanke
+# Created: 2026-10-05T18:02:59Z
 """Publishing accepted releases to Moodle, against the in-memory Moodle (app.moodle_backends.fake).
 
 Staging is hidden and verified before anything goes live; an interruption at any step
