@@ -292,12 +292,6 @@ class TestSharedContentReadableByIdCompanions:
 # ── exercise_forge.py:238 (medium) — companion for TestForgeDefaultRange ──
 class TestForgeDefaultRangeCompanions:
     @patch("app.routers.exercise_forge._call_forge_ai", new_callable=AsyncMock)
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: forge with no range_id binds the exercise to an arbitrary "
-        "tenant range, including a Student's live lab range (exercise_forge.py:238) — "
-        "companion",
-    )
     def test_forge_fallback_binds_tenant_b_live_lab_range(self, mock_ai, client, db_session, monkeypatch):
         """Two-tenant-matrix companion for
         test_forge_fallback_never_binds_a_live_lab_range: the oracle forges as the
