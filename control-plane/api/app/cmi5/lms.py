@@ -216,6 +216,9 @@ def enrolment_for(db: Session, user_id: uuid.UUID, release: CourseRelease) -> En
     )
     if enrolled is None:
         raise Cmi5Error(403, "you are not enrolled in this course")
+    if enrolled.status == EnrollmentStatus.withdrawn:
+        # Launch, module content and marking all come through here (audit #443 f33).
+        raise Cmi5Error(403, "your enrolment in this course has ended")
     pinned = pinned_release(db, enrolled.id)
     if pinned is None or pinned.id != release.id:
         raise Cmi5Error(409, "your enrolment is not on this release of the course")

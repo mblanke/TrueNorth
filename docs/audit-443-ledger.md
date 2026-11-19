@@ -18,7 +18,7 @@ machine-readable list of open findings is:
 grep -rn "mark.xfail" tests/api/test_audit*_443.py tests/worker/test_audit*_443.py tests/api/test_search_old_index.py
 ```
 
-It lists 28 tests today. Two findings (f37, f40) have no test because no unambiguous secure
+It lists 27 tests today. Two findings (f37, f40) have no test because no unambiguous secure
 behaviour could be stated for them.
 
 ## Fixed (rc21, and after rc22 where the Fix column says so)
@@ -41,6 +41,7 @@ behaviour could be stated for them.
 | Public/global templates and scenarios are listed to other tenants but 404 by id (foreign rows read redacted: no accounts, no answer key) | low | `routers/templates.py:274` | fix/443-shared-content-by-id (after rc22) |
 | Free text reaches indexed label values in search on a pre-v1.0 index (a Student's free text searches only an allow-list of visible fields; residual: a pre-2026-10-08 inject summary event put inject text in `message` and `event.action`, see the issue filed with this fix) | low | `main.py:775` | fix/443-search-free-text (after rc22) |
 | Console outlived its sign-in token (closed at token expiry) | high | `ws_auth.py` | #442 (before the audit tests) |
+| A withdrawn Student keeps cmi5 launch, content and grading (`enrolment_for` now refuses a withdrawn enrolment with 403) | medium | `cmi5/lms.py:211` | fix/443-cmi5-withdrawn (after rc22) |
 | Two concurrent first results for one attempt both land (a partial unique index on `(tenant_id, source_enclave, attempt_id)` where there is no `supersedes_package_id`; the loser is a mapped refusal) | medium | `result_transfer/service.py:285` | fix/443-result-transfer-import (after rc22) |
 | Cross-tenant `package_id` reuse ends in an unhandled `IntegrityError` (now a mapped refusal that does not say whose package it is) | low | `result_transfer/service.py:252` | fix/443-result-transfer-import (after rc22) |
 
@@ -57,7 +58,6 @@ None open: all fixed (see the Fixed table).
 | Finding | Sev | Where | Test |
 |---|---|---|---|
 | Server-side fetches of tenant-admin-controlled URLs (LTI JWKS, Moodle results pull) bypass `net_guard` | medium | `lti13.py:233` | `test_f32_lti13_jwks_fetches_go_through_net_guard` |
-| A withdrawn Student keeps cmi5 launch, content and grading; only the LRS proxy checks withdrawal | medium | `cmi5/lms.py:211` | `test_f33_a_withdrawn_student_cannot_launch` |
 | No limit on AU launches: a Student can flood the LRS | low | `cmi5/lms.py:340` | `test_f36_au_launches_are_limited` |
 | First cmi5 launch races to a primary-key 500 | low | `cmi5/lms.py:228` | `test_f41_a_first_launch_racing_another_does_not_500` |
 | Concurrent feed-bundle imports race to an unhandled `IntegrityError`; an older bundle can win | low | `content_feeds/service.py:204` | `test_f39_concurrent_bundle_imports_neither_crash_nor_lose` |
@@ -137,3 +137,4 @@ plan wants both fixed before GA; the rest of #493 goes after.
 - v2, 2026-11-18: public/global templates and scenarios by id fixed (fix/443-shared-content-by-id); open count 31.
 - v3, 2026-11-18: search free text fixed (fix/443-search-free-text); open count 30; the tenancy group is closed.
 - v4, 2026-11-19: result-transfer import fixed, f34 and f38 (fix/443-result-transfer-import); open count 28.
+- v5, 2026-11-19: withdrawn Student launch fixed, f33 (fix/443-cmi5-withdrawn); open count 27.
