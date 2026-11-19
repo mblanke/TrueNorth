@@ -202,12 +202,6 @@ def test_f32_lti13_jwks_fetches_go_through_net_guard(db_session, monkeypatch):
 
 
 # ---- f33 ------------------------------------------------------------------------------------
-@pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: a withdrawn Student keeps launch/content/grade; only the LRS proxy checks "
-    "withdrawal (control-plane/api/app/cmi5/lms.py:211)",
-)
 def test_f33_a_withdrawn_student_cannot_launch(client, db_session, lrs, release, student):
     """enrolment_for never reads the enrolment status, so a withdrawn student still gets a
     launch URL (and with it LRS access); withdrawal must refuse the launch."""

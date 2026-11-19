@@ -211,12 +211,6 @@ def test_f32_companion_a_second_tenants_loopback_jwks_url_is_refused_before_any_
 
 
 # ---- f33 companion --------------------------------------------------------------------------
-@pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: a withdrawn Student keeps launch/content/grade; only the LRS proxy checks "
-    "withdrawal (control-plane/api/app/cmi5/lms.py:211) — companion",
-)
 def test_f33_companion_a_student_withdrawn_after_their_first_launch_cannot_relaunch(
     client, db_session, lrs, release, student
 ):
@@ -229,6 +223,21 @@ def test_f33_companion_a_student_withdrawn_after_their_first_launch_cannot_relau
     with cmi5_acting_as(student):
         r = client.post(f"/cmi5/releases/{release['id']}/aus/0/launch", json={})
     assert r.status_code == 403, r.text
+
+
+def test_f33_a_withdrawn_student_is_refused_module_content_and_grading_too(client, db_session, lrs, release, student):
+    """The finding names launch, content and grading: all three go through enrolment_for."""
+    enrolled = db_session.query(Enrollment).filter(Enrollment.user_id == student.id).one()
+    with cmi5_acting_as(student):
+        before = client.get(f"/cmi5/releases/{release['id']}/aus/0/content")
+    assert before.status_code == 200, before.text  # control: enrolled, the same request works
+    enrolled.status = EnrollmentStatus.withdrawn
+    db_session.commit()
+    with cmi5_acting_as(student):
+        content = client.get(f"/cmi5/releases/{release['id']}/aus/0/content")
+        grade = client.post(f"/cmi5/releases/{release['id']}/aus/0/grade", json={"answers": {}})
+    assert content.status_code == 403, content.text
+    assert grade.status_code == 403, grade.text
 
 
 # ---- f34 companion --------------------------------------------------------------------------
