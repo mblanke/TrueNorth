@@ -25,7 +25,7 @@ class _Backend:
     def __init__(self):
         self.searched: list[str] = []
 
-    async def search(self, index, query, size):
+    async def search(self, index, query, size, *, visible_only=False):
         self.searched.append(index)
         return {"hits": {"hits": []}}
 

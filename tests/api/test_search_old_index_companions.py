@@ -2,6 +2,7 @@
 # Created: 2026-11-08T14:47:13Z
 """Companion oracles for ``tests/api/test_search_old_index.py`` (audit #443, card #454).
 
+FIXED (audit #443): a Student's free text is confined to ``query.VISIBLE_TEXT_FIELDS``.
 One companion per REAL strict-xfail oracle there, each pinning the same secure behaviour of
 the same finding from a second input, and failing at the base for the same reason. Reuses the
 ``old_index`` fixture from the sibling module unchanged — the fixture is the oracle's world;
@@ -16,11 +17,6 @@ from test_search_old_index import old_index as old_index  # noqa: F401 — pytes
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: index-migration-unproven (app/main.py:775) — the label guard checks "
-    "only explicit field:value terms, free text reaches the indexed labels — companion",
-)
 def test_the_boundary_label_value_does_not_match_as_free_text(client, old_index):
     """``truenorth.inject`` is the boundary of the label guard: as an explicit term
     ``event.module:truenorth.inject`` it is refused to a Student (``is_label`` matches any
