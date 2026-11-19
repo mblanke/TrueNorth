@@ -261,7 +261,7 @@ def import_result(
         if existing.package_sha256 != package_sha256:
             raise ResultTransferError("package_id was already imported with different content")
         return existing, False
-    if db.get(ImportedResult, result.package_id) is not None:
+    if db.query(ImportedResult.package_id).filter(ImportedResult.package_id == result.package_id).first():
         # package_id is the primary key across tenants; refuse without saying whose it is.
         raise ResultTransferError("package_id is already in use by another import")
 
