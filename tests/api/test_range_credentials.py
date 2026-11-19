@@ -577,8 +577,14 @@ class TestTemplates:
             assert resp.status_code == 200, (who, resp.text)
             assert DC_PW not in resp.json()["yaml"], who
             assert account_rules.REDACTED in resp.json()["yaml"], who
-        act_as(world["foreign_instructor"])  # by id, even a public template is its own tenant's only
-        assert client.get(f"/templates/{public.id}").status_code == 404
+        act_as(world["foreign_instructor"])
+        # A public template is listed to every tenant, so it reads by id (audit #443), but as
+        # foreign content: passwords redacted for any role. A private one stays a 404.
+        shown = client.get(f"/templates/{public.id}")
+        assert shown.status_code == 200, shown.text
+        assert DC_PW not in shown.json()["yaml"]
+        assert account_rules.REDACTED in shown.json()["yaml"]
+        assert client.get(f"/templates/{own.id}").status_code == 404
 
     def test_a_redacted_copy_cannot_be_saved_back(self, client, world):
         act_as(world["range_ops"])
