@@ -232,12 +232,6 @@ def test_f33_companion_a_student_withdrawn_after_their_first_launch_cannot_relau
 
 
 # ---- f34 companion --------------------------------------------------------------------------
-@pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: two concurrent first results for the same attempt both land; no uniqueness "
-    "on attempt (control-plane/api/app/result_transfer/service.py:285) — companion",
-)
 def test_f34_companion_the_database_itself_refuses_a_second_first_result_for_one_attempt(db_session, monkeypatch):
     """Same finding, behavioural angle: the schema introspection of the oracle says a unique
     constraint must exist; here the database must actually refuse the second insert for one
@@ -290,12 +284,6 @@ def test_f36_companion_a_student_cannot_flood_the_lrs_across_two_aus(client, lrs
 
 
 # ---- f38 companion --------------------------------------------------------------------------
-@pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: cross-tenant package_id reuse ends in an unhandled IntegrityError "
-    "(control-plane/api/app/result_transfer/service.py:252) — companion",
-)
 def test_f38_companion_the_reversed_cross_tenant_package_id_reuse_is_a_mapped_refusal(db_session, monkeypatch):
     """Same finding, the other diagonal of the two-tenant matrix: the other enclave imports
     the shared package_id first and the home enclave second — the second import must still
@@ -530,3 +518,58 @@ def test_f30_review_the_proxys_commit_does_not_run_on_the_event_loop(client, lrs
     response = au.lrs("GET", "activities/state", params=au.state_params("LMS.LaunchData"))
     assert response.status_code == 200
     assert on_loop and not any(on_loop), "the proxy committed on the event loop"
+
+
+# ---- f34 race: the loser of a first-result race is a mapped refusal -------------------------
+def test_f34_a_lost_first_result_race_is_a_mapped_refusal_and_keeps_one_row(db_session, monkeypatch):
+    """The check-then-insert window is closed by the index; if another import lands between
+    the check and the insert, the loser must be refused (retryable), not raise a raw
+    IntegrityError, and exactly one first result of the attempt may exist."""
+    monkeypatch.setenv("TN_CLASSIFICATION_LEVEL", "secret")
+    monkeypatch.setenv("TN_ENCLAVE_ID", "secret")
+    rel = rt_release(db_session)
+    token, attempt = uuid.uuid4(), uuid.uuid4()
+    bind_subject(db_session, tenant_id=TENANT, source_enclave="unclass", opaque_subject_id=token, user_id=USER)
+    signing_private, signing_public = generate_signing_keypair()
+    recipient_private, recipient_public = generate_recipient_keypair()
+
+    def decrypted():
+        package, _ = create_package(
+            rt_claim(rel.id, token, attempt),
+            source_enclave="unclass",
+            destination_enclave="secret",
+            signing_private_key=signing_private,
+            recipient_public_key=recipient_public,
+        )
+        return decrypt_package(
+            package,
+            trusted_signing_public_key=signing_public,
+            recipient_private_key=recipient_private,
+            destination_enclave="secret",
+        )
+
+    first, second = decrypted(), decrypted()
+    import_result(db_session, first, package_sha256="6" * 64)
+    # The second import passes the attempt check as if it ran before the first committed.
+    from app.result_transfer import service as rt_service
+
+    real_query = db_session.query
+
+    def blind_to_same_attempt(*entities, **kwargs):
+        query = real_query(*entities, **kwargs)
+        if entities and entities[0] is ImportedResult:
+            original_first = query.filter_by
+
+            def filter_by(**kw):
+                if "attempt_id" in kw:
+                    return real_query(ImportedResult).filter(ImportedResult.package_id == uuid.uuid4())
+                return original_first(**kw)
+
+            query.filter_by = filter_by
+        return query
+
+    monkeypatch.setattr(db_session, "query", blind_to_same_attempt)
+    with pytest.raises(ResultTransferError, match="concurrently"):
+        rt_service.import_result(db_session, second, package_sha256="7" * 64)
+    monkeypatch.undo()
+    assert db_session.query(ImportedResult).filter(ImportedResult.attempt_id == attempt).count() == 1

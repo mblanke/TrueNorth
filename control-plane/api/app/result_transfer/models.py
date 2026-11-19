@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -96,6 +96,16 @@ class ImportedResult(Base):
         Index("ix_imported_results_user_time", "tenant_id", "user_id", "occurred_at"),
         Index("ix_imported_results_attempt", "source_enclave", "attempt_id"),
         UniqueConstraint("supersedes_package_id", name="uq_imported_result_supersedes"),
+        # One first result per attempt (audit #443 f34); corrections name a predecessor and sit outside it.
+        Index(
+            "uq_imported_result_first_per_attempt",
+            "tenant_id",
+            "source_enclave",
+            "attempt_id",
+            unique=True,
+            postgresql_where=text("supersedes_package_id IS NULL"),
+            sqlite_where=text("supersedes_package_id IS NULL"),
+        ),
     )
 
     package_id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True)

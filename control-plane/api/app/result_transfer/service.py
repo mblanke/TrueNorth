@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..course_releases.models import CourseRelease
@@ -260,6 +261,9 @@ def import_result(
         if existing.package_sha256 != package_sha256:
             raise ResultTransferError("package_id was already imported with different content")
         return existing, False
+    if db.get(ImportedResult, result.package_id) is not None:
+        # package_id is the primary key across tenants; refuse without saying whose it is.
+        raise ResultTransferError("package_id is already in use by another import")
 
     binding = (
         db.query(ResultSubjectBinding)
@@ -339,8 +343,13 @@ def import_result(
         supersedes_package_id=claim.supersedes_package_id,
         occurred_at=claim.occurred_at,
     )
-    db.add(record)
-    db.flush()
+    try:
+        with db.begin_nested():
+            db.add(record)
+    except IntegrityError as exc:
+        # A concurrent import of this package or first result of this attempt won the race
+        # (primary key, or the one-first-result-per-attempt index); the caller may retry.
+        raise ResultTransferError("this package or attempt was imported concurrently; retry the import") from exc
     return record, True
 
 
