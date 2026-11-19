@@ -186,7 +186,6 @@ control-plane/api/app/routers/registration.py
 control-plane/api/app/routers/scenario_executions.py
 control-plane/api/app/routers/software_catalogue.py
 control-plane/api/app/routers/storage.py
-control-plane/api/app/routers/templates.py
 control-plane/api/app/routers/wiki.py
 control-plane/api/app/scheduler/approval.py
 control-plane/api/app/scheduler/approval_notices.py

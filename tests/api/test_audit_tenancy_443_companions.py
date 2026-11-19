@@ -235,12 +235,6 @@ class TestAuthZonePlatformDefaultsCompanions:
 
 # ── templates.py:274 / scenarios.py:150 (low) — companions ───────────────
 class TestSharedContentReadableByIdCompanions:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: public/global templates are listed to other tenants but "
-        "by-id reads 404, so a class can be built from an uninspectable template "
-        "(templates.py:274) — companion",
-    )
     def test_listed_foreign_public_template_is_unreadable_for_an_instructor(self, client, db_session):
         """Second-role companion for
         test_listed_public_template_of_another_tenant_is_readable_by_id: the oracle
@@ -263,12 +257,6 @@ class TestSharedContentReadableByIdCompanions:
             assert str(foreign_public.id) in listed
             assert client.get(f"/templates/{foreign_public.id}").status_code == 200, "listed but unreadable"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: public/global templates and scenarios are listed to other "
-        "tenants but by-id reads 404, so a class can be built from an uninspectable "
-        "scenario (templates.py:274, scenarios.py:150) — companion",
-    )
     def test_listed_platform_scenario_is_readable_by_id(self, client, db_session):
         """Boundary-value companion for
         test_listed_public_scenario_of_another_tenant_is_readable_by_id: the oracle

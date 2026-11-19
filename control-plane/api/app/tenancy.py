@@ -90,6 +90,36 @@ def get_owned_or_global(
     return obj
 
 
+def get_listed(
+    db: Session,
+    model: type[T],
+    obj_id: uuid.UUID | str,
+    user: CurrentUser,
+    *,
+    not_found: str | None = None,
+) -> T:
+    """Fetch a row the caller's list endpoint shows: their tenant's, or ``is_public``.
+
+    For the by-id READ of a model whose list returns ``tenant == mine OR is_public``
+    (templates, scenarios). A listed row that 404s by id is a row a class can be built
+    on but nobody can inspect (audit #443). Read-only: writes stay on :func:`get_owned`.
+
+    The caller must treat a row whose ``tenant_id`` is not theirs as foreign content:
+    redact what a tenant's own staff may see (accounts, answer keys), never return it whole.
+    """
+    oid = obj_id if isinstance(obj_id, uuid.UUID) else uuid.UUID(str(obj_id))
+    q = db.query(model).filter(
+        model.id == oid,
+        (model.tenant_id == tenant_uuid(user)) | (model.is_public.is_(True)),
+    )
+    if hasattr(model, "deleted_at"):
+        q = q.filter(model.deleted_at.is_(None))
+    obj = q.first()
+    if not obj:
+        raise HTTPException(404, not_found or f"{model.__name__} not found")
+    return obj
+
+
 def owned_or_404(
     db: Session,
     model: type[T],
