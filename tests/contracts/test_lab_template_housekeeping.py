@@ -67,6 +67,11 @@ VMS = [
     f"{T}/Host copies/esx02/kali@esx02-20261123|true|",
     f"{T}/tn-testclone-kali-esx02|false|",
     f"{T}/mystery|true|",
+    # Hand-made templates that only look like copies: never host copies (one was destroyed by a
+    # manual run of the first version, re-review of #530).
+    f"{T}/srv2022@pre-sysprep-backup|true|",
+    f"{T}/srv2022@esx02-2026112|true|",
+    f"{T}/srv2022@esx02-20261123-old|true|",
 ]
 
 
@@ -228,6 +233,102 @@ def test_clear_unstamped_reads_the_flag_from_the_env_file_and_assumes_in_use_whe
         TN_TEMPLATE_ALLOW_UNPROMOTED=None,
     )  # unreadable: assume ranges may use them
     assert r.returncode != 0 and len(_calls(lab.state, "vm.destroy")) == 1
+
+
+def test_clear_unstamped_touches_only_names_in_the_host_copy_format(lab):
+    """<id>@<host>-<yyyymmdd> exactly (and that date with --date); anything else is kept."""
+    r = lab("clear-unstamped-copies.sh", "srv2022", "--apply", "--yes")
+    assert r.returncode == 0, r.stderr
+    gone = {c.rsplit("/", 1)[1] for c in _calls(lab.state, "vm.destroy")}
+    assert gone == {"srv2022@esx03-20261123", "srv2022@esx04-20261122"}
+    kept = (lab.state / "vms").read_text()
+    for name in ("srv2022@pre-sysprep-backup", "srv2022@esx02-2026112|", "srv2022@esx02-20261123-old"):
+        assert name in kept, name
+    assert "keep  srv2022@pre-sysprep-backup: not a host copy name" in r.stdout
+
+
+def _flag_env(tmp_path, line):
+    env_file = tmp_path / "worker.env"
+    env_file.write_text(f"VSPHERE_USERNAME=u\n{line}\n")
+    return str(env_file)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "TN_TEMPLATE_ALLOW_UNPROMOTED=true  # work site",
+        'TN_TEMPLATE_ALLOW_UNPROMOTED="yes"',
+        "TN_TEMPLATE_ALLOW_UNPROMOTED=maybe?",  # unparseable: allowing
+        "TN_TEMPLATE_ALLOW_UNPROMOTED=ubuntu-lts,srv2022  # transition",
+    ],
+)
+def test_clear_unstamped_guard_is_open_only_for_an_explicit_off(lab, tmp_path, line):
+    r = lab(
+        "clear-unstamped-copies.sh",
+        "srv2022",
+        "--apply",
+        "--yes",
+        "--env-file",
+        _flag_env(tmp_path, line),
+        TN_TEMPLATE_ALLOW_UNPROMOTED=None,
+    )
+    assert r.returncode != 0 and "--force" in r.stderr and _calls(lab.state, "vm.destroy") == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "TN_TEMPLATE_ALLOW_UNPROMOTED=false  # not on this site",
+        "TN_TEMPLATE_ALLOW_UNPROMOTED='off'",
+        "TN_TEMPLATE_ALLOW_UNPROMOTED=",
+        "TN_TEMPLATE_ALLOW_UNPROMOTED=kali",
+    ],
+)
+def test_clear_unstamped_guard_open_for_off_and_for_other_ids(lab, tmp_path, line):
+    r = lab(
+        "clear-unstamped-copies.sh",
+        "srv2022",
+        "--date",
+        "20261123",
+        "--apply",
+        "--yes",
+        "--env-file",
+        _flag_env(tmp_path, line),
+        TN_TEMPLATE_ALLOW_UNPROMOTED=None,
+    )
+    assert r.returncode == 0, r.stderr
+    assert len(_calls(lab.state, "vm.destroy")) == 1
+
+
+@pytest.mark.parametrize(("file_value", "shell_value"), [("false", "true"), ("true", "false"), ("false", "kali")])
+def test_clear_unstamped_prefers_the_worker_env_file_and_refuses_when_the_shell_disagrees(
+    lab, tmp_path, file_value, shell_value
+):
+    env_file = _flag_env(tmp_path, f"TN_TEMPLATE_ALLOW_UNPROMOTED={file_value}")
+    r = lab(
+        "clear-unstamped-copies.sh",
+        "srv2022",
+        "--date",
+        "20261123",
+        "--apply",
+        "--yes",
+        "--env-file",
+        env_file,
+        TN_TEMPLATE_ALLOW_UNPROMOTED=shell_value,
+    )
+    assert r.returncode != 0 and _calls(lab.state, "vm.destroy") == []
+    agreed = lab(
+        "clear-unstamped-copies.sh",
+        "srv2022",
+        "--date",
+        "20261123",
+        "--apply",
+        "--yes",
+        "--env-file",
+        env_file,
+        TN_TEMPLATE_ALLOW_UNPROMOTED=file_value,
+    )
+    assert (agreed.returncode == 0) == (file_value == "false")
 
 
 def test_clear_unstamped_refuses_a_pattern_for_an_id(lab):

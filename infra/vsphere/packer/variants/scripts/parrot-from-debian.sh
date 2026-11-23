@@ -7,7 +7,7 @@
 #   1. write Parrot's archive signing key, committed below, to its own keyring file and
 #      check its fingerprint; every Parrot source is "signed-by" that file from the first
 #      apt-get update, so nothing from Parrot is ever installed unauthenticated, and the
-#      key is trusted for Parrot's sources only (never in /etc/apt/trusted.gpg.d);
+#      key is trusted for Parrot's sources only (an apt hook keeps it out of trusted.gpg.d);
 #   2. install parrot-core (Parrot's apt pinning and base), then full-upgrade to Parrot;
 #   3. install the MATE desktop and the full toolset, boot to the LightDM login.
 # Fails the build on any error, if a Parrot key lands in /etc/apt/trusted.gpg.d, if a
@@ -74,9 +74,14 @@ deb [signed-by=${KEY}] http://deb.parrot.sh/parrot echo ${COMPONENTS}
 deb [signed-by=${KEY}] http://deb.parrot.sh/parrot echo-security ${COMPONENTS}
 deb [signed-by=${KEY}] http://deb.parrot.sh/parrot echo-updates ${COMPONENTS}
 EOF
-# parrot-archive-keyring (pulled in by parrot-core) ships its key for trusted.gpg.d, which
-# would trust Parrot's key for every source. Keep dpkg from unpacking it there at all.
-echo "path-exclude=/etc/apt/trusted.gpg.d/parrot*" > /etc/dpkg/dpkg.cfg.d/tn-no-global-parrot-key
+# parrot-archive-keyring (pulled in by parrot-core) links its key into trusted.gpg.d from
+# its postinst (ln -sf), which trusts Parrot's key for every source; a dpkg path-exclude
+# cannot stop that. This hook removes it after every dpkg run - during this build and on
+# every clone that later upgrades the package - so the key stays scoped to signed-by.
+cat > /etc/apt/apt.conf.d/99-tn-parrot-key-scope <<'HOOK'
+// TrueNorth: Parrot's archive key is trusted only through signed-by (sources.list.d/parrot.list).
+DPkg::Post-Invoke { "rm -f /etc/apt/trusted.gpg.d/parrot* || true"; };
+HOOK
 echo "parrot: repository signed-by ${KEY} (${PARROT_FPR})"
 
 # 2-3.

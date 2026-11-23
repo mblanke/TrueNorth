@@ -326,11 +326,36 @@ def test_parrot_never_installs_from_an_unauthenticated_source():
     # The key is checked and the sources are signed-by it before Parrot is ever fetched.
     assert code.index('[ "$got" = "$PARROT_FPR" ]') < code.index("deb [signed-by=${KEY}]") < first_update
     assert code.count("deb [signed-by=${KEY}] http://deb.parrot.sh/parrot") == 3
-    assert "path-exclude=/etc/apt/trusted.gpg.d/parrot*" in code
-    assert code.index("path-exclude=/etc/apt/trusted.gpg.d/parrot*") < first_update
     # Nothing is written into trusted.gpg.d; what a maintainer script left is removed and checked.
     assert not re.search(r"(>|tee|cp|install|ln)[^\n]*trusted\.gpg\.d", code)
     assert "rm -f /etc/apt/trusted.gpg.d/parrot*" in code and 'grep -v "signed-by=${KEY}"' in code
+    # The keyring package links its key in from its postinst (ln -sf), which a dpkg
+    # path-exclude does not stop: an apt hook removes it after every dpkg run instead.
+    assert "path-exclude" not in code
+    assert code.index(PARROT_HOOK) < first_update
+
+
+PARROT_HOOK = "/etc/apt/apt.conf.d/99-tn-parrot-key-scope"
+
+
+def test_parrot_template_keeps_parrot_key_out_of_global_trust_after_every_dpkg_run(tmp_path):
+    """A clone that later upgrades parrot-archive-keyring must not regain global trust."""
+    text = PARROT.read_text()
+    m = re.search(r'cat > "?' + re.escape(PARROT_HOOK) + r'"? <<\'?(\w+)\'?\n(.*?)\n\1\n', text, re.S)
+    assert m, "the template writes " + PARROT_HOOK
+    conf = m.group(2)
+    (cmd,) = re.findall(r'DPkg::Post-Invoke\s*\{\s*"([^"]+)";\s*\};', conf)
+    gpgd = tmp_path / "trusted.gpg.d"
+    gpgd.mkdir()
+    for name in ("parrot-archive-keyring.gpg", "parrot-2024.asc", "debian-archive-trixie.asc"):
+        (gpgd / name).write_text("k")
+    (gpgd / "parrot-link.gpg").symlink_to(gpgd / "debian-archive-trixie.asc")
+    r = subprocess.run(["sh", "-c", cmd.replace("/etc/apt/trusted.gpg.d", str(gpgd))], capture_output=True)
+    assert r.returncode == 0
+    assert sorted(p.name for p in gpgd.iterdir()) == ["debian-archive-trixie.asc"]
+    # It is still there at the end of the build (cleanup.sh does not remove apt.conf.d files).
+    cleanup = (LINUX / "cleanup.sh").read_text()
+    assert "99-tn-parrot" not in cleanup and "apt.conf.d/*" not in cleanup and "apt.conf.d/9*" not in cleanup
 
 
 def test_parrot_committed_key_has_the_pinned_fingerprint(tmp_path):
