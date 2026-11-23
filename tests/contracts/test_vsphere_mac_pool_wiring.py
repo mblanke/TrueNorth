@@ -24,7 +24,8 @@ SETTINGS = {"VSPHERE_GUEST_IP_TIMEOUT": "tn_vsphere_guest_ip_timeout",
             "VSPHERE_GUEST_IP_CHECK": "tn_vsphere_guest_ip_check",
             "VSPHERE_MAC_POOL": "tn_vsphere_mac_pool",
             "VSPHERE_CUSTOMIZATION_GRACE": "tn_vsphere_customization_grace",  # #255
-            "VSPHERE_CUSTOMIZATION_SKEW": "tn_vsphere_customization_skew"}
+            "VSPHERE_CUSTOMIZATION_SKEW": "tn_vsphere_customization_skew",
+            "VSPHERE_WINDOWS_TIMEZONE": "tn_vsphere_windows_timezone"}  # #526
 
 
 def _host_vars(inventory: str) -> dict:
@@ -44,6 +45,10 @@ def test_the_installer_defaults_and_env_template_carry_every_setting():
     assert defaults["tn_vsphere_guest_ip_timeout"] == 600 and defaults["tn_vsphere_guest_ip_check"] == "require"
     assert (defaults["tn_vsphere_customization_grace"], defaults["tn_vsphere_customization_skew"]) == (900, 300)
     assert "VSPHERE_CUSTOMIZATION_GRACE:-900}" in compose and "VSPHERE_CUSTOMIZATION_SKEW:-300}" in compose
+    # #526: no Sysprep time zone unless a site sets one; preflight refuses a malformed one.
+    assert defaults["tn_vsphere_windows_timezone"] == "" and "VSPHERE_WINDOWS_TIMEZONE:-}" in compose
+    preflight = (ROOT / "install/roles/tn_preflight/tasks/main.yml").read_text()
+    assert "tn_vsphere_windows_timezone | string | trim is match('^[0-9]{1,3}$')" in preflight
 
 
 def test_each_install_has_its_own_mac_slice_inside_vmwares_manual_range():

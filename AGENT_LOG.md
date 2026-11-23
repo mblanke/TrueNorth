@@ -53,3 +53,14 @@
   merged onto it, adds a deterministic regression test (holds the clean-up's savepoint open;
   fails without the lock) and puts the 4409 test's post-socket read under the lock.
 - Next: merge the PR once CI is green.
+
+## 2026-11-23 — #526 Windows Sysprep time zone (Mac, agent)
+
+- Branch `fix/526-windows-customize-timezone` off github/main (rc22). Worker no longer
+  hard-codes `timeZone=85`; `VSPHERE_WINDOWS_TIMEZONE` / `tn_vsphere_windows_timezone`
+  (decimal Microsoft index, empty = none = index 0 on the wire) sets one. test-clone.sh
+  takes `--tz N` (decimal) and passes hex to govc. Draft PR only.
+- Open owner decision: the site's govc `-tz 85` was hex (index 133, invalid); decimal 85 was
+  never tried. Site checks: `govc vm.customize -type Windows ... -tz 55` (= 85), and
+  `tzutil /g` on a clone customized without a time zone (expect Dateline Standard Time?).
+  If 85 works, set `tn_vsphere_windows_timezone: 85` or change the default.

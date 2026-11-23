@@ -52,6 +52,18 @@
       tn_site_timezone empty (the host's zone) or an IANA name such as America/Toronto.
     quiet: true
 
+# VSPHERE_WINDOWS_TIMEZONE (#526): the worker refuses anything but a decimal Microsoft time
+# zone index, and only when it customizes a Windows VM; catch a malformed one here.
+- name: Preflight — tn_vsphere_windows_timezone is empty or a decimal time zone index
+  ansible.builtin.assert:
+    that:
+      - (tn_vsphere_windows_timezone | default('') | string | trim | length == 0)
+        or (tn_vsphere_windows_timezone | string | trim is match('^[0-9]{1,3}$'))
+    fail_msg: >-
+      tn_vsphere_windows_timezone must be empty (no time zone) or a DECIMAL Microsoft time
+      zone index such as 85 (GMT Standard Time) or 35 (Eastern); not hex, not a name.
+    quiet: true
+
 # CLASS_OBSERVER_CONSOLES: a typo ("ture", "enabled") would be read by the API as off, silently.
 - name: Preflight — tn_class_observer_consoles is a boolean
   ansible.builtin.assert:

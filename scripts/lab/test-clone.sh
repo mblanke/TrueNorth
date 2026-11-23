@@ -27,6 +27,8 @@
 #   --keep           leave the clones (default: destroy each one that passed)
 #   --yes            do not ask
 #   --env-file FILE  vCenter credentials (default /srv/truenorth/config/.env.production)
+#   --tz N           Windows Sysprep time zone: a DECIMAL Microsoft index, as the worker's
+#                    VSPHERE_WINDOWS_TIMEZONE (default: that variable, else none = index 0)
 #
 # Each clone is tagged tn-type=test-clone, tn-template=<id> (best effort; TN_TAGS=0: off).
 #
@@ -38,9 +40,9 @@ set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-usage() { sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 ID=""; HOSTS="${RANGE_HOSTS:-esx02 esx03 esx04}"; MODE="customize"; NET="dPG-TN-BUILD"
-IP_BASE="10.30.31"; TIMEOUT_MIN=25; KEEP=0
+IP_BASE="10.30.31"; TIMEOUT_MIN=25; KEEP=0; WIN_TZ="${VSPHERE_WINDOWS_TIMEZONE:-}"
 ENV_FILE="${TN_ENV_FILE:-/srv/truenorth/config/.env.production}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -52,6 +54,7 @@ while [[ $# -gt 0 ]]; do
     --keep) KEEP=1 ;;
     --yes) ASSUME_YES=1 ;;
     --env-file) ENV_FILE="$2"; shift ;;
+    --tz) WIN_TZ="$2"; shift ;;
     -h|--help) usage 0 ;;
     -*) echo "unknown option: $1" >&2; usage 2 ;;
     *) [[ -z "$ID" ]] || usage 2; ID="$1" ;;
@@ -61,6 +64,8 @@ done
 [[ -n "$ID" ]] || usage 2
 case "$MODE" in customize|finish|tools|power) ;; *) die "--mode customize|finish|tools|power" ;; esac
 [[ "$TIMEOUT_MIN" =~ ^[0-9]+$ ]] || die "--timeout takes minutes"
+WIN_TZ="${WIN_TZ//[[:space:]]/}"
+[[ -z "$WIN_TZ" || "$WIN_TZ" =~ ^[0-9]{1,3}$ ]] || die "--tz takes a decimal Windows time zone index (85: GMT Standard Time)"
 if [[ -z "${GOVC_USERNAME:-}" || -z "${GOVC_PASSWORD:-}" ]]; then govc_from_env_file "$ENV_FILE"; fi
 APPLY=1   # every change below is confirmed first; act() echoes each command
 
@@ -109,10 +114,14 @@ prepare() {
     case "$(collect "$vm" config.guestId)" in
       win*) # Windows Sysprep spec, as the worker's windows_customization() (vsphere_infra.py):
             # govc defaults to -type Linux, which a Windows guest cannot apply. A throwaway
-            # password, set by Sysprep like a range password; never printed.
-            echo "  + govc vm.customize -vm $vm -type Windows -name $want_name -username TrueNorth -org TrueNorth -tz 85 -ip $ip -netmask 255.255.255.0 -pwd <random>"
-            govc vm.customize -vm "$vm" -type Windows -name "$want_name" -username TrueNorth -org TrueNorth -tz 85 \
-              -ip "$ip" -netmask 255.255.255.0 \
+            # password, set by Sysprep like a range password; never printed. Time zone (#526):
+            # none unless --tz / VSPHERE_WINDOWS_TIMEZONE, as the worker. That is DECIMAL and
+            # govc's flag takes HEX: the old "85" here sent index 133, which is no time zone.
+            local tz=()
+            if [[ -n "$WIN_TZ" ]]; then tz=(-tz "$(printf '%x' "$((10#$WIN_TZ))")"); fi
+            echo "  + govc vm.customize -vm $vm -type Windows -name $want_name -username TrueNorth -org TrueNorth ${tz[*]:-} -ip $ip -netmask 255.255.255.0 -pwd <random>"
+            govc vm.customize -vm "$vm" -type Windows -name "$want_name" -username TrueNorth -org TrueNorth \
+              ${tz[@]+"${tz[@]}"} -ip "$ip" -netmask 255.255.255.0 \
               -pwd "Tc!$(od -An -N9 -tx1 /dev/urandom | tr -d ' \n')" || return 1 ;;
       *)    # Linux: the worker's path, not govc vm.customize. vsphere_api.py _customize_sync
             # writes cloud-init guestinfo (vsphere_infra.linux_guestinfo) and runs no vSphere

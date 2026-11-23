@@ -176,6 +176,40 @@ class TestSecret:
         assert other.identity.guiUnattended.password.value not in ("", pw)
 
 
+class TestWindowsTimeZone:
+    """#526: the work site's vCenter 8.0.3 refused govc's Windows customization with -tz (govc
+    reads it as hex: 133 and 53, not valid indexes) and took it without -tz. Until decimal 85 is
+    tried there, the worker forces none. GuiUnattended.timeZone is a required int in pyVmomi,
+    so "none" is the wire default 0, what govc sends without -tz. A site sets an index only
+    with VSPHERE_WINDOWS_TIMEZONE, checked against the Microsoft index table."""
+
+    VM = {"name": "r-ws01", "node_id": "ws01", "nics": [{"ip": "10.0.0.7", "gateway": "10.0.0.1"}]}
+
+    def test_no_time_zone_is_forced_by_default(self, monkeypatch):
+        from pyVmomi.SoapAdapter import Serialize
+
+        monkeypatch.delenv("VSPHERE_WINDOWS_TIMEZONE", raising=False)
+        spec = infra.windows_customization(self.VM, "Pw-1234567!")
+        assert spec.identity.guiUnattended.timeZone == 0
+        assert b"<timeZone>0</timeZone>" in Serialize(spec)  # a valid spec on the wire
+
+    def test_blank_setting_is_the_default(self, monkeypatch):
+        monkeypatch.setenv("VSPHERE_WINDOWS_TIMEZONE", "  ")
+        assert infra.windows_customization(self.VM, "Pw-1234567!").identity.guiUnattended.timeZone == 0
+
+    @pytest.mark.parametrize(("raw", "index"), [("35", 35), ("85", 85), (" 085 ", 85), ("0", 0)])
+    def test_a_configured_index_is_passed_through(self, monkeypatch, raw, index):
+        monkeypatch.setenv("VSPHERE_WINDOWS_TIMEZONE", raw)  # decimal: 35 Eastern, 85 GMT
+        assert infra.windows_customization(self.VM, "Pw-1234567!").identity.guiUnattended.timeZone == index
+
+    # 133 and 53: what the site's "govc -tz 85" / "-tz 035" really sent (hex), not indexes.
+    @pytest.mark.parametrize("raw", ["0x55", "GMT", "-1", "85.0", "+85", "133", "53", "2147483648"])
+    def test_a_malformed_index_is_refused_with_the_setting_named(self, monkeypatch, raw):
+        monkeypatch.setenv("VSPHERE_WINDOWS_TIMEZONE", raw)
+        with pytest.raises(ValueError, match="VSPHERE_WINDOWS_TIMEZONE"):
+            infra.windows_customization(self.VM, "Pw-1234567!")
+
+
 # --------------------------------------------------------------------------- #
 # Guest-ops session
 # --------------------------------------------------------------------------- #

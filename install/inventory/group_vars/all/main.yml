@@ -345,6 +345,11 @@ tn_vsphere_guest_ip_check: require
 # (vCenter and worker clocks disagree, e.g. NTP down); an older one is the template's leftover.
 tn_vsphere_customization_grace: 900
 tn_vsphere_customization_skew: 300
+# Windows Sysprep time zone (#526): a DECIMAL Microsoft time zone index (85 = GMT Standard
+# Time, 35 = Eastern). Empty: none (index 0 on the wire, Dateline Standard Time in Microsoft's
+# table), what govc sends without -tz: the only form the work site's vCenter 8.0.3 has been
+# seen to accept. govc vm.customize -tz takes the index in hex (85 is -tz 55).
+tn_vsphere_windows_timezone: ""
 # Golden-image pinning (ADR 0013 §2): every range VM clones its image's PROMOTED build (an
 # admin promotes one on the Golden Images page). Transition only: "true" lets images that are
 # `built` but have no promoted build through, cloning their plain template with a loud

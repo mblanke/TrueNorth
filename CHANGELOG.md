@@ -9,6 +9,18 @@ Everything switched on and working on staging: the full Moodle loop, cmi5 with c
 xAPI, Greyspace on vSphere (proven on vcsim and the T0 stack, not real vSphere), ARC² batch
 course production with a local-model fallback, and the cleanup of unsupported surfaces.
 
+### Windows range VMs: no forced Sysprep time zone (#526) — behaviour change
+- On the work site's vCenter 8.0.3, `govc vm.customize -type Windows -tz 85` was refused ("A
+  specified parameter was not correct: Timezone") and the same call without `-tz` accepted.
+  govc reads `-tz` as hex, so that sent index 133, not a time zone; decimal 85 (GMT Standard
+  Time), which the worker hard-coded, was never tried there.
+- The worker now sends what was accepted: no time zone, which is index 0 on the wire (a
+  required field). The Microsoft table lists 0 as Dateline Standard Time (GMT-12), so Windows
+  range VMs may show that zone instead of GMT; not yet checked in a guest.
+- `tn_vsphere_windows_timezone` (`VSPHERE_WINDOWS_TIMEZONE`, a decimal index, checked by
+  preflight and the worker) sets one, e.g. `85`. `scripts/lab/test-clone.sh` no longer sends
+  `-tz 85`; it takes `--tz N` (decimal, as the worker) and passes it to govc in hex.
+
 ### Security fixes from the #443 audit
 - **Only the platform administrator configures the AI backend.** `/ai-config` needed only
   `ai_config:write`, which every tenant's administrator holds, so one tenant's admin could
