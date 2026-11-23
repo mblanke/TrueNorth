@@ -1,0 +1,61 @@
+---
+# What the greyspace-host template build needs from the depot, so it builds with the depot
+# offline. Included from main.yml. Results go into tn_prefetch_linux_results (keys
+# greyspace-apt, greyspace-apk) and tn_prefetch_registry_run, which prefetch.yml's strict
+# verdict checks.
+
+# ── Images by digest into Nexus docker-proxy (Docker Hub) and quay-proxy (quay.io) ──
+- name: Prefetch — registry helper
+  ansible.builtin.copy:
+    src: registry_prefetch.py
+    dest: "{{ tn_prefetch_workdir }}/registry_prefetch.py"
+    mode: "0755"
+
+- name: Prefetch — Greyspace images through the depot's Docker Hub and quay.io proxies
+  ansible.builtin.command:
+    argv: >-
+      {{ ['python3', tn_prefetch_workdir ~ '/registry_prefetch.py',
+          '--hub', tn_prefetch_registry_hub, '--quay', tn_prefetch_registry_quay,
+          '--platform', tn_prefetch_registry_platform] + tn_prefetch_registry_images }}
+  environment:
+    NEXUS_USER: "{{ tn_depot_prefetch_user | default('tn-prefetch') }}"
+    NEXUS_PASSWORD: "{{ vault_nexus_prefetch_password }}"
+  register: tn_prefetch_registry_run
+  changed_when: "'images ok=0 ' not in tn_prefetch_registry_run.stdout"
+  failed_when: false
+
+# ── apt (Docker Engine) and apk through apt-cacher-ng ───────────────────
+- name: Prefetch — Greyspace apt/apk script
+  ansible.builtin.template:
+    src: prefetch_greyspace.sh.j2
+    dest: "{{ tn_prefetch_workdir }}/prefetch-greyspace.sh"
+    mode: "0755"
+
+- name: Prefetch — Greyspace apt and apk packages in a container
+  ansible.builtin.command:
+    argv:
+      - docker
+      - run
+      - --rm
+      - -v
+      - "{{ tn_prefetch_workdir }}/prefetch-greyspace.sh:/prefetch.sh:ro"
+      - "{{ tn_prefetch_gs.image }}"
+      - /bin/sh
+      - /prefetch.sh
+      - "{{ tn_prefetch_gs.family }}"
+  loop:
+    - { family: apt, image: "{{ tn_prefetch_ubuntu_image }}" }
+    - { family: apk, image: "{{ tn_prefetch_greyspace_alpine_image }}" }
+  loop_control: { loop_var: tn_prefetch_gs, label: "{{ tn_prefetch_gs.family }}" }
+  register: tn_prefetch_greyspace_runs
+  changed_when: "'TNRESULT ok' in tn_prefetch_greyspace_runs.stdout"
+
+- name: Prefetch — Greyspace results
+  ansible.builtin.set_fact:
+    tn_prefetch_linux_results: >-
+      {{ tn_prefetch_linux_results | default({}) | combine({('greyspace-' ~ r.tn_prefetch_gs.family): {
+           'ok': r.stdout_lines | select('match', '^TNRESULT ok ') | map('regex_replace', '^TNRESULT ok ', '') | list,
+           'failed': (r.stdout_lines | select('match', '^TNRESULT fail ') | map('regex_replace', '^TNRESULT fail ', '') | list)
+                     + ([] if (r.rc == 0 and r.stdout_lines | select('match', '^TNRESULT ok ') | list) else ['greyspace-' ~ r.tn_prefetch_gs.family ~ '-no-result'])}}) }}
+  loop: "{{ tn_prefetch_greyspace_runs.results }}"
+  loop_control: { loop_var: r, label: "{{ r.tn_prefetch_gs.family }}" }
