@@ -382,6 +382,45 @@ def test_resolve_orders_dependencies_first():
         st.closure(cat)
 
 
+def test_resolve_follows_the_pfsense_srv_record():
+    """pkg.pfsense.org resolves to no address; pkg finds the server through
+    _https._tcp.pkg.pfsense.org (2026-11-23: pkg00-atx.netgate.com). No network here."""
+    st = _stage_mod()
+    asked = []
+
+    def lookup(name):
+        asked.append(name)
+        return [(20, 10, 443, "slow.example.net"), (10, 5, 443, "b.example.net"), (10, 50, 443, "a.example.net")]
+
+    assert st.follow_srv(st.UPSTREAM, lookup) == "https://a.example.net/pfSense_v2_7_2_amd64-pfSense_v2_7_2"
+    assert asked == ["_https._tcp.pkg.pfsense.org"]
+    assert st.follow_srv("https://pkg.pfsense.org/x", lambda n: [(0, 0, 8443, "c.example.net")]) == \
+        "https://c.example.net:8443/x"
+    # No SRV answer (no dig/host): the server the lock was pinned through.
+    assert st.follow_srv(st.UPSTREAM, lambda n: []) == \
+        "https://pkg00-atx.netgate.com/pfSense_v2_7_2_amd64-pfSense_v2_7_2"
+    # Any other repository is left alone.
+    assert st.follow_srv("https://mirror.example.org/repo", lambda n: []) == "https://mirror.example.org/repo"
+
+
+def test_srv_answers_from_dig_and_host_parse_alike():
+    st = _stage_mod()
+    want = [(10, 10, 443, "pkg00-atx.netgate.com")]
+    assert st.parse_srv("10 10 443 pkg00-atx.netgate.com.\n") == want
+    assert st.parse_srv("_https._tcp.pkg.pfsense.org has SRV record 10 10 443 pkg00-atx.netgate.com.\n") == want
+    assert st.parse_srv(";; connection timed out; no servers could be reached\n") == []
+
+
+def test_resolve_is_https_only_before_any_lookup(tmp_path):
+    st = _stage_mod()
+
+    def lookup(name):
+        raise AssertionError("looked up a non-https repository")
+
+    with pytest.raises(st.StageError, match="https"):
+        st.resolve(out=tmp_path, repo="http://pkg.pfsense.org/x", lookup=lookup)
+
+
 # ── VyOS ──────────────────────────────────────────────────────────────
 def test_vyos_runs_the_finish_from_its_cd_and_types_no_installer_answers():
     body = _source("vyos")
@@ -480,6 +519,67 @@ def test_vyos_install_powers_off_only_after_success():
     main = text.split("def main()", 1)[1]
     assert main.index("return 1") < main.index('"systemctl", "poweroff"')
     assert text.count('"poweroff"') == 1
+
+
+CONFIG_BOOT = """\
+interfaces {
+    ethernet eth0 {
+        address dhcp
+        hw-id 00:50:56:aa:bb:01
+        offload {
+            gro
+        }
+    }
+    ethernet eth1 {
+        hw-id 00:50:56:aa:bb:02
+    }
+    loopback lo {
+    }
+}
+system {
+    host-name vyos
+    login {
+        user vyos {
+            authentication {
+                encrypted-password "$6$salt$hash"
+            }
+        }
+    }
+}
+"""
+
+
+def _vyos_mod():
+    spec = importlib.util.spec_from_file_location("tn_vyos_install", VY / "tn-vyos-install.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_vyos_install_removes_every_ethernet_node_from_the_installed_config():
+    """Current VyOS refuses an ethernet interface without hw-id and a pinned hw-id never
+    matches a clone, so both whole nodes go; everything else stays, braces balanced."""
+    text, removed = _vyos_mod().drop_ethernet_nodes(CONFIG_BOOT)
+    assert removed == 2
+    assert "ethernet" not in text and "hw-id" not in text and "offload" not in text
+    assert "    loopback lo {\n    }\n" in text and "host-name vyos" in text
+    assert 'encrypted-password "$6$salt$hash"' in text
+    assert text.count("{") == text.count("}")
+    assert text.startswith("interfaces {\n    loopback lo {")
+    assert _vyos_mod().drop_ethernet_nodes(text) == (text, 0)  # nothing left to remove
+
+
+def test_vyos_install_strips_ethernet_nodes_from_the_installed_image(tmp_path):
+    mod = _vyos_mod()
+    image = tmp_path / "boot/2026.10.01-0035-rolling"
+    boot = image / "rw/opt/vyatta/etc/config/config.boot"
+    boot.parent.mkdir(parents=True)
+    # tn-vyos-prep.sh deleted the hw-ids; the nodes alone are still a Configuration error.
+    boot.write_text(CONFIG_BOOT.replace("        hw-id 00:50:56:aa:bb:01\n", "").replace(
+        "        hw-id 00:50:56:aa:bb:02\n", ""))
+    mod.finish_image(tmp_path)
+    assert "ethernet" not in boot.read_text()
+    assert (image / "rw/etc/tn-template-admin.fp").is_file()  # the admin hash is still read
 
 
 # ── build-phase.sh: stage first, prove Tools before registering ───────

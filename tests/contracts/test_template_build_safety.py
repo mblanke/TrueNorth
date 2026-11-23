@@ -81,8 +81,53 @@ def test_kali_and_parrot_seeds_try_cloud_init_and_say_why():
 
 def test_install_cloud_init_never_reaches_for_the_internet_itself():
     text = (LINUX / "install-cloud-init.sh").read_text()
-    assert "http://" not in text and "https://" not in text
+    # The one URL: Kali's mirror, added only when a build apt proxy is set (Kali from the DVD
+    # lists no network source; 2026-11-23), so it is reached only through that proxy.
+    kali = "deb http://http.kali.org/kali kali-rolling"
+    assert text.count("http://") == 1 and kali in text and "https://" not in text
+    gate = text[text.rindex("\nif ", 0, text.index(kali)):text.index(kali)]
+    assert "^ID=kali" in gate and "apt-config dump" in gate and 'Acquire::http::Proxy "http' in gate
     assert "exit 1" in text.rsplit("have", 1)[1]  # nothing worked: fail the build
+
+
+def test_install_cloud_init_re_enables_cloud_init_before_anything_else():
+    """The Ubuntu autoinstall and the Rocky kickstart leave /etc/cloud/cloud-init.disabled;
+    require-cloud-init.sh fails while it exists, so remove it even when cloud-init is there."""
+    text = (LINUX / "install-cloud-init.sh").read_text()
+    assert text.index("rm -f /etc/cloud/cloud-init.disabled") < text.index("if have; then")
+    assert "touch /etc/cloud/cloud-init.disabled" in (PK / "http/rocky/ks.cfg.pkrtpl.hcl").read_text()
+    build = (PK / "linux.pkr.hcl").read_text()
+    step = build[build.rindex("provisioner", 0, build.index('files/linux/install-cloud-init.sh"')):]
+    assert "except" not in step[: step.index("}")]  # rocky runs it too
+    assert text.index("apt-get update") < text.index("apt-get install -y cloud-init")
+
+
+def test_cleanup_drops_the_install_dvd_from_the_apt_sources(tmp_path):
+    """A clone has no DVD: a "deb cdrom:" source makes apt-get update fail (debian13, and the
+    parrot variant built from it; 2026-11-23)."""
+    if shutil.which("bash") is None:
+        pytest.skip("bash")
+    text = (LINUX / "cleanup.sh").read_text()
+    fn = text[text.index("drop_cdrom_sources() {"):]
+    fn = fn[: fn.index("\n}\n") + 3]
+    assert text.index('drop_cdrom_sources ""') > text.index(fn)
+    apt = tmp_path / "root/etc/apt"
+    (apt / "sources.list.d").mkdir(parents=True)
+    (apt / "sources.list").write_text(
+        "deb cdrom:[Debian GNU/Linux 13.6.0 _Trixie_ - Official amd64 DVD Binary-1]/ trixie contrib main\n"
+        "deb [arch=amd64] cdrom:[Kali]/ kali-rolling main\n"
+        "deb http://deb.debian.org/debian/ trixie main\n")
+    (apt / "sources.list.d/dvd.sources").write_text("Types: deb\nURIs: cdrom:[Debian]/\nSuites: trixie\n")
+    (apt / "sources.list.d/mixed.sources").write_text("URIs: cdrom:[x]/\n\nURIs: http://deb.debian.org/debian\n")
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    _exe(bin_ / "sudo", '#!/bin/sh\nexec "$@"\n')
+    r = subprocess.run(["bash", "-c", fn + f'drop_cdrom_sources "{tmp_path / "root"}"'],
+                       env={**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}"}, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert (apt / "sources.list").read_text() == "deb http://deb.debian.org/debian/ trixie main\n"
+    assert not (apt / "sources.list.d/dvd.sources").exists()
+    assert (apt / "sources.list.d/mixed.sources").exists()  # a network URI too: kept
 
 
 @pytest.fixture

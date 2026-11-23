@@ -114,7 +114,7 @@ The variables you must set per site:
 | `content_library`, `publish_to_library` | `TrueNorth-Templates`, `true` |
 | `windows_admin_password` | build-time Administrator password (reset by vSphere customization on clone) |
 | `ssh_username` / `ssh_password` / `ssh_password_hash` | the one generic Linux build login (ADR 0012 decision 5), created by every Linux seed. The hash is `openssl passwd -6` of the password (`scripts/lab/pkrvars-work.py` writes it); defaults `ubuntu`/`ubuntu` |
-| `win10_image_name` + `gvlk_win10`, `srv2019_image_name` + `gvlk_srv2019` | edition select for Visual Studio media (defaults: Windows 10 Enterprise / Server 2019 Standard Desktop Experience and their public GVLKs). Evaluation ISOs: `win10_eval = true` / `srv2019_eval = true` |
+| `win10_image_name` + `gvlk_win10`, `srv2019_image_name` + `gvlk_srv2019` | edition select for Visual Studio media (defaults: Windows 10 Enterprise / install.wim index `2` = Server 2019 Standard Desktop Experience, and their public GVLKs; a number selects the image by index, text by name). Evaluation ISOs: `win10_eval = true` / `srv2019_eval = true` |
 | `win11_vtpm` | `false` unless you have a vCenter key provider |
 | `depot_url` | TN-DEPOT01 Nexus base, `http://<depot>:8081/repository`. Windows: Chocolatey is bootstrapped from the `chocolatey` .nupkg in `<depot_url>/chocolatey` (`choco-bootstrap.ps1`; Nexus serves no `install.ps1`) and every package comes from that feed. Vendor files: `<depot_url>/installers/...` (raw repository). Empty: offline |
 | `apt_proxy` | apt-cacher-ng on the depot, `http://<depot>:3142`: the apt/dnf forward proxy for the Ubuntu autoinstall (`apt: proxy`), the Debian/Kali/Parrot preseeds (`mirror/http/proxy`), Rocky (`dnf proxy=`, repos on the http baseurl) and every derived/variant clone (`files/linux/apt-proxy.sh`). `cleanup.sh` removes it, so no template ships a proxy. Empty: offline |
@@ -179,13 +179,17 @@ DRY_RUN=1 ./build.sh replicate srv2022       # print the govc changes only
 ```
 
 For each host it clones the inventory template `<id>` powered off onto that host and its
-datastore (`RANGE_DATASTORE_FMT`, default `%s-local`), as `<id>@<host>-<yyyymmdd>`, in the
-template's own folder (or `TEMPLATE_FOLDER`), then `govc vm.markastemplate`. Each copy's
+datastore (`RANGE_DATASTORE_FMT`, default `%s-local`), as `<id>@<host>-<yyyymmdd>`, in
+`<the template's own folder (or TEMPLATE_FOLDER)>/Host copies/<host>` (created when missing),
+then `govc vm.markastemplate`. Each copy's
 annotation carries the template's build stamp, `tn-build: <id> <build id> sha256:<checksum>`,
 from its build record (below), and the copy is added to that record. It is idempotent: a
 copy of today's name that exists is reused only when it carries the same stamp (one from
 another build fails: set `REPLICA_DATE` or remove it), and one that was cloned but not yet
-marked is marked. It refuses to run unless `GOVC_URL` is a vCenter (see the warning below
+marked is marked. After a same-day rebuild, `build-phase.sh` offers
+`scripts/lab/clear-unstamped-copies.sh <id> --date <today>` first: it removes only that id's
+unstamped copy templates of that date (never a stamped copy). The build record is kept
+world-readable (0644): the API container reads it to register the build. It refuses to run unless `GOVC_URL` is a vCenter (see the warning below
 about ESXi). An unknown host or a template that is not built yet exits non-zero; the other
 hosts are still copied.
 
@@ -270,18 +274,19 @@ The deploy provisioner can use either, so keeping both costs only datastore spac
 | srv2022 | iso | **Solid** | Classic Setup engine; honours Autounattend reliably. GVLK edition-select key. Build first |
 | win10-22h2 | iso | **Solid** (once ISO uploaded) | VS "business editions" media: image `win10_image_name` (Windows 10 Enterprise) + public GVLK `gvlk_win10`. Evaluation media: `win10_eval = true` |
 | win10-ltsc | iso | **Solid** (once ISO uploaded) | Enterprise LTSC 2021, 2 vCPU / 4 GB / 60 GB, classic engine. VL media use `gvlk_win10_ltsc`; eval media: set it to `""` and `win10_ltsc_image_name` to the eval image name. Catalogue row is `enabled=no` until built |
-| ubuntu-lts | iso | **Solid** | 24.04.4 autoinstall via `cidata` CD. Or register `tmpl-ubuntu-2404` instead |
-| srv2019 | iso | **Solid** (once ISO uploaded) | VS media, latest refresh: `srv2019_image_name` (Standard, Desktop Experience) + public GVLK `gvlk_srv2019`; some media name the image `Windows Server 2019 SERVERSTANDARD` (check with `dism /Get-WimInfo`). Evaluation media: `srv2019_eval = true` |
+| ubuntu-lts | iso | **Solid** (rebuilt on the work site 2026-11-23) | 24.04.4 autoinstall via `cidata` CD. The autoinstall leaves `/etc/cloud/cloud-init.disabled`; `install-cloud-init.sh` removes it (`require-cloud-init.sh` fails otherwise). Or register `tmpl-ubuntu-2404` instead |
+| srv2019 | iso | **Not yet proven** (ISO on site 2026-11-23) | VS media: `srv2019_image_name` = install.wim index `2` (Standard, Desktop Experience) + public GVLK `gvlk_srv2019`. The display name matched no WIM NAME on the work site's ISO and Setup stopped at the OS picker; a name still works (check with `dism /Get-WimInfo`). Evaluation media: `srv2019_eval = true` |
 | srv2016 | iso | **Solid** (once ISO uploaded) | Eval media; classic engine |
-| rocky | iso | **Solid** | Rocky 10 kickstart via `OEMDRV` CD |
-| debian13 | iso | **Likely** | Debian installer preseed over Packer HTTP |
-| kali | iso | **Likely** | Preseed over Packer HTTP; the `kali-linux-default` metapackage is online-only (best-effort, skipped offline). cloud-init is required (the worker configures Linux only through it): from the ISO pool or the depot apt proxy, else the build fails (`require-cloud-init.sh`). Not yet confirmed that the 2026.1 "everything" ISO's pool has it: build with the depot if not |
-| srv2025 | iso | **Needs tuning** | New Setup engine; unattended UEFI partitioning is fragile (see below) |
+| rocky | iso | **Solid** (work site 2026-11-23) | Rocky 10 kickstart via `OEMDRV` CD. Its `%post` writes `/etc/cloud/cloud-init.disabled`: Rocky's cloud-init otherwise turns off password SSH on first boot and Packer times out. `install-cloud-init.sh` (which Rocky now runs too) removes the marker |
+| debian13 | iso | **Built** (work site 2026-11-23) | Debian installer preseed over Packer HTTP. With the depot, `apt-setup/use_mirror true` (from the DVD the installer otherwise uses no network mirror and pkgsel finds no open-vm-tools/cloud-init). `cleanup.sh` drops the DVD (`deb cdrom:`) from the apt sources, so clones can `apt-get update`; a base built offline then has no apt source at all |
+| kali | iso | **Likely** | Preseed over Packer HTTP; the `kali-linux-default` metapackage is online-only (best-effort, skipped offline). cloud-init is required (the worker configures Linux only through it): from the ISO pool or the depot apt proxy, else the build fails (`require-cloud-init.sh`). The 2026.1 "everything" ISO's pool does not have it: build with the depot (built that way 2026-11-23). Installed from the DVD, Kali lists no network mirror, so with a build apt proxy `install-cloud-init.sh` adds `http.kali.org` (reached only through the proxy) |
+| kali-gui | variant | **Built** (work site 2026-11-23) | `variants/kali-gui.pkrvars.hcl`: a clone of `kali` plus `kali-desktop-xfce` and `open-vm-tools-desktop`; `kali-gui-desktop.sh` boots it to the LightDM login and fails the build if there is no display manager |
+| srv2025 | iso | **Built** (work site 2026-11-23) | New Setup engine; unattended UEFI partitioning is fragile (see below). NVMe disk and no pvscsi DriverPaths, as win11-24h2: with the pvscsi DriverPaths Setup stopped with 0x80070103 - 0x40031 |
 | win11-24h2 | iso | **Needs tuning — highest risk** | New Setup engine + 64 GB + LabConfig bypass. See below |
-| parrot | iso | **Fragile** | Live ISO usually installs via Calamares (GUI), which ignores preseed. Works only off the ISO's text/debian-installer entry; else treat as manual |
-| pfsense | iso | **Not run since the finish was automated (2026-10-21)** | Keystrokes reach the installer's Shell, then `files/pfsense/tn-pfsense-finish.sh` (2nd CD) adds Open-VM-Tools offline from `pkgs.lock`, installs `tn-pfsense-config` + `tn-vmtools.sh`, writes the template config (WAN vmx0, LAN vmx1, SSH, boot hook, admin = the build password hash) and powers off. Any failure: no power-off, no template. Needs the packages staged first (`build-phase.sh appliances` does it; pin once with `stage_pfsense_pkgs.py resolve`; NOT pinned yet). Test clone: `finish` (Tools + the `guestinfo.tn.template.finish` marker) |
+| parrot | variant | **Not run to completion yet** | The Parrot 7.3 ISO has no debian-installer (a live system with Calamares only), so it cannot be installed unattended. Parrot 7 is Debian 13 based, so `variants/parrot.pkrvars.hcl` clones `debian13` and `parrot-from-debian.sh` converts it from Parrot's signed repository: the archive keyring is fetched once with `[trusted=yes]` (trust on first use, through the depot), then the source is pinned to it (`signed-by`); then `parrot-core`, a full upgrade, the MATE desktop and `parrot-tools-full`. Needs the depot's `Remap-tnparrot` (`tn_depot_acng_remaps`). Build it from `build-phase.sh variants` (in-process registration): `build.sh register`'s POST is refused because `parrot` is a catalogue id. `build-phase.sh base` no longer builds it. Follow-up: the old `vsphere-iso.parrot` source (still in `linux.pkr.hcl` and `build.sh`'s ORDER, so `./build.sh all` / `./build.sh parrot` still try it) makes a template of the same name and cannot work with this ISO |
+| pfsense | iso | **Not run since the finish was automated (2026-10-21)** | Disk on an LSI Logic SAS controller: on pvscsi the 2.7.2 installer listed no disk (2026-11-23; the change is not yet proven on a full build). Keystrokes reach the installer's Shell, then `files/pfsense/tn-pfsense-finish.sh` (2nd CD) adds Open-VM-Tools offline from `pkgs.lock`, installs `tn-pfsense-config` + `tn-vmtools.sh`, writes the template config (WAN vmx0, LAN vmx1, SSH, boot hook, admin = the build password hash) and powers off. Any failure: no power-off, no template. Needs the packages staged first (`build-phase.sh appliances` does it; `pkgs.lock` pins 11 packages, resolved 2026-11-23 through pkg00-atx.netgate.com, the SRV target of pkg.pfsense.org, which `stage_pfsense_pkgs.py resolve` now follows). Test clone: `finish` (Tools + the `guestinfo.tn.template.finish` marker) |
 | securityonion | iso | **Fragile (keystroke)** | Base OS install only; `so-setup` runs per range at deploy (standalone, airgap: `vmware-site-runbook.md` §7.2). Finish the OS install by hand the first time, then template **without** running setup. Check before templating: open-vm-tools is running (`systemctl is-active vmtoolsd`). The installer's user is the build login the worker uses (`VSPHERE_SO_INSTALL_USER`/`_PASSWORD`, documented in the wiki) and can `sudo`. Two NICs, management first |
-| vyos | iso | **Not run yet** | Logs in on the live console, `tn-vyos-prep.sh` drops the hw-id pins, `tn-vyos-install.py` answers `install image` by prompt text (vyos password = the build password), sets cloud-init's datasource to VMware first and powers off; an unknown prompt fails with no template. Test clone: `finish` (Tools + the marker from `tn-template-marker.service`) |
+| vyos | iso | **Built; clones fail (under investigation)** | Logs in on the live console, `tn-vyos-prep.sh` drops the hw-id pins, `tn-vyos-install.py` answers `install image` by prompt text (vyos password = the build password), removes every `ethernet ethN { ... }` node from the installed `config.boot` (current VyOS refuses an interface without hw-id, and a pinned one never matches a clone), sets cloud-init's datasource to VMware first and powers off. On the work site (2026-11-23) clones still did not start VMware Tools after that change (not proven; still under investigation). An unknown prompt fails with no template. Test clone: `finish` (Tools + the marker from `tn-template-marker.service`) |
 | remnux, sift, svc-emulators, ca-host, usersim, cloudlog-emu | clone | **Likely** | Clone `ubuntu-lts`, run `files/linux/roles/<name>.sh` over SSH. Role installers have honest `TODO(offline)` / `TODO(deploy)` where media is online-only or range-specific |
 | greyspace-host | clone | **Not run on vSphere yet** | Clone `ubuntu-lts`, Docker >= 27 + every Greyspace stack image pulled by digest (`files/linux/roles/greyspace-host.sh`, needs internet or the depot as apt proxy and registry mirror). Proven: the stack on Docker (CI `greyspace`), gs-core on vcsim; not a real vCenter |
 | c2-server | clone | **Gated** | Catalogue `enabled=no`; needs instructor/Standards sign-off |
@@ -328,8 +333,8 @@ A variant is a base template plus packages and scripts, baked into its own templ
 registered as its own golden image so the Range Designer offers it. One file per variant,
 `variants/<name>.pkrvars.hcl`, sets the `variant_*` variables (declared, with defaults, in
 `variables.pkr.hcl`). Two generic sources in `variants.pkr.hcl` consume them:
-`variant-windows` and `variant-linux`. Shipped examples: `win10-office`,
-`win11-analyst`, `win11-dev`, `ubuntu-webstack`. How to write, build, register and pick
+`variant-windows` and `variant-linux`. Shipped: `win10-office`,
+`win11-analyst`, `win11-dev`, `ubuntu-webstack`, `kali-gui`, `parrot` (see the table above). How to write, build, register and pick
 one: `docs/deployment/vm-build-guide.md` §5.
 
 ```sh

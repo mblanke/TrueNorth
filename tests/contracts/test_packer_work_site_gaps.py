@@ -245,7 +245,9 @@ def test_gvlks_are_microsofts_published_kms_client_keys():
 
 def test_win10_and_srv2019_select_their_edition_like_srv2022():
     assert _variable_default("win10_image_name") == "Windows 10 Enterprise"
-    assert _variable_default("srv2019_image_name") == "Windows Server 2019 Standard (Desktop Experience)"
+    # install.wim INDEX 2 = Standard (Desktop Experience): the display name matched no WIM NAME
+    # on the work site's ISO and Setup stopped at the OS picker (2026-11-23).
+    assert _variable_default("srv2019_image_name") == "2"
     assert _variable_default("win10_eval") is False and _variable_default("srv2019_eval") is False
     common = _text("windows-common.pkr.hcl")
     assert 'var.win10_eval ? "Windows 10 Enterprise Evaluation" : var.win10_image_name' in common

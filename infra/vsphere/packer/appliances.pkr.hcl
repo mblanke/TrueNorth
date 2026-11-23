@@ -33,9 +33,11 @@ source "vsphere-iso" "pfsense" {
   guest_os_type = "freebsd13_64Guest"
   firmware      = "bios"
 
-  CPUs                 = 2
-  RAM                  = 2048
-  disk_controller_type = ["pvscsi"]
+  CPUs = 2
+  RAM  = 2048
+  # LSI Logic SAS: on pvscsi the pfSense 2.7.2 installer listed no disk ("stripe: 0 disks",
+  # 2026-11-23). Not yet proven on a full build.
+  disk_controller_type = ["lsilogic-sas"]
   storage {
     disk_size             = 20480
     disk_thin_provisioned = true

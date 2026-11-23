@@ -36,7 +36,8 @@ ROOT = Path(__file__).resolve().parents[2]
 LAB = ROOT / "scripts/lab"
 WORK = ROOT / "install/lab/work-site"
 VARIABLES = ROOT / "infra/vsphere/packer/variables.pkr.hcl"
-SHELL_SCRIPTS = ["build-phase.sh", "test-clone.sh", "iso-sync-esx04.sh", "lib.sh", "deploy-mgmt-vm.sh"]
+SHELL_SCRIPTS = ["build-phase.sh", "test-clone.sh", "iso-sync-esx04.sh", "lib.sh", "deploy-mgmt-vm.sh",
+                 "clear-unstamped-copies.sh", "friendly-tags.sh"]
 
 VC_SECRET = "Vc-S3cret-${HOME}-%{x}"
 WIN_SECRET = "Win-Generic-Pw1!"
@@ -208,7 +209,8 @@ def test_pkrvars_writes_every_required_variable_privately(pk, site, capsys):
     assert vals["iso_folder"] == '"ISO"'
     assert vals["iso_srv2022"] == '"windows/en-us_windows_server_2022_updated_july_2026_x64_dvd_75aa9e18.iso"'
     assert vals["iso_vyos"] == '"appliances/vyos-2026.10.01-0035-rolling-generic-amd64.iso"'
-    assert "iso_win10" not in vals and "iso_srv2019" not in vals  # pending: Packer keeps MUST-UPLOAD-FIRST
+    assert vals["iso_srv2019"] == '"windows/en_windows_server_2019_updated_aug_2019_x64_dvd_cdf24600.iso"'
+    # A PENDING line writes nothing (Packer keeps MUST-UPLOAD-FIRST): test_iso_sync_* cover it.
     # HCL template sequences in a password are escaped, so Packer reads the literal text.
     assert vals["vcenter_password"] == '"Vc-S3cret-$${HOME}-%%{x}"'
     printed = capsys.readouterr()
@@ -319,10 +321,20 @@ def test_isos_conf_names_declared_packer_variables(pk):
         re.findall(r'^variable "(iso_[a-z0-9_]+)"', (ROOT / "infra/vsphere/packer/variables.pkr.hcl").read_text(), re.M)
     )
     assert set(isos) <= declared
-    assert len(isos) == 12  # + iso_sharepoint2019 (on esx01, 2026-10-20)
+    # + iso_sharepoint2019 (on esx01, 2026-10-20); the six Visual Studio downloads (2026-11-23)
+    assert len(isos) == 18
+    assert {"iso_win10", "iso_srv2019", "iso_exchange2019", "iso_sharepointse", "iso_mecm", "iso_sql2022"} <= set(isos)
     pending_vars = {p.split()[0] for p in pending} - {"-"}
     assert pending_vars <= declared  # a PENDING line names a variable Packer already has
-    assert {"iso_win10", "iso_srv2019", "iso_exchange2019", "iso_sharepointse", "iso_mecm", "iso_sql2022"} <= pending_vars
+    assert pending_vars == set()
+
+
+def test_a_pending_iso_writes_no_packer_variable(pk, tmp_path):
+    conf = tmp_path / "isos.conf"
+    conf.write_text("iso_srv2022 windows/s.iso\niso_win10 PENDING  # later\n")
+    isos, pending = pk.parse_isos(conf)
+    assert isos == {"iso_srv2022": "windows/s.iso"}  # Packer keeps iso_win10's MUST-UPLOAD-FIRST
+    assert [p.split()[0] for p in pending] == ["iso_win10"]
 
 
 # ── shell scripts ─────────────────────────────────────────────────────
@@ -494,10 +506,46 @@ def test_windows_test_clone_uses_the_workers_sysprep_spec():
     text = (LAB / "test-clone.sh").read_text()
     win = text[text.index("      win*)"):text.index("      *)    # Linux: the worker's path")]
     call = win[win.index('govc vm.customize -vm "$vm"'):]
-    for flag in ("-type Windows", "-username TrueNorth", "-org TrueNorth", "-tz 85", '-name "$want_name"',
+    for flag in ("-type Windows", "-username TrueNorth", "-org TrueNorth", '-name "$want_name"',
                  '-ip "$ip"', "-netmask 255.255.255.0", "-pwd "):
         assert flag in call, flag
     assert "-type Windows" in win[: win.index('govc vm.customize -vm "$vm"')]  # the echo line too
+    # vCenter 8.0.3 rejects -tz 85 ("A specified parameter was not correct: Timezone"); the
+    # call without it is accepted (2026-11-23). The worker still sends timeZone=85: #526.
+    assert "-tz" not in win.replace("No -tz:", "")
     worker = (ROOT / "control-plane/worker/worker/provisioners/vsphere_infra.py").read_text()
     spec = worker[worker.index("def windows_customization"):]
     assert "timeZone=85" in spec and 'fullName="TrueNorth"' in spec and 'orgName="TrueNorth"' in spec
+
+
+def _ip_slot_fn() -> str:
+    text = (LAB / "test-clone.sh").read_text()
+    fn = text[text.index("ip_slot() {"):]
+    return fn[: fn.index("\n}\n") + 3]
+
+
+def test_test_clone_addresses_never_collide_between_template_groups():
+    """Phases run side by side; clones that shared .241-.243 took each other's addresses
+    (2026-11-23). Each group has its own three addresses, one per host."""
+    arms = [(m.group(1).split("|"), int(m.group(2)))
+            for m in re.finditer(r"^\s*([\w*|-]+)\) echo (\d+) ;;$", _ip_slot_fn(), re.M)]
+    ids = [i for names, _ in arms for i in names]
+    assert len(ids) == len(set(ids)), "an id in two arms: the later arm is dead"
+    slots = [slot for _, slot in arms]
+    assert len(slots) == len(set(slots)), "two groups share a slot"
+    assert (["*"], 5) in arms
+    addrs = [200 + slot * 3 + idx for slot in slots for idx in (1, 2, 3)]
+    assert len(addrs) == len(set(addrs)) and min(addrs) > 200 and max(addrs) < 240
+    text = (LAB / "test-clone.sh").read_text()
+    assert 'ip="${IP_BASE}.$((200 + $(ip_slot "$ID") * 3 + idx))"' in text
+    plan = text[text.index('step "Plan ($MODE)"'):]
+    assert plan.index("at most 3 hosts per run") < plan.index("for h in")
+
+
+@pytest.mark.parametrize(("id_", "slot"), [("parrot", 9), ("kali-gui", 9), ("srv2022", 1), ("srv2022-mecm", 4),
+                                           ("srv2025", 6), ("win11-analyst", 5)])
+def test_ip_slot_runs_as_written(id_, slot):
+    if shutil.which("bash") is None:
+        pytest.skip("bash")
+    r = subprocess.run(["bash", "-c", _ip_slot_fn() + f'ip_slot "{id_}"'], capture_output=True, text=True)
+    assert r.stdout.strip() == str(slot)

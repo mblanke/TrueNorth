@@ -53,3 +53,21 @@
   merged onto it, adds a deterministic regression test (holds the clean-up's savepoint open;
   fails without the lock) and puts the 4409 test's post-socket read under the lock.
 - Next: merge the PR once CI is green.
+
+## 2026-11-23 — work-site golden-image kit fixes ported (Mac)
+
+- Branch `fix/golden-image-kit-site-2026-11-23` off github/main (v1.2.0-rc22), one draft PR.
+  Ports the day's TN-MGMT01 template-kit edits (captured in ~/.truenorth-work/
+  site-capture-20261123/, reasons in its template-kit-server-edits.log) with tests:
+  cloud-init re-enable/apt update/Kali mirror, Rocky marker, Debian use_mirror + cdrom
+  source removal (cleanup.sh), srv2025 NVMe, srv2019 index 2, pfSense lsilogic-sas +
+  pkgs.lock + SRV-following resolve, VyOS ethernet-node removal, build record 0644,
+  "Host copies/<host>" folders, test-clone no -tz (#526) + IP slots, kali-gui and parrot
+  variants, depot remaps (tnubusec, tnparrot), promote stopgap (#527), clear-unstamped
+  (hooked into build-phase after a build) and friendly-tags, isos.conf filled.
+- Not proven on site: pfSense controller, VyOS clones (still no Tools), parrot, srv2019.
+- Not ported (separate decision): the site build dashboard (tn_build_dashboard.py).
+- Follow-ups: drop the vsphere-iso.parrot source / build.sh ORDER entry; worker
+  timeZone=85 (#526); Promote button (#527).
+- Next: CI on the draft PR; adversarial-reviewer (provisioning change); then on site, rebuild
+  pfsense and vyos with these files.
