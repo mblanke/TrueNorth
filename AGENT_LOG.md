@@ -53,3 +53,16 @@
   merged onto it, adds a deterministic regression test (holds the clean-up's savepoint open;
   fails without the lock) and puts the 4409 test's post-socket read under the lock.
 - Next: merge the PR once CI is green.
+
+## 2026-11-23 — work site: rc22 install and golden-image builds (Mac, on site)
+
+- vCenter was down at arrival (esx01 off; owner restarted it). rc22 installed on TN-MGMT01 from rc13.
+- Built golden images from a staged rc22 kit on TN-MGMT01; 13 built, tested on esx02-04 and promoted
+  (record: docs/lab-checks/audit-2026-11-23.md). Promote UI is missing in rc22 (#527); Windows
+  customization timeZone is rejected by vCenter 8.0.3 (#526).
+- Server-side kit edits captured to the Mac at ~/.truenorth-work/site-capture-20261123 and being ported
+  tonight as draft PRs (kit fixes, #526, #527, installer SO login, depot mirrors + role installers).
+- Overnight on the host: srv2019, parrot, vyos -> pfsense, Windows roles, srv2022/win11 rebuilds.
+  Dashboard: http://10.30.30.20:8099 (office network).
+- Next (on site 2026-11-24 08:30): read overnight results; vyos console session; win10 watched boot;
+  upload role installers to the depot; greyspace mirrors; promote what passed; set depot caches offline.
