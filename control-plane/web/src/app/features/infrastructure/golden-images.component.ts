@@ -361,10 +361,23 @@ export class GoldenImagesComponent implements OnInit {
     return a.action;
   }
 
-  reload(): void {
+  reload(keepOrder = false): void {
     this.loading = true;
     this.api.list().subscribe({
-      next: imgs => { this.images = imgs; this.loading = false; this.error = ''; this.applyView(); },
+      next: imgs => {
+        this.images = imgs;
+        this.loading = false;
+        this.error = '';
+        if (keepOrder) {
+          // After a promotion: refresh the rows in place, so the open image does not jump
+          // or vanish under a filter; the order is redone when a filter or sort changes.
+          const byId = new Map(imgs.map(i => [i.id, i]));
+          this.rows = this.rows.filter(r => byId.has(r.id)).map(r => byId.get(r.id)!);
+          this.cdr.markForCheck();
+        } else {
+          this.applyView();
+        }
+      },
       error: e => this.fail('Could not load golden images', e),
     });
   }
@@ -414,7 +427,7 @@ export class GoldenImagesComponent implements OnInit {
         next: d => {
           this.detail = d;
           this.promoting = false;
-          this.reload();
+          this.reload(true);
         },
         error: e => {
           this.promoting = false;

@@ -187,6 +187,29 @@ describe('GoldenImagesComponent (builds and promotion, ADR 0013)', () => {
     expect(promoteErrorText({ status: 0 })).toContain('could not be reached');
   });
 
+  it('keeps the promoted image open in place, even under the "Not promoted" filter', () => {
+    const lib = [image(null, { id: 'img-1', catalogue_id: 'ubuntu-2404' }),
+      image(null, { id: 'i-f', catalogue_id: 'charlie-failed', build_status: 'failed' })];
+    const promotedNow = [image(build('b1', SUM_A, true), { id: 'img-1', catalogue_id: 'ubuntu-2404' }), lib[1]];
+    api.list.and.returnValues(of(lib), of(promotedNow));
+    api.promote.and.returnValue(of(detail([build('b2', SUM_B), build('b1', SUM_A, true)])));
+    answer = 'ok';
+    create();
+    const cmp = fixture.componentInstance;
+    cmp.promotedFilter = 'not_promoted';
+    cmp.applyView();
+    fixture.detectChanges();
+    openBuilds();
+    q('gi-promote-b1')!.click();
+    fixture.detectChanges();
+    const first = () => el().querySelector('tr.mat-mdc-row td')!.textContent!.trim();
+    expect(first()).toBe('ubuntu-2404');
+    expect(q('gi-build-b1')!.querySelector('[data-testid="gi-promoted-badge"]')).not.toBeNull();
+    cmp.applyView();  // a filter change redoes the list: the promoted image leaves it
+    fixture.detectChanges();
+    expect(q('gi-open-ubuntu-2404')).toBeNull();
+  });
+
   describe('sorting and filtering', () => {
     it('puts images waiting for a promotion first, then failed, building, planned, promoted, disabled', () => {
       expect(ids(viewImages(LIBRARY, 'all', 'all', 'action'))).toEqual([
