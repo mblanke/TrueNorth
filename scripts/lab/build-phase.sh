@@ -230,7 +230,9 @@ post_build() {
   step "$id: replicate to $RANGE_HOSTS, test clone ($mode), register"
   # Built in this run: today's copies made from the template before it was recorded carry no
   # stamp, and replicate refuses to reuse them (ADR 0013 §2). Offer to remove those (only
-  # unstamped templates of this id and date; clear-unstamped-copies.sh asks y/N itself).
+  # unstamped templates of this id and date; clear-unstamped-copies.sh asks y/N itself). It
+  # removes nothing while TN_TEMPLATE_ALLOW_UNPROMOTED lets ranges clone those copies (the
+  # work site's setting): then it lists them and the operator decides (--force).
   local clear=("$LAB_DIR/clear-unstamped-copies.sh" "$id" --date "${REPLICA_DATE:-$(date +%Y%m%d)}"
                --env-file "$ENV_FILE")
   if [[ "$BUILT_NOW" == "$id" && "$DRY" == "1" ]]; then

@@ -4,37 +4,82 @@
 # Variant script (parrot): convert a debian13 clone to Parrot Security 7 (echo).
 # Runs as root after files/linux/apt-proxy.sh, so apt goes through the build apt proxy
 # (TN-DEPOT01; its Remap-tnparrot serves deb.parrot.sh from an HTTPS mirror). Steps:
-#   1. bootstrap the archive key: install parrot-archive-keyring from the repository once
-#      with [trusted=yes] (trust on first use, over the depot), then replace that line with
-#      a signed-by entry, so the unsigned trust is never kept;
+#   1. write Parrot's archive signing key, committed below, to its own keyring file and
+#      check its fingerprint; every Parrot source is "signed-by" that file from the first
+#      apt-get update, so nothing from Parrot is ever installed unauthenticated, and the
+#      key is trusted for Parrot's sources only (never in /etc/apt/trusted.gpg.d);
 #   2. install parrot-core (Parrot's apt pinning and base), then full-upgrade to Parrot;
 #   3. install the MATE desktop and the full toolset, boot to the LightDM login.
-# Fails the build on any error, and if the result is not Parrot or has no display manager.
+# Fails the build on any error, if a Parrot key lands in /etc/apt/trusted.gpg.d, if a
+# Parrot source is not signed-by the pinned key, or if the result is not Parrot or has no
+# display manager.
+#
+# The key: "Parrot Project (2024-2026) <team@parrotsec.org>", fingerprint
+# B711822346552E4D92DA02DF7A8286AF0E81EE4A (expires 2028-11-03). Checked on 2026-11-23
+# against two official channels over HTTPS: the fingerprint published on
+# https://parrotsec.org/docs/configuration/hash-and-key-verification/ and the key file
+# https://deb.parrot.sh/parrot/misc/parrotsec.gpg (keyserver.ubuntu.com has the same key).
+# When Parrot rotates its key, replace the block and PARROT_FPR together, from those sources.
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 APT_OPTS=(-y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
 LIST=/etc/apt/sources.list.d/parrot.list
+KEY=/usr/share/keyrings/tn-parrot-archive.asc
+PARROT_FPR="B711822346552E4D92DA02DF7A8286AF0E81EE4A"
 COMPONENTS="main contrib non-free non-free-firmware"
 
 # A debian13 template built before cleanup.sh dropped the DVD source still lists it, and
 # apt-get update fails on it.
 sed -i "/^deb cdrom:/d" /etc/apt/sources.list 2>/dev/null || true
 rm -f /etc/apt/sources.list.d/*cdrom* 2>/dev/null || true
-echo "deb [trusted=yes] http://deb.parrot.sh/parrot echo ${COMPONENTS}" > "$LIST"
-apt-get update -q
-apt-get install "${APT_OPTS[@]}" parrot-archive-keyring
-KEY=""
-for k in /usr/share/keyrings/parrot-archive-keyring.gpg /etc/apt/trusted.gpg.d/parrot-archive-keyring.gpg; do
-  [ -f "$k" ] && { KEY="$k"; break; }
-done
-[ -n "$KEY" ] || { echo "parrot: parrot-archive-keyring installed no keyring file" >&2; exit 1; }
+
+# 1. The pinned key, checked before anything trusts it. gpg comes from Debian's own archive.
+command -v gpg >/dev/null 2>&1 || { apt-get update -q && apt-get install "${APT_OPTS[@]}" gpg; }
+cat > "$KEY" <<'PARROT_KEY'
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mQINBGco52cBEACWy0u0muKLZPH9OygsbRasVbQTNtUDLqdjd7MO8BGQfctdaQ81
+msJYuBFcL8vyc5AbcpRyeBaZS2UlcWRsB4qu8xLgpvaaw5W/dE9mGQGBJV7Auyso
+XOI83RnHup0+6T2h0DP7l3/ZQZjVt+Py0wIji9RiAAyYiW9rSFbedBsIWlD/h6xn
+mXbMfVfD3uPiECpjERWQlo18T/gCNFe/p69oLCzIpLGtUCq+AIsgo9LL0vNV4zAt
++YCLlAlvtvNQo8DdAGOp11tIIDt7KFxXv4qfBXSi8WyZCyYD1vdtux7UKnx81NKC
+7Fp441NL4dq3d5f1UQlceYWGj4F0yK6VCcE1jl1LekSp+j8I8rQgDP4CGmILCAAM
+iYIsYfsF/WxSLKD4i7l3bYUrY8pzh8H/tDhW9/6pECTL01sD63CsccCllf4e7t15
+mKj5zyTReAC5SqGJY7eCSSncMvclOtao2OrSpQNf1AD8x2i0TS2mtn6KrqsKrLv/
+DBqfa9Lh6TxBe2csEkbSsupn6ECuL0UpUmD9oSELpqmhzL9i2oUNPIfUtEatCt5L
+TGlWonG+xZu5CQGN1z3YkBAb6ZHxpTm0qks113ahzVlhfdbZvqeOO2csrQ7W6Vjb
+FvxVSqEHU4QEd2O+oXsREvHxajDzm8WKfK+t3JIHkIeGWiExpzfhhcSL8wARAQAB
+tC9QYXJyb3QgUHJvamVjdCAoMjAyNC0yMDI2KSA8dGVhbUBwYXJyb3RzZWMub3Jn
+PokCVAQTAQoAPhYhBLcRgiNGVS5NktoC33qChq8Oge5KBQJnKOdnAhsDBQkHhM4A
+BQsJCAcCBhUKCQgLAgQWAgMBAh4BAheAAAoJEHqChq8Oge5KCzIP/3UakIwwcdDA
+3nsGuZgh5sVhEwRYyvKuN8r+YNYV8c08CMGt1V+eikJ96ZeT0IHvbgXAiwyukmTz
+xYUO75Bbq+g0FE7ZLqrD62j2t+BzJNX4HBb9TTu5U5PXyXN0lpv5GHxTCrh6OsNv
+lfZ1zyFYg7CB/gXF/7L5hDCqCKKLgFM82OnqVLTrZ9IpgWzsfPiLmRR3bPLuTX9O
+RTqp9eaNcNCWy+WUvRm4oaod0JS76Xq2NT+fqwcAF5x4ziXAuH2rrF3DXwHvbKhF
+p0v6BIph1U7iKQmRWaBrGE8EWvaUMaXaBThdOe3u+gU5DBX6c+XP5YY5ZlstNCUx
+JN7m5BBDaQs8uQf8FveWAFh4PxyR7cCCaVrQArEV81UFAEyna86BVfzeSsafk5Ki
+rGKeU4VRIGPn8XkMv2Nm4NDw8fCmy/6Lc3JryDsneNuPxTEMK9d0IlCQCrV5O0Kz
+bMEB0QS2MFNA2KDPVO7IC/S/I9CA3Sr86CYZ7Ruv5b44IP8jfdfSmp+X37S9jOD1
+rwlpmsV9isMA87lcSEdSEuOKXgaBdyuoeRREQATbPmQLyQMFUtqdIuO9cuvum5W7
+56Ro4+GoCkXsYLVDFn/+9jodGE1ZOuEReF4tfCzedH1gQ9ex0FfdqwL6ZmfrOaLB
+/stJyPk233PA9h03mutQza4yPT4GwAZ3
+=jSUa
+-----END PGP PUBLIC KEY BLOCK-----
+PARROT_KEY
+chmod 0644 "$KEY"
+got="$(gpg --show-keys --with-colons "$KEY" 2>/dev/null | awk -F: '$1 == "fpr" {print $10}')"
+[ "$got" = "$PARROT_FPR" ] || { echo "parrot: the committed key is not ${PARROT_FPR} (got: ${got:-none})" >&2; exit 1; }
 cat > "$LIST" <<EOF
 deb [signed-by=${KEY}] http://deb.parrot.sh/parrot echo ${COMPONENTS}
 deb [signed-by=${KEY}] http://deb.parrot.sh/parrot echo-security ${COMPONENTS}
 deb [signed-by=${KEY}] http://deb.parrot.sh/parrot echo-updates ${COMPONENTS}
 EOF
-echo "parrot: repository signed by ${KEY}"
+# parrot-archive-keyring (pulled in by parrot-core) ships its key for trusted.gpg.d, which
+# would trust Parrot's key for every source. Keep dpkg from unpacking it there at all.
+echo "path-exclude=/etc/apt/trusted.gpg.d/parrot*" > /etc/dpkg/dpkg.cfg.d/tn-no-global-parrot-key
+echo "parrot: repository signed-by ${KEY} (${PARROT_FPR})"
 
+# 2-3.
 apt-get update -q
 apt-get install "${APT_OPTS[@]}" parrot-core
 apt-get update -q
@@ -42,6 +87,19 @@ apt-get full-upgrade "${APT_OPTS[@]}"
 apt-get install "${APT_OPTS[@]}" parrot-interface parrot-desktop-mate parrot-tools-full open-vm-tools-desktop
 apt-get autoremove -y
 apt-get clean
+
+# A maintainer script may still have linked a Parrot key into trusted.gpg.d: remove it, then
+# refuse the template if one is left or a Parrot source is not pinned to our key.
+rm -f /etc/apt/trusted.gpg.d/parrot* 2>/dev/null || true
+if ls /etc/apt/trusted.gpg.d/parrot* >/dev/null 2>&1; then
+  echo "parrot: a Parrot key is still in /etc/apt/trusted.gpg.d (trusted for every source)" >&2; exit 1
+fi
+unpinned="$(grep -rhs 'parrot' /etc/apt/sources.list /etc/apt/sources.list.d/*.list | grep -E '^[[:space:]]*deb' \
+  | grep -v "signed-by=${KEY}" || true)"
+[ -z "$unpinned" ] || { echo "parrot: Parrot sources not signed-by ${KEY}:" >&2; echo "$unpinned" >&2; exit 1; }
+if grep -rlsi 'parrot' /etc/apt/sources.list.d/*.sources >/dev/null 2>&1; then
+  echo "parrot: a deb822 Parrot source appeared; pin it to ${KEY} (Signed-By) before templating" >&2; exit 1
+fi
 
 grep -qi parrot /etc/os-release || { echo "parrot: /etc/os-release is not Parrot after the upgrade" >&2; cat /etc/os-release >&2; exit 1; }
 systemctl list-unit-files lightdm.service --no-legend | grep -q lightdm || { echo "parrot: lightdm missing" >&2; exit 1; }

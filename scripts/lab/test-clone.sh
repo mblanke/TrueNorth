@@ -22,7 +22,7 @@
 #                    tools: no customization, pass when Tools is running
 #                    power: no customization, pass when the VM is still powered on after 90 s
 #   --network PG     port group for the clone's first NIC (default dPG-TN-BUILD)
-#   --ip-base A.B.C  static test addresses A.B.C.201-.230, three per template group, see
+#   --ip-base A.B.C  static test addresses A.B.C.201-.248, three per template group, see
 #                    ip_slot (default 10.30.31; no gateway); at most 3 hosts per run
 #   --timeout MIN    per clone (default 25: Sysprep takes a while)
 #   --keep           leave the clones (default: destroy each one that passed)
@@ -81,7 +81,13 @@ ip_slot() {
     rocky) echo 7 ;;
     debian13) echo 8 ;;
     kali-gui|parrot) echo 9 ;;
-    *) echo 5 ;;
+    win10-ltsc) echo 10 ;;
+    win11-analyst) echo 11 ;;
+    win11-dev) echo 12 ;;
+    win10-office) echo 13 ;;
+    ubuntu-webstack) echo 14 ;;
+    srv2016) echo 15 ;;
+    *) echo 5 ;;  # anything else (c2-server, a new variant): give it its own slot
   esac
 }
 

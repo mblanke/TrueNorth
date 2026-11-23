@@ -71,3 +71,12 @@
   timeZone=85 (#526); Promote button (#527).
 - Next: CI on the draft PR; adversarial-reviewer (provisioning change); then on site, rebuild
   pfsense and vyos with these files.
+- Same day, after adversarial review of PR #530 (second commit): clear-unstamped-copies.sh
+  fails closed on any govc read error and refuses (without --force) while
+  TN_TEMPLATE_ALLOW_UNPROMOTED lets ranges use the copies; parrot no longer uses
+  [trusted=yes]: Parrot's key (B711822346552E4D92DA02DF7A8286AF0E81EE4A, checked on
+  parrotsec.org's key-verification page and deb.parrot.sh/parrot/misc/parrotsec.gpg) is
+  committed in the script, signed-by only, nothing in trusted.gpg.d. Also: SRV targets limited
+  to *.netgate.com/*.pfsense.org:443, explicit test-IP slots for every variant, promote
+  script dry-run by default (--yes) and calls out an older promoted build, catalogue parrot
+  version "7 (echo, rolling)". Not done: pfSense packagesite signature check.

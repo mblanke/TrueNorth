@@ -528,14 +528,17 @@ def test_test_clone_addresses_never_collide_between_template_groups():
     """Phases run side by side; clones that shared .241-.243 took each other's addresses
     (2026-11-23). Each group has its own three addresses, one per host."""
     arms = [(m.group(1).split("|"), int(m.group(2)))
-            for m in re.finditer(r"^\s*([\w*|-]+)\) echo (\d+) ;;$", _ip_slot_fn(), re.M)]
+            for m in re.finditer(r"^\s*([\w*|-]+)\) echo (\d+) ;;(?:\s*#.*)?$", _ip_slot_fn(), re.M)]
     ids = [i for names, _ in arms for i in names]
     assert len(ids) == len(set(ids)), "an id in two arms: the later arm is dead"
     slots = [slot for _, slot in arms]
     assert len(slots) == len(set(slots)), "two groups share a slot"
     assert (["*"], 5) in arms
     addrs = [200 + slot * 3 + idx for slot in slots for idx in (1, 2, 3)]
-    assert len(addrs) == len(set(addrs)) and min(addrs) > 200 and max(addrs) < 240
+    assert len(addrs) == len(set(addrs)) and min(addrs) > 200 and max(addrs) <= 248
+    # Every shipped variant has its own slot: the catch-all (5) is for what nobody listed.
+    variants = {p.name.removesuffix(".pkrvars.hcl") for p in (ROOT / "infra/vsphere/packer/variants").glob("*.pkrvars.hcl")}
+    assert variants <= set(ids), sorted(variants - set(ids))
     text = (LAB / "test-clone.sh").read_text()
     assert 'ip="${IP_BASE}.$((200 + $(ip_slot "$ID") * 3 + idx))"' in text
     plan = text[text.index('step "Plan ($MODE)"'):]
@@ -543,7 +546,7 @@ def test_test_clone_addresses_never_collide_between_template_groups():
 
 
 @pytest.mark.parametrize(("id_", "slot"), [("parrot", 9), ("kali-gui", 9), ("srv2022", 1), ("srv2022-mecm", 4),
-                                           ("srv2025", 6), ("win11-analyst", 5)])
+                                           ("srv2025", 6), ("win11-analyst", 11), ("c2-server", 5)])
 def test_ip_slot_runs_as_written(id_, slot):
     if shutil.which("bash") is None:
         pytest.skip("bash")

@@ -61,6 +61,8 @@ UPSTREAM = "https://pkg.pfsense.org/pfSense_v2_7_2_amd64-pfSense_v2_7_2"
 # Where _https._tcp.<host> pointed when the lock was pinned; used only when no SRV lookup
 # tool is available. pkgs.lock was pinned through this server.
 SRV_FALLBACK = {"pkg.pfsense.org": "pkg00-atx.netgate.com"}
+# The only servers an SRV answer may send resolve to (Netgate's pkg servers), HTTPS only.
+SRV_TRUSTED_SUFFIXES = (".netgate.com", ".pfsense.org")
 ROOTS = ("open-vm-tools-nox11",)
 # The depot's installers repository is not anonymous (#214): read it as tn-build-read.
 DEPOT_READ_USER = "tn-build-read"
@@ -272,13 +274,21 @@ def srv_lookup(name: str) -> list[SrvRecord]:
 
 def follow_srv(repo: str, lookup: Callable[[str], list[SrvRecord]] = srv_lookup) -> str:
     """``repo`` on the server its host's ``_https._tcp`` SRV record names (lowest priority,
-    then highest weight); else the known fallback for that host; else ``repo`` unchanged."""
+    then highest weight); else the known fallback for that host; else ``repo`` unchanged.
+
+    Only targets under SRV_TRUSTED_SUFFIXES on port 443 are followed: an SRV answer (plain
+    DNS, unauthenticated) naming any other host or port is refused, not used."""
     parts = urllib.parse.urlsplit(repo)
     host = parts.hostname or ""
     records = lookup(f"_https._tcp.{host}")
-    if records:
-        _prio, _weight, port, target = min(records, key=lambda r: (r[0], -r[1]))
-        netloc = target if port == 443 else f"{target}:{port}"
+    usable = [r for r in records if r[2] == 443 and r[3].lower().endswith(SRV_TRUSTED_SUFFIXES)]
+    if records and not usable:
+        raise StageError(
+            f"SRV for {host} names {sorted({f'{r[3]}:{r[2]}' for r in records})}: not a "
+            f"{'/'.join('*' + s for s in SRV_TRUSTED_SUFFIXES)} server on port 443; refusing to follow"
+        )
+    if usable:
+        netloc = min(usable, key=lambda r: (r[0], -r[1]))[3]
     elif host in SRV_FALLBACK:
         netloc = SRV_FALLBACK[host]
     else:

@@ -89,8 +89,9 @@ tn_depot_acng_remaps:
     backends: "security.ubuntu.com/ubuntu"
   # Parrot (variants/parrot.pkrvars.hcl): deb.parrot.sh redirects through
   # director.parrot.sh to HTTPS mirrors, which a client could follow only with CONNECT.
-  # The depot fetches one mirror over HTTPS itself; packages are checked against Parrot's
-  # archive key (signed-by) on the guest.
+  # The depot fetches one third-party mirror over HTTPS itself. The depot checks nothing;
+  # the guest does: parrot-from-debian.sh pins Parrot's archive key (fingerprint committed
+  # in the script) with signed-by, so apt rejects an index the mirror altered.
   - name: tnparrot
     merge: "deb.parrot.sh/parrot"
     backends: "https://mirrors.ocf.berkeley.edu/parrot"

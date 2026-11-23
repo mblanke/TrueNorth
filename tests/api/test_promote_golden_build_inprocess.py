@@ -76,28 +76,50 @@ def _promoted(client, image):
     return client.get(f"/golden-images/{image.id}/builds").json()["promoted_build_id"]
 
 
+def _builds(client, image) -> list[str]:
+    return [b["build_id"] for b in client.get(f"/golden-images/{image.id}/builds").json()["builds"]]
+
+
+def test_without_yes_it_only_says_what_it_would_promote(client, image, capsys):
+    newest = _builds(client, image)[0]
+    assert _script().promote(_Api(client), catalogue_ids=["srv2022"], reason="r") == 0
+    out = capsys.readouterr().out
+    assert f"srv2022 would promote {newest} (built 2026-11-23" in out and "esx02=srv2022@esx02-20261123" in out
+    assert "--yes to promote" in out and _promoted(client, image) is None
+
+
 def test_the_platform_admin_promotes_the_newest_build_with_the_reason(client, db_session, image, capsys):
-    newest = client.get(f"/golden-images/{image.id}/builds").json()["builds"][0]["build_id"]
-    assert _script().promote(_Api(client), catalogue_ids=["srv2022"], reason="site acceptance 2026-11-23") == 0
+    newest = _builds(client, image)[0]
+    assert (
+        _script().promote(_Api(client), catalogue_ids=["srv2022"], reason="site acceptance 2026-11-23", apply=True) == 0
+    )
     assert _promoted(client, image) == newest
-    assert f"srv2022 -> {newest} promoted" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert f"srv2022: promoting {newest} (built" in out and f"srv2022 -> {newest} promoted" in out
     db_session.expire_all()
     (entry,) = db_session.query(AuditLog).filter_by(resource_id=str(image.id), action="golden_image.promote").all()
     assert json.loads(entry.detail)["reason"] == "site acceptance 2026-11-23"
 
 
-def test_an_image_already_promoted_is_left_alone(client, db_session, image, capsys):
+def test_an_image_already_promoted_is_left_alone_and_an_older_promotion_is_called_out(
+    client, db_session, image, capsys
+):
     mod = _script()
-    assert client.post(f"/golden-images/{image.id}/builds/srv2022-b1/promote", json={"reason": "x"}).status_code == 200
-    assert mod.promote(_Api(client), catalogue_ids=["srv2022"], reason="again") == 0
-    assert _promoted(client, image) == "srv2022-b1"
-    assert "already promoted (srv2022-b1); left alone" in capsys.readouterr().out
+    newest, older = _builds(client, image)
+    assert client.post(f"/golden-images/{image.id}/builds/{newest}/promote", json={"reason": "x"}).status_code == 200
+    assert mod.promote(_Api(client), catalogue_ids=["srv2022"], reason="again", apply=True) == 0
+    assert f"already promoted ({newest}, the newest); left alone" in capsys.readouterr().out
+    assert client.post(f"/golden-images/{image.id}/builds/{older}/promote", json={"reason": "x"}).status_code == 200
+    assert mod.promote(_Api(client), catalogue_ids=["srv2022"], reason="again", apply=True) == 0
+    out = capsys.readouterr().out
+    assert f"keeps its promoted build {older}, which is OLDER than the newest, {newest}" in out
+    assert _promoted(client, image) == older  # never promoted over a promotion
     db_session.expire_all()
-    assert db_session.query(AuditLog).filter_by(resource_id=str(image.id), action="golden_image.promote").count() == 1
+    assert db_session.query(AuditLog).filter_by(resource_id=str(image.id), action="golden_image.promote").count() == 2
 
 
 def test_a_missing_image_fails_and_the_others_are_still_promoted(client, image, capsys):
-    assert _script().promote(_Api(client), catalogue_ids=["nope", "srv2022"], reason="r") == 1
+    assert _script().promote(_Api(client), catalogue_ids=["nope", "srv2022"], reason="r", apply=True) == 1
     assert "FAIL nope: no such golden image" in capsys.readouterr().out
     assert _promoted(client, image) is not None
 
@@ -105,7 +127,7 @@ def test_a_missing_image_fails_and_the_others_are_still_promoted(client, image, 
 @pytest.mark.parametrize("role", [UserRole.range_ops, UserRole.instructor])
 def test_anyone_but_the_platform_admin_is_refused(client, db_session, tenant, image, role, capsys):
     act_as(real_user(db_session, role, tenant.id))
-    assert _script().promote(_Api(client), catalogue_ids=["srv2022"], reason="r") == 1
+    assert _script().promote(_Api(client), catalogue_ids=["srv2022"], reason="r", apply=True) == 1
     assert "FAIL" in capsys.readouterr().out
     act_as(real_user(db_session, UserRole.admin, tenant.id))
     assert _promoted(client, image) is None
@@ -113,6 +135,6 @@ def test_anyone_but_the_platform_admin_is_refused(client, db_session, tenant, im
 
 def test_another_tenants_admin_is_refused(client, db_session, tenant, image):
     act_as(real_user(db_session, UserRole.admin, real_tenant(db_session, "promote-other").id))
-    assert _script().promote(_Api(client), catalogue_ids=["srv2022"], reason="r") == 1
+    assert _script().promote(_Api(client), catalogue_ids=["srv2022"], reason="r", apply=True) == 1
     act_as(real_user(db_session, UserRole.admin, tenant.id))
     assert _promoted(client, image) is None

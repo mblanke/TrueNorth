@@ -306,3 +306,44 @@ def test_windows_failed_customization_risk_is_documented():
 def test_executable_bits():
     for f in ("install-cloud-init.sh", "require-cloud-init.sh"):
         assert os.access(LINUX / f, os.X_OK), f
+
+
+# ── parrot variant: Parrot's key is pinned, never trusted on first use ──
+PARROT = PK / "variants/scripts/parrot-from-debian.sh"
+# Checked 2026-11-23 on parrotsec.org/docs/configuration/hash-and-key-verification/ and in
+# https://deb.parrot.sh/parrot/misc/parrotsec.gpg (two official channels, HTTPS).
+PARROT_FPR = "B711822346552E4D92DA02DF7A8286AF0E81EE4A"
+
+
+def test_parrot_never_installs_from_an_unauthenticated_source():
+    """[trusted=yes] would let parrot-archive-keyring's root postinst run unauthenticated and
+    put Parrot's key in trusted.gpg.d, trusted for every source."""
+    text = PARROT.read_text()
+    code = "\n".join(ln for ln in text.splitlines() if not ln.lstrip().startswith("#"))
+    assert "trusted=yes" not in code and "allow-insecure" not in code.lower()
+    assert f'PARROT_FPR="{PARROT_FPR}"' in text
+    first_update = code.index("apt-get update -q\napt-get install \"${APT_OPTS[@]}\" parrot-core")
+    # The key is checked and the sources are signed-by it before Parrot is ever fetched.
+    assert code.index('[ "$got" = "$PARROT_FPR" ]') < code.index("deb [signed-by=${KEY}]") < first_update
+    assert code.count("deb [signed-by=${KEY}] http://deb.parrot.sh/parrot") == 3
+    assert "path-exclude=/etc/apt/trusted.gpg.d/parrot*" in code
+    assert code.index("path-exclude=/etc/apt/trusted.gpg.d/parrot*") < first_update
+    # Nothing is written into trusted.gpg.d; what a maintainer script left is removed and checked.
+    assert not re.search(r"(>|tee|cp|install|ln)[^\n]*trusted\.gpg\.d", code)
+    assert "rm -f /etc/apt/trusted.gpg.d/parrot*" in code and 'grep -v "signed-by=${KEY}"' in code
+
+
+def test_parrot_committed_key_has_the_pinned_fingerprint(tmp_path):
+    if shutil.which("gpg") is None:
+        pytest.skip("gpg not installed")
+    text = PARROT.read_text()
+    block = text[text.index("-----BEGIN PGP PUBLIC KEY BLOCK-----"):text.index("-----END PGP PUBLIC KEY BLOCK-----")]
+    key = tmp_path / "parrot.asc"
+    key.write_text(block + "-----END PGP PUBLIC KEY BLOCK-----\n")
+    home = tmp_path / "gnupg"
+    home.mkdir(mode=0o700)
+    r = subprocess.run(["gpg", "--homedir", str(home), "--show-keys", "--with-colons", str(key)],
+                       capture_output=True, text=True)
+    fprs = [ln.split(":")[9] for ln in r.stdout.splitlines() if ln.startswith("fpr:")]
+    assert fprs[:1] == [PARROT_FPR], r.stderr
+    assert "Parrot Project" in r.stdout

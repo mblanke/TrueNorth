@@ -390,12 +390,17 @@ def test_resolve_follows_the_pfsense_srv_record():
 
     def lookup(name):
         asked.append(name)
-        return [(20, 10, 443, "slow.example.net"), (10, 5, 443, "b.example.net"), (10, 50, 443, "a.example.net")]
+        return [(20, 10, 443, "slow.netgate.com"), (10, 5, 443, "b.netgate.com"), (10, 50, 443, "a.pfsense.org"),
+                (0, 99, 443, "evil.example.net"), (0, 99, 8443, "pkg01.netgate.com")]
 
-    assert st.follow_srv(st.UPSTREAM, lookup) == "https://a.example.net/pfSense_v2_7_2_amd64-pfSense_v2_7_2"
+    # Lowest priority, then highest weight, among Netgate/pfSense servers on 443 only.
+    assert st.follow_srv(st.UPSTREAM, lookup) == "https://a.pfsense.org/pfSense_v2_7_2_amd64-pfSense_v2_7_2"
     assert asked == ["_https._tcp.pkg.pfsense.org"]
-    assert st.follow_srv("https://pkg.pfsense.org/x", lambda n: [(0, 0, 8443, "c.example.net")]) == \
-        "https://c.example.net:8443/x"
+    # An answer naming only other hosts or ports is refused, never followed or ignored.
+    for bad in ([(0, 0, 443, "pkg.netgate.com.evil.net")], [(0, 0, 8443, "pkg00-atx.netgate.com")],
+                [(0, 0, 443, "notnetgate.com")]):
+        with pytest.raises(st.StageError, match="refusing to follow"):
+            st.follow_srv("https://pkg.pfsense.org/x", lambda n, bad=bad: bad)
     # No SRV answer (no dig/host): the server the lock was pinned through.
     assert st.follow_srv(st.UPSTREAM, lambda n: []) == \
         "https://pkg00-atx.netgate.com/pfSense_v2_7_2_amd64-pfSense_v2_7_2"

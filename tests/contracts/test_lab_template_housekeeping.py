@@ -38,6 +38,11 @@ case "$1" in
       [[ "${path##*/}" == $pat || "$pat" == m ]] && echo "$path"
     done < "$state/vms" ;;
   object.collect)
+    # STUB_FAIL_<PROPERTY>=<substring>: that read fails for matching VMs (a vCenter hiccup).
+    if [ "$4" = config.annotation ] && [ -n "${STUB_FAIL_ANN:-}" ] && [[ "$3" == *"$STUB_FAIL_ANN"* ]]; then
+      echo "ServerFaultCode: session expired" >&2; exit 1; fi
+    if [ "$4" = config.template ] && [ -n "${STUB_FAIL_TMPL:-}" ] && [[ "$3" == *"$STUB_FAIL_TMPL"* ]]; then
+      echo "ServerFaultCode: session expired" >&2; exit 1; fi
     IFS='|' read -r path tmpl ann <<<"$(line_of "$3")"
     if [ "$4" = config.template ]; then echo "$tmpl"; else printf '%b\n' "$ann"; fi ;;
   vm.destroy) grep -vF "$2|" "$state/vms" > "$state/vms.new"; mv "$state/vms.new" "$state/vms" ;;
@@ -77,12 +82,19 @@ def lab(tmp_path):
     state.mkdir()
     (state / "vms").write_text("\n".join(VMS) + "\n")
     env = {k: v for k, v in os.environ.items() if not k.startswith(("GOVC_", "TN_", "APPLY", "ASSUME_YES"))}
-    env.update(PATH=f"{bindir}:{env['PATH']}", STUB_STATE=str(state), GOVC_USERNAME="u", GOVC_PASSWORD="p")
+    env.update(
+        PATH=f"{bindir}:{env['PATH']}",
+        STUB_STATE=str(state),
+        GOVC_USERNAME="u",
+        GOVC_PASSWORD="p",
+        TN_TEMPLATE_ALLOW_UNPROMOTED="false",
+        TN_ENV_FILE=str(tmp_path / "no.env"),
+    )
 
-    def run(script, *args):
+    def run(script, *args, **extra):
         return subprocess.run(
             ["bash", str(LAB / script), *args],
-            env=env,
+            env={k: v for k, v in {**env, **extra}.items() if v is not None},  # None: unset
             capture_output=True,
             text=True,
             timeout=60,
@@ -129,6 +141,93 @@ def test_clear_unstamped_without_a_date_takes_every_date(lab):
 def test_clear_unstamped_apply_without_a_yes_removes_nothing(lab):
     r = lab("clear-unstamped-copies.sh", "srv2022", "--apply")  # no terminal to answer y/N on
     assert r.returncode != 0 and _calls(lab.state, "vm.destroy") == []
+
+
+def test_clear_unstamped_fails_closed_when_the_annotation_cannot_be_read(lab):
+    """A failed config.annotation read must not look like "no stamp": the stamped (maybe
+    promoted) copy would be destroyed. Kept, warned about, exit non-zero."""
+    r = lab(
+        "clear-unstamped-copies.sh",
+        "srv2022",
+        "--date",
+        "20261123",
+        "--apply",
+        "--yes",
+        STUB_FAIL_ANN="srv2022@esx02-20261123",
+    )
+    assert r.returncode != 0
+    destroyed = _calls(lab.state, "vm.destroy")
+    assert not [c for c in destroyed if "srv2022@esx02-20261123" in c]
+    assert "cannot read its annotation" in r.stderr and "could not be read and were kept" in r.stderr
+    # The copy that was read fine and is unstamped still goes.
+    assert destroyed == [f"vm.destroy {T}/Host copies/esx03/srv2022@esx03-20261123"]
+
+
+def test_clear_unstamped_fails_closed_when_the_template_flag_cannot_be_read(lab):
+    r = lab(
+        "clear-unstamped-copies.sh",
+        "srv2022",
+        "--date",
+        "20261123",
+        "--apply",
+        "--yes",
+        STUB_FAIL_TMPL="srv2022@esx03-20261123",
+    )
+    assert r.returncode != 0 and _calls(lab.state, "vm.destroy") == []
+    assert "cannot read whether it is a template" in r.stderr
+
+
+@pytest.mark.parametrize("flag", ["true", "1", "kali,srv2022"])
+def test_clear_unstamped_refuses_copies_ranges_may_use_without_force(lab, flag):
+    """With TN_TEMPLATE_ALLOW_UNPROMOTED allowing the id, the worker clones the newest dated
+    copy per host of an unpromoted image: exactly these copies."""
+    plan = lab("clear-unstamped-copies.sh", "srv2022", TN_TEMPLATE_ALLOW_UNPROMOTED=flag)
+    assert plan.returncode == 0 and "may be in use: srv2022@esx03-20261123" in plan.stderr
+    assert "--apply --force" in plan.stdout
+    r = lab("clear-unstamped-copies.sh", "srv2022", "--apply", "--yes", TN_TEMPLATE_ALLOW_UNPROMOTED=flag)
+    assert r.returncode != 0 and "--force" in r.stderr and _calls(lab.state, "vm.destroy") == []
+    forced = lab(
+        "clear-unstamped-copies.sh", "srv2022", "--apply", "--yes", "--force", TN_TEMPLATE_ALLOW_UNPROMOTED=flag
+    )
+    assert forced.returncode == 0 and len(_calls(lab.state, "vm.destroy")) == 2
+
+
+def test_clear_unstamped_reads_the_flag_from_the_env_file_and_assumes_in_use_when_unknown(lab, tmp_path):
+    env_file = tmp_path / "site.env"
+    env_file.write_text('VSPHERE_USERNAME=u\nTN_TEMPLATE_ALLOW_UNPROMOTED="true"\n')
+    r = lab(
+        "clear-unstamped-copies.sh",
+        "srv2022",
+        "--apply",
+        "--yes",
+        "--env-file",
+        str(env_file),
+        TN_TEMPLATE_ALLOW_UNPROMOTED=None,
+    )
+    assert r.returncode != 0 and _calls(lab.state, "vm.destroy") == []
+    env_file.write_text("TN_TEMPLATE_ALLOW_UNPROMOTED=kali\n")  # another id only
+    r = lab(
+        "clear-unstamped-copies.sh",
+        "srv2022",
+        "--date",
+        "20261123",
+        "--apply",
+        "--yes",
+        "--env-file",
+        str(env_file),
+        TN_TEMPLATE_ALLOW_UNPROMOTED=None,
+    )
+    assert r.returncode == 0 and len(_calls(lab.state, "vm.destroy")) == 1
+    r = lab(
+        "clear-unstamped-copies.sh",
+        "srv2022",
+        "--apply",
+        "--yes",
+        "--env-file",
+        str(tmp_path / "gone.env"),
+        TN_TEMPLATE_ALLOW_UNPROMOTED=None,
+    )  # unreadable: assume ranges may use them
+    assert r.returncode != 0 and len(_calls(lab.state, "vm.destroy")) == 1
 
 
 def test_clear_unstamped_refuses_a_pattern_for_an_id(lab):

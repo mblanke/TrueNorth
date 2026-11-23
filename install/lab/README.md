@@ -601,7 +601,8 @@ be listed.
   apply here.
 - **VLAN 31 reaches only esx04.** Test clones on esx02/esx03 sit on an unconnected
   `dPG-TN-BUILD`. That is fine for the check: Tools reports the customized static IP
-  (10.30.31.241-243) whether or not anything answers.
+  (10.30.31.201-.248, three per template group: `ip_slot` in `test-clone.sh`) whether or
+  not anything answers.
 - **Proven on vcsim only.** ISO sync, the DRS rule, replicate and test clones (customize
   mode) ran against vcsim, and the generated vars file passed `packer validate` (1.16.1).
   None of it has run against the work vCenter yet.
