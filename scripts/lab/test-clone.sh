@@ -64,8 +64,10 @@ done
 [[ -n "$ID" ]] || usage 2
 case "$MODE" in customize|finish|tools|power) ;; *) die "--mode customize|finish|tools|power" ;; esac
 [[ "$TIMEOUT_MIN" =~ ^[0-9]+$ ]] || die "--timeout takes minutes"
+# The worker's WINDOWS_TIMEZONE_INDEXES (vsphere_infra.py; a contract test keeps them equal).
+WIN_TZ_INDEXES="0 1 2 3 4 10 13 15 20 25 30 33 35 40 45 50 55 56 60 65 70 73 75 80 83 85 90 95 100 105 110 113 115 120 125 130 135 140 145 150 155 158 160 165 170 175 180 185 190 193 195 200 201 203 205 207 210 215 220 225 227 230 235 240 245 250 255 260 265 270 275 280 285 290 300"
 WIN_TZ="${WIN_TZ//[[:space:]]/}"
-[[ -z "$WIN_TZ" || "$WIN_TZ" =~ ^[0-9]{1,3}$ ]] || die "--tz takes a decimal Windows time zone index (85: GMT Standard Time)"
+[[ -z "$WIN_TZ" ]] || { [[ "$WIN_TZ" =~ ^[0-9]{1,3}$ ]] && [[ " $WIN_TZ_INDEXES " == *" $((10#$WIN_TZ)) "* ]]; } || die "--tz takes a decimal Windows time zone index (85: GMT Standard Time, 35: Eastern)"
 if [[ -z "${GOVC_USERNAME:-}" || -z "${GOVC_PASSWORD:-}" ]]; then govc_from_env_file "$ENV_FILE"; fi
 APPLY=1   # every change below is confirmed first; act() echoes each command
 
