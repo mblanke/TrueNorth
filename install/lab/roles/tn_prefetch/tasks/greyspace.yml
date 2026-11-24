@@ -56,6 +56,7 @@
       {{ tn_prefetch_linux_results | default({}) | combine({('greyspace-' ~ r.tn_prefetch_gs.family): {
            'ok': r.stdout_lines | select('match', '^TNRESULT ok ') | map('regex_replace', '^TNRESULT ok ', '') | list,
            'failed': (r.stdout_lines | select('match', '^TNRESULT fail ') | map('regex_replace', '^TNRESULT fail ', '') | list)
-                     + ([] if (r.rc == 0 and r.stdout_lines | select('match', '^TNRESULT ok ') | list) else ['greyspace-' ~ r.tn_prefetch_gs.family ~ '-no-result'])}}) }}
+                     + ([] if (r.rc == 0 and r.stdout_lines | select('match', '^TNRESULT ok ') | list)
+                        else ['greyspace-' ~ r.tn_prefetch_gs.family ~ '-no-result'])}}) }}
   loop: "{{ tn_prefetch_greyspace_runs.results }}"
   loop_control: { loop_var: r, label: "{{ r.tn_prefetch_gs.family }}" }

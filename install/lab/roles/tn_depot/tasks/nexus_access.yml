@@ -104,7 +104,9 @@
     status_code: [200, 404]
   loop:
     - { id: "{{ tn_depot_anonymous_role }}", privileges: "{{ tn_depot_anonymous_privileges }}", what: "anonymous: Chocolatey feed read only" }
-    - { id: "{{ tn_depot_build_read_user }}", privileges: "{{ tn_depot_build_read_privileges }}", what: "Packer builds: installers and the Docker Hub/quay proxies, read only" }
+    - id: "{{ tn_depot_build_read_user }}"
+      privileges: "{{ tn_depot_build_read_privileges }}"
+      what: "Packer builds: installers and the Docker Hub/quay proxies, read only"
   loop_control: { label: "{{ item.id }}" }
   register: tn_nexus_access_roles
   no_log: true
