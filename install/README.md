@@ -1175,7 +1175,7 @@ actually change:
 | `tn_opensearch_snapshot_repo` / `tn_opensearch_snapshot_keep` | `tn_snapshots` / `14` | Telemetry snapshots per backup ("Backups"); `""` = none. |
 | `tn_upgrade_inflight` / `tn_pre_upgrade_backup` | `drain` / `true` | "Upgrades". |
 | `tn_vsphere_verify_ssl` | `true` | The reference lab overrides it to `false` in `hosts.yml` (VMCA chain not yet trusted). |
-| `tn_vsphere_windows_timezone` | *(empty: none)* | `VSPHERE_WINDOWS_TIMEZONE`: the Sysprep time zone of Windows range VMs, a **decimal** Microsoft time zone index (`85` GMT Standard Time, `35` Eastern). Empty sends none: index 0 on the wire (the field is required), as govc without `-tz`, the only form the work site's vCenter 8.0.3 has been seen to accept; the Microsoft table lists 0 as Dateline Standard Time (GMT-12) (#526). govc's `-tz` takes the index in hex (`85` is `-tz 55`); `scripts/lab/test-clone.sh --tz` takes it in decimal, like this setting. |
+| `tn_vsphere_windows_timezone` | `35` (Eastern Standard Time) | `VSPHERE_WINDOWS_TIMEZONE`: the Sysprep time zone of Windows range VMs, a **decimal** Microsoft time zone index (`35` Eastern, `85` GMT Standard Time); empty is `35`. Preflight and the worker refuse an index not in Microsoft's table (#526). govc's `-tz` takes the index in **hex** (`35` is `-tz 23`; the old `-tz 85` was index 133, refused by vCenter); `scripts/lab/test-clone.sh --tz` takes it in decimal, like this setting. |
 | `tn_image_source` | `release` | `build` only for a lab ("Images") |
 | `tn_release_version` | *(empty — required in release mode)* | The release tag to install, e.g. `v1.2.3` |
 | `tn_release_dir` / `tn_image_archive_dir` | *(empty)* | Air-gapped: the release files, and `docker save` tarballs |

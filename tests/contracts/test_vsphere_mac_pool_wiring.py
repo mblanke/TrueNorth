@@ -47,15 +47,15 @@ def test_the_installer_defaults_and_env_template_carry_every_setting():
     assert defaults["tn_vsphere_guest_ip_timeout"] == 600 and defaults["tn_vsphere_guest_ip_check"] == "require"
     assert (defaults["tn_vsphere_customization_grace"], defaults["tn_vsphere_customization_skew"]) == (900, 300)
     assert "VSPHERE_CUSTOMIZATION_GRACE:-900}" in compose and "VSPHERE_CUSTOMIZATION_SKEW:-300}" in compose
-    # #526: no Sysprep time zone unless a site sets one.
-    assert defaults["tn_vsphere_windows_timezone"] == "" and "VSPHERE_WINDOWS_TIMEZONE:-}" in compose
+    # #526: Windows range VMs get Eastern Standard Time (35) unless a site sets another index.
+    assert defaults["tn_vsphere_windows_timezone"] == 35 and "VSPHERE_WINDOWS_TIMEZONE:-35}" in compose
 
 
 def test_preflight_and_test_clone_accept_exactly_the_workers_windows_time_zones():
     """#526: VSPHERE_WINDOWS_TIMEZONE is checked three times (installer preflight, the
     worker, scripts/lab/test-clone.sh --tz), against one index set."""
     want = set(vsphere_infra.WINDOWS_TIMEZONE_INDEXES)
-    assert {0, 35, 85} <= want and not {53, 133} & want  # 53/133: govc's hex reading of 035/85
+    assert {0, 35, 85} <= want and not {53, 133} & want and vsphere_infra.WINDOWS_TIMEZONE_DEFAULT == 35  # 53/133: govc's hex reading of 035/85
     tasks = yaml.safe_load((ROOT / "install/roles/tn_preflight/tasks/main.yml").read_text())
     (task,) = [t for t in tasks if "tn_vsphere_windows_timezone" in t.get("name", "")]
     assert set(task["vars"]["tn_windows_timezone_indexes"]) == want

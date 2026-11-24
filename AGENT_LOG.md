@@ -64,3 +64,7 @@
   never tried. Site checks: `govc vm.customize -type Windows ... -tz 55` (= 85), and
   `tzutil /g` on a clone customized without a time zone (expect Dateline Standard Time?).
   If 85 works, set `tn_vsphere_windows_timezone: 85` or change the default.
+- Update 2026-11-23: owner decided the default is 35 (Eastern Standard Time). Worker,
+  installer (`tn_vsphere_windows_timezone: 35`), compose and test-clone.sh (`-tz 23`) now
+  default to it. Acceptance on site: `scripts/lab/test-clone.sh srv2022` is accepted, and
+  `tzutil /g` in the clone says "Eastern Standard Time".

@@ -576,24 +576,26 @@ WINDOWS_TIMEZONE_INDEXES = frozenset({
     170, 175, 180, 185, 190, 193, 195, 200, 201, 203, 205, 207, 210, 215, 220, 225, 227, 230,
     235, 240, 245, 250, 255, 260, 265, 270, 275, 280, 285, 290, 300,
 })
+# Eastern Standard Time: the default for Windows range VMs (owner decision 2026-11-23, #526).
+WINDOWS_TIMEZONE_DEFAULT = 35
 
 
-def windows_timezone() -> int | None:
+def windows_timezone() -> int:
     """VSPHERE_WINDOWS_TIMEZONE: the Sysprep time zone, a DECIMAL Microsoft time zone index
-    (85 = GMT Standard Time, 35 = Eastern). Unset or blank: None, the spec sets none.
+    (35 = Eastern, 85 = GMT Standard Time). Unset or blank: WINDOWS_TIMEZONE_DEFAULT (35).
 
     #526: on the work site's vCenter 8.0.3, ``govc vm.customize -type Windows -tz 85`` (and
     ``-tz 035``) was refused ("A specified parameter was not correct: Timezone") and the same
     call without -tz was accepted. govc reads -tz as HEX, so those sent 133 and 53, neither a
-    valid index; decimal 85, which the worker used to hard-code, was never tried there.
-    Until it is, the worker sends what was accepted: no time zone (index 0 on the wire).
+    valid index. pyVmomi sends this decimal int as is; hence the check against the table.
     """
     raw = os.getenv("VSPHERE_WINDOWS_TIMEZONE", "").strip()
     if not raw:
-        return None
+        return WINDOWS_TIMEZONE_DEFAULT
     if not re.fullmatch(r"[0-9]{1,3}", raw) or int(raw) not in WINDOWS_TIMEZONE_INDEXES:
         raise ValueError(f"VSPHERE_WINDOWS_TIMEZONE={raw!r} is not a decimal Microsoft time zone index "
-                         "(e.g. 85 for GMT Standard Time, 35 for Eastern); leave it empty to set none")
+                         f"(e.g. 35 for Eastern, 85 for GMT Standard Time); leave it empty for "
+                         f"{WINDOWS_TIMEZONE_DEFAULT}")
     return int(raw)
 
 
@@ -604,16 +606,12 @@ def windows_customization(vm_def: dict, password: str | None = None):
     account (ADR 0012, stored sealed by the API), else TN_TEMPLATE_WINDOWS_ADMIN_PASSWORD (both via
     vsphere_guest.admin_password), else random per VM as before. Never logged.
 
-    The time zone is VSPHERE_WINDOWS_TIMEZONE (windows_timezone), else none. timeZone is a
-    required int, so "none" is 0 on the wire, as govc sends without -tz (#526). The Microsoft
-    table lists 0 as Dateline Standard Time (GMT-12); what the guest ends up with is unverified.
+    The time zone is VSPHERE_WINDOWS_TIMEZONE, else 35, Eastern Standard Time (windows_timezone, #526).
     """
     c = vim.vm.customization
     password = password or secrets.token_urlsafe(18) + "!9a"  # meets Windows complexity rules
-    unattended = c.GuiUnattended(autoLogon=False, autoLogonCount=0,
+    unattended = c.GuiUnattended(autoLogon=False, autoLogonCount=0, timeZone=windows_timezone(),
                                  password=c.Password(plainText=True, value=password))
-    if (tz := windows_timezone()) is not None:
-        unattended.timeZone = tz
     identity = c.Sysprep(
         guiUnattended=unattended,
         userData=c.UserData(

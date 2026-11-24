@@ -69,8 +69,8 @@
         or ((tn_windows_timezone_raw is match('^[0-9]{1,3}$'))
             and (tn_windows_timezone_raw | int) in tn_windows_timezone_indexes)
     fail_msg: >-
-      tn_vsphere_windows_timezone must be empty (no time zone) or a DECIMAL Microsoft time
-      zone index such as 85 (GMT Standard Time) or 35 (Eastern); not hex, not a name.
+      tn_vsphere_windows_timezone must be empty (35, Eastern) or a DECIMAL Microsoft time
+      zone index such as 35 (Eastern Standard Time) or 85 (GMT Standard Time); not hex, not a name.
     quiet: true
 
 # CLASS_OBSERVER_CONSOLES: a typo ("ture", "enabled") would be read by the API as off, silently.
