@@ -53,3 +53,29 @@
   merged onto it, adds a deterministic regression test (holds the clean-up's savepoint open;
   fails without the lock) and puts the 4409 test's post-socket read under the lock.
 - Next: merge the PR once CI is green.
+
+## 2026-11-23 — installer renders Security Onion's install login (Mac)
+
+- Site finding: env.production.j2 never wrote `VSPHERE_SO_INSTALL_USER` / `_PASSWORD`, so SOC
+  ranges failed "no install login" on an installed host (hand-added on site; an upgrade drops them).
+- Branch `fix/installer-so-install-login` off github/main (rc22): `tn_vsphere_so_install_user`
+  (default `soadmin`, the API's name) / `tn_vsphere_so_install_password`
+  (`vault_vsphere_so_install_password`, else `vault_template_linux_password`); preflight quote
+  guard + vSphere warning; docs, CHANGELOG, tests. Adversarial review done (default changed from
+  the Linux user to `soadmin` on its finding). Draft PR, not merged.
+- Next: owner confirms the SO template's installer user is `soadmin` with the generic build
+  password; on site, move the hand-added values into the inventory before the next upgrade.
+## 2026-11-23 — #526 Windows Sysprep time zone (Mac, agent)
+
+- Branch `fix/526-windows-customize-timezone` off github/main (rc22). Worker no longer
+  hard-codes `timeZone=85`; `VSPHERE_WINDOWS_TIMEZONE` / `tn_vsphere_windows_timezone`
+  (decimal Microsoft index, empty = none = index 0 on the wire) sets one. test-clone.sh
+  takes `--tz N` (decimal) and passes hex to govc. Draft PR only.
+- Open owner decision: the site's govc `-tz 85` was hex (index 133, invalid); decimal 85 was
+  never tried. Site checks: `govc vm.customize -type Windows ... -tz 55` (= 85), and
+  `tzutil /g` on a clone customized without a time zone (expect Dateline Standard Time?).
+  If 85 works, set `tn_vsphere_windows_timezone: 85` or change the default.
+- Update 2026-11-23: owner decided the default is 35 (Eastern Standard Time). Worker,
+  installer (`tn_vsphere_windows_timezone: 35`), compose and test-clone.sh (`-tz 23`) now
+  default to it. Acceptance on site: `scripts/lab/test-clone.sh srv2022` is accepted, and
+  `tzutil /g` in the clone says "Eastern Standard Time".

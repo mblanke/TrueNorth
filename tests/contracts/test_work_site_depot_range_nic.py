@@ -746,7 +746,9 @@ def test_nexus_anonymous_reads_only_the_feed_and_packer_reads_installers_as_its_
         "nx-repository-view-nuget-chocolatey-read", "nx-repository-view-nuget-chocolatey-browse",
         "{{ tn_depot_choco_installers_privilege }}"]  # installers/<choco id>/** via the content selector
     assert DEFAULTS["tn_depot_build_read_privileges"] == [
-        "nx-repository-view-raw-installers-read", "nx-repository-view-raw-installers-browse"]
+        "nx-repository-view-raw-installers-read", "nx-repository-view-raw-installers-browse",
+        # greyspace-host pulls its pinned images through the two registry proxies (read only)
+        "nx-repository-view-docker-docker-proxy-read", "nx-repository-view-docker-quay-proxy-read"]
     assert "TN_DEPOT_BUILD_READ_PASSWORD" in DEFAULTS["tn_depot_build_read_password"]
     access = yaml.safe_load((ROLE / "tasks/nexus_access.yml").read_text())
     assert all(t.get("no_log") is True for t in access if "ansible.builtin.uri" in t)

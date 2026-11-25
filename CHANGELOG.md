@@ -9,6 +9,16 @@ Everything switched on and working on staging: the full Moodle loop, cmi5 with c
 xAPI, Greyspace on vSphere (proven on vcsim and the T0 stack, not real vSphere), ARC² batch
 course production with a local-model fallback, and the cleanup of unsupported surfaces.
 
+### Windows range VMs: Eastern Standard Time by default; configurable (#526) — behaviour change
+- On the work site's vCenter 8.0.3, `govc vm.customize -type Windows -tz 85` was refused ("A
+  specified parameter was not correct: Timezone") and the same call without `-tz` accepted.
+  govc reads `-tz` as hex, so that sent index 133, not a time zone. That was a bug in
+  `scripts/lab/test-clone.sh`; the worker sent decimal 85 (GMT Standard Time), never tried there.
+- Windows range VMs now get index 35, Eastern Standard Time, instead of 85, GMT (owner
+  decision 2026-11-23). `tn_vsphere_windows_timezone` (`VSPHERE_WINDOWS_TIMEZONE`, a decimal
+  index checked against Microsoft's table by preflight and the worker) sets another.
+- `scripts/lab/test-clone.sh` sends the same index, in hex (`-tz 23`); `--tz N` (decimal) overrides.
+
 ### Security fixes from the #443 audit
 - **Only the platform administrator configures the AI backend.** `/ai-config` needed only
   `ai_config:write`, which every tenant's administrator holds, so one tenant's admin could
@@ -16,6 +26,17 @@ course production with a local-model fallback, and the cleanup of unsupported su
   there. The routes now also require the platform administrator: an admin of the
   `PLATFORM_TENANT_ID` tenant, or of a single-tenant install. Another tenant's admin now
   gets 403, and the AI settings page shows an error for them.
+
+### Installer
+- **The installer now renders Security Onion's install login.** `VSPHERE_SO_INSTALL_USER` /
+  `VSPHERE_SO_INSTALL_PASSWORD` were never written to `.env.production`, so on an installed
+  host SOC ranges failed at deploy with "no install login" (found on site 2026-11-23, where
+  they had been added to the env file by hand; an upgrade would have dropped them). New
+  installer variables `tn_vsphere_so_install_user` (default `soadmin`, the name the API
+  already used) / `tn_vsphere_so_install_password` (`vault_vsphere_so_install_password`, else
+  `vault_template_linux_password`). Preflight warns on vSphere when either is empty.
+  **Upgrade note:** a site that hand-added other values sets them in the inventory first;
+  the installer now owns these two lines.
 
 ### Classes, roll-call onboarding and the calendars (ADR 0014, #277)
 How to use all of this: [administrator](docs/guides/03-admin-first-day.md),

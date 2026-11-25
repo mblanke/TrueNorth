@@ -23,14 +23,21 @@ PassThroughPattern: ^$
 # internet at large - is refused. AllowUserPorts: upstream port 80 only.
 ForceManaged: 1
 AllowUserPorts: 80
-{% for r in tn_depot_acng_remaps %}
+{% for r in tn_depot_acng_remaps + tn_depot_acng_build_remaps %}
+{% if r.comment is defined %}
+# {{ r.comment }}
+{% endif %}
 Remap-{{ r.name }}: {{ r.merge }} ; {{ r.backends }}
 {% endfor %}
 
-# RPM repositories (Rocky through dnf --setopt=proxy=). repomd.xml is the volatile index;
-# the hashed repodata files and packages it names are immutable.
-VfilePatternEx: (^|/)repodata/repomd\.xml(\.asc|\.key)?$
-PfilePatternEx: (^|/)repodata/[0-9a-f]+-[^/]+\.(xml|sqlite)(\.gz|\.bz2|\.xz|\.zst)?$|\.rpm$
+# File types beyond the package's Debian defaults (anything else is refused):
+# RPM (Rocky through dnf --setopt=proxy=): repomd.xml is the volatile index; the hashed
+# repodata files and packages it names are immutable.
+# Docker's apt repository: its signing key, linux/ubuntu/gpg (volatile: re-checked online).
+# Alpine (greyspace local images): APKINDEX.tar.gz is the volatile index, .apk packages
+# are immutable.
+VfilePatternEx: (^|/)repodata/repomd\.xml(\.asc|\.key)?$|(^|/)linux/ubuntu/gpg$|(^|/)APKINDEX\.tar\.gz$
+PfilePatternEx: (^|/)repodata/[0-9a-f]+-[^/]+\.(xml|sqlite)(\.gz|\.bz2|\.xz|\.zst)?$|\.rpm$|\.apk$
 
 # Keep packages that newer indexes no longer list, so a range built from an older
 # template still finds what it asks for.
