@@ -97,13 +97,19 @@ def test_header_does_not_claim_packer_powers_the_appliances_off():
 # ── pfSense: Packer source ────────────────────────────────────────────
 def test_pfsense_leaves_the_installer_through_shell_and_runs_the_finish():
     keys = _list(_source("pfsense"), "boot_command")
-    install = next(k for k in keys if "<left><enter>" in k)
+    # The installer's dialogs ignore arrow keys and <tab> (site, 2026-11-24: <left><enter> at
+    # "Last Chance" answered NO and <tab><enter> at "Complete" rebooted). Their hotkeys work.
+    assert not any(k.startswith(("<left>", "<right>", "<tab>")) for k in keys), keys
+    # The disk is selected (spacebar) right before the "Last Chance" answer.
+    install = keys[-3]
+    assert keys[-4].startswith("<spacebar><enter>"), keys[-4]
+    assert install.startswith("y<wait"), install
     wait = re.search(r"<wait(\d+)>", install)
     assert wait and int(wait.group(1)) >= 180, install
     # The final dialog's default button is Reboot: a bare "<enter>" there reboots into
-    # pfSense, which never halts (2026-10-21). Leave it through Shell instead.
+    # pfSense, which never halts (2026-10-21). Leave it through Shell (hotkey S) instead.
     leave = keys[-2]
-    assert leave.startswith(("<tab>", "<right>")) and "<enter>" in leave, leave
+    assert leave.startswith("s<wait") and "<enter>" not in leave, leave
     last = keys[-1]
     assert "mount_cd9660 /dev/iso9660/TNPFSENSE /tmp/tncd" in last
     assert last.endswith("sh /tmp/tncd/tn-pfsense-finish.sh<enter>"), last

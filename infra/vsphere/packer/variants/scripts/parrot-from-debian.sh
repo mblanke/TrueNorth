@@ -22,11 +22,33 @@
 # When Parrot rotates its key, replace the block and PARROT_FPR together, from those sources.
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
-APT_OPTS=(-y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
+# Retries and no pipelining: the full toolset is ~2,800 packages through the depot, and under
+# that load some fetches end "503 Connection closed" (site, 2026-11-24: 460 of them).
+APT_OPTS=(-y -o Acquire::Retries=8 -o Acquire::http::Pipeline-Depth=0 -o Acquire::Queue-Mode=access
+          -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold)
 LIST=/etc/apt/sources.list.d/parrot.list
 KEY=/usr/share/keyrings/tn-parrot-archive.asc
 PARROT_FPR="B711822346552E4D92DA02DF7A8286AF0E81EE4A"
 COMPONENTS="main contrib non-free non-free-firmware"
+
+# parrot-core and its upgrades ship their own https sources (https://deb.parrot.sh,
+# https://mirror.parrot.sh/direct). The build proxy cannot tunnel HTTPS, so every Parrot
+# source goes back to http://deb.parrot.sh, which the depot remaps to an HTTPS mirror.
+# Packages stay verified by the pinned key (signed-by), not by the transport. Site fix
+# 2026-11-24.
+parrot_http() {
+  local f
+  for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+    [ -f "$f" ] || continue
+    sed -i -e 's#https://mirror\.parrot\.sh/direct/parrot#http://deb.parrot.sh/parrot#g' \
+           -e 's#https://deb\.parrot\.sh/parrot#http://deb.parrot.sh/parrot#g' "$f"
+  done
+  if grep -rqsE '^[^#]*https://[a-z.]*parrot' /etc/apt/sources.list /etc/apt/sources.list.d/; then
+    echo "parrot: an https Parrot source is left; the build proxy cannot reach it:" >&2
+    grep -rsE '^[^#]*https://[a-z.]*parrot' /etc/apt/sources.list /etc/apt/sources.list.d/ >&2
+    exit 1
+  fi
+}
 
 # A debian13 template built before cleanup.sh dropped the DVD source still lists it, and
 # apt-get update fails on it.
@@ -87,9 +109,12 @@ echo "parrot: repository signed-by ${KEY} (${PARROT_FPR})"
 # 2-3.
 apt-get update -q
 apt-get install "${APT_OPTS[@]}" parrot-core
+parrot_http
 apt-get update -q
 apt-get full-upgrade "${APT_OPTS[@]}"
+parrot_http
 apt-get install "${APT_OPTS[@]}" parrot-interface parrot-desktop-mate parrot-tools-full open-vm-tools-desktop
+parrot_http
 apt-get autoremove -y
 apt-get clean
 
