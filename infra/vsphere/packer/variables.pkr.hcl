@@ -305,6 +305,18 @@ variable "apt_proxy" {
   }
 }
 
+variable "depot_dockerhub_port" {
+  description = "TN-DEPOT01 Nexus docker-proxy connector (Docker Hub) on the depot_url host; greyspace-host pulls through it"
+  type        = number
+  default     = 8082
+}
+
+variable "depot_quay_port" {
+  description = "TN-DEPOT01 Nexus quay-proxy connector (quay.io) on the depot_url host; greyspace-host pulls through it"
+  type        = number
+  default     = 8084
+}
+
 variable "chocolatey_version" {
   description = "Chocolatey version to bootstrap from the depot feed; empty takes the newest stable one there"
   type        = string

@@ -28,6 +28,28 @@ tn_prefetch_choco_internalize: true
 tn_prefetch_choco_defs: "{{ tn_build_repo_dir }}/content/choco"
 tn_prefetch_choco_internalize_script: "{{ tn_build_repo_dir }}/scripts/lab/choco-internalize.py"
 
+# Greyspace (the greyspace-host template; infra/vsphere/packer/files/linux/roles/
+# greyspace-host.sh): its pinned images into the depot's Nexus docker-proxy (Docker Hub)
+# and quay-proxy (quay.io), and its apt (Docker Engine) and Alpine packages through
+# apt-cacher-ng, so the template builds with the depot offline. The lists are kept equal
+# to the script's by tests/contracts/test_depot_docker_mirrors.py.
+tn_prefetch_greyspace: true
+tn_prefetch_registry_hub: "http://{{ tn_depot_ip }}:{{ tn_depot_nexus_docker_proxy_port | default(8082) }}"
+tn_prefetch_registry_quay: "http://{{ tn_depot_ip }}:{{ tn_depot_nexus_quay_proxy_port | default(8084) }}"
+tn_prefetch_registry_platform: linux/amd64
+tn_prefetch_registry_images:
+  - "quay.io/frrouting/frr:10.1.1@sha256:8943ad2991f084de2c6a9560fbbff243e7317a7ff9f18b3da01792e2e980a8be"
+  - "coredns/coredns:1.11.3@sha256:9caabbf6238b189a65d0d6e6ac138de60d6a1c419e5a341fbbb7c78382559c6e"
+  - "nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10"
+  - "axllent/mailpit:v1.27.10@sha256:b1f1be18af530d939a11ee8820b379e0c88eeec204d904bfad68862adced3a5a"
+  - "python:3.12-alpine3.20@sha256:25849f9599e06dfe4d11b552e06f5ac4cc2ad342054eb81f7877e611f6f87c66"
+  - "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
+tn_prefetch_greyspace_alpine_image: "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
+tn_prefetch_greyspace_apt: [ca-certificates, curl, gnupg, nfs-common, open-vm-tools, python3, dnsutils, iptables]
+tn_prefetch_greyspace_docker_apt: [docker-ce, docker-ce-cli, containerd.io, docker-compose-plugin]
+tn_prefetch_greyspace_apk: [unbound, bind-tools, curl, iproute2, chrony, openssl]
+tn_prefetch_docker_key_fpr: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+
 # true: fail the run if any catalogue entry could not be cached (after the depot has been
 # put back offline). false: report only.
 tn_prefetch_strict: false

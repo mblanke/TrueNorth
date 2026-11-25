@@ -100,6 +100,25 @@ tn_depot_acng_remaps:
 # Read it there: sudo grep AdminAuth /etc/apt-cacher-ng/security.conf
 tn_depot_acng_admin_user: tnadmin
 
+# Remaps for the greyspace-host template build, rendered after tn_depot_acng_remaps (a
+# separate key, so site-specific edits of that list never collide with these). HTTPS
+# backends ("; https://host/path") are fetched by apt-cacher-ng itself over TLS; the client
+# still asks for plain http://<merge>/..., so no CONNECT tunnel is ever needed
+# (PassThroughPattern stays ^$). `comment` is written above the Remap line.
+# Designed 2026-11-23, NOT yet proven on site.
+tn_depot_acng_build_remaps:
+  # Docker Engine (infra/vsphere/packer/files/linux/roles/greyspace-host.sh asks for
+  # http://download.docker.com/linux/ubuntu through TN_APT_PROXY).
+  - name: tndocker
+    merge: "download.docker.com/linux/ubuntu"
+    backends: "https://download.docker.com/linux/ubuntu"
+    comment: "Docker Engine apt repository (greyspace-host); HTTPS backend, clients ask over http"
+  # Alpine packages of the Greyspace local images (greyspace/images/*/Dockerfile, APK_MIRROR).
+  - name: tnalpine
+    merge: "dl-cdn.alpinelinux.org/alpine"
+    backends: "https://dl-cdn.alpinelinux.org/alpine"
+    comment: "Alpine packages for the greyspace local images; HTTPS backend, clients ask over http"
+
 # ── Nexus ─────────────────────────────────────────────────────────────
 # 3.70.x is the last Nexus Repository OSS line. 3.77+ is "Community Edition": free, but it
 # shows an EULA that must be accepted and caps usage (components and requests per day).
@@ -109,14 +128,20 @@ tn_depot_nexus_image: "sonatype/nexus3:3.70.4"
 tn_depot_nexus_accept_eula: false
 tn_depot_nexus_data: "{{ tn_depot_data_dir }}/nexus-data"
 tn_depot_nexus_jvm: "-Xms4g -Xmx4g -XX:MaxDirectMemorySize=4g -Djava.util.prefs.userRoot=/nexus-data/javaprefs"
+# Docker connectors (plain HTTP, Nexus' own ports). BUILD/MGMT only: the range NIC admits
+# tn_depot_range_ports (8081, 3142) and nothing else (depot-range-fw.nft.j2), so none of
+# these is reachable from a range; tests/contracts/test_depot_docker_mirrors.py keeps them
+# out of tn_depot_range_ports.
 tn_depot_nexus_docker_proxy_port: 8082
 tn_depot_nexus_docker_hosted_port: 8083
+tn_depot_nexus_quay_proxy_port: 8084
 tn_depot_nexus_api: "http://127.0.0.1:{{ tn_depot_nexus_port }}/service/rest"
 tn_depot_nexus_blobstore: default
 
 tn_depot_choco_upstream: "https://community.chocolatey.org/api/v2/"
 tn_depot_pypi_upstream: "https://pypi.org/"
 tn_depot_docker_upstream: "https://registry-1.docker.io"
+tn_depot_quay_upstream: "https://quay.io"
 
 # Anonymous (range guests, Chocolatey) may only read and browse the Chocolatey group feed.
 # The built-in nx-anonymous role (read on every repository) is replaced on the anonymous user.
@@ -147,10 +172,16 @@ tn_depot_choco_installers_privilege: tn-installers-choco-read
 # lab.auto.pkrvars.hcl (depot_user / depot_password, mode 0600).
 tn_depot_build_read_user: tn-build-read
 tn_depot_build_read_password: "{{ lookup('env', 'TN_DEPOT_BUILD_READ_PASSWORD') or (vault_nexus_build_read_password | default('')) }}"
+# Docker read on the two registry proxies: greyspace-host (derived.pkr.hcl) logs in to
+# <depot>:8082 / :8084 with this user and pulls the pinned Greyspace images by digest.
 tn_depot_build_read_privileges:
   - nx-repository-view-raw-installers-read
   - nx-repository-view-raw-installers-browse
+  - nx-repository-view-docker-docker-proxy-read
+  - nx-repository-view-docker-quay-proxy-read
 tn_depot_prefetch_user: tn-prefetch
+# Docker proxy read: prefetch warms docker-proxy and quay-proxy with the pinned Greyspace
+# images (tn_prefetch registry_prefetch.py), so greyspace-host builds with the depot offline.
 tn_depot_prefetch_privileges:
   - nx-component-upload
   - nx-search-read
@@ -159,6 +190,8 @@ tn_depot_prefetch_privileges:
   - nx-repository-view-nuget-chocolatey-proxy-browse
   - nx-repository-view-raw-installers-*
   - nx-repository-view-docker-docker-hosted-*
+  - nx-repository-view-docker-docker-proxy-read
+  - nx-repository-view-docker-quay-proxy-read
 
 # Every repository body = common + (proxy common) + the entry's own body.
 tn_depot_repo_common:
@@ -205,6 +238,16 @@ tn_depot_nexus_repos:
       proxy: { remoteUrl: "{{ tn_depot_docker_upstream }}", contentMaxAge: 1440, metadataMaxAge: 1440 }
       docker: { v1Enabled: false, forceBasicAuth: false, httpPort: "{{ tn_depot_nexus_docker_proxy_port }}" }
       dockerProxy: { indexType: HUB }
+  # quay.io (Greyspace's FRR image). Docker's registry-mirrors covers Docker Hub only, so
+  # greyspace-host pulls quay images from this connector by digest and re-tags them.
+  - name: quay-proxy
+    format: docker
+    type: proxy
+    proxy: true
+    body:
+      proxy: { remoteUrl: "{{ tn_depot_quay_upstream }}", contentMaxAge: 1440, metadataMaxAge: 1440 }
+      docker: { v1Enabled: false, forceBasicAuth: false, httpPort: "{{ tn_depot_nexus_quay_proxy_port }}" }
+      dockerProxy: { indexType: REGISTRY }
   - name: docker-hosted
     format: docker
     type: hosted

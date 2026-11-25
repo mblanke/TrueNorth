@@ -153,11 +153,6 @@ class TestAIConfigPlatformBoundary:
 
 # ── auth_zones.py:37 (medium) — platform-default auth zones ──────────────
 class TestAuthZonePlatformDefaults:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: any tenant's admin can rewrite or delete platform-default "
-        "auth zones that gate registration for every tenant (auth_zones.py:37)",
-    )
     def test_foreign_tenant_admin_cannot_change_a_platform_default_zone(self, client, db_session, monkeypatch):
         """auth_zones.py:37 (medium): any tenant's admin can rewrite or delete the
         platform-default auth zones that gate registration for every tenant. ``_writable``
@@ -176,6 +171,56 @@ class TestAuthZonePlatformDefaults:
             )
             assert resp.status_code == 403, f"a tenant admin rewrote a platform default: {resp.text}"
             assert client.delete(f"/auth-zones/{shared.id}").status_code == 403
+
+    def test_the_platform_administrator_still_changes_a_platform_default_zone(self, client, db_session, monkeypatch):
+        """The fix must not lock the operator out: the admin of PLATFORM_TENANT_ID's tenant
+        edits and deletes a platform default; another tenant's admin still cannot."""
+        monkeypatch.setenv("PLATFORM_TENANT_ID", DEV_TENANT)
+        _second_tenant(db_session)
+        shared = AuthZonePolicy(id=uuid.uuid4(), zone_name="platform-default-zone-2", tenant_id=None)
+        db_session.add(shared)
+        db_session.commit()
+        with acting_as(UserRole.admin, tenant=OTHER_TENANT):
+            assert client.patch(f"/auth-zones/{shared.id}", json={"zone_name": "x"}).status_code == 403
+        with acting_as(UserRole.admin, tenant=DEV_TENANT):
+            resp = client.patch(
+                f"/auth-zones/{shared.id}", json={"zone_name": "platform-default-zone-2", "require_mfa": True}
+            )
+            assert resp.status_code == 200, resp.text
+            assert client.delete(f"/auth-zones/{shared.id}").status_code == 204
+
+    def test_a_tenant_zone_with_the_registration_zones_name_is_not_platform_policy(self, db_session, monkeypatch):
+        """Review of the auth-zone fix: zone_name is unique platform-wide and the registration
+        lookup had no tenant filter, so a tenant admin who created a zone with the configured
+        name first set the clearance floor and allow-list for every tenant's registration."""
+        from app.identity import auth_zone_denial
+
+        monkeypatch.setenv("PLATFORM_TENANT_ID", DEV_TENANT)
+        _second_tenant(db_session)
+        db_session.add(
+            AuthZonePolicy(
+                id=uuid.uuid4(),
+                zone_name="Registration Zone",
+                tenant_id=uuid.UUID(OTHER_TENANT),
+                clearance_required="unclassified",
+            )
+        )
+        db_session.commit()
+        # Only a foreign tenant's zone carries the name: the platform has none, so fail closed.
+        reason = auth_zone_denial(db_session, {}, None, zone_name="Registration Zone", check_mfa=False)
+        assert reason and "not configured" in reason
+        # The operator's own zone is platform policy.
+        db_session.query(AuthZonePolicy).delete()
+        db_session.add(
+            AuthZonePolicy(
+                id=uuid.uuid4(),
+                zone_name="Registration Zone",
+                tenant_id=uuid.UUID(DEV_TENANT),
+                clearance_required="unclassified",
+            )
+        )
+        db_session.commit()
+        assert auth_zone_denial(db_session, {}, None, zone_name="Registration Zone", check_mfa=False) is None
 
 
 # ── exercise_forge.py:238 (medium) — fallback binds a live lab range ─────

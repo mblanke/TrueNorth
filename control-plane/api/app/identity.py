@@ -23,10 +23,12 @@ a code change:
 
 from __future__ import annotations
 
+import contextlib
 import ipaddress
 import json
 import logging
 import os
+import uuid
 
 from sqlalchemy.orm import Session
 
@@ -186,11 +188,7 @@ def resolve_nation(db: Session, code: str | None) -> Nation | None:
     key = code.strip().upper()
     if not key:
         return None
-    return (
-        db.query(Nation)
-        .filter((Nation.iso_alpha2 == key) | (Nation.iso_alpha3 == key))
-        .first()
-    )
+    return db.query(Nation).filter((Nation.iso_alpha2 == key) | (Nation.iso_alpha3 == key)).first()
 
 
 # ── Auth zone enforcement ──────────────────────────────────────────────
@@ -267,9 +265,20 @@ def auth_zone_denial(
     """
     if not zone_name:
         return None
+    # Platform policy only: a platform default (NULL tenant) or the operator's own tenant's
+    # zone. zone_name is unique platform-wide, so without this a tenant admin could create
+    # a zone with the configured name first and set the clearance floor and IP allow-list
+    # for every tenant's registration (audit #443, review of the auth-zone fix).
+    from .rbac import platform_tenant_id
+
+    owner = AuthZonePolicy.tenant_id.is_(None)
+    platform = platform_tenant_id()
+    if platform:
+        with contextlib.suppress(ValueError):
+            owner = owner | (AuthZonePolicy.tenant_id == uuid.UUID(platform))
     policy = (
         db.query(AuthZonePolicy)
-        .filter(AuthZonePolicy.is_active.is_(True), AuthZonePolicy.zone_name == zone_name)
+        .filter(AuthZonePolicy.is_active.is_(True), AuthZonePolicy.zone_name == zone_name, owner)
         .first()
     )
     if policy is None:
@@ -279,10 +288,7 @@ def auth_zone_denial(
         return f"Auth zone '{policy.zone_name}' requires multi-factor authentication"
 
     if _clearance_rank(claims.get("clearance_level")) < _clearance_rank(policy.clearance_required):
-        return (
-            f"Auth zone '{policy.zone_name}' requires clearance "
-            f"'{policy.clearance_required}'"
-        )
+        return f"Auth zone '{policy.zone_name}' requires clearance '{policy.clearance_required}'"
 
     if not _ip_permitted(policy.ip_whitelist, client_ip):
         return f"Auth zone '{policy.zone_name}' does not permit access from {client_ip or 'unknown'}"

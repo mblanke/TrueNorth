@@ -89,5 +89,8 @@
           (tn_prefetch_linux_results | default({})).values() | map(attribute='failed') | flatten | length == 0
           and 'failed=0 ' in (tn_prefetch_choco_run.stdout | default('failed=0 '))
           and 'failed=0 ' in (tn_prefetch_internalize_run.stdout | default('failed=0 ', true))
+          and (tn_prefetch_registry_run is not defined
+               or (tn_prefetch_registry_run.rc == 0 and 'images ok=' in tn_prefetch_registry_run.stdout
+                   and 'failed=0 ' in tn_prefetch_registry_run.stdout))
         fail_msg: "Some catalogue entries were not cached; see the report above"
       when: tn_prefetch_strict | default(false) | bool
