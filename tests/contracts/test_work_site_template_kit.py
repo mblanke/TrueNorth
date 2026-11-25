@@ -494,10 +494,23 @@ def test_windows_test_clone_uses_the_workers_sysprep_spec():
     text = (LAB / "test-clone.sh").read_text()
     win = text[text.index("      win*)"):text.index("      *)    # Linux: the worker's path")]
     call = win[win.index('govc vm.customize -vm "$vm"'):]
-    for flag in ("-type Windows", "-username TrueNorth", "-org TrueNorth", "-tz 85", '-name "$want_name"',
+    for flag in ("-type Windows", "-username TrueNorth", "-org TrueNorth", '-name "$want_name"',
                  '-ip "$ip"', "-netmask 255.255.255.0", "-pwd "):
         assert flag in call, flag
     assert "-type Windows" in win[: win.index('govc vm.customize -vm "$vm"')]  # the echo line too
+    # #526: no hard-coded time zone (the old "-tz 85" was index 133 to govc, which reads -tz as
+    # HEX). The worker's VSPHERE_WINDOWS_TIMEZONE (decimal, default 35) is passed in hex.
+    assert not re.search(r"-tz\s+[0-9]", win)
+    # Default: Eastern Standard Time, decimal 35 = -tz 23 (owner decision 2026-11-23), as the worker.
+    assert 'WIN_TZ="${VSPHERE_WINDOWS_TIMEZONE:-35}"' in text and "--tz) WIN_TZ=" in text
+    assert 'WIN_TZ="${WIN_TZ:-35}"' in text  # a blank --tz / variable is the default too
+    assert '${tz[@]+"${tz[@]}"}' in call
+    (conv,) = [line.strip() for line in win.splitlines() if "printf '%x'" in line]
+    for decimal, flag in (("35", "-tz 23"), ("85", "-tz 55"), ("035", "-tz 23"), ("0", "-tz 0")):
+        out = subprocess.run(["bash", "-c", f'WIN_TZ="{decimal}"; tz=(); {conv}; echo "${{tz[*]:-}}"'],
+                             capture_output=True, text=True, check=True).stdout.strip()
+        assert out == flag, (decimal, out)
     worker = (ROOT / "control-plane/worker/worker/provisioners/vsphere_infra.py").read_text()
-    spec = worker[worker.index("def windows_customization"):]
-    assert "timeZone=85" in spec and 'fullName="TrueNorth"' in spec and 'orgName="TrueNorth"' in spec
+    spec = worker[worker.index("def windows_customization"):worker.index("# Port mirroring")]
+    assert not re.search(r"timeZone\s*=\s*[0-9]", spec)
+    assert 'fullName="TrueNorth"' in spec and 'orgName="TrueNorth"' in spec

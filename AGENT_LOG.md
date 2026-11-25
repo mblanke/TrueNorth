@@ -65,3 +65,17 @@
   the Linux user to `soadmin` on its finding). Draft PR, not merged.
 - Next: owner confirms the SO template's installer user is `soadmin` with the generic build
   password; on site, move the hand-added values into the inventory before the next upgrade.
+## 2026-11-23 — #526 Windows Sysprep time zone (Mac, agent)
+
+- Branch `fix/526-windows-customize-timezone` off github/main (rc22). Worker no longer
+  hard-codes `timeZone=85`; `VSPHERE_WINDOWS_TIMEZONE` / `tn_vsphere_windows_timezone`
+  (decimal Microsoft index, empty = none = index 0 on the wire) sets one. test-clone.sh
+  takes `--tz N` (decimal) and passes hex to govc. Draft PR only.
+- Open owner decision: the site's govc `-tz 85` was hex (index 133, invalid); decimal 85 was
+  never tried. Site checks: `govc vm.customize -type Windows ... -tz 55` (= 85), and
+  `tzutil /g` on a clone customized without a time zone (expect Dateline Standard Time?).
+  If 85 works, set `tn_vsphere_windows_timezone: 85` or change the default.
+- Update 2026-11-23: owner decided the default is 35 (Eastern Standard Time). Worker,
+  installer (`tn_vsphere_windows_timezone: 35`), compose and test-clone.sh (`-tz 23`) now
+  default to it. Acceptance on site: `scripts/lab/test-clone.sh srv2022` is accepted, and
+  `tzutil /g` in the clone says "Eastern Standard Time".
