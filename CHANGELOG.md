@@ -17,6 +17,17 @@ course production with a local-model fallback, and the cleanup of unsupported su
   `PLATFORM_TENANT_ID` tenant, or of a single-tenant install. Another tenant's admin now
   gets 403, and the AI settings page shows an error for them.
 
+### Installer
+- **The installer now renders Security Onion's install login.** `VSPHERE_SO_INSTALL_USER` /
+  `VSPHERE_SO_INSTALL_PASSWORD` were never written to `.env.production`, so on an installed
+  host SOC ranges failed at deploy with "no install login" (found on site 2026-11-23, where
+  they had been added to the env file by hand; an upgrade would have dropped them). New
+  installer variables `tn_vsphere_so_install_user` (default `soadmin`, the name the API
+  already used) / `tn_vsphere_so_install_password` (`vault_vsphere_so_install_password`, else
+  `vault_template_linux_password`). Preflight warns on vSphere when either is empty.
+  **Upgrade note:** a site that hand-added other values sets them in the inventory first;
+  the installer now owns these two lines.
+
 ### Classes, roll-call onboarding and the calendars (ADR 0014, #277)
 How to use all of this: [administrator](docs/guides/03-admin-first-day.md),
 [instructor](docs/guides/04-instructor-guide.md), [Student](docs/guides/05-student-quick-start.md).
