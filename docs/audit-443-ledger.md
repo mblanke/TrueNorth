@@ -18,7 +18,7 @@ machine-readable list of open findings is:
 grep -rn "mark.xfail" tests/api/test_audit*_443.py tests/worker/test_audit*_443.py tests/api/test_search_old_index.py
 ```
 
-It lists 36 tests today. Two findings (f37, f40) have no test because no unambiguous secure
+It lists 35 tests today. Two findings (f37, f40) have no test because no unambiguous secure
 behaviour could be stated for them.
 
 ## Fixed (rc21, and after rc22 where the Fix column says so)
@@ -36,6 +36,7 @@ behaviour could be stated for them.
 | cmi5 AU LRS proxy blocks the event loop while holding row locks | high | `cmi5/router.py:303` | #496 |
 | "Start lab" during a teardown hands out an already-expired token | low | `routers/integrations.py:948` | commit `18c334df`, markers dropped in `d2d6d3bd` |
 | Any tenant's admin can rewrite or delete platform-default auth zones | medium | `routers/auth_zones.py:37` | fix/443-auth-zone-platform-default (after rc22) |
+| Forge with no `range_id` binds an exercise to any in-tenant range, including a Student's live lab; Run fires on it | medium | `routers/exercise_forge.py:238` | fix/443-forge-fallback-live-lab (after rc22) |
 | Console outlived its sign-in token (closed at token expiry) | high | `ws_auth.py` | #442 (before the audit tests) |
 
 ## Open (strict xfail), by area
@@ -46,7 +47,6 @@ Severity is the finder's. "Test" is the oracle test that flips when it is fixed.
 
 | Finding | Sev | Where | Test |
 |---|---|---|---|
-| Forge with no `range_id` binds an exercise to any in-tenant range, including a Student's live lab; Run fires on it | medium | `routers/exercise_forge.py:238` | `test_forge_fallback_never_binds_a_live_lab_range` |
 | `require_tenant_access` never sees its path parameter, so it passes every cross-tenant request (two reports) | low | `rbac.py:413` | `test_require_tenant_access_enforces_the_path_parameter`, `test_require_tenant_access_rejects_a_cross_tenant_request` |
 | Public/global templates and scenarios are listed to other tenants but 404 by id | low | `routers/templates.py:274` | `test_listed_public_template_of_another_tenant_is_readable_by_id`, `test_listed_public_scenario_of_another_tenant_is_readable_by_id` |
 | Free text reaches indexed label values in search (index migration unproven) | low | `main.py:775` | `test_a_students_free_text_does_not_match_indexed_label_values` |
