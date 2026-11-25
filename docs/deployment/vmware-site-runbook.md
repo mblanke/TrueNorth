@@ -694,7 +694,9 @@ replaces the profile's hard-coded answers with the range's
 records it `running`; the reconcile task (§7.3) reads its status later, verifies the accounts
 and records the outcome.
 
-Before the first SOC range, set on the worker:
+Before the first SOC range, set on the worker (an installed host gets `VSPHERE_SO_INSTALL_*`
+from the installer: `tn_vsphere_so_install_user` / `tn_vsphere_so_install_password`, default
+`soadmin` with the template Linux build password; install/README.md "Range credentials"):
 
 | Setting | Value |
 |---|---|

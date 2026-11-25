@@ -68,3 +68,15 @@
   merged onto it, adds a deterministic regression test (holds the clean-up's savepoint open;
   fails without the lock) and puts the 4409 test's post-socket read under the lock.
 - Next: merge the PR once CI is green.
+
+## 2026-11-23 — installer renders Security Onion's install login (Mac)
+
+- Site finding: env.production.j2 never wrote `VSPHERE_SO_INSTALL_USER` / `_PASSWORD`, so SOC
+  ranges failed "no install login" on an installed host (hand-added on site; an upgrade drops them).
+- Branch `fix/installer-so-install-login` off github/main (rc22): `tn_vsphere_so_install_user`
+  (default `soadmin`, the API's name) / `tn_vsphere_so_install_password`
+  (`vault_vsphere_so_install_password`, else `vault_template_linux_password`); preflight quote
+  guard + vSphere warning; docs, CHANGELOG, tests. Adversarial review done (default changed from
+  the Linux user to `soadmin` on its finding). Draft PR, not merged.
+- Next: owner confirms the SO template's installer user is `soadmin` with the generic build
+  password; on site, move the hand-added values into the inventory before the next upgrade.
