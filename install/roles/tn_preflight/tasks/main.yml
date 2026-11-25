@@ -135,12 +135,15 @@
     _vals: >-
       {{ [tn_template_windows_admin_password | default('') | string,
           tn_template_linux_user | default('') | string,
-          tn_template_linux_password | default('') | string] }}
+          tn_template_linux_password | default('') | string,
+          tn_vsphere_so_install_user | default('') | string,
+          tn_vsphere_so_install_password | default('') | string] }}
   ansible.builtin.assert:
     that: _vals | select('search', "['\\n\\r]") | list | length == 0
     fail_msg: >-
-      vault_template_windows_admin_password, tn_template_linux_user and
-      vault_template_linux_password must not contain a single quote or a newline.
+      vault_template_windows_admin_password, tn_template_linux_user,
+      vault_template_linux_password, tn_vsphere_so_install_user and
+      tn_vsphere_so_install_password must not contain a single quote or a newline.
     success_msg: "template build login: no quotes or newlines"
 
 # ADR 0013 §3: every built range VM is proven not to accept its golden template's password.
@@ -158,6 +161,24 @@
       accepts the golden template's password, and refuses to start. Set both (the Packer build
       values), or set tn_range_template_login_check: warn to build without that proof.
     success_msg: "template-login check: {{ tn_range_template_login_check | default('enforce') }}"
+
+# Security Onion's build login (VSPHERE_SO_INSTALL_USER / _PASSWORD; default: soadmin with the
+# template Linux build password). Without it a SOC range's so-setup can log in only as the
+# range's role: admin account, if it declares one; with none: "no install login" at deploy.
+# A warning, not a failure: a site with no Security Onion ranges does not need it. Never
+# prints a value.
+- name: Preflight — Security Onion install login is set (vSphere)
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: tn_vsphere_so_install_user or tn_vsphere_so_install_password is empty (default:
+      soadmin / vault_vsphere_so_install_password, else vault_template_linux_password). SOC
+      ranges cannot log in to their Security Onion node as its build login to run so-setup
+      (without a role: admin account: "no install login"). Set vault_template_linux_password,
+      or vault_vsphere_so_install_password if the Security Onion template has its own.
+  when:
+    - tn_uses_vcenter | bool
+    - (tn_vsphere_so_install_user | default('') | string | length) == 0
+      or (tn_vsphere_so_install_password | default('') | string | length) == 0
 
 # SharePoint SE's product key goes into .env.production single-quoted; the worker refuses a
 # malformed one at deploy anyway. Never prints the key.

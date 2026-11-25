@@ -445,6 +445,16 @@ tn_range_default_password: "{{ vault_range_default_password | default('') }}"
 tn_template_windows_admin_password: "{{ vault_template_windows_admin_password | default('') }}"
 tn_template_linux_user: ubuntu
 tn_template_linux_password: "{{ vault_template_linux_password | default('') }}"
+# Security Onion's build login (VSPHERE_SO_INSTALL_USER / VSPHERE_SO_INSTALL_PASSWORD): the
+# user created by hand in the SO installer, which the worker logs in as (guest operations +
+# sudo) to run so-setup per range (vsphere_securityonion.py; vmware-site-runbook.md §7.2).
+# User: soadmin, the name the API, the worker and the docs use (accounts.DEFAULT_SO_USER).
+# Password: vault_vsphere_so_install_password, else the generic template build password
+# (ADR 0012 §5). The API gets the user name only (the node's generated staff login). Either
+# empty: setup logs in as the range's role: admin account, if it declares one (works only
+# for a template built with it); with none, the SOC range fails "no install login".
+tn_vsphere_so_install_user: soadmin
+tn_vsphere_so_install_password: "{{ vault_vsphere_so_install_password | default(tn_template_linux_password, true) }}"
 # ADR 0013 §3 template-login check: enforce (default) or warn.
 tn_range_template_login_check: enforce
 # Deploy-time setup of the Exchange 2019 / SharePoint (2019, SE) / MECM role images

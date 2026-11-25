@@ -1148,6 +1148,14 @@ Two vault settings cover machines with no declared account:
   VM, which must fail; `RANGE_TEMPLATE_LOGIN_CHECK=enforce|warn`, default `enforce`). The API
   gets the Linux user name only. Staff reveal range passwords one at a time on the range's
   Credentials panel, each reveal audited; the wiki holds no credentials.
+- `tn_vsphere_so_install_user` (default `soadmin`) / `tn_vsphere_so_install_password`
+  (`vault_vsphere_so_install_password`, else `vault_template_linux_password`), rendered as
+  `VSPHERE_SO_INSTALL_USER` / `VSPHERE_SO_INSTALL_PASSWORD`: Security Onion's build login,
+  the user created in the SO installer with the generic build password. The worker logs in
+  as it (guest operations and `sudo`) to run so-setup on a SOC range's Security Onion node;
+  the API gets the user name only (that node's generated staff login). Either empty
+  (vSphere): preflight warns, and a SOC range whose template declares no `role: admin`
+  account fails at deploy with "no install login".
 - `vault_range_default_password`: **ignored** since ADR 0013 (no site-wide range password);
   preflight says so when it is set.
 
