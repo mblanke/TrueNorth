@@ -217,12 +217,6 @@ class TestAIConfigPlatformBoundaryCompanions:
 
 # ── auth_zones.py:37 (medium) — companion for TestAuthZonePlatformDefaults ──
 class TestAuthZonePlatformDefaultsCompanions:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: any tenant's admin can rewrite or delete platform-default "
-        "auth zones that gate registration for every tenant (auth_zones.py:37) — "
-        "companion",
-    )
     def test_foreign_tenant_admin_cannot_delete_a_platform_default_zone(self, client, db_session, monkeypatch):
         """Delete-branch companion for
         test_foreign_tenant_admin_cannot_change_a_platform_default_zone: the oracle

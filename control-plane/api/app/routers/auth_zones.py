@@ -7,8 +7,9 @@ Zone-based authentication policies (FIDO2, Kerberos, session tokens).
 Tenancy: a zone with a ``tenant_id`` belongs to that tenant; a zone with a NULL
 ``tenant_id`` is a platform default (``seed.seed_auth_zones``) that every tenant sees.
 Callers see their own zones plus the defaults, and a foreign tenant's zone is 404.
-Changing a platform default changes it for every tenant, so that also needs
-``tenant:update`` (platform-level), not only the router's ``user:update``.
+Changing a platform default changes it for every tenant, so that needs the platform
+administrator (``rbac.is_platform_admin``), not only the router's ``user:update``.
+``tenant:update`` is held by every tenant's admin, so it is not a platform check (audit #443).
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from sqlalchemy.orm import Session
 from ..auth import CurrentUser, get_current_user
 from ..db import get_db
 from ..models import AuthZonePolicy
-from ..rbac import Permission, require_permission, user_has_permission
+from ..rbac import Permission, is_platform_admin, require_permission
 from ..schemas import AuthZonePolicyIn, AuthZonePolicyOut
 from ..tenancy import get_owned_or_global, tenant_uuid
 
@@ -31,13 +32,18 @@ from ..tenancy import get_owned_or_global, tenant_uuid
 # allow-lists. Changing these changes who can get in.
 #
 # Every route here was previously reachable with no credentials at all.
-router = APIRouter(prefix="/auth-zones", tags=["Directory"], dependencies=[Depends(require_permission(Permission.USER_UPDATE))])
+router = APIRouter(
+    prefix="/auth-zones", tags=["Directory"], dependencies=[Depends(require_permission(Permission.USER_UPDATE))]
+)
 
 
 def _writable(db: Session, zone_id: uuid.UUID, user: CurrentUser) -> AuthZonePolicy:
     zone = get_owned_or_global(db, AuthZonePolicy, zone_id, user, not_found="Zone not found")
-    if zone.tenant_id is None and not user_has_permission(user, Permission.TENANT_UPDATE):
-        raise HTTPException(403, "Platform default zones need tenant:update to change")
+    if zone.tenant_id is None and not is_platform_admin(user, db):
+        raise HTTPException(
+            403,
+            "Platform default zones can only be changed by the platform administrator (set PLATFORM_TENANT_ID on a multi-tenant install)",
+        )
     return zone
 
 
@@ -61,7 +67,9 @@ def list_zones(db: Session = Depends(get_db), user: CurrentUser = Depends(get_cu
 
 
 @router.post("", response_model=AuthZonePolicyOut, status_code=201)
-def create_zone(payload: AuthZonePolicyIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)):
+def create_zone(
+    payload: AuthZonePolicyIn, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)
+):
     zone = AuthZonePolicy(
         zone_name=payload.zone_name,
         description=payload.description,
