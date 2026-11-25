@@ -540,6 +540,13 @@ class TestRequireTenantAccess:
         c = app_for(UserRole.instructor, DEV_TENANT)
         assert c.get(f"/tenants/{DEV_TENANT.upper()}/users").status_code == 200
         assert c.get("/nope").status_code == 500
+        # OTHER_TENANT has hex letters, so upper-casing really changes the string: this is the
+        # case that fails without the UUID canonicalisation (DEV_TENANT is digits only).
+        assert OTHER_TENANT.upper() != OTHER_TENANT
+        other = app_for(UserRole.instructor, OTHER_TENANT)
+        assert other.get(f"/tenants/{OTHER_TENANT.upper()}/users").status_code == 200
+        # The miswired route is refused for the platform administrator too.
+        assert app_for(UserRole.admin, DEV_TENANT).get("/nope").status_code == 500
         # An admin of an ordinary tenant is checked like anyone else; the operator crosses.
         assert app_for(UserRole.admin, OTHER_TENANT).get(f"/tenants/{DEV_TENANT}/users").status_code == 403
         assert app_for(UserRole.admin, DEV_TENANT).get(f"/tenants/{OTHER_TENANT}/users").status_code == 200
