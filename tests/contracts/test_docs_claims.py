@@ -177,3 +177,22 @@ def test_every_guide_carries_the_same_version_stamp_and_it_is_not_stale():
     a, n = _release_key(applies), _release_key(newest)
     stale = a[:3] < n[:3] or (a[:3] == n[:3] and n[3] - a[3] > 2)
     assert not stale, f"the guides apply to {applies} but {newest} exists: re-read them and bump the stamp"
+
+
+def test_the_docs_name_the_so_install_login_variables_the_installer_has():
+    """Security Onion's install login (found missing on site 2026-11-23): every doc that tells
+    an installer to set it names variables that group_vars and env.production.j2 really have."""
+    group_vars = (ROOT / "install/inventory/group_vars/all/main.yml").read_text(encoding="utf-8")
+    env_j2 = (ROOT / "install/roles/tn_config/templates/env.production.j2").read_text(encoding="utf-8")
+    for var, key in (("tn_vsphere_so_install_user", "VSPHERE_SO_INSTALL_USER"),
+                     ("tn_vsphere_so_install_password", "VSPHERE_SO_INSTALL_PASSWORD")):
+        assert re.search(rf"^{var}:", group_vars, re.M), var
+        assert f"{key}='{{{{ {var} " in env_j2, key
+        for doc in ("install/README.md", "docs/deployment/vmware-site-runbook.md"):
+            assert var in (ROOT / doc).read_text(encoding="utf-8"), (doc, var)
+    vault_example = (ROOT / "install/inventory/group_vars/all/vault.yml.example").read_text(encoding="utf-8")
+    assert re.search(r"^vault_vsphere_so_install_password:", vault_example, re.M)
+    assert "vault_vsphere_so_install_password" in group_vars
+    guide = (ROOT / "docs/guides/02-install-guide.md").read_text(encoding="utf-8")
+    for name in ("tn_vsphere_so_install_user", "vault_vsphere_so_install_password", "`soadmin`"):
+        assert name in guide, name

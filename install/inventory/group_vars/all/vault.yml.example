@@ -45,6 +45,10 @@ vault_range_default_password: ""
 # No single quote or newline.
 vault_template_windows_admin_password: ""
 vault_template_linux_password: ""
+# Security Onion's install login password (user tn_vsphere_so_install_user, default soadmin),
+# only if the SO template was built with a password other than vault_template_linux_password.
+# Empty: vault_template_linux_password. No single quote or newline.
+vault_vsphere_so_install_password: ""
 
 # ── SharePoint product key (optional) ─────────────────────────────────
 # The key (XXXXX-XXXXX-XXXXX-XXXXX-XXXXX), from the Visual Studio subscription, for the
