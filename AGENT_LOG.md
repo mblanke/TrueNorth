@@ -65,29 +65,3 @@
   the Linux user to `soadmin` on its finding). Draft PR, not merged.
 - Next: owner confirms the SO template's installer user is `soadmin` with the generic build
   password; on site, move the hand-added values into the inventory before the next upgrade.
-## 2026-11-23 — work-site golden-image kit fixes ported (Mac)
-
-- Branch `fix/golden-image-kit-site-2026-11-23` off github/main (v1.2.0-rc22), one draft PR.
-  Ports the day's TN-MGMT01 template-kit edits (captured in ~/.truenorth-work/
-  site-capture-20261123/, reasons in its template-kit-server-edits.log) with tests:
-  cloud-init re-enable/apt update/Kali mirror, Rocky marker, Debian use_mirror + cdrom
-  source removal (cleanup.sh), srv2025 NVMe, srv2019 index 2, pfSense lsilogic-sas +
-  pkgs.lock + SRV-following resolve, VyOS ethernet-node removal, build record 0644,
-  "Host copies/<host>" folders, test-clone no -tz (#526) + IP slots, kali-gui and parrot
-  variants, depot remaps (tnubusec, tnparrot), promote stopgap (#527), clear-unstamped
-  (hooked into build-phase after a build) and friendly-tags, isos.conf filled.
-- Not proven on site: pfSense controller, VyOS clones (still no Tools), parrot, srv2019.
-- Not ported (separate decision): the site build dashboard (tn_build_dashboard.py).
-- Follow-ups: drop the vsphere-iso.parrot source / build.sh ORDER entry; worker
-  timeZone=85 (#526); Promote button (#527).
-- Next: CI on the draft PR; adversarial-reviewer (provisioning change); then on site, rebuild
-  pfsense and vyos with these files.
-- Same day, after adversarial review of PR #530 (second commit): clear-unstamped-copies.sh
-  fails closed on any govc read error and refuses (without --force) while
-  TN_TEMPLATE_ALLOW_UNPROMOTED lets ranges use the copies; parrot no longer uses
-  [trusted=yes]: Parrot's key (B711822346552E4D92DA02DF7A8286AF0E81EE4A, checked on
-  parrotsec.org's key-verification page and deb.parrot.sh/parrot/misc/parrotsec.gpg) is
-  committed in the script, signed-by only, nothing in trusted.gpg.d. Also: SRV targets limited
-  to *.netgate.com/*.pfsense.org:443, explicit test-IP slots for every variant, promote
-  script dry-run by default (--yes) and calls out an older promoted build, catalogue parrot
-  version "7 (echo, rolling)". Not done: pfSense packagesite signature check.
