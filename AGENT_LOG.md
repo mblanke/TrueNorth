@@ -1,20 +1,5 @@
 # Agent work log
 
-## 2026-11-23 — Mac — #527 Golden images: promote in place, sort and filter
-
-- Branch `feat/527-golden-images-promote-ui` off github/main (rc22). The Golden images tab
-  (Infrastructure page) already had builds + Promote since #240, but the builds opened in a
-  section below the whole table and the reason was an optional field at its foot, so on a
-  long list nothing visible happened. Now: builds open under the image row; Promote opens a
-  dialog that requires a reason (≤500, kept in the audit entry); refusals shown under the
-  image in plain words; status / promoted filters; default sort puts built-but-unpromoted
-  images first with a "Needs promotion" flag. No API change.
-- Tests: Karma specs (component + dialog); browser journey
-  `test_admin_promotes_a_golden_image_build_with_a_reason` (real API, asserts the audit reason).
-- Not verified: why `can_promote` hid the button at the work site, if it did. It is true only
-  for an admin of PLATFORM_TENANT_ID (or a single-tenant install); check that on TN-MGMT01.
-- Next: owner reviews the draft PR.
-
 ## 2026-11-16 — Mac — last-mile plan, rc20 failed, rc21 published
 
 - **Done:** audit #443 fixes merged (#482, #489-#496); rc20 tagged but its Release failed on a
