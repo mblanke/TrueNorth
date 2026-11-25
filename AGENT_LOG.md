@@ -65,19 +65,3 @@
   the Linux user to `soadmin` on its finding). Draft PR, not merged.
 - Next: owner confirms the SO template's installer user is `soadmin` with the generic build
   password; on site, move the hand-added values into the inventory before the next upgrade.
-## 2026-11-23 — depot mirrors and role media (Mac)
-
-- Branch `fix/depot-mirrors-and-role-media` from github/main 5520dbe0 (rc22), draft PR.
-- Part A (security/Parrot acng remaps) dropped here: PR #530 carries them; this PR merges after #530.
-- B (designed tonight, NOT proven on site): Docker apt repo + Alpine via acng HTTPS-backend
-  remaps; Nexus `quay-proxy` on 8084; greyspace-host pulls every pinned image by digest from
-  the depot proxies (login as tn-build-read), re-tags on the containerd image store, checks
-  each exact reference, seals daemon.json; Dockerfiles get APK_MIRROR; prefetch warms images
-  (registry_prefetch.py), Docker Engine debs and apk packages. Tested locally with
-  docker:29-dind, registry:2 pull-through and a real apt-cacher-ng with the rendered config.
-- C: Microsoft role prerequisites downloaded to ~/.truenorth-work/role-installers (Mac only,
-  not in the repo): MANIFEST.tsv + UPLOAD.md. MANUAL: mecm adk.zip, adkwinpe.zip
-  (adksetup /layout on Windows), configmgr-prereqs.zip.
-- Next (site, 08:30): re-run depot.yml (creates quay-proxy, widens tn-build-read), prefetch.yml,
-  upload role installers per UPLOAD.md, build greyspace-host. The site capture shows
-  `Offlinemode: 0` on the running depot: check it is meant to be online.
