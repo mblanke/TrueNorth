@@ -66,3 +66,15 @@
   Dashboard: http://10.30.30.20:8099 (office network).
 - Next (on site 2026-11-24 08:30): read overnight results; vyos console session; win10 watched boot;
   upload role installers to the depot; greyspace mirrors; promote what passed; set depot caches offline.
+
+## 2026-11-24 — work site day 2, then merges from home (Mac)
+
+- On site: srv2022, win11-24h2 and pfsense promoted on the owner's word; 16 of 27 images built
+  and tested. Record: docs/lab-checks/audit-2026-11-23.md, "Follow-up on site, 2026-11-24".
+- Open on site: parrot (fifth run, result UNKNOWN), srv2019 and win10-22h2 (VMware Tools never
+  installs in the guest; cause not found), vyos, role installers, greyspace mirrors.
+  ubuntu-webstack passed; promotion approved, not done.
+- From home the lab is unreachable (10.30.30.20). Overnight: the owner approved merging the open
+  pull requests; each merged only on full CI green against main with a review on record.
+- Next on site: check the parrot5 result; promote ubuntu-webstack; srv2019/win10 Tools
+  diagnosis from the console (steps in the session notes); port the depot watchdog.
