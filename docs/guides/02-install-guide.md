@@ -440,7 +440,7 @@ once, and kept):
 | `vault_ldap_bind_password` | The AD bind account's password |
 | `vault_vsphere_password` | `<svc-truenorth>`'s vCenter password |
 | `vault_template_windows_admin_password` | The golden templates' Windows build password, from the build record of the test site where the templates were made (06 §4). Required: range builds check that no VM still accepts it |
-| `vault_template_linux_password` | The golden templates' Linux build password, from the same record |
+| `vault_template_linux_password` | The golden templates' Linux build password, from the same record. It is also the password of Security Onion's install login, `soadmin` (`VSPHERE_SO_INSTALL_*`; `tn_vsphere_so_install_user` in `main.yml`), unless you set `vault_vsphere_so_install_password`; without it SOC ranges fail at deploy |
 | `vault_openai_api_key` | Only with AI: the LiteLLM master key (Appendix C). Otherwise empty |
 
 Then encrypt it. **[DECISION]** the vault password; store it with the escrow key's

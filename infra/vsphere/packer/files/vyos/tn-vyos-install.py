@@ -36,13 +36,15 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 INSTALLER = ["/usr/libexec/vyos/op_mode/image_installer.py", "--action", "install"]
-TOTAL_TIMEOUT = 30 * 60      # the whole install
+TOTAL_TIMEOUT = 30 * 60  # the whole install
 # A prompt nobody answers: give up after this long idle (TN_VYOS_STUCK_AFTER: tests).
 STUCK_AFTER = float(os.environ.get("TN_VYOS_STUCK_AFTER", "120"))
-SETTLE = 0.7                 # quiet time before a prompt is answered
-MAX_SAME_ANSWER = 3          # the same prompt again and again (a rejected password): give up
-CLOUD_CFG = "# TrueNorth: the per-range config arrives as VMware guestinfo (worker/vyos_config.py)\n" \
-            "datasource_list: [ VMware, NoCloud, None ]\n"
+SETTLE = 0.7  # quiet time before a prompt is answered
+MAX_SAME_ANSWER = 3  # the same prompt again and again (a rejected password): give up
+CLOUD_CFG = (
+    "# TrueNorth: the per-range config arrives as VMware guestinfo (worker/vyos_config.py)\n"
+    "datasource_list: [ VMware, NoCloud, None ]\n"
+)
 # Publishes the finish marker as guestinfo.tn.template.finish on every boot: the test
 # clone's proof (scripts/lab/test-clone.sh --mode finish) that this finish ran.
 MARKER_UNIT = """\
@@ -139,7 +141,7 @@ def answer_for(pending: str, password: str) -> tuple[str, str] | None:
         ("raid", r"\bRAID\b", "n"),
         ("wipe", r"delete all data", "y"),
         ("all-space", r"use all the free space", "y"),
-        ("ssh-keys", r"SSH host keys", "n"),     # clones must not share host keys
+        ("ssh-keys", r"SSH host keys", "n"),  # clones must not share host keys
         ("copy-config", r"(active configuration|copy (it|the config))", "y"),
         ("boot-config", r"Which file would you like as boot config", None),
     ]
@@ -238,6 +240,29 @@ def admin_hash_of(config_boot: str) -> str | None:
     return m.group(1) if m else None
 
 
+def drop_ethernet_nodes(config_boot: str) -> tuple[str, int]:
+    """config.boot without any ``ethernet ethN { ... }`` node, and how many were removed.
+
+    A pinned hw-id never matches a clone's MAC, and current VyOS refuses an ethernet
+    interface without one ("Configuration error"), so tn-vyos-prep.sh deleting only the
+    hw-id is not enough. With no node VyOS binds the NICs itself; the per-range config
+    (worker/vyos_config.py) then sets them."""
+    out, kept_from, removed = [], 0, 0
+    for m in re.finditer(r"^[ \t]*ethernet eth\d+ \{\n", config_boot, re.M):
+        if m.start() < kept_from:  # inside a node already removed
+            continue
+        depth, j = 1, m.end()
+        while depth and j < len(config_boot):
+            depth += {"{": 1, "}": -1}.get(config_boot[j], 0)
+            j += 1
+        end = config_boot.find("\n", j - 1)
+        out.append(config_boot[kept_from : m.start()])
+        kept_from = len(config_boot) if end < 0 else end + 1
+        removed += 1
+    out.append(config_boot[kept_from:])
+    return "".join(out), removed
+
+
 def finish_image(root: Path) -> Path:
     """Write the cloud-init datasource list, the finish marker and the unit that publishes it
     into the installed image's persistent layer (its overlay's rw/ directory)."""
@@ -248,14 +273,18 @@ def finish_image(root: Path) -> Path:
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(CLOUD_CFG, encoding="utf-8")
     boot = images[0] / "rw/opt/vyatta/etc/config/config.boot"
-    if boot.is_file() and "hw-id" in boot.read_text(encoding="utf-8", errors="replace"):
-        print(f"[tn-vyos-install] warning: {boot} still pins hw-id (tn-vyos-prep.sh did not take)")
+    if boot.is_file():
+        text, removed = drop_ethernet_nodes(boot.read_text(encoding="utf-8", errors="replace"))
+        if removed:
+            boot.write_text(text, encoding="utf-8")
+            print(f"[tn-vyos-install] removed {removed} ethernet interface node(s) from {boot}")
     rw = images[0] / "rw"
     # admin_ack=1: this template acknowledges a range admin hash (issue #248); the worker
     # waits for that acknowledgement only from a template whose marker says so.
     (rw / "etc/tn-template-finish.txt").write_text(
         f"finished={time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\nimage={images[0].name}\nadmin_ack=1\n",
-        encoding="utf-8")
+        encoding="utf-8",
+    )
     template_hash = admin_hash_of(boot.read_text(encoding="utf-8", errors="replace")) if boot.is_file() else None
     if template_hash:
         fp = hashlib.sha256(template_hash.encode()).hexdigest()[:16]

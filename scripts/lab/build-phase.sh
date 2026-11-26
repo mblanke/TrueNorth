@@ -28,7 +28,8 @@
 #   --env-file FILE  default /srv/truenorth/config/.env.production (vCenter for govc)
 #   --app-dir DIR    installed app (compose file), default /srv/truenorth/app
 #
-# After each template builds: build.sh replicate <id> (esx02-04), test-clone.sh <id>
+# After each template builds: clear-unstamped-copies.sh <id> (today's unstamped copies,
+# which replicate would refuse), build.sh replicate <id> (esx02-04), test-clone.sh <id>
 # (decision 9), then register_golden_image_inprocess.py marks it built. Every step that
 # changes vCenter says what it will do and asks y/N, unless --yes. Builds are approved once
 # per phase (decision 11). Re-running a phase is safe: existing templates are not rebuilt,
@@ -41,7 +42,7 @@ set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-usage() { sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 REPO="$(cd "$LAB_DIR/../.." && pwd)"
 PACKER_DIR="$REPO/infra/vsphere/packer"
 PKRVARS="${TN_PKRVARS:-$PACKER_DIR/lab.auto.pkrvars.hcl}"   # TN_PKRVARS: tests only (Packer reads the default)
@@ -69,6 +70,7 @@ RANGE_HOSTS="${RANGE_HOSTS:-esx02 esx03 esx04}"
 DRS_VM_GROUP="tn-mgmt01-vm"; DRS_HOST_GROUP="tn-build-host"; DRS_RULE="tn-mgmt01-should-run-on-${BUILD_HOST}"
 
 PHASE=""; ONLY=""; REBUILD=0; NO_TEST=0; SSH_PUB=""; DRY=0
+BUILT_NOW=""   # the id build_and_post / phase_variants just built in this run (post_build reads it)
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --yes) ASSUME_YES=1 ;;
@@ -97,7 +99,9 @@ APPLY=0
 [[ "$DRY" == "1" ]] || APPLY=1
 
 # ── phase contents (ADR 0012 decision 11) ─────────────────────────────
-BASE_IDS="srv2022 ubuntu-lts win11-24h2 kali rocky debian13 parrot srv2025"
+# parrot is not here: its 7.3 ISO has no debian-installer; it is a variant of debian13
+# (infra/vsphere/packer/variants/parrot.pkrvars.hcl, built in the variants phase).
+BASE_IDS="srv2022 ubuntu-lts win11-24h2 kali rocky debian13 srv2025"
 BASE_PENDING="win10-22h2:iso_win10 srv2019:iso_srv2019"   # added once their ISO is in
 APPLIANCE_IDS="pfsense vyos securityonion"
 DERIVED_IDS="remnux sift svc-emulators greyspace-host ca-host usersim cloudlog-emu"  # c2-server: gated
@@ -224,6 +228,19 @@ post_build() {
   local id="$1" mode="$2"; shift 2
   local yes=(); [[ "$ASSUME_YES" == "1" ]] && yes=(--yes)
   step "$id: replicate to $RANGE_HOSTS, test clone ($mode), register"
+  # Built in this run: today's copies made from the template before it was recorded carry no
+  # stamp, and replicate refuses to reuse them (ADR 0013 §2). Offer to remove those (only
+  # unstamped templates of this id and date; clear-unstamped-copies.sh asks y/N itself). It
+  # removes nothing while TN_TEMPLATE_ALLOW_UNPROMOTED lets ranges clone those copies (the
+  # work site's setting): then it lists them and the operator decides (--force).
+  local clear=("$LAB_DIR/clear-unstamped-copies.sh" "$id" --date "${REPLICA_DATE:-$(date +%Y%m%d)}"
+               --env-file "$ENV_FILE")
+  if [[ "$BUILT_NOW" == "$id" && "$DRY" == "1" ]]; then
+    echo "  [dry-run] ${clear[*]} --apply"
+  elif [[ "$BUILT_NOW" == "$id" ]]; then
+    "${clear[@]}" --apply ${yes[@]+"${yes[@]}"} | sed 's/^/  /' \
+      || warn "$id: unstamped copies of today kept; replicate refuses them (REPLICA_DATE, or remove them)"
+  fi
   if [[ "$DRY" == "1" ]]; then
     echo "  [dry-run] RANGE_HOSTS='$RANGE_HOSTS' $PACKER_DIR/build.sh replicate $id"
     [[ "$NO_TEST" == "1" ]] || echo "  [dry-run] $LAB_DIR/test-clone.sh $id --mode $mode --hosts '$RANGE_HOSTS'"
@@ -252,10 +269,12 @@ build_and_post() {
     return 1
   elif [[ "$DRY" == "1" ]]; then
     echo "  [dry-run] (cd $PACKER_DIR && ./build.sh $id)"
+    BUILT_NOW="$id"
   else
     step "$id: packer build (log: $PACKER_DIR/logs/)"
     env -u TN_API_URL -u TN_API_TOKEN -u REPLICATE_AFTER_BUILD "$PACKER_DIR/build.sh" "$id" \
       || { warn "$id: build failed"; return 1; }
+    BUILT_NOW="$id"
   fi
   post_build "$id" "$mode" "$@"
 }
@@ -643,9 +662,10 @@ phase_variants() {
       warn "$name: Windows variant without depot_url installs from the community feed, which the build network cannot reach"
     fi
     if exists "$name" && [[ "$REBUILD" != "1" ]]; then info "$name: template exists; not rebuilt"
-    elif [[ "$DRY" == "1" ]]; then echo "  [dry-run] (cd $PACKER_DIR && ./build.sh variant $name)"
+    elif [[ "$DRY" == "1" ]]; then echo "  [dry-run] (cd $PACKER_DIR && ./build.sh variant $name)"; BUILT_NOW="$name"
     else
       env -u TN_API_URL -u TN_API_TOKEN "$PACKER_DIR/build.sh" variant "$name" || { warn "$name: build failed"; failed=1; continue; }
+      BUILT_NOW="$name"
     fi
     fam="$(variant_meta "$f" variant_os_family)"; ver="$(variant_meta "$f" variant_version)"
     role="$(variant_meta "$f" variant_description)"; aliases="$(variant_meta "$f" variant_os_aliases)"

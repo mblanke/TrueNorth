@@ -910,3 +910,87 @@ def test_instructor_sees_the_live_class_and_a_student_is_refused(world, visit):
     expect(sam.get_by_text("Learning signal")).to_have_count(0)
     assert asked == [], asked
     assert Api(world, world.sam).get(f"/ops/exercises/{ex['id']}/class").status_code == 403
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# (8) Golden images (#527): the platform administrator promotes a registered build from the
+#     Golden images tab, with a reason that lands in the audit entry; range ops, who can read
+#     the library, are offered no Promote button and the API refuses them.
+# ══════════════════════════════════════════════════════════════════════════════════════════
+def test_admin_promotes_a_golden_image_build_with_a_reason(world, visit):
+    from app.golden_image_builds.models import GoldenImageBuild
+    from app.models import GoldenImage
+    from playwright.sync_api import expect
+
+    db = world.db
+    tag = uuid.uuid4().hex[:4]
+    build_id = f"ubuntu-2404-{tag}"
+    reason = "journey: passed the test clone on esx02"
+    waiting = GoldenImage(id=uuid.uuid4(), catalogue_id=f"aaa-journey-{tag}", os_family="linux", hypervisor="vsphere",
+                          template_name="ubuntu-2404", build_status="built")
+    planned = GoldenImage(id=uuid.uuid4(), catalogue_id=f"aab-planned-{tag}", os_family="linux",
+                          hypervisor="vsphere", build_status="planned")
+    db.add_all([waiting, planned])
+    db.flush()
+    db.add(GoldenImageBuild(golden_image_id=waiting.id, build_id=build_id, template_name="ubuntu-2404",
+                            checksum="a" * 64, build_date=datetime.now(UTC).date(),
+                            copies=json.dumps({"esx02": "ubuntu-2404@esx02-20261123"}), registered_by="kit"))
+    db.commit()
+
+    # Range ops read the library and the builds, but get no Promote button, and the API refuses.
+    ops = visit(world.range_ops, "/infrastructure")
+    ops.get_by_role("tab", name=re.compile("Golden images")).click()
+    ops.get_by_test_id(f"gi-open-{waiting.catalogue_id}").click()
+    expect(ops.get_by_test_id(f"gi-build-{build_id}")).to_be_visible()
+    expect(ops.get_by_test_id(f"gi-promote-{build_id}")).to_have_count(0)
+    refused = Api(world, world.range_ops).post(f"/golden-images/{waiting.id}/builds/{build_id}/promote",
+                                               json={"reason": "not mine to do"})
+    assert refused.status_code == 403, refused.text
+
+    # The admin: the image waiting for a promotion is on top and flagged; the status filter
+    # hides it under "Planned"; under "Built" the admin opens it and promotes with a reason.
+    page = visit(world.admin, "/infrastructure")
+    page.get_by_role("tab", name=re.compile("Golden images")).click()
+    expect(page.get_by_test_id("gi-table").locator("tr.mat-mdc-row td").first).to_have_text(waiting.catalogue_id)
+    expect(page.get_by_test_id(f"gi-needs-{waiting.catalogue_id}")).to_be_visible()
+    expect(page.get_by_test_id(f"gi-needs-{planned.catalogue_id}")).to_have_count(0)
+    if ARTIFACTS:
+        pathlib.Path(ARTIFACTS).mkdir(parents=True, exist_ok=True)
+        page.set_viewport_size({"width": 1440, "height": 1000})
+        page.get_by_test_id(f"gi-open-{waiting.catalogue_id}").click()
+        expect(page.get_by_test_id(f"gi-promote-{build_id}")).to_be_visible()
+        page.screenshot(path=str(pathlib.Path(ARTIFACTS) / "golden-images-needs-promotion.png"), full_page=True)
+        page.get_by_test_id(f"gi-open-{waiting.catalogue_id}").click()  # closed again
+    page.get_by_test_id("gi-filter-status").click()
+    page.get_by_role("option", name="Planned").click()
+    expect(page.get_by_test_id(f"gi-open-{waiting.catalogue_id}")).to_have_count(0)
+    expect(page.get_by_test_id(f"gi-open-{planned.catalogue_id}")).to_be_visible()
+    page.get_by_test_id("gi-filter-status").click()
+    page.get_by_role("option", name="Built").click()
+    page.get_by_test_id(f"gi-open-{waiting.catalogue_id}").click()
+    page.get_by_test_id(f"gi-promote-{build_id}").click()
+    dlg = page.get_by_role("dialog")
+    expect(dlg).to_contain_text(f"Promote build {build_id}?")
+    expect(dlg.get_by_test_id("gi-promote-confirm")).to_be_disabled()  # a reason is required
+    dlg.get_by_test_id("gi-reason").fill(reason)
+    expect(dlg.get_by_test_id("gi-promote-confirm")).to_be_enabled()
+    if ARTIFACTS:
+        page.wait_for_timeout(500)  # the dialog's open animation
+        page.screenshot(path=str(pathlib.Path(ARTIFACTS) / "golden-images-promote-dialog.png"))
+    dlg.get_by_test_id("gi-promote-confirm").click()
+    expect(dlg).to_have_count(0)
+    expect(page.get_by_test_id(f"gi-build-{build_id}").get_by_test_id("gi-promoted-badge")).to_be_visible()
+    expect(page.get_by_test_id(f"gi-promote-{build_id}")).to_have_count(0)
+    expect(page.get_by_test_id("gi-audit")).to_contain_text(f"promoted {build_id}")
+    expect(page.get_by_test_id(f"gi-needs-{waiting.catalogue_id}")).to_have_count(0)
+    if ARTIFACTS:
+        pathlib.Path(ARTIFACTS).mkdir(parents=True, exist_ok=True)
+        page.set_viewport_size({"width": 1440, "height": 1000})
+        page.screenshot(path=str(pathlib.Path(ARTIFACTS) / "golden-images-promoted.png"), full_page=True)
+
+    # Persisted: the build is the promoted one, and the audit entry carries the reason.
+    after = ok(Api(world, world.admin).get(f"/golden-images/{waiting.id}/builds"))
+    assert after["promoted_build_id"] == build_id
+    [entry] = [a for a in after["audit"] if a["action"] == "golden_image.promote"]
+    assert entry["detail"]["reason"] == reason
+    assert entry["actor"] == world.admin.email

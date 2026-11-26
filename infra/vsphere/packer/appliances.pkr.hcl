@@ -33,9 +33,11 @@ source "vsphere-iso" "pfsense" {
   guest_os_type = "freebsd13_64Guest"
   firmware      = "bios"
 
-  CPUs                 = 2
-  RAM                  = 2048
-  disk_controller_type = ["pvscsi"]
+  CPUs = 2
+  RAM  = 2048
+  # LSI Logic SAS: on pvscsi the pfSense 2.7.2 installer listed no disk ("stripe: 0 disks",
+  # 2026-11-23). Not yet proven on a full build.
+  disk_controller_type = ["lsilogic-sas"]
   storage {
     disk_size             = 20480
     disk_thin_provisioned = true
@@ -79,16 +81,16 @@ source "vsphere-iso" "pfsense" {
     "<enter><wait5>",           # accept copyright/license
     "<enter><wait5>",           # Install pfSense
     "<enter><wait5>",           # keymap default
-    "<enter><wait5>",           # Auto (ZFS)
-    "<enter><wait5>",           # Proceed
+    "<enter><wait5>",           # ZFS Configure Options: Install (2.7.2 has no separate Auto (ZFS) screen)
     "<enter><wait5>",           # stripe - no redundancy
     "<spacebar><enter><wait5>", # select disk
-    "<left><enter><wait240>",   # confirm -> install (ZFS extract; the next dialog just waits)
-    # Final "Complete" dialog [Reboot] [Shell], focus on Reboot. Do NOT reboot: nothing
-    # would ever power the VM off (2026-10-21: 15m shutdown timeout after "Reboot"). <tab>
-    # moves to Shell (and, if a "Manual Configuration" Yes/No-default-No dialog comes first,
-    # wraps to Yes = a chroot shell in the new system); either way a root shell.
-    "<tab><enter><wait10>",
+    # The installer's dialogs ignore arrow keys and <tab> here; their hotkeys work. Walked
+    # screen by screen on a probe VM at the site (2026-11-24); the old extra <enter> left the
+    # disk unselected and <left>/<tab> never moved the focus.
+    "y<wait240>", # Last Chance: Y = YES -> install (ZFS extract; the next dialog just waits)
+    # Final "Complete" dialog [Reboot] [Shell]. Do NOT reboot: nothing would ever power the VM
+    # off (2026-10-21: 15m shutdown timeout after "Reboot"). S = Shell, a root shell.
+    "s<wait10>",
     # Mount the second CD and finish the template; the script powers off only on success.
     "mkdir -p /tmp/tncd; mount_cd9660 /dev/iso9660/TNPFSENSE /tmp/tncd || mount_cd9660 /dev/cd1 /tmp/tncd; sh /tmp/tncd/tn-pfsense-finish.sh<enter>"
   ]
