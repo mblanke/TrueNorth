@@ -41,7 +41,9 @@
 # already exists must carry the same stamp (else replicate fails: set REPLICA_DATE).
 #   RANGE_HOSTS          hosts when none are named (default "esx02 esx03 esx04")
 #   RANGE_DATASTORE_FMT  printf format for a host's datastore (default "%s-local")
-#   TEMPLATE_FOLDER      inventory folder path for the copies (default: the template's own folder)
+#   TEMPLATE_FOLDER      inventory folder the copies go under (default: the template's own
+#                        folder); each copy goes in "<that folder>/Host copies/<host>",
+#                        created when missing
 #   REPLICATE_AFTER_BUILD=1  replicate every template right after it builds
 #   DRY_RUN=1            print the govc changes instead of making them
 #
@@ -173,7 +175,9 @@ record_copy() { # record_copy <id> <host short> <copy name>
   m="$(manifest_file "$1")"
   [ -f "$m" ] && [ -z "${DRY_RUN:-}" ] || return 0
   tmp="$(mktemp)"
-  jq --arg h "$2" --arg c "$3" '.copies[$h] = $c' "$m" > "$tmp" && mv "$tmp" "$m"
+  # mktemp makes the file 0600; the API container (another user) reads the record to
+  # register the build, so keep it world-readable like write_manifest's.
+  jq --arg h "$2" --arg c "$3" '.copies[$h] = $c' "$m" > "$tmp" && chmod 0644 "$tmp" && mv "$tmp" "$m"
 }
 
 # The API's `build` body from <id>'s record, or nothing.
@@ -331,11 +335,24 @@ find_host() {
   echo "$path"
 }
 
+# ensure_folder <inventory path>: create the VM folder unless it exists (its parent must).
+ensure_folder() {
+  govc folder.info "$1" >/dev/null 2>&1 && return 0
+  run_govc folder.create "$1" || {
+    echo "FAIL: replicate: cannot create inventory folder $1" >&2
+    return 1
+  }
+}
+
 replicate_one() {
   local id="$1" host="$2" date="$3" source="$4" folder="$5" stamp="$6" short ds copy existing host_path have
   local annotation=()
   short="${host%%.*}"
   copy="${id}@${short}-${date}"
+  # One subfolder per host, so the template folder lists the templates, not 3x the copies.
+  ensure_folder "${folder%/}/Host copies" || return 1
+  folder="${folder%/}/Host copies/${short}"
+  ensure_folder "$folder" || return 1
   # shellcheck disable=SC2059 # the format is the operator's RANGE_DATASTORE_FMT
   ds="$(printf "$RANGE_DATASTORE_FMT" "$short")"
   existing="$(find_vm "$copy")"

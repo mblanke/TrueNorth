@@ -168,7 +168,8 @@ Nexus repositories (`http://10.30.32.10:8081/repository/<name>/`):
 | `chocolatey-hosted` | nuget hosted | Filled by `prefetch.yml`; ALLOW_ONCE |
 | `chocolatey-proxy` | nuget proxy (V2) | community.chocolatey.org |
 | `pypi-proxy` | pypi proxy | pypi.org |
-| `docker-proxy` | docker proxy, port 8082 | Docker Hub |
+| `docker-proxy` | docker proxy, port 8082 | Docker Hub. greyspace-host pulls its pinned images through it (tn-build-read) |
+| `quay-proxy` | docker proxy, port 8084 | quay.io (Greyspace's FRR image); Docker's registry-mirrors cannot cover quay |
 | `docker-hosted` | docker hosted, port 8083 | |
 | `installers` | raw hosted | Vendor media (build sheet §6); `<id>/<version>/` for offline Chocolatey packages |
 
@@ -474,8 +475,8 @@ ansible-playbook playbooks/30-config.yml --ask-vault-pass   # and restart the wo
 
 **Only verifiable on site** (with a test range whose edge firewall has its WAN on
 `dPG-TN-SVC`; runbook §7):
-- from the range firewall: `10.30.32.10` tcp/8081 and tcp/3142 answer; tcp/22, 8082, 8083
-  and ping do not; 10.30.30.30, 10.30.31.30 and anything on 10.30.30.0/24 do not;
+- from the range firewall: `10.30.32.10` tcp/8081 and tcp/3142 answer; tcp/22, 8082, 8083,
+  8084 and ping do not; 10.30.30.30, 10.30.31.30 and anything on 10.30.30.0/24 do not;
 - a Windows range VM installs a Chocolatey package through the depot
   (`provisioner_output.vms[].software` says `ok`), and a Linux one an apt package;
 - the nft counters on the depot (`sudo nft list table inet tn_depot_range`) count the
@@ -593,15 +594,19 @@ be listed.
 - **apt-cacher-ng serves only what it has cached and only http:// repositories.** With
   `apt_proxy` set, apt and dnf go through it, but the depot is offline by default
   (`Offlinemode: 1`). Debian, Kali and Parrot packages are not in the prefetch list, and
-  https sources (Docker's repo for greyspace-host, the REMnux and SIFT installers) cannot
-  use it because it refuses CONNECT. Those steps need an online window or depot-staged media.
+  https sources (the REMnux and SIFT installers) cannot use it because it refuses CONNECT.
+  Those steps need an online window or depot-staged media. Docker's apt repository and
+  Alpine are remapped to https backends (`Remap-tndocker`, `Remap-tnalpine`): clients ask
+  over http, the depot fetches over https, and `prefetch.yml` warms them for greyspace-host
+  (designed 2026-11-23, not yet proven on site).
 - **Prefetch** (`prefetch.yml`) runs its containers and vendor downloads on the build
   host, so here it would need internet egress from TN-MGMT01. The kit does not run it.
   The depot reaches upstream through dPG-TN-MGMT's gateway, and `depot-uplink.sh` does not
   apply here.
 - **VLAN 31 reaches only esx04.** Test clones on esx02/esx03 sit on an unconnected
   `dPG-TN-BUILD`. That is fine for the check: Tools reports the customized static IP
-  (10.30.31.241-243) whether or not anything answers.
+  (10.30.31.201-.248, three per template group: `ip_slot` in `test-clone.sh`) whether or
+  not anything answers.
 - **Proven on vcsim only.** ISO sync, the DRS rule, replicate and test clones (customize
   mode) ran against vcsim, and the generated vars file passed `packer validate` (1.16.1).
   None of it has run against the work vCenter yet.

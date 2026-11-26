@@ -12,6 +12,12 @@
 # their role script is applied at deploy via a guest-customization spec. See README.
 
 locals {
+  # TN-DEPOT01's address, from depot_url (http://10.30.31.30:8081/repository): its Nexus
+  # Docker connectors for greyspace-host. Empty depot_url: no proxies (direct pulls).
+  depot_host          = try(regex("^https?://([^:/]+)", var.depot_url)[0], "")
+  depot_dockerhub_reg = local.depot_host == "" ? "" : "${local.depot_host}:${var.depot_dockerhub_port}"
+  depot_quay_reg      = local.depot_host == "" ? "" : "${local.depot_host}:${var.depot_quay_port}"
+
   linux_derived = {
     remnux           = "REMnux malware-analysis workstation"
     sift             = "SANS SIFT DFIR workstation"
@@ -275,8 +281,10 @@ build {
   ]
   # Every role script's apt-get goes through the build proxy (apt_proxy, TN-DEPOT01
   # apt-cacher-ng) on the isolated build network; cleanup.sh removes it at the end.
-  # Installers fetched over https (REMnux, SIFT, Docker's repo) cannot use it: apt-cacher-ng
-  # refuses CONNECT tunnels. Those steps need egress or depot-staged media (README).
+  # Installers fetched over https (REMnux, SIFT) cannot use it: apt-cacher-ng refuses CONNECT
+  # tunnels. Those steps need egress or depot-staged media (README). Docker's apt repository
+  # is the exception: the depot remaps it (Remap-tndocker, https backend) and greyspace-host
+  # asks for it over http.
   provisioner "shell" {
     environment_vars = ["APT_PROXY=${var.apt_proxy}"]
     script           = "${path.root}/files/linux/apt-proxy.sh"
@@ -299,9 +307,17 @@ build {
     destination = "/tmp/greyspace-images"
   }
   provisioner "shell" {
-    only             = ["vsphere-clone.greyspace-host"]
-    environment_vars = ["TN_APT_PROXY=${var.apt_proxy}"]
-    script           = "${path.root}/files/linux/roles/greyspace-host.sh"
+    only = ["vsphere-clone.greyspace-host"]
+    # Images by digest from the depot's Docker Hub and quay.io proxies (Nexus, plain HTTP on
+    # the build network), as the build-read user; the script removes the login again.
+    environment_vars = [
+      "TN_APT_PROXY=${var.apt_proxy}",
+      "TN_DOCKERHUB_PROXY=${local.depot_dockerhub_reg}",
+      "TN_QUAY_PROXY=${local.depot_quay_reg}",
+      "TN_DEPOT_USER=${var.depot_user}",
+      "TN_DEPOT_PASSWORD=${var.depot_password}",
+    ]
+    script = "${path.root}/files/linux/roles/greyspace-host.sh"
   }
   provisioner "shell" {
     only   = ["vsphere-clone.ca-host"]

@@ -205,10 +205,13 @@ platform administrator **promotes** it.
    [06-operations-runbook.md](06-operations-runbook.md) §4; on a fresh site the templates
    usually arrive already ported (06 §4.2).
 2. **Admin → Infrastructure → Golden images** tab. The table shows **Image**, **Status**,
-   **Promoted build** and **Checksum**.
-3. Open the image. It lists its builds and the hosts that have no copy of each one.
-4. Type the **Reason for promotion (kept in the audit log)**, then press **Promote**. A build
-   with no host copy can't be promoted.
+   **Promoted build** and **Checksum**. Images waiting for a promotion come first, marked
+   **Needs promotion**. Filter by **Status** and **Promoted**, or sort by name or status.
+3. Press **Builds** on the image. Its builds open under the row, with the hosts that have no
+   copy of each one.
+4. Press **Promote** on a build, type the **Reason** (required, kept in the audit log), then
+   press **Promote** in the dialog. A build with no host copy can't be promoted. Only the
+   platform administrator sees the button.
 
 **Pinning is automatic** (ADR 0013 §2). Once an image has a promoted build, every new range
 clones exactly that build. It uses the copy on the target host, checked against the build's

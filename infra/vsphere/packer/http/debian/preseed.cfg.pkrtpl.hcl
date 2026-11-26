@@ -17,6 +17,9 @@ d-i mirror/http/directory string /debian
 # Build-time apt proxy (apt_proxy: TN-DEPOT01 apt-cacher-ng); empty = none. cleanup.sh
 # removes it from the installed system.
 d-i mirror/http/proxy string ${apt_proxy}
+# Installing from the DVD, the installer otherwise uses no network mirror (pkgsel then finds
+# no open-vm-tools / cloud-init candidate).
+d-i apt-setup/use_mirror boolean true
 %{ else ~}
 # Offline base (no depot yet): install from the ISO only, no network mirror.
 d-i apt-setup/use_mirror boolean false

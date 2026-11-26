@@ -407,9 +407,9 @@ build {
 
   # cloud-init is NOT optional: the worker configures Linux range VMs only through its
   # VMware datasource (no vSphere Linux customization). From the mirror/apt proxy, else the
-  # install ISO's pool; neither: the build fails (no template).
+  # install ISO's pool; neither: the build fails (no template). Rocky runs it too: cloud-init
+  # comes from its kickstart, and this removes the kickstart's cloud-init.disabled marker.
   provisioner "shell" {
-    except = ["vsphere-iso.rocky"]
     script = "${path.root}/files/linux/install-cloud-init.sh"
   }
 
