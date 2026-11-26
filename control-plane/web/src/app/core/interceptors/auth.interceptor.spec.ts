@@ -64,6 +64,18 @@ describe('AuthInterceptor', () => {
       req.flush([]);
     });
 
+    it('sends the CSRF cookie as it is when the request leaves, not as it was before the token wait', async () => {
+      // A response that lands while the interceptor waits for the access token can set
+      // another cookie value; the browser sends that one, so the header must match it.
+      document.cookie = 'truenorth_csrf=before-the-wait; path=/';
+      http.post('/api/ranges', {}).subscribe();
+      document.cookie = 'truenorth_csrf=set-during-the-wait; path=/';
+      await settle();
+      const req = backend.expectOne('/api/ranges');
+      expect(req.request.headers.get('X-CSRF-Token')).toBe('set-during-the-wait');
+      req.flush({});
+    });
+
     it('sends no Authorization header when not signed in', async () => {
       keycloak.authenticated = false;
       http.get('/api/ranges').subscribe();

@@ -34,14 +34,19 @@ export class AuthInterceptor implements HttpInterceptor {
   intercept(req: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
     // CSRF: double-submit cookie. app/middleware.py sets `truenorth_csrf` and
     // enforces the matching header on unsafe methods, so this is not optional.
-    const csrfHeaders: Record<string, string> = {};
-    const csrfToken = getCookie('truenorth_csrf');
-    if (csrfToken && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-      csrfHeaders['X-CSRF-Token'] = csrfToken;
-    }
+    // The cookie is read at the moment the request is handed on, never before a wait: the
+    // browser attaches the cookie it holds when the request leaves, and a response that
+    // landed during the wait for the access token could have set another value (a 403).
+    const csrf = (): Record<string, string> => {
+      const csrfToken = getCookie('truenorth_csrf');
+      return csrfToken && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)
+        ? { 'X-CSRF-Token': csrfToken }
+        : {};
+    };
 
     const isAsset = req.url.startsWith('/assets') || req.url.includes('silent-check-sso');
     if (environment.authDisabled || isAsset) {
+      const csrfHeaders = csrf();
       return next.handle(
         Object.keys(csrfHeaders).length ? req.clone({ setHeaders: csrfHeaders }) : req,
       );
@@ -55,7 +60,7 @@ export class AuthInterceptor implements HttpInterceptor {
     return from(freshToken(this.keycloak)).pipe(
       switchMap((kcToken) => {
         const token = kcToken || ltiSessionToken();
-        const headers = { ...csrfHeaders };
+        const headers = csrf();
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }

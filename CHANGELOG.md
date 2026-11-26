@@ -19,6 +19,17 @@ course production with a local-model fallback, and the cleanup of unsupported su
   index checked against Microsoft's table by preflight and the worker) sets another.
 - `scripts/lab/test-clone.sh` sends the same index, in hex (`-tz 23`); `--tz N` (decimal) overrides.
 
+### A click is no longer refused with "CSRF token missing or invalid" (#537) — behaviour change
+- The API issued a new CSRF token on every read. The web app reads the cookie into its header,
+  waits for its access token, then sends, so a read answered in between left header and cookie
+  different and the write got a 403. Seen as an intermittent failure of the helpdesk journey
+  on `main`; any page that reads while the user clicks could lose the click.
+- The API now issues the `truenorth_csrf` cookie only when the request carried none it signed,
+  and never re-sends or replaces a valid one. It is a session cookie (it had a one-day
+  lifetime). The double-submit check on writes is unchanged.
+- The web app reads the cookie at the moment the request leaves, after the token wait.
+- A non-ASCII value in the cookie or header is refused (403) or replaced, where it was a 500.
+
 ### Security fixes from the #443 audit
 - **Only the platform administrator configures the AI backend.** `/ai-config` needed only
   `ai_config:write`, which every tenant's administrator holds, so one tenant's admin could
