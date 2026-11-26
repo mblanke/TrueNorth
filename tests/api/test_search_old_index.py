@@ -12,15 +12,18 @@ label values, and the endpoint checks ``is_label`` only on explicit ``field:valu
 (app/main.py). docs/release-notes/v1.0.0.md documents exactly this limitation.
 
 Pinned here: a Student's free-text search succeeds and does not single out the labelled event
-for a term that exists only in its labels. Today the leak is real, so the second test FAILS,
-naming row 14; when free text is restricted to indexed observability fields (or old indices
-are reindexed), it passes and stays as the regression pin. The OpenSearch side is faked the
+for a term that exists only in its labels. FIXED (audit #443): a Student's free text
+is confined to ``query.VISIBLE_TEXT_FIELDS`` (``simple_query_string.fields``), so a label is
+never searched, whatever the query form, ``size`` or ``total``. The test passes and stays as
+the regression pin. Residual, ticketed: a pre-2026-10-08 inject *summary* event carried inject
+text in the visible ``message`` / ``event.action`` fields. The OpenSearch side is faked the
 way tests/api/test_search_backends.py does it (respx in front of ``OpenSearchBackend``), with
 the pre-v1.0 dynamic mapping modelled as: every field a document carries is indexed.
 """
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import uuid
 
@@ -76,29 +79,33 @@ class _PreV1Index:
         self.events = events
 
     @staticmethod
-    def _indexed_text(event: dict) -> str:
+    def _indexed_text(event: dict, fields: list[str] | None = None) -> str:
+        """Leaf values the query may search: all of them, or only the leaves whose dotted path
+        matches one of the ``fields`` globs (OpenSearch ``simple_query_string.fields``)."""
         leaves: list[str] = []
 
-        def walk(value) -> None:
+        def walk(value, path: str) -> None:
             if isinstance(value, dict):
-                for v in value.values():
-                    walk(v)
+                for k, v in value.items():
+                    walk(v, f"{path}.{k}" if path else k)
             elif isinstance(value, list):
                 for v in value:
-                    walk(v)
-            elif value is not None:
+                    walk(v, path)
+            elif value is not None and (fields is None or any(fnmatch.fnmatchcase(path, p) for p in fields)):
                 leaves.append(str(value).lower())
 
-        walk(event)
+        walk(event, "")
         return " ".join(leaves)
 
     def _matches(self, event: dict, clause: dict) -> bool:
         if "match_all" in clause:
             return True
         if "simple_query_string" in clause:
-            tokens = clause["simple_query_string"]["query"].lower().split()
-            text = self._indexed_text(event)
-            return all(t in text for t in tokens)
+            sqs = clause["simple_query_string"]
+            text = self._indexed_text(event, sqs.get("fields"))
+            tokens = sqs["query"].lower().split()
+            # `-token` excludes, as OpenSearch does; every other token is required.
+            return all((t[1:] not in text) if t.startswith("-") else (t in text) for t in tokens)
         if "match_phrase" in clause:
             [(field, value)] = clause["match_phrase"].items()
             return _get(event, field) == value
@@ -156,12 +163,6 @@ def test_the_student_can_search_the_old_index_and_find_events(client, old_index)
     assert [h["_source"]["url.domain"] for h in hits] == [ATTACK_DOMAIN]
 
 
-@pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: index-migration-unproven (app/main.py:775) — the label guard checks "
-    "only explicit field:value terms, free text reaches the indexed labels",
-)
 def test_a_students_free_text_does_not_match_indexed_label_values(client, old_index):
     """``c2_beacon`` exists in exactly one place in this index: the labelled event's
     ``inject_action``. If the search counts or returns that event, free text matched an
@@ -175,3 +176,57 @@ def test_a_students_free_text_does_not_match_indexed_label_values(client, old_in
         "pre-v1.0 dynamically-mapped index the Student's free-text query 'c2_beacon' matched "
         "the indexed label inject_action:c2_beacon and singled out the inject event."
     )
+
+
+def test_free_text_on_a_visible_value_still_finds_the_event(client, old_index):
+    """Control: free text is confined to visible fields, not switched off. A term in a
+    visible field hits, alone or with another visible term."""
+    for q in ("northwind", "northwind http"):
+        r = client.get(f"/telemetry/{old_index}/search", params={"q": q})
+        assert r.status_code == 200, (q, r.text)
+        domains = [h["_source"].get("url.domain") for h in r.json()["hits"]["hits"]]
+        assert ATTACK_DOMAIN in domains, (q, domains)
+
+
+def test_a_label_word_changes_nothing_in_any_form(client, old_index):
+    """The labels are not searched at all, so a label word cannot add, remove or count an
+    event: not alone, not required beside a visible term, and not negated (``-c2_beacon``
+    must not drop the inject event, which would single it out by difference), whatever
+    ``size`` is."""
+    base = client.get(f"/telemetry/{old_index}/search", params={"q": "northwind"}).json()["hits"]
+    negated = client.get(f"/telemetry/{old_index}/search", params={"q": "northwind -c2_beacon"}).json()["hits"]
+    assert negated["total"]["value"] == base["total"]["value"] == 1
+    for q in ("c2_beacon", "northwind c2_beacon"):
+        for size in (1, 50):
+            body = client.get(f"/telemetry/{old_index}/search", params={"q": q, "size": size}).json()
+            assert body["hits"]["hits"] == [] and body["hits"]["total"]["value"] == 0, (q, size)
+
+
+def test_the_dsl_confines_a_students_free_text_and_leaves_staff_alone():
+    """build_query: a Student's simple_query_string carries an explicit field list with no
+    label name in it; staff's carries none (they read the whole document)."""
+    from app.search_backends.detection_query import is_label
+    from app.search_backends.opensearch import build_query
+    from app.search_backends.query import VISIBLE_TEXT_FIELDS, parse_query
+
+    parsed = parse_query("c2_beacon")
+    student = build_query(parsed, visible_only=True)["bool"]["must"][0]["simple_query_string"]
+    staff = build_query(parsed)["bool"]["must"][0]["simple_query_string"]
+    assert student["fields"] == list(VISIBLE_TEXT_FIELDS) and "fields" not in staff
+    # Every glob and name, checked against real label paths (not a probe built from the glob).
+    labels = (
+        "inject_action",
+        "inject_target",
+        "exercise_id",
+        "event.module",
+        "threat.technique.id",
+        "threat.tactic.name",
+        "truenorth_simulated",
+        "truenorth.ingested_at",
+        "tn_ground_truth.inject_action",
+    )
+    for path in labels:
+        for pattern in VISIBLE_TEXT_FIELDS:
+            assert not fnmatch.fnmatchcase(path, pattern), f"{pattern} reaches the label {path}"
+            assert not fnmatch.fnmatchcase(f"{path}.text", pattern), f"{pattern} reaches {path}.text"
+    assert all(is_label(p) or p == "event.module" for p in labels)

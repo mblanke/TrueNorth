@@ -777,6 +777,10 @@ async def search_telemetry(
     session's range and the range of a running exercise they take part in
     (app/telemetry_access.py).
 
+    A Student's free text searches an allow-list of observation fields
+    (search_backends/query.py ``VISIBLE_TEXT_FIELDS``), never the platform labels; staff's
+    searches the whole document. ``field:value`` terms are unchanged.
+
     ``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch
     ``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.
     A query outside it is a 422.
@@ -791,5 +795,5 @@ async def search_telemetry(
         # Inject labels say which events are the attack (ADR 0005, sweep H4).
         raise HTTPException(422, "Invalid search query: platform label fields are not searchable")
     index = f"range-{range_id}"
-    result = await get_search_backend().search(index, q, size)
+    result = await get_search_backend().search(index, q, size, visible_only=not staff)
     return result if staff else hide_labels(result)
