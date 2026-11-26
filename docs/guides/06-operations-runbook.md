@@ -81,7 +81,8 @@ to go **backwards** (an older release, or a database newer than the code) unless
    `CHANGELOG.md`: new migrations, new required settings, known limitations. A release
    candidate has a notes file only when its upgrade needs one (`v1.2.0-rc21.md`, from rc19:
    no migration, no new setting; `v1.2.0-rc22.md`, from rc21: two additive migrations and
-   one new setting); otherwise read its target release's (`v1.2.0.md` for
+   one new setting; `v1.2.0-rc23.md`, from rc22: one migration that can refuse, and two
+   `.env.production` lines the installer takes over); otherwise read its target release's (`v1.2.0.md` for
    `v1.2.0-rcN`), plus `CHANGELOG.md`.
 2. **[DECISION]** The window. In-flight range builds either finish (the default, `drain`:
    up to an hour for a large range) or are abandoned (`-e tn_upgrade_inflight=abandon`;
