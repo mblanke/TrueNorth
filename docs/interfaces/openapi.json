@@ -54565,7 +54565,7 @@
     },
     "/telemetry/{range_id}/search": {
       "get": {
-        "description": "Search a range's telemetry (404 for a range the caller may not read).\n\nStaff (telemetry:read) read their tenant's ranges; a Student reads only their own lab\nsession's range and the range of a running exercise they take part in\n(app/telemetry_access.py).\n\n``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch\n``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.\nA query outside it is a 422.",
+        "description": "Search a range's telemetry (404 for a range the caller may not read).\n\nStaff (telemetry:read) read their tenant's ranges; a Student reads only their own lab\nsession's range and the range of a running exercise they take part in\n(app/telemetry_access.py).\n\nA Student's free text searches an allow-list of observation fields\n(search_backends/query.py ``VISIBLE_TEXT_FIELDS``), never the platform labels; staff's\nsearches the whole document. ``field:value`` terms are unchanged.\n\n``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch\n``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.\nA query outside it is a 422.",
         "operationId": "search_telemetry_telemetry__range_id__search_get",
         "parameters": [
           {

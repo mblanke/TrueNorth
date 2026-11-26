@@ -42,8 +42,11 @@ class BaseSearchBackend(ABC):
         ...
 
     @abstractmethod
-    async def search(self, index: str, query: str, size: int = 50) -> dict:
+    async def search(self, index: str, query: str, size: int = 50, *, visible_only: bool = False) -> dict:
         """Search *index* with a query in the telemetry grammar (``query.parse_query``).
+
+        ``visible_only``: free text may search only ``query.VISIBLE_TEXT_FIELDS`` (a Student's
+        search), never the inject labels an old index may have indexed.
 
         Never pass *query* to a backend's own free-form parser (OpenSearch
         ``query_string``): build the request from ``parse_query(query)``.

@@ -26,7 +26,7 @@ class NullSearchBackend(BaseSearchBackend):
         logger.debug("NullSearchBackend: drop %d events for index=%s", len(events), index)
         return 0
 
-    async def search(self, index: str, query: str, size: int = 50) -> dict:
+    async def search(self, index: str, query: str, size: int = 50, *, visible_only: bool = False) -> dict:
         logger.debug("NullSearchBackend: search index=%s query=%s → empty", index, query)
         return {"hits": {"total": {"value": 0}, "hits": []}}
 

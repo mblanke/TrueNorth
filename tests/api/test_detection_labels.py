@@ -147,7 +147,7 @@ def test_the_range_template_does_not_index_the_labels():
 
 # ── telemetry search: non-staff neither query nor see the labels ───────
 class _Backend:
-    async def search(self, index, query, size):
+    async def search(self, index, query, size, *, visible_only=False):
         return {"hits": {"hits": [{"_source": {
             "url.domain": "x.example", "inject_action": "c2_beacon", "exercise_id": "e",
             "event.module": "truenorth.inject", "tn_ground_truth": {"inject_action": "c2_beacon"},

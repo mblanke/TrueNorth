@@ -22,7 +22,7 @@ from fastapi import HTTPException
 
 from . import connection
 from .base import BaseSearchBackend, SearchBackendError, SearchMatch, SearchQueryError
-from .query import ParsedQuery, QueryError, parse_query
+from .query import VISIBLE_TEXT_FIELDS, ParsedQuery, QueryError, parse_query
 
 logger = logging.getLogger("truenorth.search.opensearch")
 
@@ -30,8 +30,11 @@ logger = logging.getLogger("truenorth.search.opensearch")
 SIMPLE_QUERY_FLAGS = "AND|OR|NOT|PHRASE|PREFIX|PRECEDENCE|WHITESPACE|ESCAPE"
 
 
-def build_query(parsed: ParsedQuery) -> dict:
-    """The OpenSearch query DSL for a parsed telemetry query (never ``query_string``)."""
+def build_query(parsed: ParsedQuery, *, visible_only: bool = False) -> dict:
+    """The OpenSearch query DSL for a parsed telemetry query (never ``query_string``).
+
+    ``visible_only`` confines free text to ``VISIBLE_TEXT_FIELDS`` (a Student's search).
+    """
     if parsed.match_all:
         return {"match_all": {}}
     must: list[dict] = []
@@ -43,16 +46,15 @@ def build_query(parsed: ParsedQuery) -> dict:
         else:
             must.append({"match_phrase": {term.field: term.value}})
     if parsed.text:
-        must.append(
-            {
-                "simple_query_string": {
-                    "query": parsed.text,
-                    "flags": SIMPLE_QUERY_FLAGS,
-                    "default_operator": "and",
-                    "lenient": True,
-                }
-            }
-        )
+        text_query: dict = {
+            "query": parsed.text,
+            "flags": SIMPLE_QUERY_FLAGS,
+            "default_operator": "and",
+            "lenient": True,
+        }
+        if visible_only:
+            text_query["fields"] = list(VISIBLE_TEXT_FIELDS)
+        must.append({"simple_query_string": text_query})
     return {"bool": {"must": must}}
 
 
@@ -152,9 +154,9 @@ class OpenSearchBackend(BaseSearchBackend):
             logger.error("OpenSearch ingest error: %s", exc)
             return 0
 
-    async def search(self, index: str, query: str, size: int = 50) -> dict:
+    async def search(self, index: str, query: str, size: int = 50, *, visible_only: bool = False) -> dict:
         try:
-            dsl = build_query(parse_query(query))
+            dsl = build_query(parse_query(query), visible_only=visible_only)
         except QueryError as exc:
             raise HTTPException(422, f"Invalid search query: {exc}") from exc
         body = {

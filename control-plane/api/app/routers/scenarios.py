@@ -38,7 +38,7 @@ from ..models import AuditLog, Exercise, Scenario, UserRole
 from ..rbac import Permission, require_permission
 from ..scheduler import service as scheduler
 from ..schemas import ScenarioIn, ScenarioListOut, ScenarioOut, ScenarioUpdate
-from ..tenancy import get_owned
+from ..tenancy import get_listed, get_owned
 
 logger = logging.getLogger("truenorth.api.scenarios")
 
@@ -149,8 +149,11 @@ def get_scenario(
     Without scenario:update the YAML is the briefing only: no objective params,
     variables or inject playbook (ADR 0005 §5).
     """
-    sc = get_owned(db, Scenario, scenario_id, user, not_found="Scenario not found")
-    if sees_answer_key(user):
+    # Visible as the list is: own tenant, or public (another tenant's, or the platform's).
+    sc = get_listed(db, Scenario, scenario_id, user, not_found="Scenario not found")
+    # The answer key is for the scenario's own tenant's authors. A foreign public scenario is
+    # the briefing only, whatever the caller holds (audit #443).
+    if sc.tenant_id == uuid.UUID(user.tenant_id) and sees_answer_key(user):
         return sc
     return ScenarioOut.model_validate(sc).model_copy(update={"yaml": redact_scenario_yaml(sc.yaml)})
 

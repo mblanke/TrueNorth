@@ -20,7 +20,7 @@ green until each fix lands (an XPASS then fails CI and the mark must be dropped)
          (no state filter, no lab-session exclusion, no ORDER BY), and Run then fires
          the scenario on it (exercises.py ``run_exercise`` resolves with plain
          ``get_owned``, not ranges.py ``_changeable_range``).
-- low    app/routers/templates.py:274 — Public/global templates and scenarios are listed
+- low    FIXED app/routers/templates.py:274 — Public/global templates and scenarios are listed
          to other tenants but by-id reads 404 (``get_owned`` is tenant-strict), so a
          class can be built on a template its own Instructor cannot inspect.
          scenarios.py has the identical split; both are covered here.
@@ -406,12 +406,6 @@ class TestForgeDefaultRange:
 
 # ── templates.py:274 / scenarios.py (low) — listed but unreadable ────────
 class TestSharedContentReadableById:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: public/global templates are listed to other tenants but "
-        "by-id reads 404, so a class can be built from an uninspectable template "
-        "(templates.py:274)",
-    )
     def test_listed_public_template_of_another_tenant_is_readable_by_id(self, client, db_session):
         """templates.py:274 (low): list_templates returns other tenants' public rows, but
         get_template/update/delete fetch with tenant-strict get_owned, so GET by id 404s
@@ -440,12 +434,6 @@ class TestSharedContentReadableById:
         assert client.get(f"/templates/{foreign_public.id}").status_code == 200, "listed but unreadable"
         assert client.get(f"/templates/{platform_row.id}").status_code == 200, "listed but unreadable"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: public/global templates and scenarios are listed to other "
-        "tenants but by-id reads 404, so a class can be built from an uninspectable "
-        "scenario (templates.py:274, scenarios.py:150)",
-    )
     def test_listed_public_scenario_of_another_tenant_is_readable_by_id(self, client, db_session):
         """scenarios.py:150 (low): the identical split to templates.py:274 — the list
         includes other tenants' public scenarios, the by-id read is tenant-strict and
@@ -462,6 +450,70 @@ class TestSharedContentReadableById:
         listed = {r["id"] for r in client.get("/scenarios").json()}
         assert str(foreign_public.id) in listed
         assert client.get(f"/scenarios/{foreign_public.id}").status_code == 200, "listed but unreadable"
+
+    def test_foreign_public_content_is_read_only_and_redacted(self, client, db_session):
+        """Opening the by-id read must not open the rest. Another tenant's public (or the
+        platform's) template and scenario read by id for the default admin, but: the
+        template's account passwords and the scenario's answer key are withheld whatever
+        the caller holds; a private foreign row is still a 404; and the row is still not
+        updatable or deletable from here."""
+        _second_tenant(db_session)
+        tid = uuid.UUID(OTHER_TENANT)
+        secret = "Zq9-never-shown"
+        tpl_yaml = f"name: pub\nnodes: []\naccounts:\n  - machine: a\n    username: root\n    password: {secret}\n"
+        pub = Template(name="pub", version="1.0", yaml=tpl_yaml, tenant_id=tid, is_public=True)
+        platform = Template(name="golden", version="1.0", yaml=tpl_yaml, tenant_id=None, is_public=True)
+        private = Template(name="priv", version="1.0", yaml="name: priv\nnodes: []\n", tenant_id=tid, is_public=False)
+        sc_yaml = "name: pubsc\nobjectives:\n  - id: o1\n    params:\n      flag: THE-ANSWER-KEY\n"
+        sc_pub = Scenario(name="pubsc", yaml=sc_yaml, tenant_id=tid, is_public=True)
+        sc_platform = Scenario(name="goldsc", yaml=sc_yaml, tenant_id=None, is_public=True)
+        sc_private = Scenario(name="privsc", yaml=sc_yaml, tenant_id=tid, is_public=False)
+        db_session.add_all([pub, platform, private, sc_pub, sc_platform, sc_private])
+        db_session.commit()
+        for row in (pub, platform):
+            body = client.get(f"/templates/{row.id}")
+            assert body.status_code == 200, body.text
+            assert secret not in body.text
+        for row in (sc_pub, sc_platform):
+            body = client.get(f"/scenarios/{row.id}")
+            assert body.status_code == 200, body.text
+            assert "THE-ANSWER-KEY" not in body.text
+        assert client.get(f"/templates/{private.id}").status_code == 404
+        assert client.get(f"/scenarios/{sc_private.id}").status_code == 404
+        for row, path in ((pub, "templates"), (platform, "templates"), (sc_pub, "scenarios")):
+            assert client.put(f"/{path}/{row.id}", json={"name": "x"}).status_code in (403, 404)
+            assert client.delete(f"/{path}/{row.id}").status_code in (403, 404)
+        assert db_session.get(Template, pub.id) is not None
+        assert db_session.get(Scenario, sc_pub.id) is not None
+
+    def test_foreign_public_template_with_a_malformed_accounts_block_is_withheld(self, client, db_session):
+        """redact_yaml returns a document whose ``accounts`` is not a list untouched, so for
+        another tenant's public template that was its raw text. It is withheld instead."""
+        _second_tenant(db_session)
+        pub = Template(
+            name="odd",
+            version="1.0",
+            yaml="name: odd\nnodes: []\naccounts:\n  root: Hunter2-secret\n",
+            tenant_id=uuid.UUID(OTHER_TENANT),
+            is_public=True,
+        )
+        db_session.add(pub)
+        db_session.commit()
+        resp = client.get(f"/templates/{pub.id}")
+        assert resp.status_code == 200, resp.text
+        assert "Hunter2-secret" not in resp.text
+
+    def test_own_tenant_scenario_still_shows_the_answer_key_to_its_authors(self, client, db_session):
+        """The redaction is for foreign rows only: the default admin's own scenario is whole."""
+        own = Scenario(
+            name="mine",
+            yaml="name: mine\nobjectives:\n  - id: o1\n    params:\n      flag: MY-KEY\n",
+            tenant_id=uuid.UUID(DEV_TENANT),
+            is_public=False,
+        )
+        db_session.add(own)
+        db_session.commit()
+        assert "MY-KEY" in client.get(f"/scenarios/{own.id}").text
 
 
 # ── rbac.py:413 (low) — require_tenant_access never sees the path param ──
