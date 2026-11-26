@@ -79,6 +79,65 @@
   installer (`tn_vsphere_windows_timezone: 35`), compose and test-clone.sh (`-tz 23`) now
   default to it. Acceptance on site: `scripts/lab/test-clone.sh srv2022` is accepted, and
   `tzutil /g` in the clone says "Eastern Standard Time".
+## 2026-11-23 — depot mirrors and role media (Mac)
+
+- Branch `fix/depot-mirrors-and-role-media` from github/main 5520dbe0 (rc22), draft PR.
+- Part A (security/Parrot acng remaps) dropped here: PR #530 carries them; this PR merges after #530.
+- B (designed tonight, NOT proven on site): Docker apt repo + Alpine via acng HTTPS-backend
+  remaps; Nexus `quay-proxy` on 8084; greyspace-host pulls every pinned image by digest from
+  the depot proxies (login as tn-build-read), re-tags on the containerd image store, checks
+  each exact reference, seals daemon.json; Dockerfiles get APK_MIRROR; prefetch warms images
+  (registry_prefetch.py), Docker Engine debs and apk packages. Tested locally with
+  docker:29-dind, registry:2 pull-through and a real apt-cacher-ng with the rendered config.
+- C: Microsoft role prerequisites downloaded to ~/.truenorth-work/role-installers (Mac only,
+  not in the repo): MANIFEST.tsv + UPLOAD.md. MANUAL: mecm adk.zip, adkwinpe.zip
+  (adksetup /layout on Windows), configmgr-prereqs.zip.
+- Next (site, 08:30): re-run depot.yml (creates quay-proxy, widens tn-build-read), prefetch.yml,
+  upload role installers per UPLOAD.md, build greyspace-host. The site capture shows
+  `Offlinemode: 0` on the running depot: check it is meant to be online.
+
+## 2026-11-23 — Mac — #527 Golden images: promote in place, sort and filter
+
+- Branch `feat/527-golden-images-promote-ui` off github/main (rc22). The Golden images tab
+  (Infrastructure page) already had builds + Promote since #240, but the builds opened in a
+  section below the whole table and the reason was an optional field at its foot, so on a
+  long list nothing visible happened. Now: builds open under the image row; Promote opens a
+  dialog that requires a reason (≤500, kept in the audit entry); refusals shown under the
+  image in plain words; status / promoted filters; default sort puts built-but-unpromoted
+  images first with a "Needs promotion" flag. No API change.
+- Tests: Karma specs (component + dialog); browser journey
+  `test_admin_promotes_a_golden_image_build_with_a_reason` (real API, asserts the audit reason).
+- Not verified: why `can_promote` hid the button at the work site, if it did. It is true only
+  for an admin of PLATFORM_TENANT_ID (or a single-tenant install); check that on TN-MGMT01.
+- Next: owner reviews the draft PR.
+
+## 2026-11-23 — work-site golden-image kit fixes ported (Mac)
+
+- Branch `fix/golden-image-kit-site-2026-11-23` off github/main (v1.2.0-rc22), one draft PR.
+  Ports the day's TN-MGMT01 template-kit edits (captured in ~/.truenorth-work/
+  site-capture-20261123/, reasons in its template-kit-server-edits.log) with tests:
+  cloud-init re-enable/apt update/Kali mirror, Rocky marker, Debian use_mirror + cdrom
+  source removal (cleanup.sh), srv2025 NVMe, srv2019 index 2, pfSense lsilogic-sas +
+  pkgs.lock + SRV-following resolve, VyOS ethernet-node removal, build record 0644,
+  "Host copies/<host>" folders, test-clone no -tz (#526) + IP slots, kali-gui and parrot
+  variants, depot remaps (tnubusec, tnparrot), promote stopgap (#527), clear-unstamped
+  (hooked into build-phase after a build) and friendly-tags, isos.conf filled.
+- Not proven on site: pfSense controller, VyOS clones (still no Tools), parrot, srv2019.
+- Not ported (separate decision): the site build dashboard (tn_build_dashboard.py).
+- Follow-ups: drop the vsphere-iso.parrot source / build.sh ORDER entry; worker
+  timeZone=85 (#526); Promote button (#527).
+- Next: CI on the draft PR; adversarial-reviewer (provisioning change); then on site, rebuild
+  pfsense and vyos with these files.
+- Same day, after adversarial review of PR #530 (second commit): clear-unstamped-copies.sh
+  fails closed on any govc read error and refuses (without --force) while
+  TN_TEMPLATE_ALLOW_UNPROMOTED lets ranges use the copies; parrot no longer uses
+  [trusted=yes]: Parrot's key (B711822346552E4D92DA02DF7A8286AF0E81EE4A, checked on
+  parrotsec.org's key-verification page and deb.parrot.sh/parrot/misc/parrotsec.gpg) is
+  committed in the script, signed-by only, nothing in trusted.gpg.d. Also: SRV targets limited
+  to *.netgate.com/*.pfsense.org:443, explicit test-IP slots for every variant, promote
+  script dry-run by default (--yes) and calls out an older promoted build, catalogue parrot
+  version "7 (echo, rolling)". Not done: pfSense packagesite signature check.
+
 ## 2026-11-23 — work site: rc22 install and golden-image builds (Mac, on site)
 
 - vCenter was down at arrival (esx01 off; owner restarted it). rc22 installed on TN-MGMT01 from rc13.
@@ -92,14 +151,27 @@
 - Next (on site 2026-11-24 08:30): read overnight results; vyos console session; win10 watched boot;
   upload role installers to the depot; greyspace mirrors; promote what passed; set depot caches offline.
 
-## 2026-11-24 — work site day 2, then merges from home (Mac)
+## 2026-11-24 to 11-26 — work site day 2, then the merge run from home (Mac)
 
-- On site: srv2022, win11-24h2 and pfsense promoted on the owner's word; 16 of 27 images built
-  and tested. Record: docs/lab-checks/audit-2026-11-23.md, "Follow-up on site, 2026-11-24".
+- On site 11-24: srv2022, win11-24h2 and pfsense promoted on the owner's word; 16 of 27 images
+  built and tested. Record: docs/lab-checks/audit-2026-11-23.md, "Follow-up on site, 2026-11-24".
 - Open on site: parrot (fifth run, result UNKNOWN), srv2019 and win10-22h2 (VMware Tools never
   installs in the guest; cause not found), vyos, role installers, greyspace mirrors.
-  ubuntu-webstack passed; promotion approved, not done.
-- From home the lab is unreachable (10.30.30.20). Overnight: the owner approved merging the open
-  pull requests; each merged only on full CI green against main with a review on record.
-- Next on site: check the parrot5 result; promote ubuntu-webstack; srv2019/win10 Tools
-  diagnosis from the console (steps in the session notes); port the depot watchdog.
+  ubuntu-webstack passed; promotion approved by the owner, not done (lab unreachable from home).
+- Merged on the owner's word, each on full CI green against main, squashed: #532, #515, #533,
+  #529, #516, #534, #518, #530, #519, #521, #523, #524, #525, #535. Every open site PR appended to this
+  file, so the entries of #534, #529 and #530 were moved into this PR (it merges last).
+- #530 also carries the 11-24 site fixes (pfSense installer hotkeys; Parrot http sources and
+  apt retries). The Parrot part is not proven end to end, and was never run against that
+  branch's pinned-key checks.
+- #535: the Golden Images promote journey reopened the status filter while its panel was still
+  closing; main's journeys lane failed on it three times. Two other intermittent journey
+  failures on main are not diagnosed: the helpdesk assignee journey ("CSRF token missing or
+  invalid", twice) and the Moodle cmi5 journey (browser closed, once).
+- Faster range builds (plan of 2026-11-25): every range VM is a full clone today and nothing
+  timed a build. #536 records seconds per build phase; linked clones, class-range reset by
+  snapshot revert and pod masters follow, decided on the first timed builds.
+- Next on site: one timed build each of medium-enterprise and soc-training (read `timings` in
+  the range's provisioner output); the parrot5 result; promote ubuntu-webstack; srv2019/win10
+  Tools diagnosis from the guest console; delete the leftover vyos test clones; the depot
+  apt-cacher-ng watchdog.
