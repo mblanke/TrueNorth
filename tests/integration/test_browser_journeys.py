@@ -965,8 +965,13 @@ def test_admin_promotes_a_golden_image_build_with_a_reason(world, visit):
     page.get_by_role("option", name="Planned").click()
     expect(page.get_by_test_id(f"gi-open-{waiting.catalogue_id}")).to_have_count(0)
     expect(page.get_by_test_id(f"gi-open-{planned.catalogue_id}")).to_be_visible()
+    # The select's panel closes with an animation. Reopened during it, the click lands on an
+    # option of the panel being removed ("element was detached from the DOM", 30 s timeout:
+    # main's journeys lane failed on this three times in two days). Wait until it is gone.
+    expect(page.get_by_role("listbox")).to_have_count(0)
     page.get_by_test_id("gi-filter-status").click()
     page.get_by_role("option", name="Built").click()
+    expect(page.get_by_role("listbox")).to_have_count(0)
     page.get_by_test_id(f"gi-open-{waiting.catalogue_id}").click()
     page.get_by_test_id(f"gi-promote-{build_id}").click()
     dlg = page.get_by_role("dialog")
