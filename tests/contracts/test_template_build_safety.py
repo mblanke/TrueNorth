@@ -81,8 +81,53 @@ def test_kali_and_parrot_seeds_try_cloud_init_and_say_why():
 
 def test_install_cloud_init_never_reaches_for_the_internet_itself():
     text = (LINUX / "install-cloud-init.sh").read_text()
-    assert "http://" not in text and "https://" not in text
+    # The one URL: Kali's mirror, added only when a build apt proxy is set (Kali from the DVD
+    # lists no network source; 2026-11-23), so it is reached only through that proxy.
+    kali = "deb http://http.kali.org/kali kali-rolling"
+    assert text.count("http://") == 1 and kali in text and "https://" not in text
+    gate = text[text.rindex("\nif ", 0, text.index(kali)):text.index(kali)]
+    assert "^ID=kali" in gate and "apt-config dump" in gate and 'Acquire::http::Proxy "http' in gate
     assert "exit 1" in text.rsplit("have", 1)[1]  # nothing worked: fail the build
+
+
+def test_install_cloud_init_re_enables_cloud_init_before_anything_else():
+    """The Ubuntu autoinstall and the Rocky kickstart leave /etc/cloud/cloud-init.disabled;
+    require-cloud-init.sh fails while it exists, so remove it even when cloud-init is there."""
+    text = (LINUX / "install-cloud-init.sh").read_text()
+    assert text.index("rm -f /etc/cloud/cloud-init.disabled") < text.index("if have; then")
+    assert "touch /etc/cloud/cloud-init.disabled" in (PK / "http/rocky/ks.cfg.pkrtpl.hcl").read_text()
+    build = (PK / "linux.pkr.hcl").read_text()
+    step = build[build.rindex("provisioner", 0, build.index('files/linux/install-cloud-init.sh"')):]
+    assert "except" not in step[: step.index("}")]  # rocky runs it too
+    assert text.index("apt-get update") < text.index("apt-get install -y cloud-init")
+
+
+def test_cleanup_drops_the_install_dvd_from_the_apt_sources(tmp_path):
+    """A clone has no DVD: a "deb cdrom:" source makes apt-get update fail (debian13, and the
+    parrot variant built from it; 2026-11-23)."""
+    if shutil.which("bash") is None:
+        pytest.skip("bash")
+    text = (LINUX / "cleanup.sh").read_text()
+    fn = text[text.index("drop_cdrom_sources() {"):]
+    fn = fn[: fn.index("\n}\n") + 3]
+    assert text.index('drop_cdrom_sources ""') > text.index(fn)
+    apt = tmp_path / "root/etc/apt"
+    (apt / "sources.list.d").mkdir(parents=True)
+    (apt / "sources.list").write_text(
+        "deb cdrom:[Debian GNU/Linux 13.6.0 _Trixie_ - Official amd64 DVD Binary-1]/ trixie contrib main\n"
+        "deb [arch=amd64] cdrom:[Kali]/ kali-rolling main\n"
+        "deb http://deb.debian.org/debian/ trixie main\n")
+    (apt / "sources.list.d/dvd.sources").write_text("Types: deb\nURIs: cdrom:[Debian]/\nSuites: trixie\n")
+    (apt / "sources.list.d/mixed.sources").write_text("URIs: cdrom:[x]/\n\nURIs: http://deb.debian.org/debian\n")
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    _exe(bin_ / "sudo", '#!/bin/sh\nexec "$@"\n')
+    r = subprocess.run(["bash", "-c", fn + f'drop_cdrom_sources "{tmp_path / "root"}"'],
+                       env={**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}"}, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert (apt / "sources.list").read_text() == "deb http://deb.debian.org/debian/ trixie main\n"
+    assert not (apt / "sources.list.d/dvd.sources").exists()
+    assert (apt / "sources.list.d/mixed.sources").exists()  # a network URI too: kept
 
 
 @pytest.fixture
@@ -261,3 +306,69 @@ def test_windows_failed_customization_risk_is_documented():
 def test_executable_bits():
     for f in ("install-cloud-init.sh", "require-cloud-init.sh"):
         assert os.access(LINUX / f, os.X_OK), f
+
+
+# ── parrot variant: Parrot's key is pinned, never trusted on first use ──
+PARROT = PK / "variants/scripts/parrot-from-debian.sh"
+# Checked 2026-11-23 on parrotsec.org/docs/configuration/hash-and-key-verification/ and in
+# https://deb.parrot.sh/parrot/misc/parrotsec.gpg (two official channels, HTTPS).
+PARROT_FPR = "B711822346552E4D92DA02DF7A8286AF0E81EE4A"
+
+
+def test_parrot_never_installs_from_an_unauthenticated_source():
+    """[trusted=yes] would let parrot-archive-keyring's root postinst run unauthenticated and
+    put Parrot's key in trusted.gpg.d, trusted for every source."""
+    text = PARROT.read_text()
+    code = "\n".join(ln for ln in text.splitlines() if not ln.lstrip().startswith("#"))
+    assert "trusted=yes" not in code and "allow-insecure" not in code.lower()
+    assert f'PARROT_FPR="{PARROT_FPR}"' in text
+    first_update = code.index("apt-get update -q\napt-get install \"${APT_OPTS[@]}\" parrot-core")
+    # The key is checked and the sources are signed-by it before Parrot is ever fetched.
+    assert code.index('[ "$got" = "$PARROT_FPR" ]') < code.index("deb [signed-by=${KEY}]") < first_update
+    assert code.count("deb [signed-by=${KEY}] http://deb.parrot.sh/parrot") == 3
+    # Nothing is written into trusted.gpg.d; what a maintainer script left is removed and checked.
+    assert not re.search(r"(>|tee|cp|install|ln)[^\n]*trusted\.gpg\.d", code)
+    assert "rm -f /etc/apt/trusted.gpg.d/parrot*" in code and 'grep -v "signed-by=${KEY}"' in code
+    # The keyring package links its key in from its postinst (ln -sf), which a dpkg
+    # path-exclude does not stop: an apt hook removes it after every dpkg run instead.
+    assert "path-exclude" not in code
+    assert code.index(PARROT_HOOK) < first_update
+
+
+PARROT_HOOK = "/etc/apt/apt.conf.d/99-tn-parrot-key-scope"
+
+
+def test_parrot_template_keeps_parrot_key_out_of_global_trust_after_every_dpkg_run(tmp_path):
+    """A clone that later upgrades parrot-archive-keyring must not regain global trust."""
+    text = PARROT.read_text()
+    m = re.search(r'cat > "?' + re.escape(PARROT_HOOK) + r'"? <<\'?(\w+)\'?\n(.*?)\n\1\n', text, re.S)
+    assert m, "the template writes " + PARROT_HOOK
+    conf = m.group(2)
+    (cmd,) = re.findall(r'DPkg::Post-Invoke\s*\{\s*"([^"]+)";\s*\};', conf)
+    gpgd = tmp_path / "trusted.gpg.d"
+    gpgd.mkdir()
+    for name in ("parrot-archive-keyring.gpg", "parrot-2024.asc", "debian-archive-trixie.asc"):
+        (gpgd / name).write_text("k")
+    (gpgd / "parrot-link.gpg").symlink_to(gpgd / "debian-archive-trixie.asc")
+    r = subprocess.run(["sh", "-c", cmd.replace("/etc/apt/trusted.gpg.d", str(gpgd))], capture_output=True)
+    assert r.returncode == 0
+    assert sorted(p.name for p in gpgd.iterdir()) == ["debian-archive-trixie.asc"]
+    # It is still there at the end of the build (cleanup.sh does not remove apt.conf.d files).
+    cleanup = (LINUX / "cleanup.sh").read_text()
+    assert "99-tn-parrot" not in cleanup and "apt.conf.d/*" not in cleanup and "apt.conf.d/9*" not in cleanup
+
+
+def test_parrot_committed_key_has_the_pinned_fingerprint(tmp_path):
+    if shutil.which("gpg") is None:
+        pytest.skip("gpg not installed")
+    text = PARROT.read_text()
+    block = text[text.index("-----BEGIN PGP PUBLIC KEY BLOCK-----"):text.index("-----END PGP PUBLIC KEY BLOCK-----")]
+    key = tmp_path / "parrot.asc"
+    key.write_text(block + "-----END PGP PUBLIC KEY BLOCK-----\n")
+    home = tmp_path / "gnupg"
+    home.mkdir(mode=0o700)
+    r = subprocess.run(["gpg", "--homedir", str(home), "--show-keys", "--with-colons", str(key)],
+                       capture_output=True, text=True)
+    fprs = [ln.split(":")[9] for ln in r.stdout.splitlines() if ln.startswith("fpr:")]
+    assert fprs[:1] == [PARROT_FPR], r.stderr
+    assert "Parrot Project" in r.stdout

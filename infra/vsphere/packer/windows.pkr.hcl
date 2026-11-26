@@ -107,9 +107,11 @@ source "vsphere-iso" "srv2025" {
   guest_os_type = "windows2022srvNext_64Guest" # Server 2025 (vSphere API 8.0.2+)
   firmware      = "efi"
 
-  CPUs                 = 4
-  RAM                  = 4096
-  disk_controller_type = ["pvscsi"]
+  CPUs = 4
+  RAM  = 4096
+  # NVMe, as win11-24h2: the same new Setup engine stopped with 0x80070103 - 0x40031 when
+  # given the pvscsi DriverPaths (2026-11-23). Windows has an inbox NVMe driver.
+  disk_controller_type = ["nvme"]
   storage {
     disk_size             = 40960
     disk_thin_provisioned = true
@@ -137,7 +139,7 @@ source "vsphere-iso" "srv2025" {
       admin_password      = var.windows_admin_password
       labconfig           = false
       bypass_nro          = true
-      pvscsi_driver_paths = local.pvscsi_driver_paths
+      pvscsi_driver_paths = []
     })
   }
 

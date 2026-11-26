@@ -732,6 +732,9 @@ def test_apt_cacher_ng_is_not_an_open_proxy_and_its_admin_pages_need_auth():
     lines = [ln.strip() for ln in conf.splitlines() if ln.strip() and not ln.startswith("#")]
     assert "ForceManaged: 1" in lines and "AllowUserPorts: 80" in lines and "PassThroughPattern: ^$" in lines
     assert "Remap-tnrocky: dl.rockylinux.org/pub/rocky ; dl.rockylinux.org/pub/rocky" in lines
+    # Ubuntu's security pocket and Parrot (the parrot variant) are served too (2026-11-23).
+    assert "Remap-tnubusec: security.ubuntu.com/ubuntu ; security.ubuntu.com/ubuntu" in lines
+    assert "Remap-tnparrot: deb.parrot.sh/parrot ; https://mirrors.ocf.berkeley.edu/parrot" in lines
     tasks = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
     auth = next(t for t in tasks if t.get("name", "").startswith("Depot — apt-cacher-ng AdminAuth"))
     script = auth["ansible.builtin.shell"]

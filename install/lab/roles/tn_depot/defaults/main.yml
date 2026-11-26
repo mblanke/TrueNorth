@@ -82,6 +82,19 @@ tn_depot_acng_remaps:
   - name: tnrocky
     merge: "dl.rockylinux.org/pub/rocky"
     backends: "dl.rockylinux.org/pub/rocky"
+  # Ubuntu's security pocket: the package's uburep does not cover it and ForceManaged
+  # refused it (ubuntu-lts rebuild, 2026-11-23).
+  - name: tnubusec
+    merge: "security.ubuntu.com/ubuntu"
+    backends: "security.ubuntu.com/ubuntu"
+  # Parrot (variants/parrot.pkrvars.hcl): deb.parrot.sh redirects through
+  # director.parrot.sh to HTTPS mirrors, which a client could follow only with CONNECT.
+  # The depot fetches one third-party mirror over HTTPS itself. The depot checks nothing;
+  # the guest does: parrot-from-debian.sh pins Parrot's archive key (fingerprint committed
+  # in the script) with signed-by, so apt rejects an index the mirror altered.
+  - name: tnparrot
+    merge: "deb.parrot.sh/parrot"
+    backends: "https://mirrors.ocf.berkeley.edu/parrot"
 # Maintenance pages need AdminAuth: a random password generated ON the depot the first
 # time (/etc/apt-cacher-ng/security.conf, root:apt-cacher-ng 0640), never printed.
 # Read it there: sudo grep AdminAuth /etc/apt-cacher-ng/security.conf

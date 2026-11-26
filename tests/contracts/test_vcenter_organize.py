@@ -543,11 +543,11 @@ def test_replicate_tags_the_template_and_its_copy(replicate):
     got, calls = replicate()
     assert got.returncode == 0, got.stderr
     assert "tags.attach -c tn-type golden-template /DC/vm/TrueNorth/Templates/srv2022" in calls
-    assert "tags.attach -c tn-type template-copy /DC/vm/TrueNorth/Templates/srv2022@esx02-20261019" in calls
-    assert "tags.attach -c tn-os windows-server-2022 /DC/vm/TrueNorth/Templates/srv2022@esx02-20261019" in calls
+    copy = "/DC/vm/TrueNorth/Templates/Host copies/esx02/srv2022@esx02-20261019"  # one folder per host
+    assert f"tags.attach -c tn-type template-copy {copy}" in calls
+    assert f"tags.attach -c tn-os windows-server-2022 {copy}" in calls
     # Tagging comes after the copy is a template, never before it exists.
-    assert calls.index("vm.markastemplate /DC/vm/TrueNorth/Templates/srv2022@esx02-20261019") \
-        < calls.index("tags.attach -c tn-type template-copy /DC/vm/TrueNorth/Templates/srv2022@esx02-20261019")
+    assert calls.index(f"vm.markastemplate {copy}") < calls.index(f"tags.attach -c tn-type template-copy {copy}")
 
 
 def test_replicate_tags_nothing_with_tags_off_or_in_a_dry_run(replicate):

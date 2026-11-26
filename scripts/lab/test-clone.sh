@@ -22,7 +22,8 @@
 #                    tools: no customization, pass when Tools is running
 #                    power: no customization, pass when the VM is still powered on after 90 s
 #   --network PG     port group for the clone's first NIC (default dPG-TN-BUILD)
-#   --ip-base A.B.C  static test addresses A.B.C.241.. (default 10.30.31; no gateway)
+#   --ip-base A.B.C  static test addresses A.B.C.201-.248, three per template group, see
+#                    ip_slot (default 10.30.31; no gateway); at most 3 hosts per run
 #   --timeout MIN    per clone (default 25: Sysprep takes a while)
 #   --keep           leave the clones (default: destroy each one that passed)
 #   --yes            do not ask
@@ -40,7 +41,7 @@ set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-usage() { sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 ID=""; HOSTS="${RANGE_HOSTS:-esx02 esx03 esx04}"; MODE="customize"; NET="dPG-TN-BUILD"
 IP_BASE="10.30.31"; TIMEOUT_MIN=25; KEEP=0; WIN_TZ="${VSPHERE_WINDOWS_TIMEZONE:-35}"
 ENV_FILE="${TN_ENV_FILE:-/srv/truenorth/config/.env.production}"
@@ -73,6 +74,30 @@ if [[ -z "${GOVC_USERNAME:-}" || -z "${GOVC_PASSWORD:-}" ]]; then govc_from_env_
 APPLY=1   # every change below is confirmed first; act() echoes each command
 
 collect() { govc object.collect -s "$1" "$2" 2>/dev/null || true; }
+
+# Test address slot per template group. build-phase.sh phases run side by side, and test
+# clones that shared .241-.243 took each other's addresses; each group gets its own three
+# addresses, <ip-base>.(201 + slot*3) .. +2 (one per host). An id is in one arm only.
+ip_slot() {
+  case "$1" in
+    ubuntu-lts|kali) echo 0 ;;
+    srv2022|win11-24h2|win10-22h2|srv2019) echo 1 ;;
+    vyos|pfsense|securityonion) echo 2 ;;
+    remnux|sift|svc-emulators|ca-host|usersim|cloudlog-emu|greyspace-host) echo 3 ;;
+    precomp-host|detonation-host|srv2022-*) echo 4 ;;
+    srv2025) echo 6 ;;
+    rocky) echo 7 ;;
+    debian13) echo 8 ;;
+    kali-gui|parrot) echo 9 ;;
+    win10-ltsc) echo 10 ;;
+    win11-analyst) echo 11 ;;
+    win11-dev) echo 12 ;;
+    win10-office) echo 13 ;;
+    ubuntu-webstack) echo 14 ;;
+    srv2016) echo 15 ;;
+    *) echo 5 ;;  # anything else (c2-server, a new variant): give it its own slot
+  esac
+}
 
 find_host() {
   local p
@@ -146,13 +171,14 @@ read -r -a hosts <<<"$HOSTS"
 
 step "Plan ($MODE)"
 idx=0; plan=()
+(( ${#hosts[@]} <= 3 )) || die "at most 3 hosts per run: each template group has 3 test addresses (ip_slot)"
 for h in "${hosts[@]}"; do
   short="${h%%.*}"; idx=$((idx + 1))
   is_forbidden_host "$short" && die "refusing $short: esx01 holds the VCSA and takes no ranges"
   host_path="$(find_host "$short")"; [[ -n "$host_path" ]] || die "host $short not found"
   src="$(source_for "$short")"
   name="tn-testclone-${ID}-${short}"
-  ip="${IP_BASE}.$((240 + idx))"
+  ip="${IP_BASE}.$((200 + $(ip_slot "$ID") * 3 + idx))"
   info "$short: clone ${src##*/} -> $name on ${short}-local, $NET$([[ "$MODE" == customize ]] && echo ", name tntc-${short}, ip $ip")"
   plan+=("$short|$host_path|$src|$name|$ip")
 done
