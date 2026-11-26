@@ -131,7 +131,7 @@ class FakeStore(BaseSearchBackend):
     async def ingest(self, index, events):
         return 0
 
-    async def search(self, index, query, size=50):
+    async def search(self, index, query, size=50, *, visible_only=False):
         return {}
 
     async def health_check(self):

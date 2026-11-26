@@ -220,12 +220,6 @@ def test_f33_a_withdrawn_student_cannot_launch(client, db_session, lrs, release,
 
 
 # ---- f34 ------------------------------------------------------------------------------------
-@pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: two concurrent first results for the same attempt both land; no uniqueness "
-    "on attempt (control-plane/api/app/result_transfer/service.py:285)",
-)
 def test_f34_one_attempt_cannot_hold_two_first_results():
     """The schema must back the attempt dedup with a unique constraint or unique index
     covering (source_enclave, attempt_id), so the database refuses the second insert."""
@@ -262,12 +256,6 @@ def test_f36_au_launches_are_limited(client, lrs, release, student):
 
 
 # ---- f38 ------------------------------------------------------------------------------------
-@pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: cross-tenant package_id reuse ends in an unhandled IntegrityError "
-    "(control-plane/api/app/result_transfer/service.py:252)",
-)
 def test_f38_cross_tenant_package_id_reuse_is_a_mapped_refusal(db_session, monkeypatch):
     """The dedup lookup names the tenant but the primary key does not: two tenants reusing one
     package_id collide on it. The second import must be refused, not blow up."""

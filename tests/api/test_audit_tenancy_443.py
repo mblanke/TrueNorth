@@ -20,7 +20,7 @@ green until each fix lands (an XPASS then fails CI and the mark must be dropped)
          (no state filter, no lab-session exclusion, no ORDER BY), and Run then fires
          the scenario on it (exercises.py ``run_exercise`` resolves with plain
          ``get_owned``, not ranges.py ``_changeable_range``).
-- low    app/routers/templates.py:274 — Public/global templates and scenarios are listed
+- low    FIXED app/routers/templates.py:274 — Public/global templates and scenarios are listed
          to other tenants but by-id reads 404 (``get_owned`` is tenant-strict), so a
          class can be built on a template its own Instructor cannot inspect.
          scenarios.py has the identical split; both are covered here.
@@ -153,11 +153,6 @@ class TestAIConfigPlatformBoundary:
 
 # ── auth_zones.py:37 (medium) — platform-default auth zones ──────────────
 class TestAuthZonePlatformDefaults:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: any tenant's admin can rewrite or delete platform-default "
-        "auth zones that gate registration for every tenant (auth_zones.py:37)",
-    )
     def test_foreign_tenant_admin_cannot_change_a_platform_default_zone(self, client, db_session, monkeypatch):
         """auth_zones.py:37 (medium): any tenant's admin can rewrite or delete the
         platform-default auth zones that gate registration for every tenant. ``_writable``
@@ -177,15 +172,60 @@ class TestAuthZonePlatformDefaults:
             assert resp.status_code == 403, f"a tenant admin rewrote a platform default: {resp.text}"
             assert client.delete(f"/auth-zones/{shared.id}").status_code == 403
 
+    def test_the_platform_administrator_still_changes_a_platform_default_zone(self, client, db_session, monkeypatch):
+        """The fix must not lock the operator out: the admin of PLATFORM_TENANT_ID's tenant
+        edits and deletes a platform default; another tenant's admin still cannot."""
+        monkeypatch.setenv("PLATFORM_TENANT_ID", DEV_TENANT)
+        _second_tenant(db_session)
+        shared = AuthZonePolicy(id=uuid.uuid4(), zone_name="platform-default-zone-2", tenant_id=None)
+        db_session.add(shared)
+        db_session.commit()
+        with acting_as(UserRole.admin, tenant=OTHER_TENANT):
+            assert client.patch(f"/auth-zones/{shared.id}", json={"zone_name": "x"}).status_code == 403
+        with acting_as(UserRole.admin, tenant=DEV_TENANT):
+            resp = client.patch(
+                f"/auth-zones/{shared.id}", json={"zone_name": "platform-default-zone-2", "require_mfa": True}
+            )
+            assert resp.status_code == 200, resp.text
+            assert client.delete(f"/auth-zones/{shared.id}").status_code == 204
+
+    def test_a_tenant_zone_with_the_registration_zones_name_is_not_platform_policy(self, db_session, monkeypatch):
+        """Review of the auth-zone fix: zone_name is unique platform-wide and the registration
+        lookup had no tenant filter, so a tenant admin who created a zone with the configured
+        name first set the clearance floor and allow-list for every tenant's registration."""
+        from app.identity import auth_zone_denial
+
+        monkeypatch.setenv("PLATFORM_TENANT_ID", DEV_TENANT)
+        _second_tenant(db_session)
+        db_session.add(
+            AuthZonePolicy(
+                id=uuid.uuid4(),
+                zone_name="Registration Zone",
+                tenant_id=uuid.UUID(OTHER_TENANT),
+                clearance_required="unclassified",
+            )
+        )
+        db_session.commit()
+        # Only a foreign tenant's zone carries the name: the platform has none, so fail closed.
+        reason = auth_zone_denial(db_session, {}, None, zone_name="Registration Zone", check_mfa=False)
+        assert reason and "not configured" in reason
+        # The operator's own zone is platform policy.
+        db_session.query(AuthZonePolicy).delete()
+        db_session.add(
+            AuthZonePolicy(
+                id=uuid.uuid4(),
+                zone_name="Registration Zone",
+                tenant_id=uuid.UUID(DEV_TENANT),
+                clearance_required="unclassified",
+            )
+        )
+        db_session.commit()
+        assert auth_zone_denial(db_session, {}, None, zone_name="Registration Zone", check_mfa=False) is None
+
 
 # ── exercise_forge.py:238 (medium) — fallback binds a live lab range ─────
 class TestForgeDefaultRange:
     @patch("app.routers.exercise_forge._call_forge_ai", new_callable=AsyncMock)
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: forge with no range_id binds the exercise to an arbitrary "
-        "tenant range, including a Student's live lab range (exercise_forge.py:238)",
-    )
     def test_forge_fallback_never_binds_a_live_lab_range(self, mock_ai, client, db_session):
         """exercise_forge.py:238 (medium): with no range_id the fallback takes the
         tenant's first range with no state filter and no lab-session exclusion, so a
@@ -278,15 +318,94 @@ class TestForgeDefaultRange:
             "Run would fire the scenario on it"
         )
 
+    @patch("app.routers.exercise_forge._call_forge_ai", new_callable=AsyncMock)
+    def test_forge_skips_a_lab_range_for_a_normal_one_and_refuses_naming_it(self, mock_ai, client, db_session):
+        """With a normal range beside the live lab, the fallback binds the normal one; naming
+        the lab's range explicitly is refused (409), as ranges._changeable_range refuses it."""
+        tid = uuid.UUID(DEV_TENANT)
+        tpl = Template(name="Lab TPL 2", version="1.0", yaml="nodes: []", tenant_id=tid)
+        student = User(
+            id=uuid.uuid4(),
+            keycloak_id=f"kc-{uuid.uuid4().hex}",
+            email=f"{uuid.uuid4().hex[:10]}@example.test",
+            display_name="student",
+            role=UserRole.student,
+            tenant_id=tid,
+        )
+        course = Course(name="Lab course 2", tenant_id=tid)
+        db_session.add_all([tpl, student, course])
+        db_session.flush()
+        sha = uuid.uuid4().hex * 2
+        db_session.add(CourseReleaseBlob(sha256=sha, size=1, data=b"x"))
+        db_session.flush()
+        release = CourseRelease(
+            id=uuid.uuid4(),
+            tenant_id=tid,
+            course_id=course.id,
+            catalogue_code="c",
+            arc2_code="a",
+            run_id="r",
+            slug="s2",
+            title="T",
+            version=1,
+            release_digest=sha,
+            learner_digest=sha,
+            platform_digest=sha,
+            instructor_digest=sha,
+            blob_sha256=sha,
+            meta="{}",
+        )
+        db_session.add(release)
+        db_session.flush()
+        lab = Range(name="lab-student-live-2", template_id=tpl.id, tenant_id=tid, state=RangeState.running)
+        normal = Range(name="class-range", template_id=tpl.id, tenant_id=tid, state=RangeState.running)
+        db_session.add_all([lab, normal])
+        db_session.flush()
+        db_session.add(
+            LabSession(
+                tenant_id=tid,
+                user_id=student.id,
+                release_id=release.id,
+                activity_id="mod_001",
+                state=LAB_ACTIVE,
+                profile_id="p",
+                profile_digest="0" * 64,
+                backend="mock",
+                range_id=lab.id,
+            )
+        )
+        db_session.commit()
+        mock_ai.return_value = (
+            "name: Replay\ntimeline:\n  - inject: c2_beacon\n    t: '0:05'\nobjectives:\n  - x",
+            "gpt-4o",
+        )
+        payload = {
+            "indicators": [
+                {
+                    "indicator_type": "domain",
+                    "value": "evil-c2.example.com",
+                    "severity": "critical",
+                    "mitre_attack_ids": ["T1059.001"],
+                }
+            ],
+            "difficulty": "advanced",
+            "duration_minutes": 120,
+            "objective_count": 5,
+        }
+        resp = client.post("/exercise-forge/generate", json=payload)
+        assert resp.status_code == 200, resp.text
+        assert db_session.get(Exercise, resp.json()["exercise_id"]).range_id == normal.id
+        named = client.post("/exercise-forge/generate", json={**payload, "range_id": str(lab.id)})
+        assert named.status_code == 409, named.text
+        # A destroyed or soft-deleted range is no target either, named or by fallback.
+        normal.state = RangeState.destroyed
+        db_session.commit()
+        assert client.post("/exercise-forge/generate", json={**payload, "range_id": str(normal.id)}).status_code == 409
+        assert client.post("/exercise-forge/generate", json=payload).status_code == 409
+
 
 # ── templates.py:274 / scenarios.py (low) — listed but unreadable ────────
 class TestSharedContentReadableById:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: public/global templates are listed to other tenants but "
-        "by-id reads 404, so a class can be built from an uninspectable template "
-        "(templates.py:274)",
-    )
     def test_listed_public_template_of_another_tenant_is_readable_by_id(self, client, db_session):
         """templates.py:274 (low): list_templates returns other tenants' public rows, but
         get_template/update/delete fetch with tenant-strict get_owned, so GET by id 404s
@@ -315,12 +434,6 @@ class TestSharedContentReadableById:
         assert client.get(f"/templates/{foreign_public.id}").status_code == 200, "listed but unreadable"
         assert client.get(f"/templates/{platform_row.id}").status_code == 200, "listed but unreadable"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: public/global templates and scenarios are listed to other "
-        "tenants but by-id reads 404, so a class can be built from an uninspectable "
-        "scenario (templates.py:274, scenarios.py:150)",
-    )
     def test_listed_public_scenario_of_another_tenant_is_readable_by_id(self, client, db_session):
         """scenarios.py:150 (low): the identical split to templates.py:274 — the list
         includes other tenants' public scenarios, the by-id read is tenant-strict and
@@ -338,14 +451,73 @@ class TestSharedContentReadableById:
         assert str(foreign_public.id) in listed
         assert client.get(f"/scenarios/{foreign_public.id}").status_code == 200, "listed but unreadable"
 
+    def test_foreign_public_content_is_read_only_and_redacted(self, client, db_session):
+        """Opening the by-id read must not open the rest. Another tenant's public (or the
+        platform's) template and scenario read by id for the default admin, but: the
+        template's account passwords and the scenario's answer key are withheld whatever
+        the caller holds; a private foreign row is still a 404; and the row is still not
+        updatable or deletable from here."""
+        _second_tenant(db_session)
+        tid = uuid.UUID(OTHER_TENANT)
+        secret = "Zq9-never-shown"
+        tpl_yaml = f"name: pub\nnodes: []\naccounts:\n  - machine: a\n    username: root\n    password: {secret}\n"
+        pub = Template(name="pub", version="1.0", yaml=tpl_yaml, tenant_id=tid, is_public=True)
+        platform = Template(name="golden", version="1.0", yaml=tpl_yaml, tenant_id=None, is_public=True)
+        private = Template(name="priv", version="1.0", yaml="name: priv\nnodes: []\n", tenant_id=tid, is_public=False)
+        sc_yaml = "name: pubsc\nobjectives:\n  - id: o1\n    params:\n      flag: THE-ANSWER-KEY\n"
+        sc_pub = Scenario(name="pubsc", yaml=sc_yaml, tenant_id=tid, is_public=True)
+        sc_platform = Scenario(name="goldsc", yaml=sc_yaml, tenant_id=None, is_public=True)
+        sc_private = Scenario(name="privsc", yaml=sc_yaml, tenant_id=tid, is_public=False)
+        db_session.add_all([pub, platform, private, sc_pub, sc_platform, sc_private])
+        db_session.commit()
+        for row in (pub, platform):
+            body = client.get(f"/templates/{row.id}")
+            assert body.status_code == 200, body.text
+            assert secret not in body.text
+        for row in (sc_pub, sc_platform):
+            body = client.get(f"/scenarios/{row.id}")
+            assert body.status_code == 200, body.text
+            assert "THE-ANSWER-KEY" not in body.text
+        assert client.get(f"/templates/{private.id}").status_code == 404
+        assert client.get(f"/scenarios/{sc_private.id}").status_code == 404
+        for row, path in ((pub, "templates"), (platform, "templates"), (sc_pub, "scenarios")):
+            assert client.put(f"/{path}/{row.id}", json={"name": "x"}).status_code in (403, 404)
+            assert client.delete(f"/{path}/{row.id}").status_code in (403, 404)
+        assert db_session.get(Template, pub.id) is not None
+        assert db_session.get(Scenario, sc_pub.id) is not None
+
+    def test_foreign_public_template_with_a_malformed_accounts_block_is_withheld(self, client, db_session):
+        """redact_yaml returns a document whose ``accounts`` is not a list untouched, so for
+        another tenant's public template that was its raw text. It is withheld instead."""
+        _second_tenant(db_session)
+        pub = Template(
+            name="odd",
+            version="1.0",
+            yaml="name: odd\nnodes: []\naccounts:\n  root: Hunter2-secret\n",
+            tenant_id=uuid.UUID(OTHER_TENANT),
+            is_public=True,
+        )
+        db_session.add(pub)
+        db_session.commit()
+        resp = client.get(f"/templates/{pub.id}")
+        assert resp.status_code == 200, resp.text
+        assert "Hunter2-secret" not in resp.text
+
+    def test_own_tenant_scenario_still_shows_the_answer_key_to_its_authors(self, client, db_session):
+        """The redaction is for foreign rows only: the default admin's own scenario is whole."""
+        own = Scenario(
+            name="mine",
+            yaml="name: mine\nobjectives:\n  - id: o1\n    params:\n      flag: MY-KEY\n",
+            tenant_id=uuid.UUID(DEV_TENANT),
+            is_public=False,
+        )
+        db_session.add(own)
+        db_session.commit()
+        assert "MY-KEY" in client.get(f"/scenarios/{own.id}").text
+
 
 # ── rbac.py:413 (low) — require_tenant_access never sees the path param ──
 class TestRequireTenantAccess:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: require_tenant_access can never see the path parameter it "
-        "is supposed to check and therefore always passes (rbac.py:413)",
-    )
     def test_require_tenant_access_enforces_the_path_parameter(self, db_session):
         """rbac.py:413 (low): the dependency reads kwargs.get(tenant_id_param) from
         **kwargs, but FastAPI never injects path parameters into a dependency's
@@ -383,3 +555,50 @@ class TestRequireTenantAccess:
         # actually runs and the unreachable 403 branch is what is exercised (200 at base).
         assert c.get(f"/tenants/{other}/users", params={"kwargs": "{}"}).status_code == 403
         assert c.get(f"/tenants/{other}/users").status_code == 403
+
+    def test_require_tenant_access_edges(self, db_session, monkeypatch):
+        """Own tenant passes in any UUID case; the platform administrator crosses; a route
+        without the named path parameter is refused, never passed; no bogus query parameter."""
+        from app import rbac
+        from fastapi import Depends, FastAPI
+        from fastapi.testclient import TestClient
+
+        def app_for(role, tenant):
+            who = CurrentUser(
+                id=str(uuid.uuid4()),
+                email="u@example.test",
+                display_name="u",
+                role=role,
+                tenant_id=tenant,
+                keycloak_id=f"kc-{uuid.uuid4().hex[:8]}",
+            )
+            mini = FastAPI()
+            mini.dependency_overrides[get_current_user] = lambda: who
+            mini.dependency_overrides[get_db] = lambda: db_session
+
+            @mini.get("/tenants/{tenant_id}/users")
+            def with_param(tenant_id: uuid.UUID, user: CurrentUser = Depends(rbac.require_tenant_access("tenant_id"))):
+                return {"ok": True}
+
+            @mini.get("/nope")
+            def without_param(user: CurrentUser = Depends(rbac.require_tenant_access("tenant_id"))):
+                return {"ok": True}
+
+            return TestClient(mini)
+
+        _second_tenant(db_session)
+        db_session.commit()
+        monkeypatch.setenv("PLATFORM_TENANT_ID", DEV_TENANT)
+        c = app_for(UserRole.instructor, DEV_TENANT)
+        assert c.get(f"/tenants/{DEV_TENANT.upper()}/users").status_code == 200
+        assert c.get("/nope").status_code == 500
+        # OTHER_TENANT has hex letters, so upper-casing really changes the string: this is the
+        # case that fails without the UUID canonicalisation (DEV_TENANT is digits only).
+        assert OTHER_TENANT.upper() != OTHER_TENANT
+        other = app_for(UserRole.instructor, OTHER_TENANT)
+        assert other.get(f"/tenants/{OTHER_TENANT.upper()}/users").status_code == 200
+        # The miswired route is refused for the platform administrator too.
+        assert app_for(UserRole.admin, DEV_TENANT).get("/nope").status_code == 500
+        # An admin of an ordinary tenant is checked like anyone else; the operator crosses.
+        assert app_for(UserRole.admin, OTHER_TENANT).get(f"/tenants/{DEV_TENANT}/users").status_code == 403
+        assert app_for(UserRole.admin, DEV_TENANT).get(f"/tenants/{OTHER_TENANT}/users").status_code == 200

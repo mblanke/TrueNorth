@@ -39,7 +39,7 @@ from ..range_credentials import service as range_credentials
 from ..rbac import Permission, require_permission, user_has_permission
 from ..scheduler import service as scheduler
 from ..schemas import TemplateIn, TemplateListOut, TemplateOut, TemplateUpdate
-from ..tenancy import get_owned
+from ..tenancy import get_listed, get_owned
 
 logger = logging.getLogger("truenorth.api.templates")
 
@@ -69,8 +69,7 @@ def _refuse_network_placement(text: str | None, tenant_id) -> None:
         return  # not YAML at all: validation reports it, nothing can be placed
     if isinstance(doc, dict) and "credentials" in doc:
         # The worker once logged in with a template's own credentials, to its own host.
-        raise HTTPException(422, "templates may not set credentials; the vCenter is the tenant's hypervisor "
-                                 "connection")
+        raise HTTPException(422, "templates may not set credentials; the vCenter is the tenant's hypervisor connection")
     keys = network_placement_keys(doc)
     if keys:
         raise HTTPException(
@@ -252,11 +251,18 @@ def list_templates(
     )
     rows = q.order_by(Template.created_at.desc()).offset(offset).limit(limit).all()
     return [
-        TemplateListOut.model_validate(t).model_copy(
-            update={"host_count": range_topology.count_template_hosts(t.yaml)}
-        )
+        TemplateListOut.model_validate(t).model_copy(update={"host_count": range_topology.count_template_hosts(t.yaml)})
         for t in rows
     ]
+
+
+def _accounts_are_a_list(text: str | None) -> bool:
+    """Whether the document's ``accounts`` is absent or a list, the shape redact_yaml masks."""
+    try:
+        doc = safe_yaml.load(text or "")
+    except Exception:
+        return False
+    return isinstance(doc, dict) and (doc.get("accounts") is None or isinstance(doc.get("accounts"), list))
 
 
 @router.get("/{template_id}", response_model=TemplateOut)
@@ -273,12 +279,19 @@ def get_template(
     unchanged); anyone else reads ``********`` (ADR 0012 §13), and an unparseable document
     not at all.
     """
-    tmpl = get_owned(db, Template, template_id, user, not_found="Template not found")
-    own = tmpl.tenant_id is None or tmpl.tenant_id == uuid.UUID(user.tenant_id)
+    # Visible as the list is: own tenant, or public (another tenant's, or the platform's).
+    tmpl = get_listed(db, Template, template_id, user, not_found="Template not found")
+    # Only the template's own tenant reads its accounts. A platform (NULL-tenant) or another
+    # tenant's public template is foreign content: always redacted, whatever the caller holds.
+    own = tmpl.tenant_id == uuid.UUID(user.tenant_id)
     if own and user_has_permission(user, Permission.RANGE_CREDENTIALS_READ):
         return tmpl
-    return TemplateOut.model_validate(tmpl).model_copy(
-        update={"yaml": template_accounts.redact_yaml(tmpl.yaml, tenant_id=tmpl.tenant_id)})
+    redacted = template_accounts.redact_yaml(tmpl.yaml, tenant_id=tmpl.tenant_id)
+    if not own and not _accounts_are_a_list(tmpl.yaml):
+        # redact_yaml returns a document without an accounts list untouched; for another
+        # tenant's content that would be its raw text. Withhold it (audit #443 review).
+        redacted = ""
+    return TemplateOut.model_validate(tmpl).model_copy(update={"yaml": redacted})
 
 
 @router.put("/{template_id}", response_model=TemplateOut)

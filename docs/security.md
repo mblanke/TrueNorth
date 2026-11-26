@@ -436,10 +436,10 @@ async def get_stats(...):
     ...
 
 # Tenant-scoped access
-@router.get("/ranges/{range_id}")
-async def get_range(
-    range_id: UUID,
-    tenant_check=Depends(require_tenant_access),
+@router.get("/tenants/{tenant_id}/ranges")
+async def list_tenant_ranges(
+    tenant_id: UUID,
+    tenant_check=Depends(require_tenant_access("tenant_id")),
     perm_check=Depends(require_permission(Permission.RANGE_READ)),
 ):
     ...

@@ -40,6 +40,69 @@ _FIELD = re.compile(r"^[A-Za-z@][A-Za-z0-9_.@-]{0,127}$")
 _TOKEN = re.compile(r'(?:(?P<field>[^\s:"]+):)?(?P<value>"(?:[^"\\]|\\.)*"|[^\s"]+|")')
 
 
+# Fields a Student's free text may search: observations, never inject labels. Free text on an
+# index written before labels were stored unindexed otherwise reaches ``inject_action``,
+# ``exercise_id``, ``event.module`` ... and singles out the inject (audit #443). Entries are
+# OpenSearch ``fields`` globs; a name absent from an index is ignored. ``name.text`` is the
+# free-text sub-field of the v1.0 mapping (strings are keyword there).
+_VISIBLE_BASE = (
+    "message",
+    "raw_log",
+    "event_type",
+    "protocol",
+    "action",
+    "severity",
+    "hostname",
+    "username",
+    "process_name",
+    "parent_process",
+    "command_line",
+    "file_path",
+    "dns_query",
+    "alert_name",
+    "detection_rule",
+    "source_ip",
+    "dest_ip",
+    "ioc_type",
+    "ioc_value",
+    "hash_md5",
+    "hash_sha256",
+    "source_port",
+    "dest_port",
+    "process_id",
+    "event.action",
+    "event.category",
+    "event.type",
+    "event.outcome",
+    "event.dataset",
+)
+VISIBLE_TEXT_FIELDS: tuple[str, ...] = (
+    *(f for base in _VISIBLE_BASE for f in (base, f"{base}.text")),
+    "url.*",
+    "source.*",
+    "destination.*",
+    "client.*",
+    "server.*",
+    "host.*",
+    "user.*",
+    "process.*",
+    "file.*",
+    "dns.*",
+    "network.*",
+    "http.*",
+    "registry.*",
+    "winlog.*",
+    "log.*",
+    "rule.*",
+    "alert.*",
+    "user_agent.*",
+    "geo.*",
+    "service.*",
+    "agent.*",
+    "labels.*",
+)
+
+
 class QueryError(ValueError):
     """The query is outside the telemetry search grammar."""
 

@@ -114,15 +114,19 @@ def forge_history(
     total = base.count()
     rows = base.order_by(ForgedExercise.created_at.desc()).offset(offset).limit(limit).all()
 
-    ex_names = {
-        e.id: e.name
-        for e in db.query(Exercise)
-        .filter(
-            Exercise.id.in_([r.exercise_id for r in rows]),
-            Exercise.tenant_id == user.tenant_id,
-        )
-        .all()
-    } if rows else {}
+    ex_names = (
+        {
+            e.id: e.name
+            for e in db.query(Exercise)
+            .filter(
+                Exercise.id.in_([r.exercise_id for r in rows]),
+                Exercise.tenant_id == user.tenant_id,
+            )
+            .all()
+        }
+        if rows
+        else {}
+    )
 
     items = [
         {
@@ -158,9 +162,7 @@ async def preview_forge(
     indicators = _resolve_indicators(req, user.tenant_id, db)
     curriculum_context = await _resolve_curriculum_context(req, user.tenant_id, db)
     if not indicators and not req.learning_objectives:
-        raise HTTPException(
-            422, "Provide threat indicators (feed/inline) or learning objectives (curriculum mode)."
-        )
+        raise HTTPException(422, "Provide threat indicators (feed/inline) or learning objectives (curriculum mode).")
 
     scenario_yaml, model_used = await _call_forge_ai(indicators, req, curriculum_context)
     mitre_techniques = _extract_mitre(scenario_yaml)
@@ -192,9 +194,7 @@ async def generate_exercise(
     indicators = _resolve_indicators(req, user.tenant_id, db)
     curriculum_context = await _resolve_curriculum_context(req, user.tenant_id, db)
     if not indicators and not req.learning_objectives:
-        raise HTTPException(
-            422, "Provide threat indicators (feed/inline) or learning objectives (curriculum mode)."
-        )
+        raise HTTPException(422, "Provide threat indicators (feed/inline) or learning objectives (curriculum mode).")
 
     scenario_yaml, model_used = await _call_forge_ai(indicators, req, curriculum_context)
     mitre_techniques = _extract_mitre(scenario_yaml)
@@ -225,19 +225,36 @@ async def generate_exercise(
     db.add(scenario)
     db.flush()
 
-    # Attach to the chosen range, or the tenant's first as before.
-    from ..models import Range
+    # Attach to the chosen range, or the tenant's oldest range that is not a Student's lab.
+    # A lab session's range is driven only by its session (ranges._changeable_range), and
+    # Run fires the scenario on whatever is bound, so a lab is never a target here (audit #443).
+    from ..db import not_deleted
+    from ..lab_sessions.service import lab_range_ids
+    from ..models import Range, RangeState
+
+    gone = (RangeState.destroying, RangeState.destroyed, RangeState.failed)
 
     if req.range_id is not None:
         range_obj = (
-            db.query(Range)
+            not_deleted(db.query(Range), Range)
             .filter(Range.id == req.range_id, Range.tenant_id == user.tenant_id)
             .first()
         )
         if not range_obj:
             raise HTTPException(404, "Range not found in your tenant.")
+        if range_obj.state in gone:
+            raise HTTPException(409, f"That range is {range_obj.state.value}; choose another range.")
+        if range_obj.id in lab_range_ids(db, [range_obj.id]):
+            raise HTTPException(409, "That range belongs to a student's lab session; choose another range.")
     else:
-        range_obj = db.query(Range).filter(Range.tenant_id == user.tenant_id).first()
+        candidates = (
+            not_deleted(db.query(Range), Range)
+            .filter(Range.tenant_id == user.tenant_id, Range.state.notin_(gone))
+            .order_by(Range.created_at, Range.id)
+            .all()
+        )
+        labs = lab_range_ids(db, [r.id for r in candidates])
+        range_obj = next((r for r in candidates if r.id not in labs), None)
         if not range_obj:
             raise HTTPException(
                 409,
@@ -351,9 +368,7 @@ def _resolve_indicators(req: ForgeRequest, tenant_id: uuid.UUID, db: Session) ->
     return indicators
 
 
-async def _resolve_curriculum_context(
-    req: ForgeRequest, tenant_id: uuid.UUID, db: Session
-) -> list[str]:
+async def _resolve_curriculum_context(req: ForgeRequest, tenant_id: uuid.UUID, db: Session) -> list[str]:
     """Curriculum mode: retrieve grounding chunks for the learning objectives."""
     if not req.curriculum_id or not req.learning_objectives:
         return []

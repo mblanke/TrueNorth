@@ -118,6 +118,12 @@
       loop_control: { loop_var: tn_prefetch_fam, label: "{{ tn_prefetch_fam.family }}" }
       when: tn_prefetch_fam.enabled | bool
 
+    # ── Greyspace: pinned images (Nexus Docker proxies), Docker Engine, Alpine ──
+    # Last, so a Greyspace failure never skips the catalogue prefetch above.
+    - name: Prefetch — Greyspace (greyspace-host template)
+      ansible.builtin.include_tasks: greyspace.yml
+      when: tn_prefetch_greyspace | bool
+
   rescue:
     - name: Prefetch — record the failure (the depot still goes back offline)
       ansible.builtin.set_fact:
@@ -130,5 +136,6 @@
       - "internalized (content/choco): {{ tn_prefetch_internalize_run.stdout_lines | default(['skipped'], true) }}"
       - "internalize details: {{ tn_prefetch_workdir }}/choco-internalize-report.json (copy RECORDED sha256 values into content/choco)"
       - "linux: {{ tn_prefetch_linux_results | default({}) }}"
+      - "greyspace images: {{ tn_prefetch_registry_run.stdout_lines | default(['skipped']) }}"
       - "details: {{ tn_prefetch_workdir }}/choco-report.json on {{ inventory_hostname }}"
       - "error: {{ tn_prefetch_error | default('none') }}"

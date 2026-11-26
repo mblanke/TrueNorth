@@ -47,6 +47,10 @@ case "$1" in
     mkdir -p "$state/vm" "$state/ann"; echo false > "$state/vm/${@: -1}"
     for a in "$@"; do case "$a" in -annotation=*) printf '%s\n' "${a#-annotation=}" > "$state/ann/${@: -1}" ;; esac; done ;;
   vm.markastemplate) echo true > "$state/vm/$(basename "$2")" ;;
+  folder.info) grep -qxF "$2" "$state/folders" 2>/dev/null ;;
+  folder.create)
+    case "$(dirname "$2")" in /DC/vm/TrueNorth/Templates) ;; *) grep -qxF "$(dirname "$2")" "$state/folders" || exit 1 ;; esac
+    echo "$2" >> "$state/folders" ;;
 esac
 """
 
@@ -92,8 +96,13 @@ def test_one_copy_per_range_host_on_its_local_datastore(govc):
         assert "-vm /DC/vm/TrueNorth/Templates/srv2022" in clone
         assert "-on=false" in clone and "-template=false" in clone
         assert f"-host=/DC/host/CL/{short}.truenorth.lab" in clone and f"-ds={short}-local" in clone
-        assert "-folder=/DC/vm/TrueNorth/Templates" in clone
+        assert f"-folder=/DC/vm/TrueNorth/Templates/Host copies/{short}" in clone
         assert (govc.state / "vm" / f"srv2022@{short}-20261019").read_text().strip() == "true"
+    # "Host copies" first (folder.create makes no parents), once; then one folder per host.
+    assert _calls(govc.state, "folder.create") == ["folder.create /DC/vm/TrueNorth/Templates/Host copies"] + [
+        f"folder.create /DC/vm/TrueNorth/Templates/Host copies/{s}" for s in ("esx02", "esx03", "esx04")]
+    marks = _calls(govc.state, "vm.markastemplate")
+    assert "vm.markastemplate /DC/vm/TrueNorth/Templates/Host copies/esx03/srv2022@esx03-20261019" in marks
 
 
 def test_a_second_run_the_same_day_changes_nothing(govc):
@@ -139,7 +148,8 @@ def test_refuses_an_esxi_host(govc):
 def test_dry_run_changes_nothing(govc):
     got = govc("srv2022", DRY_RUN="1")
     assert got.returncode == 0 and got.stdout.count("DRY_RUN: govc vm.clone") == 3
-    assert _calls(govc.state, "vm.clone") == []
+    assert "DRY_RUN: govc folder.create /DC/vm/TrueNorth/Templates/Host copies/esx02" in got.stdout
+    assert _calls(govc.state, "vm.clone") == [] and _calls(govc.state, "folder.create") == []
 
 
 # -- build records and stamps (ADR 0013 §2) ------------------------------------------------
@@ -180,6 +190,17 @@ def test_replicate_stamps_each_copy_and_records_it(govc):
     assert rec["copies"] == {s: f"srv2022@{s}-20261019" for s in ("esx02", "esx03", "esx04")}
     again = govc("srv2022")  # the same build's copies: reused
     assert again.returncode == 0 and "already exists; skipped" in again.stdout
+
+
+@needs_jq
+def test_the_record_stays_readable_after_replicate_adds_its_copies(govc):
+    """record_copy rewrites the record through mktemp (0600); the API container, another
+    user, then could not read it and registration failed (2026-11-23)."""
+    assert govc("srv2022", command="manifest", TN_BUILD_ID="b1").returncode == 0
+    assert govc("srv2022", "esx02").returncode == 0
+    rec = govc.records / "srv2022.build.json"
+    assert json.loads(rec.read_text())["copies"] == {"esx02": "srv2022@esx02-20261019"}
+    assert rec.stat().st_mode & 0o777 == 0o644
 
 
 @needs_jq

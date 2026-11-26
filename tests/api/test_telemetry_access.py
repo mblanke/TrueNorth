@@ -45,7 +45,7 @@ class _Backend:
         self.ingested.append((index, events))
         return len(events)
 
-    async def search(self, index, query, size):
+    async def search(self, index, query, size, *, visible_only=False):
         self.searched.append(index)
         return {"hits": {"hits": []}}
 

@@ -1,0 +1,42 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# Runs INSIDE a throwaway container on the build host. Downloads (never keeps) what the
+# greyspace-host template build (infra/vsphere/packer/files/linux/roles/greyspace-host.sh)
+# asks the depot's apt-cacher-ng for, exactly as it asks for it:
+#   apt  (ubuntu container)  the role's apt packages and Docker Engine from
+#        http://download.docker.com/linux/ubuntu (Remap-tndocker) with its signing key;
+#   apk  (the local images' alpine base)  their Alpine packages from
+#        http://dl-cdn.alpinelinux.org/alpine (Remap-tnalpine).
+# One line per step on stdout:  TNRESULT <ok|fail> <name>
+PROXY='{{ tn_depot_apt_proxy_url }}'
+case "$1" in
+apt)
+  export DEBIAN_FRONTEND=noninteractive
+  APT="apt-get -q -o Acquire::http::Proxy=$PROXY"
+  $APT update >&2 && $APT install -y --no-install-recommends ca-certificates curl gnupg >&2 \
+    || { echo "TNRESULT fail greyspace-apt-update"; exit 0; }
+  if $APT install -y --download-only {{ tn_prefetch_greyspace_apt | map('quote') | join(' ') }} >&2; then
+    echo "TNRESULT ok greyspace-ubuntu-packages"; else echo "TNRESULT fail greyspace-ubuntu-packages"; fi
+  install -d /etc/apt/keyrings
+  if curl -fsS --proxy "$PROXY" http://download.docker.com/linux/ubuntu/gpg -o /tmp/docker.asc \
+     && [ "$(gpg --show-keys --with-colons /tmp/docker.asc 2>/dev/null | awk -F: '$1 == "pub" { n++; w = 1; next } $1 == "fpr" && w { f = $10; w = 0 } END { if (n == 1) print f }')" = '{{ tn_prefetch_docker_key_fpr }}' ] \
+     && gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg /tmp/docker.asc; then
+    echo "TNRESULT ok greyspace-docker-key"
+  else
+    echo "TNRESULT fail greyspace-docker-key"; exit 0
+  fi
+  . /etc/os-release
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] http://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" \
+    > /etc/apt/sources.list.d/docker.list
+  if $APT update >&2 && $APT install -y --download-only {{ tn_prefetch_greyspace_docker_apt | map('quote') | join(' ') }} >&2; then
+    echo "TNRESULT ok greyspace-docker-engine"; else echo "TNRESULT fail greyspace-docker-engine"; fi
+  ;;
+apk)
+  sed -i "s#^https://dl-cdn.alpinelinux.org/alpine#http://dl-cdn.alpinelinux.org/alpine#" /etc/apk/repositories
+  if http_proxy="$PROXY" apk add --no-cache {{ tn_prefetch_greyspace_apk | map('quote') | join(' ') }} >&2; then
+    echo "TNRESULT ok greyspace-alpine-packages"; else echo "TNRESULT fail greyspace-alpine-packages"; fi
+  ;;
+*)
+  echo "TNRESULT fail greyspace-usage"
+  ;;
+esac

@@ -217,12 +217,6 @@ class TestAIConfigPlatformBoundaryCompanions:
 
 # ── auth_zones.py:37 (medium) — companion for TestAuthZonePlatformDefaults ──
 class TestAuthZonePlatformDefaultsCompanions:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: any tenant's admin can rewrite or delete platform-default "
-        "auth zones that gate registration for every tenant (auth_zones.py:37) — "
-        "companion",
-    )
     def test_foreign_tenant_admin_cannot_delete_a_platform_default_zone(self, client, db_session, monkeypatch):
         """Delete-branch companion for
         test_foreign_tenant_admin_cannot_change_a_platform_default_zone: the oracle
@@ -241,12 +235,6 @@ class TestAuthZonePlatformDefaultsCompanions:
 
 # ── templates.py:274 / scenarios.py:150 (low) — companions ───────────────
 class TestSharedContentReadableByIdCompanions:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: public/global templates are listed to other tenants but "
-        "by-id reads 404, so a class can be built from an uninspectable template "
-        "(templates.py:274) — companion",
-    )
     def test_listed_foreign_public_template_is_unreadable_for_an_instructor(self, client, db_session):
         """Second-role companion for
         test_listed_public_template_of_another_tenant_is_readable_by_id: the oracle
@@ -269,12 +257,6 @@ class TestSharedContentReadableByIdCompanions:
             assert str(foreign_public.id) in listed
             assert client.get(f"/templates/{foreign_public.id}").status_code == 200, "listed but unreadable"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: public/global templates and scenarios are listed to other "
-        "tenants but by-id reads 404, so a class can be built from an uninspectable "
-        "scenario (templates.py:274, scenarios.py:150) — companion",
-    )
     def test_listed_platform_scenario_is_readable_by_id(self, client, db_session):
         """Boundary-value companion for
         test_listed_public_scenario_of_another_tenant_is_readable_by_id: the oracle
@@ -298,12 +280,6 @@ class TestSharedContentReadableByIdCompanions:
 # ── exercise_forge.py:238 (medium) — companion for TestForgeDefaultRange ──
 class TestForgeDefaultRangeCompanions:
     @patch("app.routers.exercise_forge._call_forge_ai", new_callable=AsyncMock)
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: forge with no range_id binds the exercise to an arbitrary "
-        "tenant range, including a Student's live lab range (exercise_forge.py:238) — "
-        "companion",
-    )
     def test_forge_fallback_binds_tenant_b_live_lab_range(self, mock_ai, client, db_session, monkeypatch):
         """Two-tenant-matrix companion for
         test_forge_fallback_never_binds_a_live_lab_range: the oracle forges as the
@@ -399,11 +375,6 @@ class TestForgeDefaultRangeCompanions:
 
 # ── rbac.py:413 (low) — companion for TestRequireTenantAccess ────────────
 class TestRequireTenantAccessCompanions:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: require_tenant_access can never see the path parameter it "
-        "is supposed to check and therefore always passes (rbac.py:413) — companion",
-    )
     def test_require_tenant_access_enforces_the_path_parameter_on_post(self, db_session):
         """Second-input companion for
         test_require_tenant_access_enforces_the_path_parameter: a POST route wired

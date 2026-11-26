@@ -9218,6 +9218,10 @@ export interface paths {
          *     session's range and the range of a running exercise they take part in
          *     (app/telemetry_access.py).
          *
+         *     A Student's free text searches an allow-list of observation fields
+         *     (search_backends/query.py ``VISIBLE_TEXT_FIELDS``), never the platform labels; staff's
+         *     searches the whole document. ``field:value`` terms are unchanged.
+         *
          *     ``q`` is a small closed grammar (app/search_backends/query.py), never OpenSearch
          *     ``query_string``: no regex, fuzzy, leading wildcards or ``_``-prefixed fields.
          *     A query outside it is a 422.

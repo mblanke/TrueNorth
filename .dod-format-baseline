@@ -114,7 +114,6 @@ control-plane/api/app/hypervisor_backends/vsphere.py
 control-plane/api/app/hypervisor_backends/vsphere_inventory.py
 control-plane/api/app/hypervisor_binding.py
 control-plane/api/app/hypervisor_connection_guard.py
-control-plane/api/app/identity.py
 control-plane/api/app/infra_discovery/service.py
 control-plane/api/app/lab_sessions/capacity_gate.py
 control-plane/api/app/lab_sessions/holdings.py
@@ -169,12 +168,10 @@ control-plane/api/app/result_transfer/quiz_producer.py
 control-plane/api/app/routers/ad_sync.py
 control-plane/api/app/routers/admin.py
 control-plane/api/app/routers/ai_config.py
-control-plane/api/app/routers/auth_zones.py
 control-plane/api/app/routers/competency.py
 control-plane/api/app/routers/courses.py
 control-plane/api/app/routers/curriculum.py
 control-plane/api/app/routers/directory.py
-control-plane/api/app/routers/exercise_forge.py
 control-plane/api/app/routers/exercises.py
 control-plane/api/app/routers/exercises_collective.py
 control-plane/api/app/routers/golden_images.py
@@ -189,7 +186,6 @@ control-plane/api/app/routers/registration.py
 control-plane/api/app/routers/scenario_executions.py
 control-plane/api/app/routers/software_catalogue.py
 control-plane/api/app/routers/storage.py
-control-plane/api/app/routers/templates.py
 control-plane/api/app/routers/wiki.py
 control-plane/api/app/scheduler/approval.py
 control-plane/api/app/scheduler/approval_notices.py
