@@ -292,8 +292,9 @@ def stored_output(backend: str, range_id: str, result, provisioner=None) -> dict
     and the range pages read back, and the endpoint it was built on (``connection``:
     worker/connection_binding.py), which every later operation must reach again."""
     out = {"provider": backend, "range_id": range_id, "vms": result.vms, "networks": result.networks}
-    # inventory: S5 (range_inventory.py); isolation: S4 (range_isolation.py)
-    for key in ("uplink", "mirrors", "warnings", "not_ready", "inventory", "isolation"):
+    # inventory: S5 (range_inventory.py); isolation: S4 (range_isolation.py); timings: seconds
+    # per build phase (provisioners/vsphere_timing.py)
+    for key in ("uplink", "mirrors", "warnings", "not_ready", "inventory", "isolation", "timings"):
         if getattr(result, key, None):
             out[key] = getattr(result, key)
     record = getattr(provisioner, "connection_record", None)  # BaseProvisioner's; None: not one
