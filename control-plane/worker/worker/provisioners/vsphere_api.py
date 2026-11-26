@@ -568,7 +568,10 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._tags_enabled = VSPHERE_TAGS
         self._tag_timeout = VSPHERE_TAG_TIMEOUT
         self._tagger: tags.TagClient | None = None  # one per build (provision)
-        self._timing_clock: Callable[[], float] = time.monotonic  # tests: a clock they advance
+        # The timers' own clock (None: vsphere_timing's monotonic clock), never this module's
+        # ``time``: the timers must not use up a wait window measured on that one. Tests set a
+        # clock they advance.
+        self._timing_clock: Callable[[], float] | None = None
         self._timings = timing.BuildTimings()  # one per build (provision): seconds per phase
         self._vcpu_ratio = VSPHERE_MAX_VCPU_PER_THREAD
         self._exclude_hosts = _names(VSPHERE_EXCLUDE_HOSTS)

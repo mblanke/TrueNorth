@@ -67,7 +67,8 @@ class _Phases:
 class BuildTimings(_Phases):
     """One range build: its own phases, and one set of phases per VM."""
 
-    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(self, clock: Callable[[], float] | None = None) -> None:
+        clock = clock or time.monotonic
         super().__init__(clock)
         self._began = clock()
         self._vms: dict[str, _Phases] = {}

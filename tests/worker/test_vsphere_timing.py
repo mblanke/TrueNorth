@@ -136,6 +136,38 @@ def test_each_timer_is_on_the_step_it_names(vc):  # noqa: F811
     assert result.timings["total_seconds"] == 5 + 110 + 300 + 90 + 11 + 13 + 17
 
 
+def test_the_timers_never_look_at_the_clock_the_build_waits_on(vc, monkeypatch):  # noqa: F811
+    """The build's waits (guest network, Sysprep, budgets) are measured on the provisioner
+    module's ``time``. A timer reading that clock would use up a window when a test, or a
+    slow clock, makes each look expensive: tests/worker/test_vsphere_customization.py's clock
+    passes 10 s per look, and the timers once cost it its whole Sysprep window."""
+    import test_vsphere_provision as provision_tests
+
+    looks = 0
+    real = provision_tests.mod.time
+
+    class Counting:
+        sleep, time = staticmethod(real.sleep), staticmethod(real.time)
+
+        @staticmethod
+        def monotonic():
+            nonlocal looks
+            looks += 1
+            return real.monotonic()
+
+    monkeypatch.setattr(provision_tests.mod, "time", Counting())
+    result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+    assert result.status == "ok", result.errors
+    with_timers = looks
+
+    looks = 0
+    monkeypatch.setattr(timing.BuildTimings, "vm", lambda self, name: timing._Phases(lambda: 0.0))
+    monkeypatch.setattr(timing._Phases, "phase", lambda self, name: __import__("contextlib").nullcontext())
+    result = _run(_prov(vc).provision(RANGE_ID, _rendered(ONE_LINUX), {}))
+    assert result.status == "ok", result.errors
+    assert with_timers == looks  # the same number of looks with the timers switched off
+
+
 def test_the_build_slot_still_bounds_how_many_vms_are_created_at_once(vc):  # noqa: F811
     """Timing the wait for a build slot must not have removed the slot (VSPHERE_CONCURRENCY):
     with one slot, no two VMs are ever between "create" and "power on" at the same time."""
