@@ -387,11 +387,6 @@ class TestForgeDefaultRangeCompanions:
 
 # ── rbac.py:413 (low) — companion for TestRequireTenantAccess ────────────
 class TestRequireTenantAccessCompanions:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit #443: require_tenant_access can never see the path parameter it "
-        "is supposed to check and therefore always passes (rbac.py:413) — companion",
-    )
     def test_require_tenant_access_enforces_the_path_parameter_on_post(self, db_session):
         """Second-input companion for
         test_require_tenant_access_enforces_the_path_parameter: a POST route wired
