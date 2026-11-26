@@ -568,6 +568,7 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._tags_enabled = VSPHERE_TAGS
         self._tag_timeout = VSPHERE_TAG_TIMEOUT
         self._tagger: tags.TagClient | None = None  # one per build (provision)
+        self._timing_clock: Callable[[], float] = time.monotonic  # tests: a clock they advance
         self._timings = timing.BuildTimings()  # one per build (provision): seconds per phase
         self._vcpu_ratio = VSPHERE_MAX_VCPU_PER_THREAD
         self._exclude_hosts = _names(VSPHERE_EXCLUDE_HOSTS)
@@ -1802,7 +1803,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
         template author could send a build, and its recorded connection, to any host.
         """
         start = time.monotonic()
-        timed = self._timings = timing.BuildTimings()  # where this build's time goes (vsphere_timing.py)
+        # Where this build's time goes (vsphere_timing.py).
+        timed = self._timings = timing.BuildTimings(self._timing_clock)
         # No new build work starts after this point. VSPHERE_PROVISION_BUDGET from the
         # provision start, and never past the task's ``finish_by`` (worker/tasks.py: the
         # Celery soft limit minus a reserve, same monotonic clock), so a long setup is
