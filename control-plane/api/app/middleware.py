@@ -137,9 +137,10 @@ class CsrfMiddleware(BaseHTTPMiddleware):
         # sends its header and the browser sends the cookie, and any Set-Cookie on a response
         # that lands in between (a new value, or the older value echoed back over a newer
         # one) makes the write that follows fail the double-submit check. That was a 403 on
-        # a click, on any page that reads while the user acts. A session cookie, so nothing
-        # expires under an open page; the token carries no time or user and was valid until
-        # CSRF_SECRET changed in any case.
+        # a click, on any page that reads while the user acts. A session cookie, so it does
+        # not expire under an open page (a cookie issued before this change keeps its one-day
+        # lifetime, and a write after it lapses is refused once, until the next read). The
+        # token carries no time or user and was valid until CSRF_SECRET changed in any case.
         current = request.cookies.get(_CSRF_COOKIE, "")
         if not (current and _verify_csrf_token(current)):
             response.set_cookie(

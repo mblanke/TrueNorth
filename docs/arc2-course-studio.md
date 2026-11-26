@@ -729,8 +729,8 @@ auto-accept it). Moodle publishing is opt-in: `--publish-platform moodle`.
 
 It runs in a one-off api container, in-process as the bootstrap administrator, with the same
 harness as `load_content_inprocess.py` (`scripts/_inprocess_api.py`: the token check replaced
-by that user's identity; the CSRF cookie read immediately before every non-GET, since every
-response rotates it; back-off on 429). Every step goes through the API:
+by that user's identity; the CSRF cookie read immediately before every non-GET, since a
+response may set it; back-off on 429). Every step goes through the API:
 
 1. **Queue.** One run per course, named after its catalogue code (`C103`, `RMC C202`), with a
    plain-language request built from the YAML (title, level, hours, each module's objectives,

@@ -525,7 +525,8 @@ class FakeResponse:
 
 
 class FakeClient:
-    """Rotates the CSRF cookie on every response, as the middleware does."""
+    """Changes the CSRF cookie on every response: the hardest case for the client, which must
+    read the cookie before each write. (The middleware only sets it when a request has none.)"""
 
     def __init__(self, statuses):
         self.statuses = list(statuses)
