@@ -2,10 +2,15 @@
 # One "<sha256>  <file>" line per package, in install order (dependencies first).
 # tn-pfsense-finish.sh pkg-adds exactly these, after checking each sha256; the build fails
 # (no template) if a file is missing or does not match.
-#
-# NOT PINNED YET: no package lines below. Pin once, on a host with internet access:
-#   python3 scripts/lab/stage_pfsense_pkgs.py resolve --out <dir>
-# It reads the pfSense 2.7.2 repository catalogue, resolves open-vm-tools-nox11 and its
-# dependencies, downloads them, checks each against the catalogue's sha256 and rewrites
-# this file. Review the diff and commit it, then put <dir>/*.pkg on the depot
-# (<depot_url>/installers/pfsense/2.7.2/) or carry them to TN-MGMT01.
+# Written by: python3 scripts/lab/stage_pfsense_pkgs.py resolve (review, then commit).
+4e856994b460427bced4feb9861643b1f2e98357781847ef148a753c11da6395  indexinfo-0.3.1.pkg
+d51459f0c96d1371f049f6db82d622584f0732d76cf00b8104d6ec075a66e7e9  gettext-runtime-0.22_1.pkg
+bafc4b0e09a644cab985984714aa49b48fad95ce1a84a3de39a427a1344d4c68  libffi-3.4.4.pkg
+cd40bde2470b73b9ae8c56a31149bd4253c56ca9f9b85e348950ea710b5876f1  libiconv-1.17.pkg
+7c14ca00076af1a76e193e7d60060cd355810a141b07b5feb14eb42c7723eee7  pcre2-10.42.pkg
+20af57a154aae5713e9ac3677bb7d031c490a049e44b83e55c416658b04da677  mpdecimal-2.5.1.pkg
+0f98818e37acde89953fab613d4d6cb290e998ba9772d01d73e4233d305441d2  readline-8.2.1.pkg
+b58b7a56fa9ad1a08c142770b0649f75d04aaf5808f6e4b885ab372e0eb143e3  python311-3.11.6.pkg
+11784fed2293da4a4d2eccc64a4ff8109f0cf7b88f39c097824726a02e89f3b6  glib-2.78.0,2.pkg
+a3106bc08de29bf3606117c044e7bc7e1ce96fd0d7ced432efbff5515eaad0c2  libdnet-1.13_4.pkg
+760a10ca1be3bd8112512bbca4365fedd46cc1ec929972b29e248fb38635f670  open-vm-tools-nox11-12.3.5,2.pkg

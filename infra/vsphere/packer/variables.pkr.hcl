@@ -305,6 +305,18 @@ variable "apt_proxy" {
   }
 }
 
+variable "depot_dockerhub_port" {
+  description = "TN-DEPOT01 Nexus docker-proxy connector (Docker Hub) on the depot_url host; greyspace-host pulls through it"
+  type        = number
+  default     = 8082
+}
+
+variable "depot_quay_port" {
+  description = "TN-DEPOT01 Nexus quay-proxy connector (quay.io) on the depot_url host; greyspace-host pulls through it"
+  type        = number
+  default     = 8084
+}
+
 variable "chocolatey_version" {
   description = "Chocolatey version to bootstrap from the depot feed; empty takes the newest stable one there"
   type        = string
@@ -394,11 +406,13 @@ variable "srv2019_eval" {
 }
 variable "srv2019_image_name" {
   description = <<-EOT
-    install.wim image name on the Server 2019 ISO (ignored when srv2019_eval). Some media
-    name it "Windows Server 2019 SERVERSTANDARD"; check with dism /Get-WimInfo.
+    install.wim image on the Server 2019 ISO (ignored when srv2019_eval): a NAME, or a number
+    for the INDEX. Default 2 = Standard (Desktop Experience), as srv2025: the display name
+    "Windows Server 2019 Standard (Desktop Experience)" matched no WIM NAME on the work site's
+    ISO (Setup stopped at the OS picker, 2026-11-23). Check with dism /Get-WimInfo.
   EOT
   type        = string
-  default     = "Windows Server 2019 Standard (Desktop Experience)"
+  default     = "2"
 }
 variable "gvlk_srv2019" {
   description = "Server 2019 Standard GVLK (public KMS client setup key; ignored when srv2019_eval)"

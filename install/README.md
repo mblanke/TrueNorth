@@ -1148,6 +1148,14 @@ Two vault settings cover machines with no declared account:
   VM, which must fail; `RANGE_TEMPLATE_LOGIN_CHECK=enforce|warn`, default `enforce`). The API
   gets the Linux user name only. Staff reveal range passwords one at a time on the range's
   Credentials panel, each reveal audited; the wiki holds no credentials.
+- `tn_vsphere_so_install_user` (default `soadmin`) / `tn_vsphere_so_install_password`
+  (`vault_vsphere_so_install_password`, else `vault_template_linux_password`), rendered as
+  `VSPHERE_SO_INSTALL_USER` / `VSPHERE_SO_INSTALL_PASSWORD`: Security Onion's build login,
+  the user created in the SO installer with the generic build password. The worker logs in
+  as it (guest operations and `sudo`) to run so-setup on a SOC range's Security Onion node;
+  the API gets the user name only (that node's generated staff login). Either empty
+  (vSphere): preflight warns, and a SOC range whose template declares no `role: admin`
+  account fails at deploy with "no install login".
 - `vault_range_default_password`: **ignored** since ADR 0013 (no site-wide range password);
   preflight says so when it is set.
 
@@ -1175,6 +1183,7 @@ actually change:
 | `tn_opensearch_snapshot_repo` / `tn_opensearch_snapshot_keep` | `tn_snapshots` / `14` | Telemetry snapshots per backup ("Backups"); `""` = none. |
 | `tn_upgrade_inflight` / `tn_pre_upgrade_backup` | `drain` / `true` | "Upgrades". |
 | `tn_vsphere_verify_ssl` | `true` | The reference lab overrides it to `false` in `hosts.yml` (VMCA chain not yet trusted). |
+| `tn_vsphere_windows_timezone` | `35` (Eastern Standard Time) | `VSPHERE_WINDOWS_TIMEZONE`: the Sysprep time zone of Windows range VMs, a **decimal** Microsoft time zone index (`35` Eastern, `85` GMT Standard Time); empty is `35`. Preflight and the worker refuse an index not in Microsoft's table (#526). govc's `-tz` takes the index in **hex** (`35` is `-tz 23`; the old `-tz 85` was index 133, refused by vCenter); `scripts/lab/test-clone.sh --tz` takes it in decimal, like this setting. |
 | `tn_image_source` | `release` | `build` only for a lab ("Images") |
 | `tn_release_version` | *(empty — required in release mode)* | The release tag to install, e.g. `v1.2.3` |
 | `tn_release_dir` / `tn_image_archive_dir` | *(empty)* | Air-gapped: the release files, and `docker save` tarballs |

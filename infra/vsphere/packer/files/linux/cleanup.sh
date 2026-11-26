@@ -12,6 +12,24 @@ sudo rm -f /etc/apt/apt.conf.d/90tn-build-proxy /etc/apt/apt.conf.d/90curtin-apt
 if [ -f /etc/apt/apt.conf ]; then sudo sed -i '/^Acquire::http::Proxy /d' /etc/apt/apt.conf || true; fi
 if [ -f /etc/dnf/dnf.conf ]; then sudo sed -i '/^# tn-build-proxy$/,+1d' /etc/dnf/dnf.conf || true; fi
 
+# The install DVD as an apt source (debian-installer and Kali leave "deb cdrom:" behind): a
+# clone has no DVD, so apt-get update fails on it (the parrot variant and every range that
+# installs a package). <root> is "" on the guest; tests pass a scratch directory.
+drop_cdrom_sources() {
+  local root="${1:-}" f re='^[[:space:]]*deb(-src)?[[:space:]]+(\[[^]]*\][[:space:]]+)?cdrom:'
+  for f in "$root/etc/apt/sources.list" "$root"/etc/apt/sources.list.d/*.list; do
+    if [ ! -f "$f" ] || ! grep -Eq "$re" "$f"; then continue; fi
+    { grep -Ev "$re" "$f" || true; } | sudo tee "$f.tn-new" >/dev/null && sudo mv -f "$f.tn-new" "$f"
+  done
+  for f in "$root"/etc/apt/sources.list.d/*.sources; do
+    [ -f "$f" ] || continue
+    # deb822: drop a file whose every URIs line is the DVD.
+    if grep -q '^URIs:.*cdrom:' "$f" && ! grep '^URIs:' "$f" | grep -vq 'cdrom:'; then sudo rm -f "$f"; fi
+  done
+}
+echo "=== remove the install DVD from the apt sources"
+drop_cdrom_sources ""
+
 echo "=== cloud-init clean"
 sudo cloud-init clean --logs || true
 

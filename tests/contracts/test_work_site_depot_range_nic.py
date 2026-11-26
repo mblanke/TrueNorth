@@ -732,6 +732,9 @@ def test_apt_cacher_ng_is_not_an_open_proxy_and_its_admin_pages_need_auth():
     lines = [ln.strip() for ln in conf.splitlines() if ln.strip() and not ln.startswith("#")]
     assert "ForceManaged: 1" in lines and "AllowUserPorts: 80" in lines and "PassThroughPattern: ^$" in lines
     assert "Remap-tnrocky: dl.rockylinux.org/pub/rocky ; dl.rockylinux.org/pub/rocky" in lines
+    # Ubuntu's security pocket and Parrot (the parrot variant) are served too (2026-11-23).
+    assert "Remap-tnubusec: security.ubuntu.com/ubuntu ; security.ubuntu.com/ubuntu" in lines
+    assert "Remap-tnparrot: deb.parrot.sh/parrot ; https://mirrors.ocf.berkeley.edu/parrot" in lines
     tasks = yaml.safe_load((ROLE / "tasks/main.yml").read_text())
     auth = next(t for t in tasks if t.get("name", "").startswith("Depot — apt-cacher-ng AdminAuth"))
     script = auth["ansible.builtin.shell"]
@@ -746,7 +749,9 @@ def test_nexus_anonymous_reads_only_the_feed_and_packer_reads_installers_as_its_
         "nx-repository-view-nuget-chocolatey-read", "nx-repository-view-nuget-chocolatey-browse",
         "{{ tn_depot_choco_installers_privilege }}"]  # installers/<choco id>/** via the content selector
     assert DEFAULTS["tn_depot_build_read_privileges"] == [
-        "nx-repository-view-raw-installers-read", "nx-repository-view-raw-installers-browse"]
+        "nx-repository-view-raw-installers-read", "nx-repository-view-raw-installers-browse",
+        # greyspace-host pulls its pinned images through the two registry proxies (read only)
+        "nx-repository-view-docker-docker-proxy-read", "nx-repository-view-docker-quay-proxy-read"]
     assert "TN_DEPOT_BUILD_READ_PASSWORD" in DEFAULTS["tn_depot_build_read_password"]
     access = yaml.safe_load((ROLE / "tasks/nexus_access.yml").read_text())
     assert all(t.get("no_log") is True for t in access if "ansible.builtin.uri" in t)

@@ -27,6 +27,11 @@ rewrites pkgs.lock. Review that diff and commit it; then upload DIR/*.pkg to the
 (or carry them to TN-MGMT01 for ``stage --from-dir``). Trust there is HTTPS to the
 pfSense repository plus the catalogue's sums; after that the lock is what counts.
 
+pkg.pfsense.org has no address of its own: pfSense's pkg finds the server through the SRV
+record ``_https._tcp.pkg.pfsense.org`` (``mirror_type: srv``). ``resolve`` does the same
+(``dig``/``host``), and without either tool falls back to the server that record named
+when the lock was pinned (2026-11-23: pkg00-atx.netgate.com).
+
 Exit 0 on success, 1 with a message saying what to do otherwise. Python 3 stdlib only.
 """
 
@@ -41,7 +46,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -51,6 +58,11 @@ PFSENSE_VERSION = "2.7.2"
 DEPOT_SUBDIR = f"installers/pfsense/{PFSENSE_VERSION}"
 # /usr/local/etc/pkg/repos/pfSense.conf on a 2.7.2 install names this repository.
 UPSTREAM = "https://pkg.pfsense.org/pfSense_v2_7_2_amd64-pfSense_v2_7_2"
+# Where _https._tcp.<host> pointed when the lock was pinned; used only when no SRV lookup
+# tool is available. pkgs.lock was pinned through this server.
+SRV_FALLBACK = {"pkg.pfsense.org": "pkg00-atx.netgate.com"}
+# The only servers an SRV answer may send resolve to (Netgate's pkg servers), HTTPS only.
+SRV_TRUSTED_SUFFIXES = (".netgate.com", ".pfsense.org")
 ROOTS = ("open-vm-tools-nox11",)
 # The depot's installers repository is not anonymous (#214): read it as tn-build-read.
 DEPOT_READ_USER = "tn-build-read"
@@ -87,7 +99,8 @@ def read_lock(path: Path = LOCK) -> list[tuple[str, str]]:
             f"{path.relative_to(REPO) if path.is_relative_to(REPO) else path} pins no packages yet. "
             "On a host with internet access run: python3 scripts/lab/stage_pfsense_pkgs.py resolve "
             "--out <dir>, review and commit pkgs.lock, put <dir>/*.pkg on the depot "
-            f"({DEPOT_SUBDIR}/), then stage again")
+            f"({DEPOT_SUBDIR}/), then stage again"
+        )
     return pins
 
 
@@ -131,8 +144,9 @@ def _download(url: str, dest: Path, auth: tuple[str, str] | None = None) -> None
         shutil.copyfileobj(r, f)
 
 
-def stage(*, depot: str | None, from_dir: Path | None, out: Path = STAGE, lock: Path = LOCK,
-          depot_env: Path = DEPOT_ENV) -> list[str]:
+def stage(
+    *, depot: str | None, from_dir: Path | None, out: Path = STAGE, lock: Path = LOCK, depot_env: Path = DEPOT_ENV
+) -> list[str]:
     """Copy or fetch every locked file into ``out``, sha256-checked. Returns the file names."""
     if (depot is None) == (from_dir is None):
         raise StageError("give exactly one of --depot URL or --from-dir DIR")
@@ -230,10 +244,68 @@ def _packagesite(repo: str, work: Path) -> str:
     raise StageError(f"no packagesite in {repo}: {last}")
 
 
-def resolve(*, out: Path, repo: str = UPSTREAM, lock: Path = LOCK) -> list[tuple[str, str]]:
+SrvRecord = tuple[int, int, int, str]  # priority, weight, port, target
+
+
+def parse_srv(text: str) -> list[SrvRecord]:
+    """SRV records from ``dig +short SRV`` ("10 10 443 t.") or ``host -t SRV`` ("... record 10 10 443 t.")."""
+    records = []
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 4 and all(p.isdigit() for p in parts[-4:-1]):
+            records.append((int(parts[-4]), int(parts[-3]), int(parts[-2]), parts[-1].rstrip(".")))
+    return records
+
+
+def srv_lookup(name: str) -> list[SrvRecord]:
+    """The SRV records of ``name`` through dig or host; [] when neither tool answers."""
+    for cmd in (["dig", "+short", "SRV", name], ["host", "-t", "SRV", name]):
+        if shutil.which(cmd[0]) is None:
+            continue
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=20, check=False)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        records = parse_srv(r.stdout)
+        if records:
+            return records
+    return []
+
+
+def follow_srv(repo: str, lookup: Callable[[str], list[SrvRecord]] = srv_lookup) -> str:
+    """``repo`` on the server its host's ``_https._tcp`` SRV record names (lowest priority,
+    then highest weight); else the known fallback for that host; else ``repo`` unchanged.
+
+    Only targets under SRV_TRUSTED_SUFFIXES on port 443 are followed: an SRV answer (plain
+    DNS, unauthenticated) naming any other host or port is refused, not used."""
+    parts = urllib.parse.urlsplit(repo)
+    host = parts.hostname or ""
+    records = lookup(f"_https._tcp.{host}")
+    usable = [r for r in records if r[2] == 443 and r[3].lower().endswith(SRV_TRUSTED_SUFFIXES)]
+    if records and not usable:
+        raise StageError(
+            f"SRV for {host} names {sorted({f'{r[3]}:{r[2]}' for r in records})}: not a "
+            f"{'/'.join('*' + s for s in SRV_TRUSTED_SUFFIXES)} server on port 443; refusing to follow"
+        )
+    if usable:
+        netloc = min(usable, key=lambda r: (r[0], -r[1]))[3]
+    elif host in SRV_FALLBACK:
+        netloc = SRV_FALLBACK[host]
+    else:
+        return repo
+    return urllib.parse.urlunsplit(parts._replace(netloc=netloc))
+
+
+def resolve(
+    *, out: Path, repo: str = UPSTREAM, lock: Path = LOCK, lookup: Callable[[str], list[SrvRecord]] = srv_lookup
+) -> list[tuple[str, str]]:
     repo = repo.rstrip("/")
     if not repo.startswith("https://"):
         raise StageError("--repo must be https")
+    served = follow_srv(repo, lookup)
+    if served != repo:
+        print(f"repository: {served} (SRV target of {urllib.parse.urlsplit(repo).hostname})")
+        repo = served
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as work:
         cat = parse_catalogue(_packagesite(repo, Path(work)))
@@ -272,8 +344,11 @@ def main(argv: list[str] | None = None) -> int:
         elif a.cmd == "check":
             problems = check(a.out)
             if problems:
-                raise StageError("pfSense packages not staged: " + "; ".join(problems)
-                                 + ". Run: python3 scripts/lab/stage_pfsense_pkgs.py stage --depot <depot_url>")
+                raise StageError(
+                    "pfSense packages not staged: "
+                    + "; ".join(problems)
+                    + ". Run: python3 scripts/lab/stage_pfsense_pkgs.py stage --depot <depot_url>"
+                )
             print(f"pfSense packages staged in {a.out}: OK")
         else:
             pins = resolve(out=a.out, repo=a.repo)

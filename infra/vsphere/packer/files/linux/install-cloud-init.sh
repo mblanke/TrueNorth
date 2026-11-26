@@ -2,23 +2,42 @@
 # Author: Marc-Andre Blanke
 # Created: 2026-10-21T22:42:27Z
 # TrueNorth Range - cloud-init on every Linux template (Debian/Ubuntu family; Rocky gets it
-# from its kickstart %packages). The worker configures a Linux range VM ONLY through
+# from its kickstart %packages and runs this only to re-enable it). The worker configures a Linux range VM ONLY through
 # cloud-init's VMware datasource (guestinfo.metadata / guestinfo.userdata: hostname, static
 # IPs, accounts; vsphere_api.py _customize_sync). It never runs vSphere Linux guest
 # customization, so a template without cloud-init gives its clones no IP and no accounts.
 #
 # Sources, in order; never the internet unless the build already has a mirror/apt proxy:
-#   1. already installed (Ubuntu, Debian DVD preseed, Kali/Parrot late_command)
-#   2. the configured mirror or build apt proxy (apt_proxy -> TN-DEPOT01 apt-cacher-ng)
+#   1. already installed (Ubuntu, Rocky, Debian DVD preseed, Kali/Parrot late_command)
+#   2. the configured mirror or build apt proxy (apt_proxy -> TN-DEPOT01 apt-cacher-ng);
+#      Kali installed from the DVD lists no network mirror, so with a build apt proxy the
+#      Kali mirror is added (it is reached only through that proxy)
 #   3. the install ISO, still attached to the build VM (Kali "everything", Debian DVD pools)
 # None of them: exit 1, so the build fails and no template is made.
 set -uo pipefail
 have() { command -v cloud-init >/dev/null 2>&1; }
+# The Ubuntu autoinstall and the Rocky kickstart leave cloud-init disabled for the build's
+# own boots (on Rocky it would turn off password SSH and Packer would time out). Clones need
+# it on: require-cloud-init.sh fails the build while this marker exists.
+if [ -e /etc/cloud/cloud-init.disabled ]; then
+  sudo rm -f /etc/cloud/cloud-init.disabled && echo "cloud-init: re-enabled (removed /etc/cloud/cloud-init.disabled)"
+fi
 if have; then echo "cloud-init: already installed ($(cloud-init --version 2>&1))"; exit 0; fi
 command -v apt-get >/dev/null 2>&1 || { echo "cloud-init: not installed and no apt-get" >&2; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
 
 echo "=== cloud-init from the configured sources"
+# Kali from the DVD lists only the DVD, which has no cloud-init. With a build apt proxy (and
+# only then: never the internet directly), add the Kali mirror; the proxy fetches it.
+if grep -qi '^ID=kali' /etc/os-release 2>/dev/null \
+  && apt-config dump 2>/dev/null | grep -q '^Acquire::http::Proxy "http' \
+  && ! grep -rqs 'http.kali.org' /etc/apt/sources.list /etc/apt/sources.list.d/; then
+  echo 'deb http://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware' \
+    | sudo tee /etc/apt/sources.list.d/tn-kali.list >/dev/null
+  echo 'cloud-init: added http.kali.org (through the build apt proxy)'
+fi
+# Fresh indexes first: an install from the DVD can leave none for the network sources.
+sudo -E apt-get update -q || true
 sudo -E apt-get install -y cloud-init && have && exit 0
 
 echo "=== cloud-init from the install ISO"

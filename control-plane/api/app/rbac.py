@@ -407,20 +407,22 @@ def require_tenant_access(tenant_id_param: str = "tenant_id") -> Callable[..., A
         user: CurrentUser = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> CurrentUser:
-        # Only the platform operator skips tenant isolation: admins are per tenant.
-        if is_platform_admin(user, db):
-            return user
-
         # The target comes from the request's path parameters. FastAPI never injects a path
         # parameter into a dependency's **kwargs (that only made a bogus required query
         # parameter and left this check always passing, audit #443).
         target = request.path_params.get(tenant_id_param)
         if target is None:
-            # Wired to a route with no such parameter: a programming error, never a pass.
+            # Wired to a route with no such parameter: a programming error, never a pass. Checked
+            # before the operator's bypass, so the miswiring also shows on a single-tenant
+            # install, where every admin is the platform administrator.
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Route has no '{tenant_id_param}' path parameter to check tenant access against",
             )
+
+        # Only the platform operator skips tenant isolation: admins are per tenant.
+        if is_platform_admin(user, db):
+            return user
         try:
             target = str(uuid.UUID(str(target)))
             caller = str(uuid.UUID(str(user.tenant_id)))

@@ -39,4 +39,7 @@ echo "${user} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${user}
 chmod 0440 /etc/sudoers.d/${user}
 systemctl enable sshd
 systemctl enable vmtoolsd
+# Rocky's cloud-init turns off password SSH on first boot, so Packer's SSH login would time
+# out. Keep it off for the build; files/linux/install-cloud-init.sh removes this marker.
+touch /etc/cloud/cloud-init.disabled
 %end
