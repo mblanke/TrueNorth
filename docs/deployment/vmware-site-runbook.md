@@ -895,6 +895,28 @@ Exercise VMs mostly sit idle, so 4 vCPU per thread (8 per hyper-threaded core) i
 Watch CPU ready time in vCenter: above about 10%, students will feel it. To run more or
 larger ranges, the next step is linked clones (not built yet).
 
+### Where a build's time goes
+
+A vSphere build records wall-clock seconds per phase. A build that leaves at least one VM
+stores them with the range
+(`timings` in the range's provisioner output, staff only): for the range (`prepare`, `vms`,
+`mirrors`, `roles`, `software_and_products`, `securityonion`, `verify_accounts`,
+`template_login_check`) and for each VM (`queued`, `create`, `customize`, `power_on`,
+`guest_network`, `sysprep`). Phases overlap, since VMs are built side by side, so they do not
+sum to `total_seconds`. The worker also logs one line per build:
+`vSphere range <id> build took 1840s; longest phases: roles 1290s, vms 410s, ...`.
+That line is all that is left of a build that failed with nothing built: its output is not
+stored.
+
+Two phases time only the start of the work, not the work: `securityonion` (so-setup is
+started and then runs in the guest for 20 to 60 minutes) and, for Exchange, SharePoint and
+MECM, `software_and_products` (a setup still running when the build's time budget ends is
+handed to the reconcile task). A range with those products is ready later than
+`total_seconds` says.
+
+Read these before changing how ranges are built: they say whether the minutes go to cloning
+(which linked clones would remove) or to Sysprep and the role installs (which they would not).
+
 ---
 
 ## 9. Stop conditions

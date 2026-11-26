@@ -93,6 +93,7 @@ from . import vsphere_inventory as inventory
 from . import vsphere_macs as macs
 from . import vsphere_securityonion as seconion
 from . import vsphere_tags as tags
+from . import vsphere_timing as timing
 from . import vsphere_vlans as live_vlans
 from .base import AllocationNeed, BaseProvisioner, ConnectionBindingError, LiveUsage
 from .results import (
@@ -567,6 +568,11 @@ class VsphereAPIProvisioner(BaseProvisioner):
         self._tags_enabled = VSPHERE_TAGS
         self._tag_timeout = VSPHERE_TAG_TIMEOUT
         self._tagger: tags.TagClient | None = None  # one per build (provision)
+        # The timers' own clock (None: vsphere_timing's monotonic clock), never this module's
+        # ``time``: the timers must not use up a wait window measured on that one. Tests set a
+        # clock they advance.
+        self._timing_clock: Callable[[], float] | None = None
+        self._timings = timing.BuildTimings()  # one per build (provision): seconds per phase
         self._vcpu_ratio = VSPHERE_MAX_VCPU_PER_THREAD
         self._exclude_hosts = _names(VSPHERE_EXCLUDE_HOSTS)
         self._uplink_network = VSPHERE_RANGE_UPLINK_NETWORK.strip()
@@ -1800,6 +1806,8 @@ class VsphereAPIProvisioner(BaseProvisioner):
         template author could send a build, and its recorded connection, to any host.
         """
         start = time.monotonic()
+        # Where this build's time goes (vsphere_timing.py).
+        timed = self._timings = timing.BuildTimings(self._timing_clock)
         # No new build work starts after this point. VSPHERE_PROVISION_BUDGET from the
         # provision start, and never past the task's ``finish_by`` (worker/tasks.py: the
         # Celery soft limit minus a reserve, same monotonic clock), so a long setup is
@@ -1863,16 +1871,19 @@ class VsphereAPIProvisioner(BaseProvisioner):
             with self._vim() as si:
                 self._soap_si = si  # the "rest" dialect's VM operations share the build session
                 try:
-                    site = await asyncio.to_thread(self._prepare_sync, si, range_id, vm_defs, networks, physical)
-                    errors += site.get("notes", [])
-                    recorded = await asyncio.to_thread(self._range_inventory_sync, site, physical, allocations)
+                    with timed.phase("prepare"):
+                        site = await asyncio.to_thread(self._prepare_sync, si, range_id, vm_defs, networks, physical)
+                        errors += site.get("notes", [])
+                        recorded = await asyncio.to_thread(self._range_inventory_sync, site, physical, allocations)
                     async with self._client() as client:
                         # No tagging in the budget's last two minutes: they are the build's.
                         self._tagger = (self._tag_client(client, deadline=self._budget_end - 120)
                                         if self._tags_enabled else None)
-                        results = await asyncio.gather(
-                            *(self._provision_one_vm(client, si, site, v) for v in vm_defs), return_exceptions=True
-                        )
+                        with timed.phase("vms"):
+                            results = await asyncio.gather(
+                                *(self._provision_one_vm(client, si, site, v) for v in vm_defs),
+                                return_exceptions=True,
+                            )
                     for vm_def, res in zip(vm_defs, results, strict=True):
                         if isinstance(res, Exception):
                             errors.append(f"VM {vm_def['name']}: {self._redact(res, vm_def)}")
@@ -1884,8 +1895,9 @@ class VsphereAPIProvisioner(BaseProvisioner):
                             errors.append(f"VM {vm_def['name']}: {reason}")
                             not_ready.append(vm_def["name"])
                     if mirror_plans and vms_out:
-                        mirrors = await asyncio.to_thread(self._mirror_sync, si, site, range_id, mirror_plans,
-                                                          vm_defs, vms_out, errors, warnings)
+                        with timed.phase("mirrors"):
+                            mirrors = await asyncio.to_thread(self._mirror_sync, si, site, range_id, mirror_plans,
+                                                              vm_defs, vms_out, errors, warnings)
 
                     # One semaphore for every guest software install, product VMs included,
                     # so VSPHERE_CONCURRENCY is respected across both paths (not one each).
@@ -1897,22 +1909,29 @@ class VsphereAPIProvisioner(BaseProvisioner):
                         warnings.append(f"roles, software and setups skipped on VMs not ready: {', '.join(skipped)}")
 
                     async def roles_then_software() -> None:
-                        await self._install_roles(si, vm_defs, usable, start, errors, warnings)
+                        with timed.phase("roles"):
+                            await self._install_roles(si, vm_defs, usable, start, errors, warnings)
                         # Exchange 2019 / SharePoint (SE, 2019) / MECM images: after every role, so the
                         # range's DC is promoted; their own software runs after the domain join.
                         names = {v["name"] for v in vm_defs if vsphere_products.needs_setup(v)}
                         products = [o for o in usable if o["name"] in names]
-                        await asyncio.gather(
-                            self._install_software(si, vm_defs, [o for o in usable if o["name"] not in names],
-                                                   start, errors, warnings, gate=software_gate),
-                            self._setup_products(si, str(template.get("name") or range_id), vm_defs, products,
-                                                 usable, start, errors, warnings, software_gate))
+                        with timed.phase("software_and_products"):
+                            await asyncio.gather(
+                                self._install_software(si, vm_defs, [o for o in usable if o["name"] not in names],
+                                                       start, errors, warnings, gate=software_gate),
+                                self._setup_products(si, str(template.get("name") or range_id), vm_defs, products,
+                                                     usable, start, errors, warnings, software_gate))
+
+                    async def securityonion() -> None:
+                        with timed.phase("securityonion"):
+                            await self._setup_securityonion(si, vm_defs, usable, networks, mirror_plans, start, warnings)
 
                     # Security Onion setup runs in its guest on its own; start it with the rest.
-                    await asyncio.gather(roles_then_software(), self._setup_securityonion(
-                        si, vm_defs, usable, networks, mirror_plans, start, warnings))
-                    await self._verify_accounts(si, vm_defs, usable, start, warnings)
-                    await self._check_template_logins(si, vm_defs, usable, errors, warnings, not_ready)
+                    await asyncio.gather(roles_then_software(), securityonion())
+                    with timed.phase("verify_accounts"):
+                        await self._verify_accounts(si, vm_defs, usable, start, warnings)
+                    with timed.phase("template_login_check"):
+                        await self._check_template_logins(si, vm_defs, usable, errors, warnings, not_ready)
                 except RangeNetworkConflictError as exc:  # nothing built; this step's port groups already removed
                     errors.append(str(exc))
                     conflict = exc.conflict
@@ -1932,10 +1951,14 @@ class VsphereAPIProvisioner(BaseProvisioner):
         built = {v["name"] for v in vms_out}
         if uplink and uplink["vm"] not in built:
             uplink = None  # the edge firewall was not built (its address stays reserved until destroy)
+        timings = timed.record()
+        logger.info("vSphere range %s build took %.0fs; longest phases: %s", range_id,
+                    timings["total_seconds"], ", ".join(timing.slowest(timings)) or "none recorded")
         return ProvisionResult(
             status=outcome(len(vms_out), errors) if vm_defs else ("failed" if errors else "ok"),
             vms=vms_out,
             networks=networks,
+            timings=timings,
             duration_seconds=time.monotonic() - start,
             errors=errors,
             warnings=warnings,
@@ -2965,25 +2988,31 @@ class VsphereAPIProvisioner(BaseProvisioner):
     async def _provision_one_vm(self, client: httpx.AsyncClient, si, site: dict, vm_def: dict) -> dict:
         """Create one VM (OVF item or inventory clone), wire and customize it, power it on."""
         vm_id = None
-        async with self._semaphore:
+        timed = self._timings.vm(vm_def["name"])  # this VM's seconds per phase (vsphere_timing.py)
+        async with contextlib.AsyncExitStack() as slot:
+            with timed.phase("queued"):
+                await slot.enter_async_context(self._semaphore)
             try:
-                # A promoted build: exactly its copy on the placed host, never a library item
-                # (ADR 0013 §2). Let through unpromoted: its own host's copy, else the library
-                # item, else the plain template.
-                item = None if vm_def["template_build"].get("promoted") or vm_def["_source"] != \
-                    vm_def["template_name"] else await self._find_library_item(client, vm_def["template_name"])
-                if item:
-                    vm_def["_source"] = f"library:{vm_def['template_name']}"
-                    vm_id = await self._deploy_ovf(client, item, vm_def, site)
-                    vm = self._vm(si, vm_id)
-                    await asyncio.to_thread(self._reconfigure_sync, si, vm, vm_def)
-                else:
-                    vm = await asyncio.to_thread(self._clone_sync, si, site, vm_def)
-                    vm_id = vm._moId
-                await self._tag_vm(vm_def, vm_id)
-                await asyncio.to_thread(self._customize_sync, si, vm, vm_def)
+                with timed.phase("create"):
+                    # A promoted build: exactly its copy on the placed host, never a library item
+                    # (ADR 0013 §2). Let through unpromoted: its own host's copy, else the library
+                    # item, else the plain template.
+                    item = None if vm_def["template_build"].get("promoted") or vm_def["_source"] != \
+                        vm_def["template_name"] else await self._find_library_item(client, vm_def["template_name"])
+                    if item:
+                        vm_def["_source"] = f"library:{vm_def['template_name']}"
+                        vm_id = await self._deploy_ovf(client, item, vm_def, site)
+                        vm = self._vm(si, vm_id)
+                        await asyncio.to_thread(self._reconfigure_sync, si, vm, vm_def)
+                    else:
+                        vm = await asyncio.to_thread(self._clone_sync, si, site, vm_def)
+                        vm_id = vm._moId
+                    await self._tag_vm(vm_def, vm_id)
+                with timed.phase("customize"):
+                    await asyncio.to_thread(self._customize_sync, si, vm, vm_def)
                 power_asked_at = time.time()  # nothing Sysprep finished before this is this boot's
-                await self._power_action(client, vm_id, "start")
+                with timed.phase("power_on"):
+                    await self._power_action(client, vm_id, "start")
             except Exception:
                 if vm_id:  # half-built: do not leave it behind unrecorded
                     with contextlib.suppress(Exception):
@@ -2991,11 +3020,13 @@ class VsphereAPIProvisioner(BaseProvisioner):
                 raise
         powered_on, powered_on_at = time.monotonic(), time.time()
         identity = await self._identity(si, vm_def, vm_id)  # as built, before anything else runs on it (S5)
-        guest_net = await self._await_guest_network(client, vm_def, vm_id)
+        with timed.phase("guest_network"):
+            guest_net = await self._await_guest_network(client, vm_def, vm_id)
         ready = vsphere_readiness.assess(vm_def, guest_net)
         if customization.applies(vm_def):  # #255: Sysprep's outcome, every Windows VM
-            sysprep = customization.assess(await self._await_customization(
-                si, vm, vm_def, powered_on, powered_on_at, power_asked_at))
+            with timed.phase("sysprep"):
+                sysprep = customization.assess(await self._await_customization(
+                    si, vm, vm_def, powered_on, powered_on_at, power_asked_at))
             # Sysprep's own error text, already scrubbed by read(): masked again with the build's secrets.
             if detail := sysprep["customization"].get("detail"):
                 sysprep["customization"]["detail"] = self._redact(detail, vm_def)

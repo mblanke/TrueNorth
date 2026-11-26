@@ -52,6 +52,9 @@ class ProvisionResult:
     # ready (worker/range_isolation.py, attached by the worker, not the backend). In
     # RANGE_ISOLATION_CHECK=enforce a verdict short of isolated fails the range.
     isolation: dict | None = None
+    # vSphere: where the build's time went, ``{"total_seconds", "phases": {...}, "vms": {name:
+    # {...}}}`` in wall-clock seconds (provisioners/vsphere_timing.py). Stored with the range.
+    timings: dict | None = None
 
 
 @dataclass
