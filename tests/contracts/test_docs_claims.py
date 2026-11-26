@@ -67,6 +67,10 @@ def test_the_rc_upgrade_notes_exist_and_state_the_migration_fact():
     versions = ROOT / "control-plane/api/alembic/versions"
     assert (versions / "b4d6f8a0c2e4_add_notification_preferences.py").exists()
     assert (versions / "c5e7a9b1d3f4_add_wiki_images.py").exists()
+    rc23 = (ROOT / "docs/release-notes/v1.2.0-rc23.md").read_text(encoding="utf-8")
+    assert "d6f8b0a2c4e5" in rc23 and "refuses" in rc23, "rc23's notes must name its migration and that it can refuse"
+    assert (versions / "d6f8b0a2c4e5_imported_results_one_first_result.py").exists()
+    assert "v1.2.0-rc23.md" in (ROOT / "docs/guides/06-operations-runbook.md").read_text(encoding="utf-8")
 
 
 def test_the_role_guides_are_checked():

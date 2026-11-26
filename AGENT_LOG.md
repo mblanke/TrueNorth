@@ -175,3 +175,18 @@
   the range's provisioner output); the parrot5 result; promote ubuntu-webstack; srv2019/win10
   Tools diagnosis from the guest console; delete the leftover vyos test clones; the depot
   apt-cacher-ng watchdog.
+
+## 2026-11-26 — CSRF fix and rc23 (Mac, from home)
+
+- #538 merged on the owner's word (issue #537): the API issued a new CSRF cookie on every
+  read, so a write whose header was read before a read landed got 403. That was the
+  intermittent helpdesk journey failure. Now the cookie is issued once and the web app reads
+  it at send time. The Moodle cmi5 "browser closed" failure is possibly the same; not shown.
+- #539 opened: the CSRF cookie's `Secure` flag is probably not set behind nginx (inferred
+  from code). First step is on the work host: read the Set-Cookie header through nginx.
+- rc23 cut on the owner's word. Upgrade notes: docs/release-notes/v1.2.0-rc23.md. Before
+  upgrading TN-MGMT01 from rc22: put the Security Onion install login (hand-added to
+  `.env.production` on 2026-11-23) into the inventory or vault, or the installer replaces it.
+- Next on site: install rc23, then the list in the entry above. `journeys` as a required
+  check (#197) waits for about five green runs on main and is the owner's setting to change.
+
