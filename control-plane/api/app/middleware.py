@@ -59,7 +59,6 @@ _CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 # an empty key. The per-process fallback is development only: TN_ENV=production refuses to
 # start without CSRF_SECRET (app/settings.py), since workers would not share a random key.
 _CSRF_SECRET = os.getenv("CSRF_SECRET", "").strip() or secrets.token_hex(32)
-_CSRF_TOKEN_TTL = 86400  # 1 day
 
 
 def _generate_csrf_token() -> str:
@@ -76,7 +75,8 @@ def _verify_csrf_token(token: str) -> bool:
         return False
     payload, sig = parts
     expected = hmac.new(_CSRF_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
-    return hmac.compare_digest(sig, expected)
+    # Bytes: compare_digest raises TypeError on a non-ASCII str, and a cookie is the client's.
+    return hmac.compare_digest(sig.encode(), expected.encode())
 
 
 # Cross-site POSTs by design, each with its own signed authentication, never a browser
@@ -96,7 +96,8 @@ CSRF_EXEMPT_PREFIXES = ("/cmi5/fetch/", "/cmi5/lrs/")
 class CsrfMiddleware(BaseHTTPMiddleware):
     """Double-submit cookie CSRF protection.
 
-    On every response, sets a ``truenorth_csrf`` cookie with a signed token.
+    A request that carries no ``truenorth_csrf`` cookie this server signed gets one on
+    its response; a valid cookie is left alone (see ``dispatch``).
     On state-changing requests (POST/PUT/PATCH/DELETE), the ``X-CSRF-Token``
     header must match the cookie value.  Skipped when ``AUTH_DISABLED=true``.
     """
@@ -121,7 +122,7 @@ class CsrfMiddleware(BaseHTTPMiddleware):
             if (
                 not cookie_token
                 or not header_token
-                or not hmac.compare_digest(cookie_token, header_token)
+                or not hmac.compare_digest(cookie_token.encode(), header_token.encode())  # bytes: see above
                 or not _verify_csrf_token(header_token)
             ):
                 return JSONResponse(
@@ -131,13 +132,19 @@ class CsrfMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
 
-        # Always set / refresh the CSRF cookie so the frontend can read it
-        if _CSRF_COOKIE not in request.cookies or method in _CSRF_SAFE_METHODS:
-            token = _generate_csrf_token()
+        # Issue the CSRF cookie only when the request carried none this server signed
+        # (missing, malformed, forged). A valid cookie is never re-sent or replaced: the SPA
+        # sends its header and the browser sends the cookie, and any Set-Cookie on a response
+        # that lands in between (a new value, or the older value echoed back over a newer
+        # one) makes the write that follows fail the double-submit check. That was a 403 on
+        # a click, on any page that reads while the user acts. A session cookie, so nothing
+        # expires under an open page; the token carries no time or user and was valid until
+        # CSRF_SECRET changed in any case.
+        current = request.cookies.get(_CSRF_COOKIE, "")
+        if not (current and _verify_csrf_token(current)):
             response.set_cookie(
                 key=_CSRF_COOKIE,
-                value=token,
-                max_age=_CSRF_TOKEN_TTL,
+                value=_generate_csrf_token(),
                 httponly=False,  # JS must read it to send in header
                 samesite="strict",
                 secure=request.url.scheme == "https",

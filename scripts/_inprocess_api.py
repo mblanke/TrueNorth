@@ -9,7 +9,7 @@ routes, permission checks, CSRF and validation. No password or token is used.
 
 Two details matter and are easy to get wrong:
 
-* CSRF is double-submit. Every response sets a fresh ``truenorth_csrf`` cookie, so the
+* CSRF is double-submit. A response sets ``truenorth_csrf`` when the request had none, so the
   header is read from the cookie jar immediately before each non-GET attempt (including
   each retry after a 429), never once up front.
 * Rate limits answer 429 with ``retry_after``; the request is retried after that.
@@ -206,7 +206,7 @@ class Users:
             return None
         ident, role = found
         client = self.client_factory()
-        client.get("/health/live")  # the CSRF middleware sets truenorth_csrf on every response
+        client.get("/health/live")  # the first response sets the truenorth_csrf cookie
         return UserApi(client, ident, self.switch, email=email, role=role)
 
 
@@ -250,5 +250,5 @@ def connect(admin_upn: str) -> tuple[Any, InProcessApi] | None:
     app.dependency_overrides[auth.get_token_identity] = lambda: ident
 
     client = TestClient(app, base_url="https://api.internal", raise_server_exceptions=False)
-    client.get("/health/live")  # the CSRF middleware sets truenorth_csrf on every response
+    client.get("/health/live")  # the first response sets the truenorth_csrf cookie
     return client, InProcessApi(client)
