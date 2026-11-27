@@ -78,8 +78,15 @@ release made before signing, and says so loudly.
 proof, so verification needs no Rekor or Fulcio access, only Sigstore's trust root. Copy a
 `trusted_root.json` to the control node with the release files (on a connected machine
 `cosign` caches it under `~/.sigstore/root/`; or fetch it from Sigstore's TUF repository) and
-pass `-e tn_release_trusted_root=<file>`: the installer then verifies with `--offline`.
-*Not yet exercised against a real release: the first signed tag is the test.*
+pass `-e tn_release_trusted_root=<file>`: the installer then gives cosign that file with
+`--trusted-root`, and cosign makes no network call. (No `--offline`: cosign v3 deprecates
+that flag and does not need it.)
+
+Exercised on `v1.2.0-rc23` (2026-11-26, cosign v3.1.3): with the network denied to the
+process and no Sigstore cache, `cosign verify-blob --bundle … --trusted-root …` verified
+`release-manifest.json` and `SHA256SUMS`, refused a changed manifest, and failed without
+the trusted root file. *Not yet exercised: the installer itself with
+`tn_release_trusted_root`, on a host with no route out.*
 
 If any image fails its build or scan, no release is created. Digests of images that
 passed may already be in GHCR, untagged. They are harmless and are not in any manifest.

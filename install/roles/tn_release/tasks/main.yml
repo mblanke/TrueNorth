@@ -151,6 +151,9 @@
           check_mode: false
           when: tn_cosign_path | length == 0
 
+        # With --trusted-root and --bundle cosign needs no network: the bundle carries the
+        # certificate and the transparency-log proof, the file carries Sigstore's keys.
+        # No --offline: cosign v3 deprecates it, and it adds nothing here (#541).
         - name: Release — cosign verify-blob against the release workflow's identity
           ansible.builtin.command:
             argv: >-
@@ -159,7 +162,7 @@
                   '--bundle', tn_release_files ~ '/release-manifest.json.sigstore.json',
                   '--certificate-identity', tn_release_cert_identity,
                   '--certificate-oidc-issuer', tn_release_cert_oidc_issuer]
-                 + (['--trusted-root', tn_release_trusted_root, '--offline=true']
+                 + (['--trusted-root', tn_release_trusted_root]
                     if tn_release_trusted_root | length > 0 else [])
                  + [tn_release_files ~ '/release-manifest.json'] }}
           register: tn_release_sig
