@@ -207,3 +207,24 @@
 - Waiting on the owner: `approvals.yml` (draft, not in the repo); Qwen names still in the
   write-gate allowlist against the no-Chinese-models rule; `journeys` as a required check (#197).
 - Next on site: docs/lab-checks/next-visit-rc23.md, top to bottom.
+
+## 2026-11-27 — 150-Student demo cohort for the local dev stack (Mac)
+
+- Branch `feat/demo-cohort-150` off github/main 48da4326. New `make seed-demo-cohort`
+  (`scripts/seed_demo_cohort.py`, plan in `scripts/demo_cohort_roster.py`, tests in
+  `tests/scripts/test_demo_cohort_roster.py`, docs in docs/development.md "A demo cohort").
+- 150 fictional Students: Cyber Command 120, Fleet Cyber East / West and Cyber Mission
+  Assurance 10 each (`users.unit`), novice..expert; NICE assertions; six classes of 25
+  (3 closed, 2 in progress, 1 scheduled). Owner direction: no logins, no passwords. DB rows
+  only; browse with the no-login dev web build (`ng serve --port 4300`).
+- Runs in the api image through `_inprocess_api.py`; refuses unless TN_ENV development and
+  AUTH_DISABLED. Two backdated steps (past-session approval clock, roll-call `joined_at`),
+  because the approver refuses sessions already over and the clock lapses them.
+- Verified on a fresh dev DB: 353 present + 47 absent = 16 held sessions x 25; 56 pass,
+  18 fail, 1 incomplete, 56 ALJQ earned; per-unit filter works; rerun makes nothing.
+- Found, not fixed: (1) `make import-content` trips the dev API's 100/min rate limit on a
+  fresh DB; (2) the dev API's workers race `create_all` on an empty DB and restart once;
+  (3) competency heatmap: x-axis ignored by the value query, and "Collect and Operate" vs
+  "Collect & Operate" spellings never match, so most rows stay 0.
+- Not done: module-level progress (Student progress shows 0/0 scores); dates of enrolment
+  and completion read the seed day.

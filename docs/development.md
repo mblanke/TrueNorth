@@ -574,6 +574,39 @@ done
 
 Both importers are idempotent, so re-running is safe.
 
+### A demo cohort (150 Students)
+
+`make seed-demo-cohort`, after `make import-content`, loads a demo cohort into the dev
+stack: 150 fictional Students (Cyber Command 120; Fleet Cyber East, Fleet Cyber West and
+Cyber Mission Assurance 10 each, the formation in `users.unit`) at varied proficiency
+(novice to expert; the fleet and mission-assurance Students skew more experienced), NICE
+competency assertions for each, and six classes of 25 on ALJQ courses: three closed with
+attendance and pass / fail / incomplete results, two in progress, one scheduled.
+
+- **No logins, no passwords.** The Students are database rows only; nobody signs in as
+  them. Browse as the dev admin with the no-login dev build of the web app, which mirrors
+  the API's `AUTH_DISABLED=true` (the `web` container on :4200 is the production build and
+  asks for a Keycloak sign-in):
+
+  ```bash
+  cd control-plane/web && npm ci && npx ng serve --port 4300 --proxy-config proxy.conf.json
+  ```
+
+  Then open http://localhost:4300: Readiness (filter by unit), Learning > Competency,
+  Classes, Admin > Users.
+- **Dev stack only.** It runs in the api image through the in-process harness and refuses
+  unless `TN_ENV` is development and `AUTH_DISABLED=true`.
+- **Two backdated steps**, so a class history can exist: past sessions are approved as of
+  an hour before they start, and a started class's roll call is dated a week before it.
+  Everything else goes through the API's routes. Details in `scripts/seed_demo_cohort.py`.
+- **Idempotent.** Re-running makes nothing new; delete the `DEMO-CYB-26-*` classes to
+  rebuild them. The plan itself (`scripts/demo_cohort_roster.py`) is deterministic by
+  `--seed`; `--dry-run` prints it without a stack.
+- **The dev rate limit.** The API allows 100 requests a minute per client, which
+  `make import-content` exceeds on a fresh database. Restart the api with
+  `RATE_LIMIT_ENABLED=false` (a compose override) for the import; the seed itself runs
+  in-process and is not limited.
+
 ### Putting content on the developmental path
 
 The developmental path — what `GET /api/v1/qsp/curriculum-map` renders — is built from
