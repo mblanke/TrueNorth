@@ -396,6 +396,15 @@ export const routes: Routes = [
     title: 'Unit readiness - TrueNorth Range',
   },
   {
+    // The Students page: every Student's progress and one Student's record. Read-only, the
+    // caller's own organisation; instructors and admins (readiness:read + learning_record:read).
+    path: 'students',
+    canActivate: [authGuard, onboardingGuard, pageGuard('students')],
+    loadComponent: () =>
+      import('./features/students/student-progress.component').then(m => m.StudentProgressComponent),
+    title: 'Students - TrueNorth Range',
+  },
+  {
     // ADR 0014 §19 (#321): a class session's live view, for its lead, assistants, observers
     // and admins (the API decides who; class:read to reach the page).
     path: 'classes/:classId/sessions/:eventId/live',

@@ -471,7 +471,7 @@ _NICE_PREFIX = {
     "PR": "Protect & Defend",
     "SP": "Securely Provision",
 }
-_SCORE = {"novice": 10, "beginner": 30, "intermediate": 50, "advanced": 75, "expert": 95}
+PROFICIENCY_SCORE = {"novice": 10, "beginner": 30, "intermediate": 50, "advanced": 75, "expert": 95}
 NO_UNIT = "No unit"
 
 
@@ -520,14 +520,14 @@ def get_competency_heatmap(
     for code, stored, unit, uid, proficiency in q.all():
         category = nice_category(code, stored)
         level = getattr(proficiency, "value", proficiency)
-        if category is None or level not in _SCORE:
+        if category is None or level not in PROFICIENCY_SCORE:
             continue
         label = "You" if view == "individual" else ((unit or "").strip() or NO_UNIT)
         key = label.lower()
         if key not in shown or label < shown[key]:
             shown[key] = label
         cell = cells.setdefault((key, category), [0, 0, set()])
-        cell[0] += _SCORE[level]
+        cell[0] += PROFICIENCY_SCORE[level]
         cell[1] += 1
         cell[2].add(uid)
         people.setdefault(key, set()).add(uid)

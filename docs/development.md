@@ -593,7 +593,8 @@ attendance and pass / fail / incomplete results, two in progress, one scheduled.
   ```
 
   Then open http://localhost:4300: Readiness (filter by unit), Learning > Competency >
-  Heatmap (NICE category by formation), Classes, Admin > Users.
+  Heatmap (NICE category by formation), Review > Students (every Student's progress; select
+  one for their record), Classes, Admin > Users.
 - **Dev stack only.** It runs in the api image through the in-process harness and refuses
   unless `TN_ENV` is development and `AUTH_DISABLED=true`.
 - **Two backdated steps**, so a class history can exist: past sessions are approved as of

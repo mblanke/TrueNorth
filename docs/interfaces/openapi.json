@@ -23194,6 +23194,437 @@
         "title": "StorageVolumeOut",
         "type": "object"
       },
+      "StudentClassOut": {
+        "properties": {
+          "absent": {
+            "title": "Absent",
+            "type": "integer"
+          },
+          "class_id": {
+            "format": "uuid",
+            "title": "Class Id",
+            "type": "string"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The instructor's comment on the result",
+            "title": "Comment"
+          },
+          "course_name": {
+            "title": "Course Name",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "end_date": {
+            "format": "date",
+            "title": "End Date",
+            "type": "string"
+          },
+          "excused": {
+            "title": "Excused",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResultOutcomeOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The close-out result; None: not decided yet"
+          },
+          "present": {
+            "title": "Present",
+            "type": "integer"
+          },
+          "qualification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The NQual the course delivers, if any",
+            "title": "Qualification"
+          },
+          "qualification_earned": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qualification Earned"
+          },
+          "sessions_held": {
+            "title": "Sessions Held",
+            "type": "integer"
+          },
+          "start_date": {
+            "format": "date",
+            "title": "Start Date",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "class_id",
+          "name",
+          "course_name",
+          "start_date",
+          "end_date",
+          "status",
+          "sessions_held",
+          "present",
+          "excused",
+          "absent"
+        ],
+        "title": "StudentClassOut",
+        "type": "object"
+      },
+      "StudentCompetencyOut": {
+        "properties": {
+          "assertions": {
+            "title": "Assertions",
+            "type": "integer"
+          },
+          "category": {
+            "description": "A NICE category",
+            "title": "Category",
+            "type": "string"
+          },
+          "proficiency": {
+            "description": "Their level in it, from the assertions in that category",
+            "title": "Proficiency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "proficiency",
+          "assertions"
+        ],
+        "title": "StudentCompetencyOut",
+        "type": "object"
+      },
+      "StudentListOut": {
+        "properties": {
+          "students": {
+            "items": {
+              "$ref": "#/components/schemas/StudentRowOut"
+            },
+            "title": "Students",
+            "type": "array"
+          },
+          "units": {
+            "description": "Every formation of the organisation's Students, one spelling each",
+            "items": {
+              "type": "string"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "units",
+          "students"
+        ],
+        "title": "StudentListOut",
+        "type": "object"
+      },
+      "StudentRecordOut": {
+        "properties": {
+          "absent": {
+            "title": "Absent",
+            "type": "integer"
+          },
+          "awaiting_result": {
+            "description": "Classes with no result yet",
+            "title": "Awaiting Result",
+            "type": "integer"
+          },
+          "callsign": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callsign"
+          },
+          "class_history": {
+            "description": "Newest class first",
+            "items": {
+              "$ref": "#/components/schemas/StudentClassOut"
+            },
+            "title": "Class History",
+            "type": "array"
+          },
+          "classes": {
+            "description": "Classes they are on (cancelled ones left out)",
+            "title": "Classes",
+            "type": "integer"
+          },
+          "competencies": {
+            "description": "By NICE category, in the framework's order",
+            "items": {
+              "$ref": "#/components/schemas/StudentCompetencyOut"
+            },
+            "title": "Competencies",
+            "type": "array"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "excused": {
+            "title": "Excused",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "incomplete": {
+            "title": "Incomplete",
+            "type": "integer"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "integer"
+          },
+          "present": {
+            "description": "Sessions recorded present, every class",
+            "title": "Present",
+            "type": "integer"
+          },
+          "proficiency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overall NICE proficiency level from their competency assertions; None: none recorded",
+            "title": "Proficiency"
+          },
+          "qualifications": {
+            "description": "NQuals earned (a pass on a closed class, enrolment completed)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Qualifications",
+            "type": "array"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The formation (users.unit); None when unknown",
+            "title": "Unit"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "display_name",
+          "email",
+          "classes",
+          "present",
+          "excused",
+          "absent",
+          "passed",
+          "failed",
+          "incomplete",
+          "awaiting_result",
+          "qualifications",
+          "competencies",
+          "class_history"
+        ],
+        "title": "StudentRecordOut",
+        "type": "object"
+      },
+      "StudentRowOut": {
+        "properties": {
+          "absent": {
+            "title": "Absent",
+            "type": "integer"
+          },
+          "awaiting_result": {
+            "description": "Classes with no result yet",
+            "title": "Awaiting Result",
+            "type": "integer"
+          },
+          "callsign": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Callsign"
+          },
+          "classes": {
+            "description": "Classes they are on (cancelled ones left out)",
+            "title": "Classes",
+            "type": "integer"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "excused": {
+            "title": "Excused",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "incomplete": {
+            "title": "Incomplete",
+            "type": "integer"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "integer"
+          },
+          "present": {
+            "description": "Sessions recorded present, every class",
+            "title": "Present",
+            "type": "integer"
+          },
+          "proficiency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Overall NICE proficiency level from their competency assertions; None: none recorded",
+            "title": "Proficiency"
+          },
+          "qualifications": {
+            "description": "NQuals earned (a pass on a closed class, enrolment completed)",
+            "items": {
+              "type": "string"
+            },
+            "title": "Qualifications",
+            "type": "array"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The formation (users.unit); None when unknown",
+            "title": "Unit"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "display_name",
+          "email",
+          "classes",
+          "present",
+          "excused",
+          "absent",
+          "passed",
+          "failed",
+          "incomplete",
+          "awaiting_result",
+          "qualifications"
+        ],
+        "title": "StudentRowOut",
+        "type": "object"
+      },
       "SupportQueueIn": {
         "properties": {
           "description": {
@@ -54152,6 +54583,132 @@
         "summary": "Delete Volume",
         "tags": [
           "storage"
+        ]
+      }
+    },
+    "/students": {
+      "get": {
+        "description": "The caller's own tenant only. Results are pass, fail or incomplete; never a score.\n**readiness:read + learning_record:read**",
+        "operationId": "listStudentProgress",
+        "parameters": [
+          {
+            "description": "Only this formation (case and spaces ignored)",
+            "in": "query",
+            "name": "unit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only this formation (case and spaces ignored)",
+              "title": "Unit"
+            }
+          },
+          {
+            "description": "Search name, email and callsign",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Search name, email and callsign",
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Every Student of the organisation with their progress",
+        "tags": [
+          "students"
+        ]
+      }
+    },
+    "/students/{user_id}": {
+      "get": {
+        "description": "404 unless a Student of the caller's own tenant.  **readiness:read + learning_record:read**",
+        "operationId": "getStudentProgress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentRecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "One Student's record: competency by NICE category and every class",
+        "tags": [
+          "students"
         ]
       }
     },

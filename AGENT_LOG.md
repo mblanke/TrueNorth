@@ -234,3 +234,12 @@
   SP-RSK-* under Analyze, and the crosswalk's "work_role" all land right; empty cells are
   left out, not 0; tooltip names how many were assessed; colour keyed to the score. NICE
   import gains four Operate and Maintain roles (OM-ADM/NET/ANA/STS-001; 22 roles).
+- Students page (owner asked for an instructor/admin view of Student progress): Review >
+  Students, `GET /students` and `GET /students/{id}` (app/classes/student_progress*.py).
+  Every Student with formation, proficiency level, attendance counts, results and NQuals;
+  a Student's record has level per NICE category and every class. Numbers come from
+  `readiness.build`, so they equal the readiness page's. readiness:read +
+  learning_record:read (admins, instructors); tenant-only; non-Student or foreign id 404.
+  Adversarial review: nothing blocking; fixed its two cheap notes (classes up to a year
+  ahead now show; latest click wins). Not done: paging, and every request rebuilds the
+  tenant's readiness (fine at demo scale).

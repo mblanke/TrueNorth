@@ -197,13 +197,16 @@ describe('AppComponent', () => {
     range_ops: ['/dashboard', '/learning', '/authoring', '/exercises', '/ops-center/select', '/telemetry',
       '/schedule', '/calendar', '/wiki', '/support', '/infrastructure', '/ai-orchestrator'],
     // Student progress (learning_record:read) and Teams (user:read): instructors and admins.
+    // Students page (readiness:read + learning_record:read): instructors and admins, not observers.
     instructor: ['/dashboard', '/learning', '/learning/admin/progress', '/authoring', '/exercises',
-      '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/readiness', '/wiki',
+      '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/readiness', '/students',
+      '/wiki',
       '/support',
       '/teams',
       '/infrastructure', '/ai-orchestrator'],
     admin: ['/dashboard', '/learning', '/learning/admin/progress', '/authoring', '/exercises',
-      '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/readiness', '/wiki',
+      '/ops-center/select', '/telemetry', '/schedule', '/calendar', '/classes', '/scoring', '/readiness', '/students',
+      '/wiki',
       '/support',
       '/approvals', '/teams',
       // Maintenance windows (range:admin, ADR 0013 §7): admins only.
@@ -249,6 +252,19 @@ describe('AppComponent', () => {
       .map(h => h.textContent!.trim());
     expect(headings).not.toContain('Create');
     expect(headings).not.toContain('Admin');
+  });
+
+  it('gives the Students page to instructors and admins only, never observers', () => {
+    for (const role of ['instructor', 'admin'] as UserRole[]) {
+      auth.role.set(role);
+      fixture.detectChanges();
+      expect(menu()).withContext(role).toContain('/students');
+    }
+    for (const role of ['observer', 'student', 'range_ops'] as UserRole[]) {
+      auth.role.set(role);
+      fixture.detectChanges();
+      expect(menu()).withContext(role).not.toContain('/students');
+    }
   });
 
   it('gives observers the unit readiness page and never Students or range ops (#289)', () => {
