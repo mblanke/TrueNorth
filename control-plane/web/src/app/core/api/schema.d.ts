@@ -1898,9 +1898,18 @@ export interface paths {
         };
         /**
          * Get Competency Heatmap
-         * @description Return competency heatmap data for ECharts visualization.
+         * @description Average NICE proficiency by category (rows) and formation (columns), for ECharts.
          *
-         *     Returns NICE categories vs work roles with average proficiency scores.
+         *     - *team*: the caller's tenant, one column per unit (``users.unit``, the free-text
+         *       formation; case and surrounding spaces ignored, as on the readiness page). People with
+         *       no unit are under "No unit", last. Columns run from the most people assessed to the
+         *       fewest.
+         *     - *individual*: the caller's own assertions, one column ("You").
+         *
+         *     ``values`` holds ``[column, row, score, people]`` for each cell with at least one
+         *     assertion: the mean of its assertions' scores (novice 10, beginner 30, intermediate 50,
+         *     advanced 75, expert 95) and how many people they come from. A cell with no assertion is
+         *     left out, never shown as 0. A competency's row comes from ``nice_category``.
          */
         get: operations["get_competency_heatmap_competency_heatmap_get"];
         put?: never;
