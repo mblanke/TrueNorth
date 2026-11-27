@@ -190,3 +190,20 @@
 - Next on site: install rc23, then the list in the entry above. `journeys` as a required
   check (#197) waits for about five green runs on main and is the owner's setting to change.
 
+
+## 2026-11-27 — rc23 verified, air-gapped signature check fixed, next-visit page (Mac, from home)
+
+- rc23 release verified from the published assets: signed manifest and SHA256SUMS (online and
+  with a trusted-root file), 21 of 21 checksums, 6 of 6 image signatures and SBOM
+  attestations, tags match digests, a changed manifest and a wrong identity are refused.
+  Done with Homebrew cosign v3.1.3, not the installer's pinned binary.
+- #542 merged on the owner's word (issue #541): the installer's air-gapped check no longer
+  passes cosign's deprecated `--offline`. It is on main after the rc23 tag, so it ships with
+  the next rc. Not done: the installer itself run with `tn_release_trusted_root` on a host
+  with no route out.
+- Main is green at 7b1c5fc7. No open PRs.
+- Staged on the Mac for the visit: the rc23 install checkout and the verified release files
+  with `trusted_root.json` (paths in docs/lab-checks/next-visit-rc23.md).
+- Waiting on the owner: `approvals.yml` (draft, not in the repo); Qwen names still in the
+  write-gate allowlist against the no-Chinese-models rule; `journeys` as a required check (#197).
+- Next on site: docs/lab-checks/next-visit-rc23.md, top to bottom.
