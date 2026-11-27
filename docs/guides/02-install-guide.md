@@ -911,8 +911,8 @@ and check it again on the far side (`cd kit && sha256sum -c SHA256SUMS`).
 - §2: `~/.venvs/tn-install/bin/pip install --no-index --find-links /path/to/kit/wheels "ansible-core==2.21.4"`.
 - §3.1: install govc from the kit's tarball (same `sha256sum -c` check).
 - §4: unpack the checkout to `~/truenorth`; copy the release files to `~/release/<vX.Y.Z>`;
-  run §4.2's checks with `--trusted-root /path/to/kit/trusted_root.json --offline=true` added
-  to each `~/cosign verify-blob` line (the installer does the same).
+  run §4.2's checks with `--trusted-root /path/to/kit/trusted_root.json` added to each
+  `~/cosign verify-blob` line (the installer does the same). cosign then needs no network.
 - §5.3: add to the host's settings in `site.yml`:
 
   ```yaml
