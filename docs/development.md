@@ -592,8 +592,8 @@ attendance and pass / fail / incomplete results, two in progress, one scheduled.
   cd control-plane/web && npm ci && npx ng serve --port 4300 --proxy-config proxy.conf.json
   ```
 
-  Then open http://localhost:4300: Readiness (filter by unit), Learning > Competency,
-  Classes, Admin > Users.
+  Then open http://localhost:4300: Readiness (filter by unit), Learning > Competency >
+  Heatmap (NICE category by formation), Classes, Admin > Users.
 - **Dev stack only.** It runs in the api image through the in-process harness and refuses
   unless `TN_ENV` is development and `AUTH_DISABLED=true`.
 - **Two backdated steps**, so a class history can exist: past sessions are approved as of

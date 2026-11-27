@@ -223,10 +223,14 @@
 - Verified on a fresh dev DB: 353 present + 47 absent = 16 held sessions x 25; 56 pass,
   18 fail, 1 incomplete, 56 ALJQ earned; per-unit filter works; rerun makes nothing.
 - Found, not fixed: (1) `make import-content` trips the dev API's 100/min rate limit on a
-  fresh DB; (2) the dev API's workers race `create_all` on an empty DB and restart once;
-  (3) competency heatmap: x-axis ignored by the value query, and "Collect and Operate" vs
-  "Collect & Operate" spellings never match, so most rows stay 0.
+  fresh DB; (2) the dev API's workers race `create_all` on an empty DB and restart once.
 - Not done: module-level progress (Student progress shows 0/0 scores); dates of enrolment
   and completion read the seed day; no admin page shows one Student's competency (the
   Competency page reads only the signed-in user's own); no test drives the Seeder's API
-  half against the app. Kanzo was unreachable: the three bugs above are not on the board yet.
+  half against the app. Kanzo was unreachable: the two bugs above are not on the board yet.
+- Heatmap fixed on the owner's word: rows are the 7 NICE categories, columns are formations
+  (`users.unit`, most people first; "You" in the individual view); a competency's category
+  comes from its code prefix (`nice_category`), so the importer's "and" spellings, its
+  SP-RSK-* under Analyze, and the crosswalk's "work_role" all land right; empty cells are
+  left out, not 0; tooltip names how many were assessed; colour keyed to the score. NICE
+  import gains four Operate and Maintain roles (OM-ADM/NET/ANA/STS-001; 22 roles).

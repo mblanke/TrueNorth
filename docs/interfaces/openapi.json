@@ -33434,7 +33434,7 @@
     },
     "/competency/heatmap": {
       "get": {
-        "description": "Return competency heatmap data for ECharts visualization.\n\nReturns NICE categories vs work roles with average proficiency scores.",
+        "description": "Average NICE proficiency by category (rows) and formation (columns), for ECharts.\n\n- *team*: the caller's tenant, one column per unit (``users.unit``, the free-text\n  formation; case and surrounding spaces ignored, as on the readiness page). People with\n  no unit are under \"No unit\", last. Columns run from the most people assessed to the\n  fewest.\n- *individual*: the caller's own assertions, one column (\"You\").\n\n``values`` holds ``[column, row, score, people]`` for each cell with at least one\nassertion: the mean of its assertions' scores (novice 10, beginner 30, intermediate 50,\nadvanced 75, expert 95) and how many people they come from. A cell with no assertion is\nleft out, never shown as 0. A competency's row comes from ``nice_category``.",
         "operationId": "get_competency_heatmap_competency_heatmap_get",
         "parameters": [
           {
@@ -33443,6 +33443,7 @@
             "required": false,
             "schema": {
               "default": "team",
+              "pattern": "^(team|individual)$",
               "title": "View",
               "type": "string"
             }

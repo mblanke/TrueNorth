@@ -108,11 +108,14 @@ export interface RangeTopologySave {
   template: Record<string, unknown>;
 }
 
-/** GET /competency/heatmap. */
+/** GET /competency/heatmap: NICE categories (rows) by formation (columns). */
 export interface CompetencyHeatmap {
   categories: string[];
-  work_roles: string[];
-  values: number[][]; // [categoryIdx, roleIdx, score 0-100]
+  /** Units (users.unit) in the team view, most people first; "You" in the individual one. */
+  columns: string[];
+  column_kind: 'unit' | 'individual';
+  /** [columnIdx, categoryIdx, score 0-100, people assessed]; only cells with data. */
+  values: number[][];
 }
 
 /** Result of POST /templates/from-diagram: the same template as a dict and as YAML. */

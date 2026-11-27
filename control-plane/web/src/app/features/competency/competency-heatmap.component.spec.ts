@@ -23,8 +23,9 @@ describe('CompetencyHeatmapComponent', () => {
 
   const DATA: CompetencyHeatmap = {
     categories: ['Analyze', 'Investigate'],
-    work_roles: ['SOC Analyst', 'Threat Hunter'],
-    values: [[0, 0, 40], [0, 1, 55], [1, 0, 80], [1, 1, 20]],
+    columns: ['Cyber Command', 'Fleet Cyber East'],
+    column_kind: 'unit',
+    values: [[0, 0, 40, 12], [0, 1, 55, 9], [1, 0, 80, 3], [1, 1, 20, 2]],
   };
 
   beforeAll(async () => {
@@ -67,14 +68,24 @@ describe('CompetencyHeatmapComponent', () => {
     expect(api.getCompetencyHeatmap).toHaveBeenCalledTimes(1);
   }
 
-  it('creates, requests the team view and plots the returned roles and categories', async () => {
+  it('creates, requests the team view and plots the returned formations and categories', async () => {
     await create(of(DATA));
     expect(component).toBeTruthy();
     expect(api.getCompetencyHeatmap).toHaveBeenCalledWith('team');
     const opt = chartOption();
-    expect(opt.xAxis[0].data).toEqual(DATA.work_roles);
+    expect(opt.xAxis[0].data).toEqual(DATA.columns);
     expect(opt.yAxis[0].data).toEqual(DATA.categories);
     expect(opt.series[0].data.length).toBe(4);
+    expect(opt.visualMap[0].dimension).toBe(2); // the score, not the people count
+  });
+
+  it('names the formation and how many were assessed in the tooltip, escaping the unit name', async () => {
+    await create(of({ ...DATA, columns: ['<b>Cyber</b>', 'Fleet Cyber East'] }));
+    const formatter = chartOption().tooltip[0].formatter;
+    const html: string = formatter({ value: [0, 1, 55, 9] });
+    expect(html).toContain('&lt;b&gt;Cyber&lt;/b&gt;');
+    expect(html).toContain('Investigate');
+    expect(html).toContain('9 assessed');
   });
 
   it('re-requests with the individual view when the view changes', async () => {
@@ -103,11 +114,11 @@ describe('CompetencyHeatmapComponent', () => {
     (fixture.nativeElement.querySelector('[role="alert"] button') as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(component.status()).toBe('ready');
-    expect(chartOption().xAxis[0].data).toEqual(DATA.work_roles);
+    expect(chartOption().xAxis[0].data).toEqual(DATA.columns);
   });
 
   it('shows an empty state when there are no assessments', async () => {
-    await create(of({ categories: [], work_roles: [], values: [] }));
+    await create(of({ categories: [], columns: [], column_kind: 'unit', values: [] }));
     fixture.detectChanges();
     expect(component.status()).toBe('empty');
     expect(fixture.nativeElement.textContent).toContain('No competency assessments recorded yet');

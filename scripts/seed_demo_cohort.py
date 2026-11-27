@@ -60,6 +60,7 @@ before a demo.
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 import uuid
 from collections import Counter
@@ -76,23 +77,6 @@ import demo_cohort_roster as dc  # noqa: E402
 CLASS_COURSES = ("C101", "C103", "C201", "C204", "C206", "C209")
 # Each class's sessions at its own hours (UTC), so one lead never double-books.
 SESSION_SLOTS = ((13, 16), (17, 20), (13, 16), (13, 16), (17, 20), (13, 16))
-# The NICE work roles' categories, as the importer (``import-nice``) spells them and as the
-# heatmap (``get_competency_heatmap``) does: they differ on "and" / "&", so both are here.
-NICE_CATEGORIES = frozenset(
-    {
-        "Analyze",
-        "Collect & Operate",
-        "Collect and Operate",
-        "Investigate",
-        "Operate & Maintain",
-        "Operate and Maintain",
-        "Oversee & Govern",
-        "Oversee and Govern",
-        "Protect & Defend",
-        "Protect and Defend",
-        "Securely Provision",
-    }
-)
 LEAD_EMAIL = "instructor.demo@truenorth.test"  # made by `make import-content`; else the admin
 
 
@@ -166,13 +150,14 @@ class Seeder:
         return have
 
     def competencies(self, roster: list[dc.Student], ids: dict[str, str]) -> None:
-        # The NICE work roles (idempotent import). `make import-content` loads NICE tasks
-        # and roles too, but under "task" / "work_role"; the heatmap averages by the seven
-        # NICE categories, which only these carry, so the assertions go on these.
+        # The NICE work roles (idempotent import). `make import-content` loads NICE tasks too,
+        # which belong to no category; the assertions go on the roles the heatmap can place.
+        from app.routers.competency import nice_category  # in-process: the API's own rule
+
         status, body = self.api.post("/competency/frameworks/import-nice")
         self.ok(status, "import NICE work roles", body)
         nice = self._list("/competency/frameworks?framework=nice&limit=500")
-        by_code = {c["code"]: c["id"] for c in nice if c.get("category") in NICE_CATEGORIES}
+        by_code = {c["code"]: c["id"] for c in nice if nice_category(c["code"], c.get("category"))}
         if not by_code:
             self.ok(500, "NICE competencies", "none after import; skipping assertions")
             return
@@ -345,7 +330,11 @@ class Seeder:
         if self.failures:
             self.out(f"{self.failures} step(s) failed; see FAIL lines above.")
         else:
-            self.out("Open http://localhost:4200: Readiness (filter by unit), Learning > Competency, Classes.")
+            self.out(
+                "Browse with the no-login dev web build (docs/development.md, 'A demo cohort'):\n"
+                "  cd control-plane/web && npx ng serve --port 4300 --proxy-config proxy.conf.json\n"
+                "  http://localhost:4300: Readiness (filter by unit), Learning > Competency > Heatmap, Classes."
+            )
 
 
 @contextmanager
@@ -447,6 +436,10 @@ def main() -> int:
         return 2
 
     from _inprocess_api import connect  # inside the api image: the app is importable
+
+    # The app logs every request at INFO (middleware, httpx, SMTP stand-in): thousands of
+    # lines that bury the summary. Warnings and errors still show.
+    logging.disable(logging.INFO)
 
     connected = connect(args.admin)
     if connected is None:
