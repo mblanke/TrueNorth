@@ -227,4 +227,6 @@
   (3) competency heatmap: x-axis ignored by the value query, and "Collect and Operate" vs
   "Collect & Operate" spellings never match, so most rows stay 0.
 - Not done: module-level progress (Student progress shows 0/0 scores); dates of enrolment
-  and completion read the seed day.
+  and completion read the seed day; no admin page shows one Student's competency (the
+  Competency page reads only the signed-in user's own); no test drives the Seeder's API
+  half against the app. Kanzo was unreachable: the three bugs above are not on the board yet.

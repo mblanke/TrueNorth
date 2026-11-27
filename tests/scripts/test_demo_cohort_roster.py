@@ -10,10 +10,14 @@ from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import demo_cohort_roster as dc  # noqa: E402
 
 TODAY = date(2026, 11, 27)
+# The plan is relative to the day it is made: every weekday and weekend day must work.
+WEEK = pytest.mark.parametrize("today", [TODAY + timedelta(days=d) for d in range(7)])
 
 
 def test_roster_is_150_split_120_10_10_10():
@@ -81,23 +85,25 @@ def test_classes_cover_everyone_once_and_mix_formations():
     assert sum(len({s.unit for s in p.members}) > 1 for p in plans) >= 5
 
 
-def test_dates_inside_the_readiness_default_window():
-    for p in dc.plan_classes(dc.build_roster(), TODAY):
-        assert p.start >= TODAY - timedelta(days=365)
-        assert p.end <= TODAY + timedelta(days=90)
+@WEEK
+def test_dates_inside_the_readiness_default_window(today):
+    for p in dc.plan_classes(dc.build_roster(), today):
+        assert p.start >= today - timedelta(days=365)
+        assert p.end <= today + timedelta(days=90)
         if p.spec.phase == "closed":
-            assert p.end < TODAY
+            assert p.end < today
         elif p.spec.phase == "in_progress":
-            assert p.start < TODAY <= p.end
+            assert p.start < today <= p.end
         else:
-            assert p.start > TODAY
+            assert p.start > today
 
 
-def test_outcomes_only_on_closed_classes_with_a_spread():
-    plans = dc.plan_classes(dc.build_roster(), TODAY)
+@WEEK
+def test_outcomes_only_on_closed_classes_with_a_spread(today):
+    plans = dc.plan_classes(dc.build_roster(), today)
     outcomes = Counter()
     for p in plans:
-        held = dc.held_sessions(p, TODAY)
+        held = dc.held_sessions(p, today)
         if p.spec.phase == "closed":
             assert set(p.outcomes) == {s.email for s in p.members}
             assert held == p.spec.sessions
@@ -110,14 +116,16 @@ def test_outcomes_only_on_closed_classes_with_a_spread():
     assert outcomes["pass"] > outcomes["fail"] > 0
 
 
-def test_in_progress_classes_have_some_sessions_held_and_some_to_come():
-    for p in dc.plan_classes(dc.build_roster(), TODAY):
+@WEEK
+def test_in_progress_classes_have_some_sessions_held_and_some_to_come(today):
+    for p in dc.plan_classes(dc.build_roster(), today):
         if p.spec.phase == "in_progress":
-            assert 0 < dc.held_sessions(p, TODAY) < len(dc.session_days(p))
+            assert 0 < dc.held_sessions(p, today) < len(dc.session_days(p))
 
 
-def test_session_days_are_weekdays_within_the_class():
-    for p in dc.plan_classes(dc.build_roster(), TODAY):
+@WEEK
+def test_session_days_are_weekdays_within_the_class(today):
+    for p in dc.plan_classes(dc.build_roster(), today):
         days = dc.session_days(p)
         assert len(days) == p.spec.sessions
         assert all(p.start <= d <= p.end and d.weekday() < 5 for d in days)

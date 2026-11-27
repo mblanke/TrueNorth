@@ -49,8 +49,12 @@ the app records itself: close-out for a closed class, and for an open one the sa
 ``AUTH_DISABLED=true``): this is demo data.
 
 **Idempotent.** A Student whose email exists is not made again; a Student with any
-competency assertion gets none added; a class whose name exists is skipped whole. Re-run
-it as often as you like; delete the classes named ``DEMO-CYB-26-*`` to rebuild them.
+competency assertion gets none added; a class whose name exists (and is not cancelled) is
+skipped whole. Cancelling an open class (``DELETE /classes/{id}``) makes the next run
+build it again; a closed class cannot be cancelled, so a full rebuild means a fresh dev
+database (docs/development.md). The open classes' remaining sessions are recorded by the
+live attendance clock as they pass, all absent (nobody opens a range), so seed shortly
+before a demo.
 """
 
 from __future__ import annotations
@@ -203,7 +207,8 @@ class Seeder:
     # ── classes ──────────────────────────────────────────────────────────────
 
     def classes(self, plans: list[dc.ClassPlan], lead: str, courses: dict[str, str], backdate) -> None:
-        existing = {c["name"] for c in self._list("/classes?include_cancelled=true")}
+        # Cancelled ones are not listed, so a class cancelled after a failed run is made again.
+        existing = {c["name"] for c in self._list("/classes")}
         for i, plan in enumerate(plans):
             name = plan.spec.name
             if name in existing:

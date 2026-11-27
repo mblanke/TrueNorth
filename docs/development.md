@@ -599,13 +599,30 @@ attendance and pass / fail / incomplete results, two in progress, one scheduled.
 - **Two backdated steps**, so a class history can exist: past sessions are approved as of
   an hour before they start, and a started class's roll call is dated a week before it.
   Everything else goes through the API's routes. Details in `scripts/seed_demo_cohort.py`.
-- **Idempotent.** Re-running makes nothing new; delete the `DEMO-CYB-26-*` classes to
-  rebuild them. The plan itself (`scripts/demo_cohort_roster.py`) is deterministic by
-  `--seed`; `--dry-run` prints it without a stack.
+- **Idempotent.** Re-running makes nothing new. A cancelled open class is built again on
+  the next run; a closed class cannot be cancelled. The plan itself
+  (`scripts/demo_cohort_roster.py`) is deterministic by `--seed`; `--dry-run` prints it.
+- **Seed shortly before the demo.** The in-progress classes' remaining sessions are
+  recorded by the attendance clock as they pass, all absent, since nobody opens a range.
+- **Full rebuild** (dev only; drops the dev app database):
+
+  ```bash
+  docker compose -f infra/platform/docker/compose.dev.yml stop api worker-provision worker-scenario worker-telemetry flower
+  docker exec truenorth-postgres-1 psql -U forge -d postgres -c "DROP DATABASE forge WITH (FORCE)" -c "CREATE DATABASE forge OWNER forge"
+  docker compose -f infra/platform/docker/compose.dev.yml restart pgbouncer api worker-provision worker-scenario worker-telemetry flower
+  make import-content && make seed-demo-cohort
+  ```
+
 - **The dev rate limit.** The API allows 100 requests a minute per client, which
-  `make import-content` exceeds on a fresh database. Restart the api with
-  `RATE_LIMIT_ENABLED=false` (a compose override) for the import; the seed itself runs
-  in-process and is not limited.
+  `make import-content` exceeds on a fresh database. For the import, restart the api with
+  the limiter off, from an override file outside the repo:
+
+  ```bash
+  printf 'services:\n  api:\n    environment:\n      RATE_LIMIT_ENABLED: "false"\n' > /tmp/no-ratelimit.yml
+  docker compose -f infra/platform/docker/compose.dev.yml -f /tmp/no-ratelimit.yml up -d --no-deps api
+  ```
+
+  A plain `make dev` puts it back. The seed itself runs in-process and is not limited.
 
 ### Putting content on the developmental path
 
