@@ -41,7 +41,7 @@ def test_upgrade_adds_an_empty_sealed_table_and_downgrade_removes_it(tmp_path):
 
     engine = sa.create_engine(url)
     tenant, template, rng = (uuid.uuid4() for _ in range(3))
-    with Session(engine) as db:  # the parent revision's schema is the ORM's, less the new table
+    with Session(engine, info={"usage_ledger_off": True}) as db:  # the parent revision's schema (no usage ledger yet) is the ORM's, less the new table
         db.add(Tenant(id=tenant, name="t", slug="t"))
         db.flush()
         db.add(Template(id=template, name="tp", version="1", yaml="name: tp", tenant_id=tenant))
@@ -79,7 +79,7 @@ def test_upgrade_adds_an_empty_sealed_table_and_downgrade_removes_it(tmp_path):
     from app import secretbox
     unseal_stored = secretbox.unseal
 
-    with Session(engine) as db:
+    with Session(engine, info={"usage_ledger_off": True}) as db:  # before the usage ledger
         assert db.get(Range, rng).state == RangeState.ready  # untouched
     with engine.begin() as db:
         db.execute(sa.text("INSERT INTO range_credentials (id, tenant_id, range_id, machine, username, password, "

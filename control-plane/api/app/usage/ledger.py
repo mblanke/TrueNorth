@@ -35,6 +35,11 @@ _DISK = {"stopped"}
 
 SOURCE_API, SOURCE_WORKER, SOURCE_RECONCILE = "api", "worker", "reconcile"
 
+# ``Session(engine, info={OFF: True})``: record nothing. Only for a session on a schema
+# older than the ledger (a migration test seeding its parent revision through the ORM);
+# the running API always has the table, and a missing one should fail loudly there.
+OFF = "usage_ledger_off"
+
 
 def _value(state) -> str | None:
     if state is None:
@@ -62,6 +67,8 @@ def charge(state: str | None, before_state: str | None = None, settled: str = NO
 
 @event.listens_for(Session, "before_flush")
 def _record(session: Session, _ctx, _instances) -> None:
+    if session.info.get(OFF):
+        return
     for obj in list(session.new) + list(session.dirty):
         if not isinstance(obj, Range):
             continue

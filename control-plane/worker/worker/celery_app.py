@@ -81,7 +81,9 @@ app.conf.update(
                  "worker.content_review_sync.*": {"queue": "default"},
                  # The content feeds' daily pull: the internet (endoflife.date, CISA, NVD), so
                  # worker-provision, the only worker on tn-egress (ADR 0014 §25).
-                 "worker.content_feeds.*": {"queue": "destroy"}},
+                 "worker.content_feeds.*": {"queue": "destroy"},
+                 # The usage ledger's hourly reconcile: database only (ADR 0021).
+                 "worker.usage_reconcile.*": {"queue": "default"}},
     # Concurrency control
     task_track_started=True,
     task_acks_late=True,  # Don't ack until task completes

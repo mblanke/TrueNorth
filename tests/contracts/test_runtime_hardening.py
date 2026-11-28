@@ -121,7 +121,9 @@ def test_beat_schedule_names_contracted_tasks_that_expire():
              # The content clock's hourly sync: database only (ADR 0014 §22-24).
              "worker.content_review_sync.sync_content_review": ("worker.content_review_sync.*", "default"),
              # The content feeds' daily pull: the internet, so worker-provision (tn-egress).
-             "worker.content_feeds.pull_content_feeds": ("worker.content_feeds.*", "destroy")}
+             "worker.content_feeds.pull_content_feeds": ("worker.content_feeds.*", "destroy"),
+             # The usage ledger's hourly reconcile: database only (ADR 0021).
+             "worker.usage_reconcile.reconcile_usage_ledger": ("worker.usage_reconcile.*", "default")}
     assert {e["task"] for e in schedule.values()} == {
         "worker.tasks.health_check_ranges",
         "worker.tasks.check_range_drift",  # range certification S5
