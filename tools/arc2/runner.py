@@ -215,10 +215,20 @@ def stage_request(runs: Path, record: dict) -> Path | None:
     return run / REQUEST_FILE
 
 
-def command_for(job: dict, claude: str, model: str | None = None) -> list[str]:
+def guidance_for(run_dir: Path) -> str:
+    """RUNNER_GUIDANCE plus where this run is. Told only "write $RUN as the absolute run
+    directory", a model guesses the path (the main checkout's build/arc2, say), finds no
+    run in a worktree, and gives up: a resumed run has no request file to point the way."""
+    return (f"{RUNNER_GUIDANCE} This run's directory ($RUN) is {Path(run_dir).resolve()}; "
+            f"its manifest is {Path(run_dir).resolve() / 'manifest.json'}.")
+
+
+def command_for(job: dict, claude: str, model: str | None = None, run_dir: Path | None = None) -> list[str]:
     """The engine's command line. The prompt (a tenant's request or feedback) is not on
     it: it goes on stdin (``prompt_for``), because any process of the same account can
-    read another's arguments, and a sandbox cannot stop that on macOS."""
+    read another's arguments, and a sandbox cannot stop that on macOS. The run's path is
+    on it (in the guidance): a path is not the tenant's words."""
+    run_dir = run_dir or REPO_ROOT / "build" / "arc2" / job["slug"]
     cmd = [
         claude, "-p",
         "--output-format", "stream-json", "--verbose",
@@ -226,7 +236,7 @@ def command_for(job: dict, claude: str, model: str | None = None) -> list[str]:
         "--allowedTools", *job_tools(job["slug"]),
         # No user-level settings, hooks or MCP servers: only this repository's project settings.
         "--setting-sources", "project", "--strict-mcp-config",
-        "--append-system-prompt", RUNNER_GUIDANCE,
+        "--append-system-prompt", guidance_for(run_dir),
     ]
     return cmd + (["--model", model] if model else [])
 
@@ -534,7 +544,10 @@ def job_env(home: Path) -> dict:
     if not any(env.get(k) for k in AUTH_ENV):
         with contextlib.suppress(OSError):
             env["CLAUDE_CODE_OAUTH_TOKEN"] = token_file().read_text().strip()
+    # CLAUDE_CODE_TMPDIR: Claude Code keeps its Bash scratch under /private/tmp/claude-<uid>
+    # by default, which the sandbox refuses; every shell command then fails with EPERM.
     env.update(HOME=str(home), CLAUDE_CONFIG_DIR=str(home / ".claude"), TMPDIR=str(home / "tmp"),
+               CLAUDE_CODE_TMPDIR=str(home / "tmp"),
                XDG_CONFIG_HOME=str(home / ".config"), XDG_CACHE_HOME=str(home / ".cache"),
                PYTHONPATH="tools", PYTHONDONTWRITEBYTECODE="1")
     return env
@@ -544,6 +557,39 @@ def _claude_install(claude: str) -> tuple[Path, ...]:
     found = shutil.which(claude) or claude
     paths = {Path(found).parent, Path(os.path.realpath(found)).parent}
     return tuple(sorted(paths))
+
+
+def git_dirs(repo: Path, home: Path | None = None) -> tuple[Path, ...]:
+    """The git data a job must read when ``repo`` is a linked worktree: its ``.git`` is a
+    file naming a gitdir inside the main checkout's ``.git``, outside the readable repo, so
+    every git command in the job would fail. Read-only, like the repo; () for a plain
+    checkout, whose ``.git`` is already inside it.
+
+    Only a real git directory is opened up: one with ``objects/``, holding the gitdir, and
+    neither containing the repo (a bare repo with nested worktrees would expose sibling
+    checkouts and their runs) nor the runner's home (a stray ``commondir`` or ``gitdir:``
+    would expose ~/.ssh and the token). Anything else gives (): git fails in the job, and
+    nothing more becomes readable. Jobs cannot write these files; only the operator can."""
+    dotgit = Path(repo) / ".git"
+    if not dotgit.is_file():
+        return ()
+    home = (home or Path.home()).resolve()
+    with contextlib.suppress(OSError):
+        line = dotgit.read_text().strip()
+        if not line.startswith("gitdir:"):
+            return ()
+        gitdir = (Path(repo) / line.removeprefix("gitdir:").strip()).resolve()
+        common = gitdir
+        with contextlib.suppress(OSError):
+            common = (gitdir / (gitdir / "commondir").read_text().strip()).resolve()
+        root = Path(repo).resolve()
+        if common.is_relative_to(root):
+            return ()  # already readable as part of the repo
+        if (not (common / "objects").is_dir() or not gitdir.is_relative_to(common)
+                or root.is_relative_to(common) or home.is_relative_to(common)):
+            return ()
+        return (common,)
+    return ()
 
 
 def _local_ports(models: ModelConfig | LocalModel | None) -> tuple[int, ...]:
@@ -598,13 +644,13 @@ def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOU
     jail = Jail(
         repo=REPO_ROOT, runs=runs, home=Path.home(),
         writable=tuple(p for p in (runs / record["slug"], home) if p is not None),
-        readable=_claude_install(claude), local_ports=models.local_ports(),
+        readable=(*_claude_install(claude), *git_dirs(REPO_ROOT)), local_ports=models.local_ports(),
         egress_port=egress.port if egress and not isinstance(confinement, Unconfined) else None,
         bridges=tuple(getattr(egress, "bridges", ())) if egress else (),
     )
     try:
         record = _attempt(record, path,
-                          confinement.wrap(command_for(record, claude, primary.model if primary else None), jail),
+                          confinement.wrap(command_for(record, claude, primary.model if primary else None, runs / record["slug"]), jail),
                           primary.env(env) if primary else env, timeout,
                           append=False, stdin_text=prompt_for(record))
         if models.claude_fallback and should_fall_back(record, gateway_first=True):
@@ -612,13 +658,13 @@ def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOU
             record.update(fallback_from=record["error"], engine="claude", state="running", error=None,
                           result=None, exit_code=None, finished_at=None, current_agent=None)
             write_record(path, record)
-            record = _attempt(record, path, confinement.wrap(command_for(record, claude, None), jail),
+            record = _attempt(record, path, confinement.wrap(command_for(record, claude, None, runs / record["slug"]), jail),
                               env, timeout, append=True, stdin_text=prompt_for(record))
         elif fallback and should_fall_back(record) and fallback.reachable():
             record.update(fallback_from=record["error"], engine=fallback.label, state="running", error=None,
                           result=None, exit_code=None, finished_at=None, current_agent=None)
             write_record(path, record)
-            record = _attempt(record, path, confinement.wrap(command_for(record, claude, fallback.model), jail),
+            record = _attempt(record, path, confinement.wrap(command_for(record, claude, fallback.model, runs / record["slug"]), jail),
                               fallback.env(env), timeout, append=True, stdin_text=prompt_for(record))
     finally:
         if home is not None:
@@ -1028,7 +1074,7 @@ def self_test(runs: Path, claude: str, timeout: int = 120) -> int:
                 env.update(egress.env(), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1")
         jail = Jail(
             repo=REPO_ROOT, runs=runs, home=Path.home(), writable=(home,) if home else (),
-            readable=_claude_install(claude), local_ports=models.local_ports(),
+            readable=(*_claude_install(claude), *git_dirs(REPO_ROOT)), local_ports=models.local_ports(),
             egress_port=egress.port if egress else None,
             bridges=tuple(egress.bridges) if egress else (),
         )

@@ -48,6 +48,14 @@ DEV_API ?= http://127.0.0.1:8081
 import-content: ## Load all content (curriculum, templates, scenarios, detections, demo data)
 	python3 scripts/load_content.py --api $(DEV_API)
 
+# A demo cohort on top of import-content: 150 Students (Cyber Command 120, Fleet Cyber
+# East/West and Cyber Mission Assurance 10 each) at varied proficiency, with six classes
+# of history. Runs in the api image through the in-process harness (no token, no
+# passwords; dev only). Idempotent. See scripts/seed_demo_cohort.py.
+seed-demo-cohort: ## Seed the 150-Student demo cohort into the dev stack (after import-content)
+	$(COMPOSE) run --rm --no-deps -w /app -e PYTHONPATH=/app -v $(CURDIR):/srcapp:ro \
+		--entrypoint python api /srcapp/scripts/seed_demo_cohort.py
+
 arc2-runner: ## Run the ARC² Course Studio runner (on the host with Claude Code, not in Docker)
 	PYTHONPATH=tools .venv/bin/python -m arc2.runner
 

@@ -168,7 +168,6 @@ control-plane/api/app/result_transfer/quiz_producer.py
 control-plane/api/app/routers/ad_sync.py
 control-plane/api/app/routers/admin.py
 control-plane/api/app/routers/ai_config.py
-control-plane/api/app/routers/competency.py
 control-plane/api/app/routers/courses.py
 control-plane/api/app/routers/curriculum.py
 control-plane/api/app/routers/directory.py
@@ -308,7 +307,6 @@ tests/api/test_class_flow_gaps_319.py
 tests/api/test_class_setup_200.py
 tests/api/test_classes_278.py
 tests/api/test_cmi5_lti.py
-tests/api/test_competency.py
 tests/api/test_console_relay.py
 tests/api/test_content_feeds_api.py
 tests/api/test_content_feeds_postgres.py

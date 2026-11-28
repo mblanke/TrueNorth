@@ -208,6 +208,59 @@
   write-gate allowlist against the no-Chinese-models rule; `journeys` as a required check (#197).
 - Next on site: docs/lab-checks/next-visit-rc23.md, top to bottom.
 
+## 2026-11-27 — 150-Student demo cohort for the local dev stack (Mac)
+
+- Branch `feat/demo-cohort-150` off github/main 48da4326. New `make seed-demo-cohort`
+  (`scripts/seed_demo_cohort.py`, plan in `scripts/demo_cohort_roster.py`, tests in
+  `tests/scripts/test_demo_cohort_roster.py`, docs in docs/development.md "A demo cohort").
+- 150 fictional Students: Cyber Command 120, Fleet Cyber East / West and Cyber Mission
+  Assurance 10 each (`users.unit`), novice..expert; NICE assertions; six classes of 25
+  (3 closed, 2 in progress, 1 scheduled). Owner direction: no logins, no passwords. DB rows
+  only; browse with the no-login dev web build (`ng serve --port 4300`).
+- Runs in the api image through `_inprocess_api.py`; refuses unless TN_ENV development and
+  AUTH_DISABLED. Two backdated steps (past-session approval clock, roll-call `joined_at`),
+  because the approver refuses sessions already over and the clock lapses them.
+- Verified on a fresh dev DB: 353 present + 47 absent = 16 held sessions x 25; 56 pass,
+  18 fail, 1 incomplete, 56 ALJQ earned; per-unit filter works; rerun makes nothing.
+- Found, not fixed: (1) `make import-content` trips the dev API's 100/min rate limit on a
+  fresh DB; (2) the dev API's workers race `create_all` on an empty DB and restart once.
+- Not done: module-level progress (Student progress shows 0/0 scores); dates of enrolment
+  and completion read the seed day; no admin page shows one Student's competency (the
+  Competency page reads only the signed-in user's own); no test drives the Seeder's API
+  half against the app. Kanzo was unreachable: the two bugs above are not on the board yet.
+- Heatmap fixed on the owner's word: rows are the 7 NICE categories, columns are formations
+  (`users.unit`, most people first; "You" in the individual view); a competency's category
+  comes from its code prefix (`nice_category`), so the importer's "and" spellings, its
+  SP-RSK-* under Analyze, and the crosswalk's "work_role" all land right; empty cells are
+  left out, not 0; tooltip names how many were assessed; colour keyed to the score. NICE
+  import gains four Operate and Maintain roles (OM-ADM/NET/ANA/STS-001; 22 roles).
+- Students page (owner asked for an instructor/admin view of Student progress): Review >
+  Students, `GET /students` and `GET /students/{id}` (app/classes/student_progress*.py).
+  Every Student with formation, proficiency level, attendance counts, results and NQuals;
+  a Student's record has level per NICE category and every class. Numbers come from
+  `readiness.build`, so they equal the readiness page's. readiness:read +
+  learning_record:read (admins, instructors); tenant-only; non-Student or foreign id 404.
+  Adversarial review: nothing blocking; fixed its two cheap notes (classes up to a year
+  ahead now show; latest click wins). Not done: paging, and every request rebuilds the
+  tenant's readiness (fine at demo scale).
+- ARC² on the dev stack (Mac, 2026-11-27): Course Studio on (scratch compose override,
+  ARC2_STUDIO_ENABLED + ARC2_RUNS_DIR=build/arc2). Owner wanted no token copy-paste, so the
+  runner runs `ARC2_MODE=local` on Mac Ollama `qwen3.6:35b-a3b` (owner: "qwen can be used"),
+  seatbelt sandbox. Two runner fixes, both needed for any confined job on this Mac:
+  `CLAUDE_CODE_TMPDIR` in the job home (Claude Code 2.1.x scratch under /private/tmp/claude-501
+  was refused: every Bash call EPERM), and `git_dirs`: a worktree job may read the main
+  checkout's `.git` read-only (else "not a git repository"); hardened per adversarial review
+  (needs objects/, never the home, never a dir containing the repo). Verified: run
+  `arc2-phishing-basics` reached the outline gate on Qwen. Not done: later stages untested on
+  Qwen; no in-sandbox probe test pins the two fixes (review note 2). The runner is a
+  background process of this session; restart with
+  `ARC2_RUNS_DIR=$PWD/build/arc2 ARC2_MODE=local ARC2_LOCAL_URL=http://127.0.0.1:11434 ARC2_LOCAL_MODEL=qwen3.6:35b-a3b make arc2-runner`.
+
+## 2026-11-28 — Mac (guapo) — ARC² resume found no run
+- A resumed job (`/arc2 --resume <slug> accept`) was told "write $RUN as the absolute run directory" but never given it; Qwen guessed the main checkout's `build/arc2`, found nothing in this worktree and quit after 72 s. The runner now puts the run's absolute path and manifest in the job guidance (`guidance_for`); test added.
+- `arc2-phishing-basics` then ran stages 2–6 on Qwen 3.6; QA cycle 1 failed on a column-shifted `catalogue_row.csv` and sent it back to stage 1 (the designed rework loop).
+- Next: accept the preview when it is ready, import the package on the dev stack per its PROMOTE.md.
+
 ## 2026-11-28 — closing pass on the docs issues and Taz cards (Mac, from home)
 
 - Re-checked every open docs issue (#387-#416) and Taz card (#433-#478) against main at
