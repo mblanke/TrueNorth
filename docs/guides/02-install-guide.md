@@ -182,13 +182,13 @@ on its own, outside any shell. Export the proxy in every shell you install from:
 
 ```bash
 export https_proxy=http://<proxy-host>:<port> http_proxy=http://<proxy-host>:<port>
-export no_proxy=localhost,127.0.0.1
+export no_proxy=localhost,127.0.0.1,<tn-fqdn>,<vcenter-fqdn>,<dc-fqdn>
 ```
 
 None of the installer's proxy settings covers these pulls: `tn_feeds_http_proxy`
-(`inventory/group_vars/all/main.yml:321`) covers only the content feeds' daily pull after the
-install (`install/README.md:1126`, "Content feeds"), and `tn_depot_apt_proxy` (§5.3)
-(`inventory/group_vars/all/main.yml:422`) points the range machines at the depot's apt cache —
+(`inventory/group_vars/all/main.yml`) covers only the content feeds' daily pull after the
+install (`install/README.md`, "Content feeds"), and `tn_depot_apt_proxy` (§5.3)
+(`inventory/group_vars/all/main.yml`) points the range machines at the depot's apt cache —
 neither is read for the installer's own downloads. For the Docker daemon's own pulls, give it the
 proxy with a systemd drop-in for `docker.service` (`/etc/systemd/system/docker.service.d/proxy.conf`,
 setting `HTTP_PROXY`/`HTTPS_PROXY` in its `[Service]` section, then `sudo systemctl daemon-reload

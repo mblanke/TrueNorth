@@ -46,7 +46,8 @@ content (`GET /content-port/items/{item_type}/{item_id}/proven`).
 
 ## Exporting
 
-Only the platform administrator who also holds `content_review:admin` can export. They use
+Only the platform administrator can export (the admin role already holds
+`content_review:admin`). They use
 the **Port content** panel on the Content view, or the CLI.
 
 1. Select the courses, range templates, scenarios and exercise templates to export. Their dependencies come
