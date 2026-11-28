@@ -67,8 +67,24 @@ Split RAM and disk out the same way if you want them priced separately.
 - **Who sees what.** A tenant admin sees their own tenant. The platform administrator sees every tenant, or one tenant with `tenant_id`.
 - **Deleted Students.** A deleted Student's history stays in the report, labelled "Deleted Student".
 
+## The page (S3)
+
+**Admin → Usage and cost** (`/usage-cost`). Only roles holding `usage:read` see the menu item, which today means administrators. Mockup: `docs/mockups/usage-cost.html`.
+
+- **Cost tab.**
+  - The top shows the period's total, split into compute and disk. Grouped by Student, it also shows the unattributed amount and the highest-cost Student.
+  - The table groups by Student, course or class; the platform administrator also gets Organisation and can pick one organisation.
+  - Periods: this month, last month, or the last 30 days. Months follow the browser's time zone.
+  - Rows are sortable. Named rows come first; unattributed, self-serve and "no class" rows come last.
+  - Clicking a Student opens their drill-down: one block per range, with running, stopped (disk only) and approximate hours, and every stretch on demand.
+  - "Download CSV" fetches the same rows through the API client, so the sign-in token goes with it.
+- **Rate cards tab.**
+  - Lists the platform default and each organisation's cards, newest first, marked "in force" or "scheduled".
+  - "New rate card" needs `usage:admin`. Only the platform administrator can choose the platform default.
+  - The disk rate is entered per GB-month and stored per GB-hour (÷ 730, 6 decimal places).
+  - A helper works out rates from hardware cost, the years it is paid off over, monthly running cost, expected use and capacity. It stores nothing.
+
 ## Next
 
-- S3: the admin page (mockup first).
 - Sizes from what was actually provisioned, once linked clones land. Today every clone is a full copy.
 - A rule for charging booking and exercise ranges to Students. Today they are unattributed.

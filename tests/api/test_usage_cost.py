@@ -431,6 +431,8 @@ def test_a_students_drill_down_lists_each_interval(client, priced):
     (iv,) = body["intervals"]
     assert iv["source"] == "lab" and iv["vcpu_hours"] == pytest.approx(40)
     assert body["totals"]["cost_total"] == iv["cost_total"]
+    # Named for the page's drill-down; a lab has no class.
+    assert iv["course_name"] == "SOC Analyst" and iv["class_name"] is None
 
 
 def test_a_rate_card_is_added_audited_and_platform_wide_needs_the_platform_admin(client, priced):

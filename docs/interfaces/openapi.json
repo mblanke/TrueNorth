@@ -26349,6 +26349,17 @@
             ],
             "title": "Class Id"
           },
+          "class_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Name"
+          },
           "compute": {
             "description": "False: the VMs were off (stopped), disk only",
             "title": "Compute",
@@ -26385,6 +26396,17 @@
               }
             ],
             "title": "Course Id"
+          },
+          "course_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Name"
           },
           "currency": {
             "description": "Empty: nothing priced; 'mixed': cards in more than one currency",
@@ -26427,6 +26449,18 @@
               }
             ],
             "title": "Range Id"
+          },
+          "range_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None once the range row is gone",
+            "title": "Range Name"
           },
           "source": {
             "description": "lab, class_seat, class_shared or unattributed",

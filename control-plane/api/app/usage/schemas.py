@@ -93,6 +93,9 @@ class UsageIntervalOut(Figures):
     approximate: bool
     open: bool
     compute: bool = Field(..., description="False: the VMs were off (stopped), disk only")
+    range_name: str | None = Field(None, description="None once the range row is gone")
+    course_name: str | None = None
+    class_name: str | None = None
 
 
 class StudentCostOut(BaseModel):

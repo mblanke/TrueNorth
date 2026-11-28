@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<title>TrueNorth usage and cost mockup</title>
+<!--
+  Mockup for usage S3 (ADR 0021): the admin page over GET /usage/cost, /usage/cost.csv,
+  /usage/cost/students/{id} and /usage/rate-cards (PRs #545, #548).
+  Styles follow docs/mockups/scheduler.html (Astra's LMS preview tokens).
+  Real: template sizes (range_topology.template_demand), the pricing rules (allocated size;
+  running pays vCPU, RAM, VMs and disk, stopped pays disk only; a rate change splits an
+  interval; a tenant's card overrides the platform default; time before the ledger counts as
+  running and is approximate; shared class ranges split evenly across the roll call; ranges
+  with no Student go in "Unattributed"). Fictional: people, classes, tenants, rates, dates.
+  Deep link: usage-cost.html#who=platform&view=report&by=student&period=month&sel=fox
+    who: platform | tenant | instructor   view: report | rates   by: student | course | class | tenant
+-->
+<style>
+  :root {
+    --tn-bg:#fff7f7; --tn-surface:#ffffff; --tn-ink:#292326; --tn-muted:#655b60;
+    --tn-line:#eadbdd; --tn-accent:#b5122b; --tn-soft:#fcecef; --tn-warm:#fff0f2;
+    --tn-warm-ink:#961b30; --tn-button:#bd1631; --tn-button-ink:#ffffff;
+    --tn-ok:#1f6b45; --tn-ok-soft:#e6f3ec; --tn-amber:#9a5b00; --tn-amber-soft:#fff4e0; --tn-space:22px;
+    color-scheme: light;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; background:var(--tn-bg); }
+  body { font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif; color:var(--tn-ink); }
+  button,select,input { font:inherit; color:inherit; }
+  :focus-visible { outline:3px solid var(--tn-accent); outline-offset:3px; }
+
+  .mk-bar { padding:8px 18px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; background:#292326; color:#fff; font-size:12px; }
+  .mk-bar select { background:#fff; color:var(--tn-ink); border:0; border-radius:6px; padding:5px 7px; }
+  .mk-bar label { display:flex; gap:8px; align-items:center; }
+
+  .tn-app { display:grid; grid-template-columns:200px minmax(0,1fr); min-height:calc(100vh - 38px); }
+  .tn-side { background:var(--tn-surface); border-right:1px solid var(--tn-line); padding:18px 12px; display:flex; flex-direction:column; }
+  .tn-brand { font-size:18px; font-weight:650; letter-spacing:-.5px; padding:0 10px 18px; }
+  .tn-brand span { color:var(--tn-accent); }
+  .tn-side-title { font-size:11px; text-transform:uppercase; letter-spacing:1.3px; color:var(--tn-muted); padding:0 10px 10px; }
+  .tn-nav { display:flex; flex-direction:column; gap:3px; }
+  .tn-nav button { border:0; background:transparent; padding:10px; text-align:left; border-radius:7px; width:100%; cursor:pointer; }
+  .tn-nav button[aria-current="page"] { background:var(--tn-soft); color:var(--tn-accent); font-weight:600; }
+  .tn-nav button:hover { background:var(--tn-soft); }
+  .tn-side-foot { margin-top:auto; border-top:1px solid var(--tn-line); padding:14px 10px 0; font-size:12px; color:var(--tn-muted); }
+  .tn-side-foot strong { display:block; color:var(--tn-ink); font-weight:500; }
+  .tn-top { display:flex; align-items:center; gap:10px; padding:12px var(--tn-space); border-bottom:1px solid var(--tn-line); background:var(--tn-surface); font-size:12px; color:var(--tn-muted); min-height:45px; }
+  .tn-top strong { color:var(--tn-ink); font-weight:500; }
+  .tn-menu-btn { display:none; border:1px solid var(--tn-line); background:var(--tn-surface); border-radius:7px; padding:5px 10px; }
+  main { min-width:0; padding:var(--tn-space); max-width:1320px; }
+
+  h1 { font-size:27px; line-height:1.18; font-weight:600; letter-spacing:-.8px; margin:5px 0 9px; }
+  h2 { font-size:17px; font-weight:600; margin:0 0 13px; }
+  h3 { font-size:14px; font-weight:600; margin:0 0 5px; }
+  p { margin:0 0 12px; }
+  .tn-muted { color:var(--tn-muted); }
+  .tn-small { font-size:12px; }
+  .tn-eyebrow { font-size:11px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:var(--tn-accent); }
+  .tn-pagehead { display:flex; justify-content:space-between; align-items:flex-end; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+  .tn-pagehead p { max-width:66ch; margin:0; }
+  .tn-panel { background:var(--tn-surface); border:1px solid var(--tn-line); border-radius:10px; padding:18px; min-width:0; }
+  .tn-stack { display:grid; gap:16px; align-content:start; }
+  .tn-hero { background:var(--tn-soft); border:0; margin-bottom:18px; }
+  .tn-hero h2 { font-size:22px; line-height:1.25; margin:7px 0 9px; letter-spacing:-.4px; }
+  .tn-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:14px; }
+  .tn-action { border:1px solid var(--tn-line); border-radius:7px; padding:8px 13px; background:var(--tn-surface); cursor:pointer; }
+  .tn-primary { background:var(--tn-button); color:var(--tn-button-ink); border-color:transparent; }
+  .tn-primary[disabled] { opacity:.45; cursor:not-allowed; }
+  .tn-link { background:transparent; border:0; color:var(--tn-accent); padding:4px 0; cursor:pointer; }
+  .tn-link::after { content:" →"; }
+  .tn-link.close::after { content:""; }
+  .tn-row { padding:11px 0; border-top:1px solid var(--tn-line); display:flex; justify-content:space-between; gap:14px; align-items:center; }
+  .tn-row:first-of-type { border-top:0; padding-top:0; }
+  .tn-row p { margin:2px 0 0; }
+  .tn-chip { display:inline-block; padding:3px 7px; border-radius:5px; background:var(--tn-soft); color:var(--tn-accent); font-size:11px; font-weight:500; white-space:nowrap; }
+  .tn-chip.ok { background:var(--tn-ok-soft); color:var(--tn-ok); }
+  .tn-chip.neutral { background:var(--tn-bg); color:var(--tn-muted); }
+  .tn-chip.warm { color:var(--tn-warm-ink); background:var(--tn-warm); border:1px solid var(--tn-line); }
+  .tn-kv { display:grid; grid-template-columns:110px minmax(0,1fr); gap:6px 12px; font-size:13px; margin:0; }
+  .tn-kv dt { color:var(--tn-muted); }
+  .tn-kv dd { margin:0; }
+  .tn-note { padding:12px 14px; border-left:3px solid var(--tn-accent); background:var(--tn-soft); margin:12px 0 0; font-size:13px; }
+  .tn-note.ok { border-color:var(--tn-ok); background:var(--tn-ok-soft); }
+  .tn-field { display:block; margin-bottom:12px; }
+  .tn-field > span { display:block; font-weight:500; margin-bottom:4px; font-size:13px; }
+  .tn-field small { display:block; color:var(--tn-muted); margin-top:3px; font-size:12px; }
+  .tn-input { width:100%; background:var(--tn-surface); border:1px solid var(--tn-line); border-radius:7px; padding:7px 9px; }
+  .tn-two { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .tn-three { display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:10px; }
+  .tn-live { position:fixed; bottom:14px; right:14px; background:#292326; color:#fff; padding:10px 14px; border-radius:8px; font-size:12px; max-width:340px; }
+  .tn-live:empty { display:none; }
+
+
+  /* ── Usage and cost ────────────────────────────────────── */
+  .uc-bar { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+  .uc-bar .grp { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .uc-seg { display:inline-flex; border:1px solid var(--tn-line); border-radius:7px; overflow:hidden; background:var(--tn-surface); }
+  .uc-seg button { border:0; background:transparent; padding:7px 12px; cursor:pointer; border-left:1px solid var(--tn-line); }
+  .uc-seg button:first-child { border-left:0; }
+  .uc-seg button[aria-pressed="true"] { background:var(--tn-soft); color:var(--tn-accent); font-weight:600; }
+  .uc-select { border:1px solid var(--tn-line); border-radius:7px; padding:7px 9px; background:var(--tn-surface); }
+  .uc-tabs { display:flex; gap:18px; border-bottom:1px solid var(--tn-line); margin-bottom:18px; }
+  .uc-tabs button { border:0; background:transparent; padding:8px 0; cursor:pointer; color:var(--tn-muted); border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .uc-tabs button[aria-current="page"] { color:var(--tn-ink); border-color:var(--tn-accent); font-weight:600; }
+  .uc-split { display:grid; grid-template-columns:minmax(0,1fr) 380px; gap:16px; align-items:start; }
+  .uc-split.solo { grid-template-columns:minmax(0,1fr); }
+  .uc-big { font-size:30px; font-weight:600; letter-spacing:-.8px; line-height:1.1; }
+  .uc-parts { display:flex; gap:22px; flex-wrap:wrap; margin-top:10px; font-size:13px; }
+  .uc-parts span { color:var(--tn-muted); }
+  .uc-parts strong { display:block; font-weight:600; font-size:15px; color:var(--tn-ink); }
+  table.uc { width:100%; border-collapse:collapse; font-size:13px; }
+  .uc th { text-align:left; font-weight:500; color:var(--tn-muted); padding:0 8px 8px; border-bottom:1px solid var(--tn-line); white-space:nowrap; }
+  .uc th button { border:0; background:transparent; padding:0; cursor:pointer; color:inherit; font:inherit; }
+  .uc th[aria-sort] button { color:var(--tn-ink); font-weight:600; }
+  .uc td { padding:9px 8px; border-bottom:1px solid var(--tn-line); vertical-align:top; }
+  .uc tr:last-child td { border-bottom:0; }
+  .uc .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .uc tbody tr { cursor:pointer; }
+  .uc tbody tr:hover td { background:var(--tn-bg); }
+  .uc tbody tr.sel td { background:var(--tn-soft); }
+  .uc tbody tr.dim td:first-child { color:var(--tn-muted); font-style:italic; }
+  .uc tfoot td { font-weight:600; border-top:2px solid var(--tn-line); border-bottom:0; padding-top:10px; }
+  .uc-sub { display:block; color:var(--tn-muted); font-size:12px; }
+  .uc-group { border-top:1px solid var(--tn-line); padding-top:12px; margin-top:12px; }
+  .uc-group:first-of-type { border-top:0; margin-top:0; padding-top:0; }
+  .uc-line { display:flex; justify-content:space-between; gap:12px; font-size:13px; padding:3px 0; }
+  .uc-line span:last-child { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .uc-stretch { font-size:12px; color:var(--tn-muted); margin:6px 0 0; padding-left:0; list-style:none; max-height:180px; overflow:auto; }
+  .uc-stretch li { display:flex; justify-content:space-between; gap:10px; padding:2px 0; }
+  .uc-rates { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+  .uc-help { background:var(--tn-bg); border:1px solid var(--tn-line); border-radius:8px; padding:14px; margin-top:6px; }
+  .uc-out { font-variant-numeric:tabular-nums; }
+  @media (max-width:1100px) { .uc-split { grid-template-columns:1fr; } }
+  @media (max-width:800px) {
+    .tn-app { grid-template-columns:minmax(0,1fr); }
+    .tn-side { position:fixed; z-index:20; top:38px; bottom:0; left:0; width:240px; transform:translateX(-100%); transition:transform .2s; }
+    .tn-app.open .tn-side { transform:none; box-shadow:0 0 0 100vmax rgba(41,35,38,.35); }
+    .tn-menu-btn { display:inline-block; }
+    .uc .hide-sm { display:none; }
+    .uc-rates { grid-template-columns:1fr 1fr; }
+  }
+  @media (max-width:550px) { :root { --tn-space:14px; } h1 { font-size:23px; } .tn-two, .tn-three { grid-template-columns:1fr; } }
+  @media (pointer:coarse) { button,select,input { min-height:44px; } }
+</style></head><body>
+
+<div class="mk-bar"><span>DESIGN MOCKUP · Usage and cost (usage S3, ADR 0021) · real pricing rules and template sizes; people, rates and tenants are fictional · nothing is saved</span>
+  <label>Viewing as <select id="mk-who" aria-label="Mockup viewer">
+    <option value="platform">Capt Dana Kim · Platform administrator</option>
+    <option value="tenant">Lt Ana Silva · Administrator, Kingston</option>
+    <option value="instructor">WO Morgan Roy · Instructor</option>
+  </select></label></div>
+<div id="mk-root"></div>
+<div id="tn-live" class="tn-live" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  const H = 3600e3, DAY = 24 * H;
+  const T = (d, h = 0, mon = 10) => Date.UTC(2026, mon, d) + h * H;   // mon 10 = November
+  const NOW = T(28, 10), LEDGER = T(10);                                  // ledger deployed 10 Nov
+  const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const fmtD = t => { const d = new Date(t); return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`; };
+  const fmtT = t => { const d = new Date(t); return `${fmtD(t)} ${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`; };
+  const $ = n => '$' + n.toLocaleString('en-CA', { minimumFractionDigits:2, maximumFractionDigits:2 });
+  const hrs = n => n.toLocaleString('en-CA', { maximumFractionDigits: n < 10 ? 1 : 0 }) + ' h';
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  // ── Real: template demand (range_topology.template_demand); ram in MB, disk in GB ──
+  const SIZES = {
+    'small-enterprise': { name:'Small Enterprise', vms:5,  vcpu:10, ram:20480,  disk:300 },
+    'medium-enterprise':{ name:'Medium Enterprise',vms:8,  vcpu:20, ram:45056,  disk:1040 },
+    'soc-training':     { name:'SOC Training',     vms:23, vcpu:69, ram:160768, disk:3920 },
+    'cloud-security':   { name:'Cloud Security',   vms:16, vcpu:52, ram:129024, disk:1740 },
+    'red-vs-blue':      { name:'Red vs Blue',      vms:40, vcpu:80, ram:163840, disk:1092 },
+    'lab-forensics':    { name:'Windows forensics lab', vms:1, vcpu:4, ram:8192, disk:120 },
+    'lab-linux':        { name:'Linux hardening lab',   vms:1, vcpu:2, ram:4096, disk:60 },
+  };
+
+  // ── Fictional: tenants, rate cards (CAD, per hour), people, classes ───────────
+  const TENANTS = { k:'Kingston campus', b:'Borden campus' };
+  let CARDS = [
+    { id:'c1', tenant:null, eff:T(1, 0, 9),  vcpu:0.018, ram:0.0045, disk:0.00012, vm:0,     by:'Capt Dana Kim', notes:'First card. Hosts amortised over 5 years.' },
+    { id:'c2', tenant:null, eff:T(15),       vcpu:0.018, ram:0.0045, disk:0.00015, vm:0.002, by:'Capt Dana Kim', notes:'Storage expansion (+120 TB); Windows licences per VM-hour.' },
+    { id:'c3', tenant:'b',  eff:T(1),        vcpu:0.012, ram:0.0030, disk:0.00010, vm:0,     by:'Capt Dana Kim', notes:'Borden owns its hosts: power and support only.' },
+  ];
+  const P = {
+    fox:'OCdt Jamie Fox', martin:'OCdt Alex Martin', tremblay:'OCdt Riley Tremblay', gagnon:'OCdt Sam Gagnon', wong:'OCdt Jordan Wong', singh:'OCdt Casey Singh',
+    lee:'Pte Morgan Lee', nguyen:'Pte Taylor Nguyen', cote:'Cpl Avery Côté', patel:'Cpl Drew Patel', hall:'Pte Robin Hall', park:'Pte Jesse Park',
+    leblanc:'Cpl Kai Leblanc', bell:'Pte Sasha Bell', haddad:'Pte Noor Haddad', fraser:'Cpl Eli Fraser',
+    larsen:'OCdt Mika Larsen', ouellet:'OCdt Remy Ouellet', moreau:'OCdt Dale Moreau',
+  };
+  const COURSES = { net:'Network Defence Fundamentals', soc:'SOC Analyst Operations', dfir:'Digital Forensics I', linux:'Linux Administration', cloud:'Cloud Security Foundations' };
+  const CLASSES = { net:'Network defence · cohort 2026-3', soc:'SOC analyst · cohort 2026-2', cloud:'Cloud security · cohort 2026-1' };
+
+  // ── Range histories → state segments (what the ledger gives the report) ──────
+  function weekdays(from, to, on, off, extra = []) {
+    const w = [];
+    for (let d = from - from % DAY; d < to; d += DAY) {
+      const dow = new Date(d).getUTCDay(); if (dow === 0 || dow === 6) continue;
+      const s = Math.max(from, d + on * H), e = Math.min(to, d + off * H); if (s < e) w.push([s, e]);
+    }
+    w.push(...extra); w.sort((a, b) => a[0] - b[0]);
+    return w.reduce((m, x) => { const l = m[m.length - 1]; if (l && x[0] <= l[1]) l[1] = Math.max(l[1], x[1]); else m.push([...x]); return m; }, []);
+  }
+  function segments(build, end, wins) {
+    const out = []; let c = build;
+    for (const [s, e] of wins) { if (s > c) out.push({ s:c, e:s, compute:false }); out.push({ s:Math.max(s, c), e, compute:true }); c = e; }
+    if (c < end) out.push({ s:c, e:end, compute:false });
+    if (build >= LEDGER) return out;
+    // Older than the ledger: before its first event the range counts as running (approximate).
+    return [{ s:build, e:Math.min(LEDGER, end), compute:true, approx:true }, ...out.filter(x => x.e > LEDGER).map(x => ({ ...x, s:Math.max(x.s, LEDGER) }))];
+  }
+  const IV = [];
+  const add = (base, segs, users) => {
+    for (const g of segs) {
+      const cuts = [g.s, g.e, ...users.flatMap(u => [u.from, u.to]).filter(t => t > g.s && t < g.e)].sort((a, b) => a - b);
+      for (let i = 0; i < cuts.length - 1; i++) {
+        const s = cuts[i], e = cuts[i + 1], here = users.filter(u => u.from <= s && u.to >= e);
+        for (const u of here) IV.push({ ...base, user:u.id, share:1 / here.length, n:here.length, s, e, compute:g.compute, approx:!!g.approx, open:base.open && e === NOW });
+      }
+    }
+  };
+  const all = (ids, from = 0, to = Infinity) => ids.map(id => ({ id, from, to }));
+  // Class seat ranges, Kingston: built 2 Nov (before the ledger), weekdays 08:30–16:00. Fox's seat ran overnight 12 Nov.
+  for (const u of ['fox','martin','tremblay','gagnon','wong','singh']) {
+    const extra = u === 'fox' ? [[T(12, 16), T(13, 8.5)]] : [];
+    add({ tenant:'k', kind:'seat', range:'seat-' + u, tpl:'small-enterprise', course:'net', cls:'net' },
+        segments(T(2, 8.5), T(20, 16.5), weekdays(T(2, 8.5), T(20, 16.5), 8.5, 16, extra)), all([u]));
+  }
+  // A shared class range, Kingston: still built (open). Jesse Park left the roll call 23 Nov noon.
+  const socRoll = ['lee','nguyen','cote','patel','hall','park','leblanc','bell','haddad','fraser'].map(id => ({ id, from:T(16, 8), to:id === 'park' ? T(23, 12) : Infinity }));
+  add({ tenant:'k', kind:'shared', range:'soc-shared', tpl:'soc-training', course:'soc', cls:'soc', open:true },
+      segments(T(16, 8), NOW, weekdays(T(16, 8), NOW, 9, 15.5)), socRoll);
+  // Class seat ranges, Borden.
+  for (const u of ['larsen','ouellet','moreau'])
+    add({ tenant:'b', kind:'seat', range:'seat-' + u, tpl:'cloud-security', course:'cloud', cls:'cloud' },
+        segments(T(23, 8.5), T(27, 15.5), weekdays(T(23, 8.5), T(27, 15.5), 9, 15)), all([u]));
+  // Self-serve labs: compute for the whole session (labs are never stopped).
+  const lab = (u, tenant, tpl, course, s, e) => add({ tenant, kind:'lab', range:`lab-${u}-${s}`, tpl, course, cls:null, open:e === NOW }, [{ s, e, compute:true }], all([u]));
+  lab('fox', 'k', 'lab-forensics', 'dfir', T(25, 18), T(25, 21.5));
+  lab('lee', 'k', 'lab-forensics', 'dfir', T(24, 19), T(24, 22.25));
+  lab('lee', 'k', 'lab-forensics', 'dfir', T(28, 8.25), NOW);
+  lab('martin', 'k', 'lab-linux', 'linux', T(20, 10, 9), T(20, 13, 9));
+  lab('wong', 'k', 'lab-linux', 'linux', T(14, 9, 9), T(14, 16, 9));
+  lab('larsen', 'b', 'lab-linux', 'linux', T(19, 13), T(19, 17));
+  // Unattributed: a booking range and one built by hand.
+  const un = (tenant, range, tpl, label, segs) => add({ tenant, kind:'other', range, tpl, label, course:null, cls:null }, segs, all([null]));
+  un('k', 'rvb', 'red-vs-blue', 'Booking: Red vs Blue exercise', [{ s:T(17, 8), e:T(17, 16), compute:true }]);
+  un('k', 'ops-test', 'medium-enterprise', 'Built by hand: range ops test build', segments(T(4, 10), T(18, 9), [[T(4, 10), T(4, 11.5)]]));
+
+  // ── Pricing (app/usage/rates.py): split at each card change; tenant card overrides ──
+  function inForce(tenant, t) {
+    const pick = cs => cs.filter(c => c.eff <= t).sort((a, b) => b.eff - a.eff)[0];
+    return pick(CARDS.filter(c => c.tenant === tenant)) || pick(CARDS.filter(c => c.tenant === null)) || null;
+  }
+  const zero = () => ({ vcpuH:0, ramH:0, diskH:0, vmH:0, compute:0, disk:0, unpriced:0, runH:0, offH:0 });
+  function price(iv, f = zero()) {
+    const z = SIZES[iv.tpl], cuts = [iv.s, iv.e, ...CARDS.map(c => c.eff).filter(t => t > iv.s && t < iv.e)].sort((a, b) => a - b);
+    for (let i = 0; i < cuts.length - 1; i++) {
+      const h = (cuts[i + 1] - cuts[i]) / H * iv.share, c = inForce(iv.tenant, cuts[i]);
+      if (iv.compute) f.runH += h; else f.offH += h;
+      if (!c) { f.unpriced += h; continue; }
+      const disk = z.disk * h;
+      f.diskH += disk; f.disk += disk * c.disk;
+      if (iv.compute) { const v = z.vcpu * h, r = z.ram / 1024 * h, m = z.vms * h; f.vcpuH += v; f.ramH += r; f.vmH += m; f.compute += v * c.vcpu + r * c.ram + m * c.vm; }
+    }
+    return f;
+  }
+  const sum = f => f.compute + f.disk;
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  const live = document.getElementById('tn-live'), root = document.getElementById('mk-root');
+  const q = new URLSearchParams(location.hash.slice(1));
+  const state = { by:q.get('by') || 'student' };
+  let who = q.get('who') || 'platform', view = q.get('view') || 'report';
+  let period = q.get('period') || 'month', scope = q.get('tenant') || 'all', sel = q.get('sel') || '';
+  let sort = { col:'total', dir:-1 }, stretches = false, newCard = q.get('new') === '1';
+  const PERIODS = { month:['This month', T(1), NOW], week:['Last 7 days', NOW - 7 * DAY, NOW], prev:['October', T(1, 0, 9), T(1)] };
+  const helper = { hw:1800000, years:5, power:9000, util:60, cpu:3000, ramGb:24000, diskTb:600, sCpu:50, sRam:35 };
+  const toast = m => { live.textContent = m + ' (mockup)'; setTimeout(() => { if (live.textContent.startsWith(m)) live.textContent = ''; }, 3500); };
+
+  function visible() {
+    const [, p0, p1] = PERIODS[period];
+    const tenants = who === 'tenant' ? ['k'] : scope === 'all' ? ['k', 'b'] : [scope];
+    return IV.filter(iv => tenants.includes(iv.tenant))
+      .map(iv => ({ ...iv, s:Math.max(iv.s, p0), e:Math.min(iv.e, p1) })).filter(iv => iv.s < iv.e);
+  }
+  function keyOf(iv, by = state.by) {
+    if (by === 'tenant') return [iv.tenant, TENANTS[iv.tenant]];
+    if (by === 'student') return iv.user ? [iv.user, P[iv.user]] : ['un:' + iv.tenant, 'Unattributed (no Student)'];
+    if (by === 'course') return iv.course ? [iv.course, COURSES[iv.course]] : ['nc:' + iv.tenant, 'No course'];
+    return iv.cls ? [iv.cls, CLASSES[iv.cls]] : iv.kind === 'lab' ? ['ss:' + iv.tenant, 'Self-serve labs'] : ['nk:' + iv.tenant, 'No class'];
+  }
+  function rows(ivs, by = state.by) {
+    const m = new Map();
+    for (const iv of ivs) {
+      const [key, label] = keyOf(iv, by);
+      const r = m.get(key) || { key, label, tenant:iv.tenant, f:zero(), approx:false, open:false, users:new Set(), courses:new Set(), classes:new Set(), dim:!label || key.includes(':') };
+      price(iv, r.f); r.approx ||= iv.approx; r.open ||= iv.open;
+      if (iv.user) r.users.add(iv.user); if (iv.course) r.courses.add(iv.course); if (iv.cls) r.classes.add(iv.cls);
+      m.set(key, r);
+    }
+    const val = r => ({ total:sum(r.f), compute:r.f.compute, disk:r.f.disk, vm:r.f.vmH, label:r.label })[sort.col];
+    return [...m.values()].sort((a, b) => a.dim - b.dim || (typeof val(a) === 'string' ? val(a).localeCompare(val(b)) * -sort.dir : (val(a) - val(b)) * sort.dir));
+  }
+
+  // ── Report ─────────────────────────────────────────────────────────────────
+  function report() {
+    const ivs = visible(), rs = rows(ivs), tot = zero();
+    ivs.forEach(iv => price(iv, tot));
+    const studs = new Set(ivs.filter(i => i.user).map(i => i.user)).size;
+    const unat = ivs.filter(i => !i.user).reduce((f, i) => price(i, f), zero());
+    const by = state.by;
+    const top = rows(ivs.filter(i => i.user), 'student').sort((a, b) => sum(b.f) - sum(a.f));
+    const approx = rs.some(r => r.approx), open = rs.some(r => r.open);
+    const col = (id, l, cls = '') => `<th class="${cls}" ${sort.col === id ? `aria-sort="${sort.dir < 0 ? 'descending' : 'ascending'}"` : ''}><button data-action="sort:${id}">${l}${sort.col === id ? (sort.dir < 0 ? ' ↓' : ' ↑') : ''}</button></th>`;
+    const name = { student:'Student', course:'Course', class:'Class', tenant:'Tenant' }[by];
+    const extra = by === 'student' ? '<th class="hide-sm">Course · class</th>' : '<th class="num hide-sm">Students</th>';
+    const body = rs.map(r => {
+      const ctx = by === 'student'
+        ? `<td class="hide-sm">${r.dim ? '<span class="tn-muted">Bookings, exercises, built by hand</span>' : [...r.courses].map(c => esc(COURSES[c])).join(', ') + `<span class="uc-sub">${[...r.classes].map(c => esc(CLASSES[c])).join(', ') || 'Self-serve labs'}</span>`}</td>`
+        : `<td class="num hide-sm">${r.users.size || '—'}</td>`;
+      const flags = [r.approx ? '<span class="tn-chip warm" title="Part of this is approximate">≈ approx.</span>' : '', r.open ? '<span class="tn-chip neutral" title="A range is still built; its cost is counted to now">open</span>' : '', r.f.unpriced ? `<span class="tn-chip">${hrs(r.f.unpriced)} unpriced</span>` : ''].join(' ');
+      return `<tr class="${sel === r.key ? 'sel' : ''} ${r.dim ? 'dim' : ''}" data-action="sel:${r.key}"><td>${esc(r.label)}${who === 'platform' && scope === 'all' && by !== 'tenant' ? `<span class="uc-sub">${TENANTS[r.tenant]}</span>` : ''} ${flags}</td>${ctx}
+        <td class="num hide-sm">${hrs(r.f.vmH)}</td><td class="num">${$(r.f.compute)}</td><td class="num">${$(r.f.disk)}</td><td class="num"><strong>${$(sum(r.f))}</strong></td></tr>`;
+    }).join('');
+    const tenantPick = who === 'platform' ? `<select class="uc-select" data-bind="tenant" aria-label="Tenant"><option value="all">All tenants</option>${Object.entries(TENANTS).map(([k, v]) => `<option value="${k}" ${scope === k ? 'selected' : ''}>${v}</option>`).join('')}</select>` : '';
+    const panel = sel ? drill(ivs, rs.find(r => r.key === sel)) : '';
+    return `
+      <section class="tn-panel tn-hero"><span class="tn-eyebrow">${PERIODS[period][0]} · to ${fmtT(PERIODS[period][2])}</span>
+        <div class="uc-big">${$(sum(tot))} <span class="tn-muted" style="font-size:15px;font-weight:400;letter-spacing:0">CAD, ${studs} Students</span></div>
+        <div class="uc-parts"><div><span>Running</span><strong>${$(tot.compute)}</strong></div><div><span>Stopped (disk only)</span><strong>${$(tot.disk)}</strong></div>
+          <div><span>Unattributed</span><strong>${$(sum(unat))}</strong></div>${top[0] ? `<div><span>Highest Student</span><strong>${esc(top[0].label)} · ${$(sum(top[0].f))}</strong></div>` : ''}</div></section>
+      <div class="uc-bar"><div class="grp"><span class="tn-small tn-muted">Group by</span><div class="uc-seg" role="group" aria-label="Group by">${['student','course','class', ...(who === 'platform' ? ['tenant'] : [])].map(b => `<button aria-pressed="${by === b}" data-action="by:${b}">${b[0].toUpperCase() + b.slice(1)}</button>`).join('')}</div></div>
+        <div class="grp"><select class="uc-select" data-bind="period" aria-label="Period">${Object.entries(PERIODS).map(([k, [l]]) => `<option value="${k}" ${period === k ? 'selected' : ''}>${l}</option>`).join('')}</select>${tenantPick}
+          <button class="tn-action" data-action="csv">Download CSV</button></div></div>
+      <div class="uc-split ${panel ? '' : 'solo'}"><section class="tn-panel" style="overflow-x:auto">
+        ${rs.length ? `<table class="uc"><thead><tr>${col('label', name)}${extra}${col('vm', 'VM-hours', 'num hide-sm')}${col('compute', 'Running', 'num')}${col('disk', 'Disk only', 'num')}${col('total', 'Total', 'num')}</tr></thead>
+        <tbody>${body}</tbody><tfoot><tr><td>Total</td><td class="hide-sm"></td><td class="num hide-sm">${hrs(tot.vmH)}</td><td class="num">${$(tot.compute)}</td><td class="num">${$(tot.disk)}</td><td class="num">${$(sum(tot))}</td></tr></tfoot></table>`
+        : '<p class="tn-muted">No range was built in this period.</p>'}
+        ${approx ? `<p class="tn-note"><strong>≈ Approximate.</strong> Part of this is from before the usage ledger started (${fmtD(LEDGER)}), when a range is counted as running the whole time, or from a change the hourly check caught late. The rest is exact.</p>` : ''}
+        ${open ? '<p class="tn-small tn-muted" style="margin:10px 0 0">Open: a range is still built, so its cost runs to now.</p>' : ''}
+        <p class="tn-small tn-muted" style="margin:10px 0 0">Cost is the allocated size, not measured use: running pays vCPU, RAM, VMs and disk; stopped pays disk only; destroyed pays nothing. A shared class range is split evenly across its roll call.</p>
+      </section>${panel}</div>`;
+  }
+
+  function drill(ivs, r) {
+    if (!r) return '';
+    const by = state.by;
+    const mine = ivs.filter(iv => keyOf(iv)[0] === r.key), groups = new Map();
+    for (const iv of mine) { const g = groups.get(iv.range) || []; g.push(iv); groups.set(iv.range, g); }
+    const kinds = { seat:'Seat range', shared:'Shared class range', lab:'Self-serve lab', other:'' };
+    const html = [...groups.values()].sort((a, b) => a[0].s - b[0].s).map(g => {
+      const iv = g[0], z = SIZES[iv.tpl], f = zero(); g.forEach(x => price(x, f));
+      const run = g.filter(x => x.compute && !x.approx), off = g.filter(x => !x.compute), ap = g.filter(x => x.approx);
+      const part = (xs) => xs.reduce((a, x) => price(x, a), zero());
+      const pr = part(run), po = part(off), pa = part(ap);
+      const head = iv.label || `${kinds[iv.kind]} · ${iv.cls ? esc(CLASSES[iv.cls]) : esc(COURSES[iv.course])}`;
+      const share = iv.kind === 'shared' ? `<p class="tn-small tn-muted" style="margin:4px 0 0">Split across ${[...new Set(g.map(x => x.n))].sort((a, b) => b - a).join(', then ')} Students on the roll call.</p>` : '';
+      const list = stretches ? `<ul class="uc-stretch">${g.map(x => `<li><span>${fmtT(x.s)} – ${x.open ? 'now' : fmtT(x.e)} · ${x.approx ? 'assumed running ≈' : x.compute ? 'running' : 'stopped'}</span><span>${$(sum(price(x)))}</span></li>`).join('')}</ul>` : '';
+      return `<div class="uc-group"><h3>${head}</h3><p class="tn-small tn-muted" style="margin:0 0 6px">${z.name}: ${z.vms} VM${z.vms === 1 ? '' : 's'}, ${z.vcpu} vCPU, ${Math.round(z.ram / 1024)} GB RAM, ${z.disk.toLocaleString()} GB disk · ${fmtD(Math.min(...g.map(x => x.s)))} – ${iv.open ? 'now' : fmtD(Math.max(...g.map(x => x.e)))}</p>
+        ${run.length ? `<div class="uc-line"><span>Running ${hrs(pr.runH)}</span><span>${$(sum(pr))}</span></div>` : ''}
+        ${off.length ? `<div class="uc-line"><span>Stopped, disk only ${hrs(po.offH)}</span><span>${$(sum(po))}</span></div>` : ''}
+        ${ap.length ? `<div class="uc-line"><span>Before the ledger, assumed running ${hrs(pa.runH)} <span class="tn-chip warm">≈</span></span><span>${$(sum(pa))}</span></div>` : ''}
+        <div class="uc-line"><strong>Range total</strong><strong>${$(sum(f))}</strong></div>${share}${list}</div>`;
+    }).join('');
+    const cards = [...new Set(mine.flatMap(iv => CARDS.filter(c => c.eff < iv.e && (c.tenant === iv.tenant || c.tenant === null)).map(c => inForce(iv.tenant, Math.max(iv.s, c.eff)))).filter(Boolean))];
+    return `<aside class="tn-panel"><div class="tn-row" style="padding-top:0"><div><span class="tn-eyebrow">${r.dim ? 'Not tied to one' : by === 'student' ? 'Student' : by[0].toUpperCase() + by.slice(1)}</span><h2 style="margin:4px 0 0">${esc(r.label)}</h2></div><button class="tn-link close" data-action="sel:" style="align-self:flex-start">Close</button></div>
+      <p style="margin:8px 0 14px"><span class="uc-big" style="font-size:24px">${$(sum(r.f))}</span> <span class="tn-muted">in ${PERIODS[period][0].toLowerCase()}</span></p>
+      ${html}
+      <div class="tn-actions"><button class="tn-link" data-action="stretch">${stretches ? 'Hide' : 'Show'} every stretch</button></div>
+      <p class="tn-small tn-muted" style="margin:12px 0 0">Priced with ${cards.map(c => `${c.tenant ? TENANTS[c.tenant] : 'platform default'} from ${fmtD(c.eff)}`).join(', ')}.</p></aside>`;
+  }
+
+  // ── Rate cards ─────────────────────────────────────────────────────────────
+  function ratesPage() {
+    const scopes = who === 'tenant' ? [null, 'k'] : [null, 'k', 'b'];
+    const now = NOW;
+    const list = scopes.map(sc => {
+      const cs = CARDS.filter(c => c.tenant === sc).sort((a, b) => b.eff - a.eff), cur = inForce(sc, now);
+      const title = sc ? TENANTS[sc] : 'Platform default';
+      const body = cs.length ? cs.map(c => `<div class="tn-row"><div><strong>From ${fmtD(c.eff)} ${new Date(c.eff).getUTCFullYear()}</strong> ${c === cur && (c.tenant === sc) ? '<span class="tn-chip ok">in force</span>' : c.eff > now ? '<span class="tn-chip neutral">scheduled</span>' : ''}
+          <p class="tn-small tn-muted">${esc(c.notes)} · ${esc(c.by)}</p></div>
+          <div class="uc-out tn-small" style="text-align:right">vCPU ${c.vcpu.toFixed(4)}/h · RAM ${c.ram.toFixed(4)}/GB-h<br>disk ${(c.disk * 730).toFixed(3)}/GB-month · VM ${c.vm.toFixed(4)}/h</div></div>`).join('')
+        : `<p class="tn-muted tn-small">No card of its own: it pays the platform default.</p>`;
+      return `<section class="tn-panel"><h2>${title}</h2>${body}</section>`;
+    }).join('');
+    return `<div class="uc-split ${newCard ? '' : 'solo'}"><div class="tn-stack">
+      <section class="tn-panel tn-hero" style="margin:0"><span class="tn-eyebrow">Rate cards</span><h2>A card is never edited. A new one takes over from its date.</h2>
+        <p>Cost already reported keeps the rates it was priced with: an interval that crosses a card's date is split, and each side pays its own card. A tenant's card replaces the platform default for that tenant.</p>
+        <div class="tn-actions"><button class="tn-action tn-primary" data-action="new">New rate card</button></div></section>${list}</div>
+      ${newCard ? cardForm() : ''}</div>`;
+  }
+  function suggest() {
+    const h = helper, perH = (h.hw / (h.years * 12) + h.power) / 730 / (h.util / 100);
+    return { vcpu:perH * h.sCpu / 100 / h.cpu, ram:perH * h.sRam / 100 / h.ramGb, disk:perH * (100 - h.sCpu - h.sRam) / 100 / (h.diskTb * 1024) * (h.util / 100), perH };
+  }
+  function cardForm() {
+    const s = suggest(), f = (k, l, v, small = '') => `<label class="tn-field"><span>${l}</span><input class="tn-input" data-help="${k}" type="number" value="${v}">${small ? `<small>${small}</small>` : ''}</label>`;
+    return `<aside class="tn-panel"><div class="tn-row" style="padding-top:0"><h2 style="margin:0">New rate card</h2><button class="tn-link close" data-action="new">Close</button></div>
+      <label class="tn-field"><span>Applies to</span><select class="tn-input">${who === 'platform' ? '<option>Platform default (every tenant without its own card)</option>' : ''}<option>${TENANTS.k}</option>${who === 'platform' ? `<option>${TENANTS.b}</option>` : ''}</select>
+        ${who === 'tenant' ? '<small>Only a platform administrator sets the platform default.</small>' : ''}</label>
+      <label class="tn-field"><span>In force from</span><input class="tn-input" type="datetime-local" value="2026-12-01T00:00"><small>Not earlier than now: reported cost never changes.</small></label>
+      <div class="tn-two">
+        <label class="tn-field"><span>per vCPU-hour</span><input class="tn-input" id="r-vcpu" value="${s.vcpu.toFixed(4)}"></label>
+        <label class="tn-field"><span>per GB-RAM-hour</span><input class="tn-input" id="r-ram" value="${s.ram.toFixed(4)}"></label>
+        <label class="tn-field"><span>per GB-disk-month</span><input class="tn-input" id="r-disk" value="${(s.disk * 730).toFixed(3)}"><small>Stored per hour (÷ 730).</small></label>
+        <label class="tn-field"><span>per VM-hour</span><input class="tn-input" value="0.0000"><small>Licences; 0 if none.</small></label></div>
+      <label class="tn-field"><span>Currency</span><select class="tn-input"><option>CAD</option><option>USD</option></select></label>
+      <label class="tn-field"><span>Notes</span><input class="tn-input" placeholder="Why the rates changed"></label>
+      <details class="uc-help" open><summary><strong>Work out rates from the hardware</strong> <span class="tn-small tn-muted">(a helper; it stores nothing)</span></summary>
+        <div class="tn-two" style="margin-top:12px">${f('hw', 'Hardware cost', helper.hw)}${f('years', 'Paid off over (years)', helper.years)}${f('power', 'Power, cooling, support per month', helper.power)}${f('util', 'Expected use (%)', helper.util, 'Share of capacity in use on average')}
+          ${f('cpu', 'vCPU capacity', helper.cpu)}${f('ramGb', 'RAM capacity (GB)', helper.ramGb)}${f('diskTb', 'Disk capacity (TB)', helper.diskTb)}${f('sCpu', 'Share of cost: CPU (%)', helper.sCpu, `RAM ${helper.sRam}%, disk ${100 - helper.sCpu - helper.sRam}%`)}</div>
+        <p class="tn-small uc-out" style="margin:4px 0 0">Recover ${$(s.perH)} an hour → vCPU ${s.vcpu.toFixed(4)}/h, RAM ${s.ram.toFixed(4)}/GB-h, disk ${(s.disk * 730).toFixed(3)}/GB-month.</p>
+        <div class="tn-actions" style="margin-top:8px"><button class="tn-link" data-action="use">Use these rates</button></div></details>
+      <div class="tn-actions"><button class="tn-action tn-primary" data-action="save">Save rate card</button><span class="tn-small tn-muted">Recorded in the audit log.</span></div></aside>`;
+  }
+
+  function noAccess() {
+    return `<div class="tn-pagehead"><div><span class="tn-eyebrow">Home</span><h1>Welcome back, Morgan</h1></div></div>
+      <section class="tn-panel tn-hero"><span class="tn-eyebrow">Decided 27 Nov 2026</span><h2>Instructors and Students don't see cost</h2>
+      <p>Usage and cost is not in this menu, and its addresses answer "not permitted" (<code>usage:read</code>). Only administrators see it: a tenant's administrator for that tenant, the platform administrator for all.</p></section>`;
+  }
+
+  function render() {
+    document.getElementById('mk-who').value = who;
+    history.replaceState(null, '', '#' + new URLSearchParams({ who, view, by:state.by, period, ...(newCard ? { new:1 } : {}), ...(scope !== 'all' ? { tenant:scope } : {}), ...(sel ? { sel } : {}) }));
+    const me = { platform:['Capt Dana Kim','Platform administrator'], tenant:['Lt Ana Silva','Administrator · Kingston'], instructor:['WO Morgan Roy','Instructor'] }[who];
+    const menu = who === 'instructor' ? [['home','Home'],['courses','Courses'],['exercises','Exercises'],['schedule','Schedule']]
+      : [['home','Home'],['users','People'],['schedule','Schedule'],['infrastructure','Infrastructure'],['usage','Usage and cost'],['settings','Settings']];
+    const current = who === 'instructor' ? 'home' : 'usage';
+    const page = who === 'instructor' ? noAccess() : `<div class="tn-pagehead"><div><span class="tn-eyebrow">Administration</span><h1>Usage and cost</h1>
+        <p class="tn-muted">What each Student costs to run on the range, at the size each range was built and the rate card in force.${who === 'tenant' ? ' Kingston campus only.' : ''}</p></div></div>
+      <nav class="uc-tabs" aria-label="Usage and cost"><button ${view === 'report' ? 'aria-current="page"' : ''} data-action="view:report">Cost</button><button ${view === 'rates' ? 'aria-current="page"' : ''} data-action="view:rates">Rate cards</button></nav>
+      ${view === 'rates' ? ratesPage() : report()}`;
+    root.innerHTML = `<div class="tn-app" id="tn-app"><aside class="tn-side" aria-label="Main navigation"><div class="tn-brand">True<span>North</span></div>
+      <div class="tn-side-title">${me[1]}</div><nav class="tn-nav">${menu.map(([id, l]) => `<button type="button" ${id === current ? 'aria-current="page"' : ''} data-action="${id === current ? 'noop' : 'toast:' + l + ' (other page)'}">${l}</button>`).join('')}</nav>
+      <div class="tn-side-foot"><strong>${me[0]}</strong>${me[1]}</div></aside>
+      <div><div class="tn-top"><button class="tn-menu-btn" data-action="menu" aria-label="Open navigation">Menu</button><span>${me[1]}</span><span aria-hidden="true">/</span><strong>${menu.find(m => m[0] === current)[1]}</strong></div>
+      <main>${page}</main></div></div>`;
+  }
+
+  root.addEventListener('click', e => {
+    const b = e.target.closest('[data-action]'); if (!b) return;
+    const [a, ...r] = b.dataset.action.split(':'); const arg = r.join(':');
+    if (a === 'sel') sel = sel === arg ? '' : arg;
+    else if (a === 'by') { state.by = arg; sel = ''; }
+    else if (a === 'view') { view = arg; sel = ''; }
+    else if (a === 'sort') sort = { col:arg, dir:sort.col === arg ? -sort.dir : (arg === 'label' ? 1 : -1) };
+    else if (a === 'stretch') stretches = !stretches;
+    else if (a === 'new') newCard = !newCard;
+    else if (a === 'csv') return toast(`Would download usage-cost_${period}_${state.by}.csv, the rows shown`);
+    else if (a === 'save') return toast('Would save the card and log it in the audit log');
+    else if (a === 'use') return toast('Rates filled in from the helper');
+    else if (a === 'menu') { document.getElementById('tn-app').classList.toggle('open'); return; }
+    else if (a === 'toast') return toast(arg);
+    else return;
+    render();
+  });
+  root.addEventListener('change', e => {
+    const k = e.target.dataset.bind, hk = e.target.dataset.help;
+    if (k === 'period') period = e.target.value; else if (k === 'tenant') { scope = e.target.value; sel = ''; }
+    else if (hk) { helper[hk] = +e.target.value || 0; } else return;
+    render();
+  });
+  document.getElementById('mk-who').addEventListener('change', e => { who = e.target.value; sel = ''; scope = 'all'; if (who !== 'platform' && state.by === 'tenant') state.by = 'student'; render(); window.scrollTo(0, 0); });
+  render();
+})();
+</script>
+</body></html>

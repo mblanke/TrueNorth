@@ -21718,6 +21718,8 @@ export interface components {
             approximate: boolean;
             /** Class Id */
             class_id: string | null;
+            /** Class Name */
+            class_name?: string | null;
             /**
              * Compute
              * @description False: the VMs were off (stopped), disk only
@@ -21735,6 +21737,8 @@ export interface components {
             cost_vm: number;
             /** Course Id */
             course_id: string | null;
+            /** Course Name */
+            course_name?: string | null;
             /**
              * Currency
              * @description Empty: nothing priced; 'mixed': cards in more than one currency
@@ -21757,6 +21761,11 @@ export interface components {
             ram_gb_hours: number;
             /** Range Id */
             range_id: string | null;
+            /**
+             * Range Name
+             * @description None once the range row is gone
+             */
+            range_name?: string | null;
             /**
              * Source
              * @description lab, class_seat, class_shared or unattributed
