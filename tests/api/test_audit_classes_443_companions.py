@@ -198,12 +198,6 @@ def test_companion_f4_a_booked_session_pins_the_course_even_with_an_empty_roll_c
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: A former assistant/observer demoted to "
-    "Student keeps the class in GET /classes "
-    "(classes/access.py:35) — companion",
-)
 def test_companion_f5_a_demoted_observer_no_longer_sees_the_class_in_the_list(client, world, db_session):
     observer = real_user(db_session, UserRole.observer, world["a"].id)
     act_as(world["lead"])
@@ -349,3 +343,33 @@ def test_a_draft_session_pins_the_course_too(client, world):
     act_as(world["lead"])
     r = client.put(f"/classes/{world['class']['id']}", json=_class_body(world, course_id=str(world["other_course"].id)))
     assert r.status_code == 409, r.text
+
+
+# ── 5. Demoted staff: the lead, and "my classes" ───────────────────────────
+
+
+@pytest.mark.audit443
+def test_a_demoted_lead_no_longer_sees_the_class_in_the_list(client, world):
+    """Same leak through the lead branch: visible() listed a class by lead_instructor_id
+    whatever the caller's role, while role_from gives a demoted lead no part in it."""
+    act_as(world["lead"].model_copy(update={"role": UserRole.student}))
+    assert world["class"]["id"] not in [c["id"] for c in client.get("/classes").json()]
+    assert client.get(f"/classes/{world['class']['id']}").status_code == 404
+
+
+@pytest.mark.audit443
+@pytest.mark.parametrize("who", ["lead", "assistant"])
+def test_demoted_staff_have_no_my_classes(client, world, who):
+    """GET /classes/mine (staffed_by) honours the same rule: a demoted lead or assistant is
+    refused or gets nothing, never the class."""
+    act_as(world[who].model_copy(update={"role": UserRole.student}))
+    r = client.get("/classes/mine")
+    assert r.status_code == 403 or world["class"]["id"] not in [c["id"] for c in r.json()], r.text
+
+
+def test_current_staff_still_see_their_class(client, world):
+    """Guard: the lead and the assistant, in their own roles, still list the class."""
+    for who in ("lead", "assistant"):
+        act_as(world[who])
+        assert world["class"]["id"] in [c["id"] for c in client.get("/classes").json()]
+        assert world["class"]["id"] in [c["id"] for c in client.get("/classes/mine").json()]

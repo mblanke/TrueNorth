@@ -14,7 +14,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import HTTPException
-from sqlalchemy import or_, select
+from sqlalchemy import false, or_, select
 from sqlalchemy.orm import Query, Session
 
 from ..auth import CurrentUser
@@ -28,26 +28,34 @@ EDITORS = (ClassRole.lead, ClassRole.admin)
 STAFF = (ClassRole.lead, ClassRole.assistant, ClassRole.observer, ClassRole.admin)
 
 
+def _as_staff(user: CurrentUser) -> list:
+    """The staff links the caller's *current* role still honours, exactly as role_from
+    does: lead only while they hold a lead's role, assistant or observer only while they
+    are not a Student. A staff link outliving a demotion is no read grant (audit #443)."""
+    uid = uuid.UUID(user.id)
+    terms = []
+    if user.role in LEAD_ROLES:
+        terms.append(Class.lead_instructor_id == uid)
+    if user.role != UserRole.student:
+        terms.append(Class.id.in_(select(ClassStaff.class_id).where(ClassStaff.user_id == uid)))
+    return terms
+
+
 def visible(db: Session, user: CurrentUser) -> Query:
     """The classes the caller may see, in the caller's tenant only."""
     q = db.query(Class).filter(Class.tenant_id == tenant_uuid(user))
     if user.role == UserRole.admin:
         return q
     uid = uuid.UUID(user.id)
-    staffed = select(ClassStaff.class_id).where(ClassStaff.user_id == uid)
     on_roll_call = select(RollCallEntry.class_id).where(
         RollCallEntry.user_id == uid, RollCallEntry.status.notin_(OFF_ROLL_CALL)
     )
-    return q.filter(or_(Class.lead_instructor_id == uid, Class.id.in_(staffed), Class.id.in_(on_roll_call)))
+    return q.filter(or_(*_as_staff(user), Class.id.in_(on_roll_call)))
 
 
 def staffed_by(db: Session, user: CurrentUser) -> Query:
     """The caller's own classes as staff: lead, assistant or observer ("my classes")."""
-    uid = uuid.UUID(user.id)
-    staffed = select(ClassStaff.class_id).where(ClassStaff.user_id == uid)
-    return db.query(Class).filter(
-        Class.tenant_id == tenant_uuid(user), or_(Class.lead_instructor_id == uid, Class.id.in_(staffed))
-    )
+    return db.query(Class).filter(Class.tenant_id == tenant_uuid(user), or_(false(), *_as_staff(user)))
 
 
 def role_from(cls: Class, user: CurrentUser, staff: dict, on_roll_call: bool) -> ClassRole | None:

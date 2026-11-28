@@ -339,12 +339,6 @@ def test_f4_a_booked_class_may_not_switch_course_behind_its_sessions(client, wor
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: A former assistant/observer demoted to "
-    "Student keeps the class in GET /classes "
-    "(classes/access.py:35)",
-)
 def test_f5_a_demoted_assistant_no_longer_sees_the_class_in_the_list(client, world):
     """classes/access.py:35 — A former assistant demoted to Student keeps the class.
 
