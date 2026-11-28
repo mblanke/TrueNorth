@@ -310,12 +310,6 @@ def test_f3_reject_may_not_remove_a_student_approved_concurrently(client, world,
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: A class's course can be changed after its "
-    "sessions were booked; the sessions keep the old "
-    "course_id (classes/service.py:150)",
-)
 def test_f4_a_booked_class_may_not_switch_course_behind_its_sessions(client, world, db_session):
     """classes/service.py:150 — A class's course changes after its sessions were booked.
 

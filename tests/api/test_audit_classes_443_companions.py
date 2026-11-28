@@ -173,12 +173,6 @@ def test_companion_f3_the_reject_route_may_not_remove_a_student_approved_concurr
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: A class's course can be changed after its "
-    "sessions were booked; the sessions keep the old "
-    "course_id (classes/service.py:150) — companion",
-)
 def test_companion_f4_a_booked_session_pins_the_course_even_with_an_empty_roll_call(
     client,
     world,
@@ -328,4 +322,30 @@ def test_the_lead_may_not_extend_a_class_whose_approved_session_is_already_over(
     r = client.put(
         f"/classes/{world['class']['id']}", json=_class_body(world, end_date=str((DAY + timedelta(days=9)).date()))
     )
+    assert r.status_code == 409, r.text
+
+
+# ── 4. Course pinned by booked sessions: what the fix must still allow ────
+
+
+def test_the_course_may_change_once_the_classs_sessions_are_cancelled(client, world, db_session):
+    """Guard for the service.apply fix: only a live booking pins the course. With its one
+    session cancelled (and nobody signed in), the class may move to another course."""
+    from app.scheduler.models import EventState
+
+    ev = _book(client, world)
+    _approve(client, world, ev)
+    db_session.get(ScheduledEvent, uuid.UUID(ev["id"])).state = EventState.cancelled
+    db_session.flush()
+    act_as(world["lead"])
+    r = client.put(f"/classes/{world['class']['id']}", json=_class_body(world, course_id=str(world["other_course"].id)))
+    assert r.status_code == 200, r.text
+    assert r.json()["course_id"] == str(world["other_course"].id)
+
+
+def test_a_draft_session_pins_the_course_too(client, world):
+    """Guard: a draft goes on to approval with the course it was booked for, so it pins it."""
+    _book(client, world)  # booked, not approved
+    act_as(world["lead"])
+    r = client.put(f"/classes/{world['class']['id']}", json=_class_body(world, course_id=str(world["other_course"].id)))
     assert r.status_code == 409, r.text

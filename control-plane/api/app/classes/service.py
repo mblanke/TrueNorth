@@ -149,10 +149,17 @@ def apply(db: Session, cls: Class, body: ClassIn, actor: CurrentUser) -> None:
     existing), with its staff. Does not commit."""
     tid = cls.tenant_id
     course_for(db, tid, body.course_id)
-    if cls.course_id is not None and cls.course_id != body.course_id and _has_linked_students(db, cls):
-        raise HTTPException(
-            409, "Students on this roll call are already enrolled on its course; the course can no longer change"
-        )
+    if cls.course_id is not None and cls.course_id != body.course_id:
+        if _has_linked_students(db, cls):
+            raise HTTPException(
+                409, "Students on this roll call are already enrolled on its course; the course can no longer change"
+            )
+        if sessions.has_booked(db, cls):
+            raise HTTPException(
+                409,
+                "This class's sessions are booked for its course, so the course can no longer change. Cancel "
+                "them first, or create a new class for the other course.",
+            )
     lead_id = body.lead_instructor_id
     if lead_id is None:
         lead_id = cls.lead_instructor_id or uuid.UUID(actor.id)
