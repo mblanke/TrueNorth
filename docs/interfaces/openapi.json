@@ -6642,6 +6642,149 @@
         "title": "CorpusSummary",
         "type": "object"
       },
+      "CostReportOut": {
+        "properties": {
+          "group_by": {
+            "title": "Group By",
+            "type": "string"
+          },
+          "period_from": {
+            "format": "date-time",
+            "title": "Period From",
+            "type": "string"
+          },
+          "period_to": {
+            "format": "date-time",
+            "title": "Period To",
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CostRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/Figures"
+          }
+        },
+        "required": [
+          "period_from",
+          "period_to",
+          "group_by",
+          "rows",
+          "totals"
+        ],
+        "title": "CostReportOut",
+        "type": "object"
+      },
+      "CostRow": {
+        "properties": {
+          "approximate": {
+            "description": "Charged for the whole time held: no power history yet",
+            "title": "Approximate",
+            "type": "boolean"
+          },
+          "cost_disk": {
+            "title": "Cost Disk",
+            "type": "number"
+          },
+          "cost_ram": {
+            "title": "Cost Ram",
+            "type": "number"
+          },
+          "cost_total": {
+            "title": "Cost Total",
+            "type": "number"
+          },
+          "cost_vcpu": {
+            "title": "Cost Vcpu",
+            "type": "number"
+          },
+          "cost_vm": {
+            "title": "Cost Vm",
+            "type": "number"
+          },
+          "currency": {
+            "description": "Empty: nothing priced; 'mixed': cards in more than one currency",
+            "title": "Currency",
+            "type": "string"
+          },
+          "disk_gb_hours": {
+            "title": "Disk Gb Hours",
+            "type": "number"
+          },
+          "intervals": {
+            "title": "Intervals",
+            "type": "integer"
+          },
+          "key": {
+            "description": "The Student, course, class or tenant id; or e.g. 'unattributed:<tenant>'",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "open": {
+            "description": "Intervals still holding resources",
+            "title": "Open",
+            "type": "integer"
+          },
+          "ram_gb_hours": {
+            "title": "Ram Gb Hours",
+            "type": "number"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          },
+          "unpriced_hours": {
+            "description": "Hours with no rate card in force: counted, not costed",
+            "title": "Unpriced Hours",
+            "type": "number"
+          },
+          "vcpu_hours": {
+            "title": "Vcpu Hours",
+            "type": "number"
+          },
+          "vm_hours": {
+            "title": "Vm Hours",
+            "type": "number"
+          }
+        },
+        "required": [
+          "vcpu_hours",
+          "ram_gb_hours",
+          "disk_gb_hours",
+          "vm_hours",
+          "cost_vcpu",
+          "cost_ram",
+          "cost_disk",
+          "cost_vm",
+          "cost_total",
+          "currency",
+          "unpriced_hours",
+          "key",
+          "label",
+          "tenant_id",
+          "intervals",
+          "open",
+          "approximate"
+        ],
+        "title": "CostRow",
+        "type": "object"
+      },
       "CourseGenerateIn": {
         "properties": {
           "difficulty": {
@@ -11089,6 +11232,71 @@
         "title": "FeedTokenStatus",
         "type": "object"
       },
+      "Figures": {
+        "properties": {
+          "cost_disk": {
+            "title": "Cost Disk",
+            "type": "number"
+          },
+          "cost_ram": {
+            "title": "Cost Ram",
+            "type": "number"
+          },
+          "cost_total": {
+            "title": "Cost Total",
+            "type": "number"
+          },
+          "cost_vcpu": {
+            "title": "Cost Vcpu",
+            "type": "number"
+          },
+          "cost_vm": {
+            "title": "Cost Vm",
+            "type": "number"
+          },
+          "currency": {
+            "description": "Empty: nothing priced; 'mixed': cards in more than one currency",
+            "title": "Currency",
+            "type": "string"
+          },
+          "disk_gb_hours": {
+            "title": "Disk Gb Hours",
+            "type": "number"
+          },
+          "ram_gb_hours": {
+            "title": "Ram Gb Hours",
+            "type": "number"
+          },
+          "unpriced_hours": {
+            "description": "Hours with no rate card in force: counted, not costed",
+            "title": "Unpriced Hours",
+            "type": "number"
+          },
+          "vcpu_hours": {
+            "title": "Vcpu Hours",
+            "type": "number"
+          },
+          "vm_hours": {
+            "title": "Vm Hours",
+            "type": "number"
+          }
+        },
+        "required": [
+          "vcpu_hours",
+          "ram_gb_hours",
+          "disk_gb_hours",
+          "vm_hours",
+          "cost_vcpu",
+          "cost_ram",
+          "cost_disk",
+          "cost_vm",
+          "cost_total",
+          "currency",
+          "unpriced_hours"
+        ],
+        "title": "Figures",
+        "type": "object"
+      },
       "FitOut": {
         "description": "Whether a booking fits where it is asked for, and the next slot where it would.",
         "properties": {
@@ -12402,6 +12610,16 @@
         ],
         "title": "GreyspaceStatusOut",
         "type": "object"
+      },
+      "GroupBy": {
+        "enum": [
+          "student",
+          "course",
+          "class",
+          "tenant"
+        ],
+        "title": "GroupBy",
+        "type": "string"
       },
       "HTTPValidationError": {
         "properties": {
@@ -19526,6 +19744,180 @@
         "title": "RangeUpdate",
         "type": "object"
       },
+      "RateCardIn": {
+        "properties": {
+          "currency": {
+            "default": "CAD",
+            "pattern": "^[A-Z]{3}$",
+            "title": "Currency",
+            "type": "string"
+          },
+          "effective_from": {
+            "description": "With a time zone offset; the card prices time from here on",
+            "format": "date-time",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Notes",
+            "type": "string"
+          },
+          "per_gb_disk_hour": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,8}|(?=[\\d.]{1,15}0*$)\\d{0,8}\\.\\d{0,6}0*$)",
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "description": "Per GB-hour; the page shows it per GB-month (x730)",
+            "title": "Per Gb Disk Hour"
+          },
+          "per_gb_ram_hour": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,8}|(?=[\\d.]{1,15}0*$)\\d{0,8}\\.\\d{0,6}0*$)",
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "title": "Per Gb Ram Hour"
+          },
+          "per_vcpu_hour": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,8}|(?=[\\d.]{1,15}0*$)\\d{0,8}\\.\\d{0,6}0*$)",
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "title": "Per Vcpu Hour"
+          },
+          "per_vm_hour": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,8}|(?=[\\d.]{1,15}0*$)\\d{0,8}\\.\\d{0,6}0*$)",
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "description": "Per running VM-hour, e.g. guest OS licences",
+            "title": "Per Vm Hour"
+          },
+          "platform_wide": {
+            "default": false,
+            "description": "The default for every tenant (platform administrator only)",
+            "title": "Platform Wide",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "effective_from"
+        ],
+        "title": "RateCardIn",
+        "type": "object"
+      },
+      "RateCardOut": {
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "effective_from": {
+            "format": "date-time",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          },
+          "per_gb_disk_hour": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Per Gb Disk Hour",
+            "type": "string"
+          },
+          "per_gb_ram_hour": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Per Gb Ram Hour",
+            "type": "string"
+          },
+          "per_vcpu_hour": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Per Vcpu Hour",
+            "type": "string"
+          },
+          "per_vm_hour": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Per Vm Hour",
+            "type": "string"
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "effective_from",
+          "currency",
+          "per_vcpu_hour",
+          "per_gb_ram_hour",
+          "per_gb_disk_hour",
+          "per_vm_hour",
+          "notes"
+        ],
+        "title": "RateCardOut",
+        "type": "object"
+      },
       "ReadinessClassOut": {
         "properties": {
           "awaiting_result": {
@@ -23194,6 +23586,44 @@
         "title": "StorageVolumeOut",
         "type": "object"
       },
+      "StudentCostOut": {
+        "properties": {
+          "intervals": {
+            "items": {
+              "$ref": "#/components/schemas/UsageIntervalOut"
+            },
+            "title": "Intervals",
+            "type": "array"
+          },
+          "period_from": {
+            "format": "date-time",
+            "title": "Period From",
+            "type": "string"
+          },
+          "period_to": {
+            "format": "date-time",
+            "title": "Period To",
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/Figures"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "period_from",
+          "period_to",
+          "intervals",
+          "totals"
+        ],
+        "title": "StudentCostOut",
+        "type": "object"
+      },
       "SupportQueueIn": {
         "properties": {
           "description": {
@@ -25899,6 +26329,164 @@
           "urls"
         ],
         "title": "UrlIngestIn",
+        "type": "object"
+      },
+      "UsageIntervalOut": {
+        "properties": {
+          "approximate": {
+            "title": "Approximate",
+            "type": "boolean"
+          },
+          "class_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Class Id"
+          },
+          "cost_disk": {
+            "title": "Cost Disk",
+            "type": "number"
+          },
+          "cost_ram": {
+            "title": "Cost Ram",
+            "type": "number"
+          },
+          "cost_total": {
+            "title": "Cost Total",
+            "type": "number"
+          },
+          "cost_vcpu": {
+            "title": "Cost Vcpu",
+            "type": "number"
+          },
+          "cost_vm": {
+            "title": "Cost Vm",
+            "type": "number"
+          },
+          "course_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          },
+          "currency": {
+            "description": "Empty: nothing priced; 'mixed': cards in more than one currency",
+            "title": "Currency",
+            "type": "string"
+          },
+          "disk_gb": {
+            "title": "Disk Gb",
+            "type": "number"
+          },
+          "disk_gb_hours": {
+            "title": "Disk Gb Hours",
+            "type": "number"
+          },
+          "end": {
+            "format": "date-time",
+            "title": "End",
+            "type": "string"
+          },
+          "open": {
+            "title": "Open",
+            "type": "boolean"
+          },
+          "ram_gb": {
+            "title": "Ram Gb",
+            "type": "number"
+          },
+          "ram_gb_hours": {
+            "title": "Ram Gb Hours",
+            "type": "number"
+          },
+          "range_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Range Id"
+          },
+          "source": {
+            "description": "lab, class_seat, class_shared or unattributed",
+            "title": "Source",
+            "type": "string"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "start": {
+            "format": "date-time",
+            "title": "Start",
+            "type": "string"
+          },
+          "unpriced_hours": {
+            "description": "Hours with no rate card in force: counted, not costed",
+            "title": "Unpriced Hours",
+            "type": "number"
+          },
+          "vcpu": {
+            "title": "Vcpu",
+            "type": "number"
+          },
+          "vcpu_hours": {
+            "title": "Vcpu Hours",
+            "type": "number"
+          },
+          "vm_hours": {
+            "title": "Vm Hours",
+            "type": "number"
+          },
+          "vms": {
+            "title": "Vms",
+            "type": "number"
+          }
+        },
+        "required": [
+          "vcpu_hours",
+          "ram_gb_hours",
+          "disk_gb_hours",
+          "vm_hours",
+          "cost_vcpu",
+          "cost_ram",
+          "cost_disk",
+          "cost_vm",
+          "cost_total",
+          "currency",
+          "unpriced_hours",
+          "source",
+          "source_id",
+          "range_id",
+          "course_id",
+          "class_id",
+          "start",
+          "end",
+          "vcpu",
+          "ram_gb",
+          "disk_gb",
+          "vms",
+          "approximate",
+          "open"
+        ],
+        "title": "UsageIntervalOut",
         "type": "object"
       },
       "UserCreateIn": {
@@ -57017,6 +57605,358 @@
         "summary": "Triage Ticket",
         "tags": [
           "tickets"
+        ]
+      }
+    },
+    "/usage/cost": {
+      "get": {
+        "operationId": "cost_report_usage_cost_get",
+        "parameters": [
+          {
+            "description": "Default: the start of this month (UTC)",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Default: the start of this month (UTC)",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Default: now",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Default: now",
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/GroupBy",
+              "default": "student"
+            }
+          },
+          {
+            "description": "Platform administrator: one tenant (default: all)",
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Platform administrator: one tenant (default: all)",
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "What each Student (course, class, tenant) cost",
+        "tags": [
+          "usage"
+        ]
+      }
+    },
+    "/usage/cost.csv": {
+      "get": {
+        "operationId": "cost_report_csv_usage_cost_csv_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/GroupBy",
+              "default": "student"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tenant Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "The cost report as CSV",
+        "tags": [
+          "usage"
+        ]
+      }
+    },
+    "/usage/cost/students/{user_id}": {
+      "get": {
+        "operationId": "student_cost_usage_cost_students__user_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentCostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "One Student's usage, interval by interval",
+        "tags": [
+          "usage"
+        ]
+      }
+    },
+    "/usage/rate-cards": {
+      "get": {
+        "operationId": "list_rate_cards_usage_rate_cards_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RateCardOut"
+                  },
+                  "title": "Response List Rate Cards Usage Rate Cards Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rate cards: the tenant's and the platform default",
+        "tags": [
+          "usage"
+        ]
+      },
+      "post": {
+        "description": "A new price from ``effective_from`` on. Platform-wide needs a platform administrator.\nAudit-logged.",
+        "operationId": "create_rate_card_usage_rate_cards_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RateCardIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateCardOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add a rate card (a new price)",
+        "tags": [
+          "usage"
         ]
       }
     },

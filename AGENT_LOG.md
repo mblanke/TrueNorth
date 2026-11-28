@@ -207,3 +207,26 @@
 - Waiting on the owner: `approvals.yml` (draft, not in the repo); Qwen names still in the
   write-gate allowlist against the no-Chinese-models rule; `journeys` as a required check (#197).
 - Next on site: docs/lab-checks/next-visit-rc23.md, top to bottom.
+
+## 2026-11-27 — Usage and cost S1: per-Student cost report and rate cards (Mac)
+
+- Branch `feat/usage-cost-s1` off github/main 48da4326. Plan of record:
+  `~/.claude/plans/come-up-with-a-wild-scroll-of-5e96f448-19c1-4195-96f1-6a9422fad448.md`.
+- Owner decisions: cost in dollars via a rate card; admins only, per Student rolled up per
+  course, class and tenant, with CSV.
+- New section `control-plane/api/app/usage/`:
+  - a `rate_cards` table (migration e7a9c1b3d5f6);
+  - intervals derived read-only from lab_sessions, class_ranges and ranges;
+  - `/usage/cost`, `/usage/cost.csv`, `/usage/cost/students/{id}`, `/usage/rate-cards`;
+  - permissions `usage:read` and `usage:admin` (admin only), mirrored in the web.
+  - Docs: docs/usage-cost.md.
+- Tests:
+  - tests/api/test_usage_cost.py and test_usage_tenant_scoping.py pass;
+  - the populated-upgrade migration test passes on Postgres 16.
+- Local `main` and the main checkout (`~/Documents/Projects/TrueNorth`) were fast-forwarded
+  to github/main on the owner's word. The checkout was on codex/truenorth-10x-control-pack,
+  288 behind with no commits of its own.
+- Next:
+  - S2: ADR 0021 and `range_state_events` written in worker `update_range_state` and
+    `guarded_range_update`, for exact power history; class ranges are approximate until then.
+  - S3: the admin page, mockup first.

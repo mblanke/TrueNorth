@@ -33,6 +33,7 @@ export type Permission =
   | 'schedule:read' | 'schedule:write' | 'schedule:admin' | 'schedule:approve'
   | 'content_review:read' | 'content_review:review_own' | 'content_review:admin'
   | 'class:create' | 'class:read' | 'class:attend' | 'readiness:read'
+  | 'usage:read' | 'usage:admin'
   | 'tenant:create' | 'tenant:read' | 'tenant:update'
   | 'audit:read' | 'telemetry:read' | 'telemetry:write' | 'stats:read' | 'aar:generate' | 'aar:read'
   | 'noise:read' | 'noise:control'
@@ -60,6 +61,7 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'schedule:read', 'schedule:write', 'schedule:admin', 'schedule:approve',
   'content_review:read', 'content_review:review_own', 'content_review:admin',
   'class:create', 'class:read', 'class:attend', 'readiness:read',
+  'usage:read', 'usage:admin',
   'tenant:create', 'tenant:read', 'tenant:update',
   'audit:read', 'telemetry:read', 'telemetry:write', 'stats:read', 'aar:generate', 'aar:read',
   'noise:read', 'noise:control',

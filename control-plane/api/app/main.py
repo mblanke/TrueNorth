@@ -463,6 +463,7 @@ from .scheduler.approval_router import router as scheduling_approval_router  # n
 from .scheduler.router import feed_router as scheduling_feed_router  # noqa: E402
 from .scheduler.router import me_router as scheduling_me_router  # noqa: E402
 from .scheduler.router import router as scheduling_router  # noqa: E402
+from .usage.router import router as usage_router  # noqa: E402 (usage and cost; + its table)
 
 # Identity intake. Registration is mounted first because /auth/me is the one
 # endpoint reachable without a users row — it is how the SPA learns whether the
@@ -495,6 +496,7 @@ app.include_router(scheduling_approval_router)  # class-session approval (ADR 00
 app.include_router(scheduling_feed_router)  # token-authenticated .ics feed
 app.include_router(scheduling_me_router)  # your own sessions and feed link
 app.include_router(maintenance_windows_router)  # app/maintenance_windows (ADR 0013 §7)
+app.include_router(usage_router)  # app/usage: cost per Student, rate cards
 app.include_router(console_relay_router)  # /ws/console/{grant}, app/console_relay (#366)
 app.include_router(content_review_router)  # the content clock, app/content_review (ADR 0014 §22-24)
 app.include_router(content_feeds_router)  # release and vulnerability feeds, app/content_feeds (ADR 0014 §25)
