@@ -4,9 +4,10 @@
 
 One companion per strict-xfail oracle in ``tests/api/test_audit_classes_443.py``: a second
 input that pins the same secure behaviour from another angle — a second role, a boundary
-value, a two-class matrix or the API surface instead of the service call. Each FAILS at the
-base for the same reason its oracle does, and is ``xfail(strict=True)`` so the later fix
-turns it into an XPASS until its marker is dropped. The donor fixtures and helpers come
+value, a two-class matrix or the API surface instead of the service call. Each failed at
+the base for the same reason its oracle did; all six findings are fixed now, so none
+carries an xfail marker. The guards below each finding's companion pin what its fix must
+still allow (or still refuse). The donor fixtures and helpers come
 from the oracle module by module path (tests/api has no ``__init__.py``; never
 ``from conftest import``).
 

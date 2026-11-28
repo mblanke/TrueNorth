@@ -34,10 +34,10 @@ of the interleaving, without mocking the code under test.
 
 Every test is marked ``audit443`` so the batch is easy to find: ``pytest -m audit443``.
 
-Per the integrator's decision each failing test carries ``xfail(strict=True)`` naming its
-finding, so the suite is green at the base (6 xfailed) while the failure stays the oracle:
-the later fix turns its test into an XPASS, which strict mode surfaces as an error until
-the marker is dropped. Verify an oracle still bites with ``--runxfail``.
+Per the integrator's decision each failing test carried ``xfail(strict=True)`` naming its
+finding, so the suite was green at the base (6 xfailed) while the failure stayed the
+oracle. All six are fixed now (finding 1 by #492, findings 2-6 together) and carry no
+marker: each passes and guards its fix.
 """
 
 from __future__ import annotations

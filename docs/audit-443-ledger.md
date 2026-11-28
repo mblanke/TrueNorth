@@ -1,6 +1,6 @@
 # Audit #443 ledger: every finding, its state, its evidence
 
-Version: 1 · Applies to: v1.2.0-rc22 · Last reviewed: 2026-11-18
+Version: 1 · Applies to: v1.2.0-rc22 · Last reviewed: 2026-11-27
 
 Issue [#443](https://github.com/mblanke/TrueNorth/issues/443) (Fable audit of rc18, 2026-11-05):
 29 findings confirmed by a three-skeptic vote, 19 never checked (usage ran out), 19 refuted
@@ -18,7 +18,7 @@ machine-readable list of open findings is:
 grep -rn "mark.xfail" tests/api/test_audit*_443.py tests/worker/test_audit*_443.py tests/api/test_search_old_index.py
 ```
 
-It lists 27 tests today. Two findings (f37, f40) have no test because no unambiguous secure
+It lists 22 tests today. Two findings (f37, f40) have no test because no unambiguous secure
 behaviour could be stated for them.
 
 ## Fixed (rc21, and after rc22 where the Fix column says so)
@@ -26,6 +26,11 @@ behaviour could be stated for them.
 | Finding | Sev | Where | Fix |
 |---|---|---|---|
 | Lead instructor re-dates an approved class; hold and ranges stretch with no re-approval | high | `classes/router.py:349` | #492 |
+| Cancel (or edit) racing Close-out overwrites a closed class | medium | `classes/router.py:384` | #444 |
+| Reject of a pending roll-call addition, racing an Approve, removes an admitted Student without freeing the seat | medium | `classes/service.py:476` | #444 |
+| A class's course can change after sessions were booked | medium | `classes/service.py:150` | #444 |
+| A demoted assistant or observer (or lead) keeps the class in `GET /classes` | low | `classes/access.py:35` | #444 |
+| Admission uses the UTC day for the class's last day, not the site zone | low | `classes/onboarding.py:100` | #444 |
 | Admin rotation of a never-applied account settles as applied; certification flips to PASS | high | `range_credentials/service.py:450` | #495 |
 | Snapshot delete after restore destroys the passwords a queued rotation needs | high | `routers/ranges.py:964` | #495 |
 | Partial teardown recorded `destroyed` (two reports of one defect) | high | `worker/tasks.py:230` | #494 |
@@ -72,16 +77,6 @@ None open: all fixed (see the Fixed table).
 | The live-console cap counts closed-but-unexpired grants: a Student is refused the fifth machine | medium | `console_relay/service.py:143` | `test_a_console_just_closed_frees_the_live_cap` |
 | A Keycloak outage with a cold JWKS cache reads as "not allowed" (1008) not "unavailable" | low | `ws_auth.py:59` | `test_an_idp_outage_is_not_reported_as_not_allowed` |
 
-### Classes
-
-| Finding | Sev | Where | Test |
-|---|---|---|---|
-| Cancel racing Close-out overwrites a closed class to cancelled | medium | `classes/router.py:384` | `test_f2_cancel_may_not_overwrite_a_class_closed_concurrently` |
-| Reject of a pending roll-call addition, racing an Approve, removes an admitted Student without freeing the seat | medium | `classes/service.py:476` | `test_f3_reject_may_not_remove_a_student_approved_concurrently` |
-| A class's course can change after sessions were booked | medium | `classes/service.py:150` | `test_f4_a_booked_class_may_not_switch_course_behind_its_sessions` |
-| A demoted assistant or observer keeps the class in `GET /classes` | low | `classes/access.py:35` | `test_f5_a_demoted_assistant_no_longer_sees_the_class_in_the_list` |
-| Admission uses the UTC day for the class's last day, not the site zone | low | `classes/onboarding.py:100` | `test_f6_admission_keeps_the_site_day_not_the_utc_day` |
-
 ### Credentials and provisioning
 
 | Finding | Sev | Where | Test |
@@ -125,7 +120,7 @@ not established here, and a fresh audit of the current release has not been done
 3. **Console relay**: the log redaction (a credential in a log file) and the LTI-token WebSocket
    (Moodle Students cannot open a console).
 4. **Credentials**: `force_settle`, the stranded post-restore rotation.
-5. **Classes** races, **scheduler** and **capacity**, then provisioning hardening (S5).
+5. **Scheduler** and **capacity**, then provisioning hardening (S5). (Classes: all fixed, #444.)
 
 From #493 (follow-ups to the rc21 fix reviews, not listed above): a deactivated Student's lab is
 not ended (capacity gate, security) and an admin class extension skips the capacity re-check. The
