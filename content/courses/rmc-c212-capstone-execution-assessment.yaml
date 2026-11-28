@@ -407,8 +407,8 @@ modules:
     template: large-enterprise
     steps:
     - hosts: [jump01]
-      action: From jump01, record each of the three challenge questions the examiner poses, word for
-        word, before answering any of them.
+      action: From jump01, write each of the three challenge questions the examiner poses, word for
+        word, into the lab notes before answering any of them.
     - hosts: [jump01, fw01]
       action: From jump01, answer the boundary question from fw01 by listing the rules that allow traffic
         from the DMZ into the server VLAN, and record them.

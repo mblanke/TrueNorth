@@ -518,8 +518,8 @@ modules:
     - hosts: [jump01]
       action: Log on to jump01 and open an SSH session to the analysis host ansible01.
     - hosts: [ansible01]
-      action: Review the lab findings from the earlier modules on ansible01 and record the affected model,
-        firmware version and a one-sentence flaw summary for the advisory.
+      action: In the ansible01 session, review the lab findings from the earlier modules and record the
+        affected model, firmware version and a one-sentence flaw summary for the advisory.
     - hosts: [vuln01]
       action: Review the latest scan results on the vulnerability scanner vuln01 and record how many network
         hosts report the affected service.

@@ -5,7 +5,8 @@ Version: 1.1 · Applies to: v1.2.0-rc22 · Last reviewed: 2026-11-18
 Everything you need to take a class or a self-serve lab on TrueNorth Range. Your instructor's
 side is in [04-instructor-guide.md](04-instructor-guide.md).
 
-Written for release `v1.2.0-rc17`; labels checked against the source on 2026-11-07.
+First written for `v1.2.0-rc17` and revised since; the line above says which release it
+applies to.
 
 ---
 
@@ -16,7 +17,9 @@ Written for release `v1.2.0-rc17`; labels checked against the source on 2026-11-
    your password the usual way for your domain.
 3. What happens next:
    - **Your instructor put you on a class roll call:** you go straight in. There is no form
-     and no waiting. Use the email address your instructor has for you.
+     and no waiting. The roll call is matched on the email address of your domain account.
+     If you see **Request access** instead, ask your instructor to check the address on
+     the roll call before you fill in the form.
    - **You are on no roll call** (for example, you only want self-serve modules): you see
      **Request access to TrueNorth Range**. Fill in the form and press **Submit request**.
      An administrator reviews the request. The **Waiting for approval** page checks every 30 seconds; **Check now** checks
@@ -105,7 +108,8 @@ Some modules have labs you start yourself, without a class:
 
 **"Labs are busy, next free at HH:MM"** means the lab machines are all in use, by classes and
 other labs. Start the lab again from your course at that time. The time is in the site's time
-zone, which your administrator sets at install (UTC if none was set).
+zone, which your administrator sets at install (the TrueNorth server's own zone if none
+was set).
 
 **"Waiting for a free lab. It starts automatically."** means you are in the queue. Leave the
 page open, or **Leave the queue**. You can have only one lab running at a time.

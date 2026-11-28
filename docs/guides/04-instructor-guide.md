@@ -106,7 +106,8 @@ opens the same page with the class already selected.)
    email addresses, not emailed, or awaiting approval.
 
 **Being on the roll call is the approval.** A Student signs in with their AD account, and
-their AD email is matched to the roll call. They go straight in as a Student of your tenant,
+their AD email is matched to the roll call, so enter the address on the Student's AD
+account, not a personal one. They go straight in as a Student of your tenant,
 enrolled on the course. There is no Request access and no waiting.
 
 **Onboarding emails.** A Student with no TrueNorth account yet is emailed "You are on the
