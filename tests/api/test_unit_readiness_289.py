@@ -105,6 +105,10 @@ def _result(db, cls: Class, e: RollCallEntry, outcome: str, comment: str | None 
 
 @pytest.fixture
 def w(db_session):
+    return world(db_session)
+
+
+def world(db_session):
     """Tenant A: a closed class (Ann passed, Bob failed with a comment, an invited Student
     who never signed in), an open class, a cancelled one and one long ago. Tenant B: a class
     whose Student is in the same unit name, which must never show up for A."""

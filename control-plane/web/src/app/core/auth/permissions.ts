@@ -183,6 +183,10 @@ export const PAGE_ACCESS = {
   /** The unit readiness page (ADR 0014 decision 7): GET /readiness, the caller's own tenant.
    *  Commander = observer + this page; instructors and admins too. Never Students. */
   readiness: { all: ['readiness:read'] },
+  /** The Students page: GET /students and /students/{id}, the caller's own tenant. Class data
+   *  (readiness:read) and personal learning records (learning_record:read): instructors and
+   *  admins, never observers or Students. */
+  students: { all: ['readiness:read', 'learning_record:read'] },
   /** GET /maintenance-windows (schedule:read); changing them needs range:admin (admins). */
   maintenanceWindows: { all: ['schedule:read', 'range:admin'] },
   approvals: { all: ['registration:read'] },

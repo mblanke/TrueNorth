@@ -49,7 +49,7 @@ from ..models import Template
 from ..range_topology import template_demand
 from ..scheduler import service as scheduler
 from ..scheduler.capacity import Resources
-from ..scheduler.models import ScheduledEvent
+from ..scheduler.models import EventState, ScheduledEvent
 from . import access
 from .models import (
     DEFAULT_RANGE_MODE,
@@ -346,6 +346,23 @@ def assert_same_class(db: Session, evt: ScheduledEvent, class_id: str | None) ->
 
 def session_ids(db: Session, cls: Class) -> list[uuid.UUID]:
     return [eid for (eid,) in db.query(ClassSession.event_id).filter(ClassSession.class_id == cls.id).all()]
+
+
+def has_booked(db: Session, cls: Class) -> bool:
+    """True if the class has a session that is not cancelled or rejected. Its booking was
+    pinned to the class's course when it was made, so the course may no longer change
+    (audit #443): a draft too, which goes on to approval with that course."""
+    ids = session_ids(db, cls)
+    return bool(ids) and (
+        db.query(ScheduledEvent.id)
+        .filter(
+            ScheduledEvent.id.in_(ids),
+            ScheduledEvent.tenant_id == cls.tenant_id,
+            ScheduledEvent.state.notin_([EventState.cancelled, EventState.rejected]),
+        )
+        .first()
+        is not None
+    )
 
 
 def approved_sessions(db: Session, cls: Class) -> list[ScheduledEvent]:

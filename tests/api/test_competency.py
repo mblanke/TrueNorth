@@ -27,6 +27,7 @@ from app.models import (
     User,
     UserRole,
 )
+from app.routers import competency
 
 TENANT = uuid.UUID("00000000-0000-0000-0000-00000000c001")
 OTHER_TENANT = uuid.UUID("00000000-0000-0000-0000-00000000c0ff")
@@ -168,9 +169,12 @@ def test_import_nice_is_idempotent(client, db_session, tenants):
     with acting_as(_user(db_session, UserRole.admin)):
         first = client.post("/competency/frameworks/import-nice").json()
         second = client.post("/competency/frameworks/import-nice").json()
-    assert first["total_nice_roles"] == second["total_nice_roles"] == 18
+    assert first["total_nice_roles"] == second["total_nice_roles"] == 22  # 18 + four Operate and Maintain
     assert second["imported"] == 0
     assert db_session.query(Competency).filter(Competency.code == "PR-CDA-001").count() == 1
+    assert competency.nice_category("OM-ADM-001", None) == "Operate & Maintain"
+    om = ["OM-ADM-001", "OM-NET-001", "OM-ANA-001", "OM-STS-001"]
+    assert db_session.query(Competency).filter(Competency.code.in_(om)).count() == 4
 
 
 # ── profile ─────────────────────────────────────────────────────────────
@@ -281,9 +285,7 @@ def test_assertion_error_paths(client, db_session, tenants):
         bad_level = client.post(url, params={"competency_id": str(comp.id), "proficiency": "godlike"})
         unknown = client.post(url, params={"competency_id": str(uuid.uuid4())})
         not_uuid = client.post(url, params={"competency_id": "abc"})
-        cross_tenant = client.post(
-            f"/competency/users/{foreign.id}/assertions", params={"competency_id": str(comp.id)}
-        )
+        cross_tenant = client.post(f"/competency/users/{foreign.id}/assertions", params={"competency_id": str(comp.id)})
     assert bad_level.status_code == 422 and "proficiency" in bad_level.json()["detail"]
     assert unknown.status_code == 404
     assert not_uuid.status_code == 422
@@ -325,17 +327,26 @@ def test_certification_validation(client, db_session, tenants):
     with acting_as(student):
         assert client.post(f"/certifications/users/{student.id}", json={"issuer": "x"}).status_code == 422
         assert (
-            client.post(f"/certifications/users/{student.id}", json={"cert_name": "", "issuer": "x"}).status_code
-            == 422
+            client.post(f"/certifications/users/{student.id}", json={"cert_name": "", "issuer": "x"}).status_code == 422
         )
 
 
 # ── heatmap ─────────────────────────────────────────────────────────────
+# Rows are the seven NICE categories; columns are formations (users.unit) in the team view
+# and "You" in the individual one. values: [column, row, score, people], cells with data only.
 
 
-def _cell(body: dict, category: str) -> list[int]:
+def _cell(body: dict, category: str, column: str | None = None) -> list[int]:
     y = body["categories"].index(category)
-    return [v[2] for v in body["values"] if v[1] == y]
+    x = body["columns"].index(column) if column is not None else None
+    return [v[2] for v in body["values"] if v[1] == y and (x is None or v[0] == x)]
+
+
+def _unit(db, name: str, tenant: uuid.UUID = TENANT) -> User:
+    u = _user(db, tenant=tenant)
+    u.unit = name
+    db.flush()
+    return u
 
 
 def test_heatmap_scores_nice_assertions(client, db_session, tenants):
@@ -344,19 +355,21 @@ def test_heatmap_scores_nice_assertions(client, db_session, tenants):
     _assert(db_session, student, comp, ProficiencyLevel.advanced)
     with acting_as(student):
         body = client.get("/competency/heatmap", params={"view": "individual"}).json()
-    assert set(_cell(body, "Investigate")) == {75}
-    assert "Investigate" in body["work_roles"]  # real categories, not the placeholder list
+    assert body["categories"] == list(competency.NICE_CATEGORIES)
+    assert body["columns"] == ["You"] and body["column_kind"] == "individual"
+    assert body["values"] == [[0, body["categories"].index("Investigate"), 75, 1]]
 
 
 def test_heatmap_team_view_is_tenant_scoped(client, db_session, tenants):
     category = "Securely Provision"
     comp = _comp(db_session, _code(), category=category)
-    _assert(db_session, _user(db_session, tenant=OTHER_TENANT), comp, ProficiencyLevel.expert)
-    mine = _user(db_session)
-    _assert(db_session, mine, comp, ProficiencyLevel.novice)
+    unit = f"Unit {uuid.uuid4().hex[:6]}"
+    _assert(db_session, _unit(db_session, unit, tenant=OTHER_TENANT), comp, ProficiencyLevel.expert)
+    _assert(db_session, _unit(db_session, unit), comp, ProficiencyLevel.novice)
     with acting_as(_user(db_session, UserRole.instructor)):
         body = client.get("/competency/heatmap", params={"view": "team"}).json()
-    assert set(_cell(body, category)) == {10}  # the other tenant's expert is not averaged in
+    assert body["column_kind"] == "unit"
+    assert _cell(body, category, unit) == [10]  # the other tenant's expert is not averaged in
 
 
 def test_heatmap_individual_view_only_counts_the_caller(client, db_session, tenants):
@@ -364,4 +377,64 @@ def test_heatmap_individual_view_only_counts_the_caller(client, db_session, tena
     _assert(db_session, _user(db_session), comp, ProficiencyLevel.expert)
     with acting_as(_user(db_session)):
         body = client.get("/competency/heatmap", params={"view": "individual"}).json()
-    assert set(_cell(body, "Analyze")) == {0}
+    assert body["columns"] == [] and body["values"] == []  # nothing of theirs: no cell, never a 0
+
+
+def test_heatmap_columns_are_formations_ranked_by_people(client, db_session, tenants):
+    big, small = f"Big {uuid.uuid4().hex[:6]}", f"Small {uuid.uuid4().hex[:6]}"
+    comp = _comp(db_session, _code(), category="Protect & Defend")
+    for level in (ProficiencyLevel.novice, ProficiencyLevel.expert, ProficiencyLevel.intermediate):
+        _assert(db_session, _unit(db_session, big), comp, level)
+    _assert(db_session, _unit(db_session, f"  {small.lower()} "), comp, ProficiencyLevel.advanced)
+    _assert(db_session, _unit(db_session, small), comp, ProficiencyLevel.advanced)
+    with acting_as(_user(db_session, UserRole.instructor)):
+        body = client.get("/competency/heatmap", params={"view": "team"}).json()
+    cols = body["columns"]
+    assert cols.index(big) < cols.index(small)  # three people before two
+    assert small.lower() not in cols  # one column per unit, whatever its spelling
+    row = body["categories"].index("Protect & Defend")
+    cell = {v[0]: v for v in body["values"] if v[1] == row}
+    assert cell[cols.index(big)][2:] == [52, 3]  # (10 + 95 + 50) / 3, three people
+    assert cell[cols.index(small)][2:] == [75, 2]
+
+
+def test_heatmap_puts_people_without_a_unit_last(client, db_session, tenants):
+    comp = _comp(db_session, _code(), category="Analyze")
+    _assert(db_session, _user(db_session), comp, ProficiencyLevel.beginner)
+    _assert(db_session, _unit(db_session, f"Unit {uuid.uuid4().hex[:6]}"), comp, ProficiencyLevel.beginner)
+    with acting_as(_user(db_session, UserRole.instructor)):
+        body = client.get("/competency/heatmap", params={"view": "team"}).json()
+    assert body["columns"][-1] == "No unit"
+
+
+@pytest.mark.parametrize(
+    ("code", "stored", "row"),
+    [
+        ("CO-OPL-001", "Collect and Operate", "Collect & Operate"),  # the importer's spelling
+        ("OM-ADM-001", "Operate and Maintain", "Operate & Maintain"),
+        ("SP-RSK-001", "Analyze", "Securely Provision"),  # the code's prefix wins
+        ("PR-CDA-001", "work_role", "Protect & Defend"),  # the content crosswalk's category
+        ("SE-ARC-001", "Securely Provision", "Securely Provision"),  # no NICE prefix: stored
+    ],
+)
+def test_heatmap_files_each_competency_under_its_nice_category(client, db_session, tenants, code, stored, row):
+    comp = _comp(db_session, f"{code}-{uuid.uuid4().hex[:4]}", category=stored)
+    student = _user(db_session)
+    _assert(db_session, student, comp, ProficiencyLevel.advanced)
+    with acting_as(student):
+        body = client.get("/competency/heatmap", params={"view": "individual"}).json()
+    assert body["values"] == [[0, body["categories"].index(row), 75, 1]]
+
+
+def test_heatmap_leaves_out_tasks_and_bad_views(client, db_session, tenants):
+    student = _user(db_session)
+    _assert(db_session, student, _comp(db_session, f"T{uuid.uuid4().hex[:6]}", category="task"))
+    with acting_as(student):
+        assert client.get("/competency/heatmap", params={"view": "individual"}).json()["values"] == []
+        assert client.get("/competency/heatmap", params={"view": "everyone"}).status_code == 422
+
+
+def test_nice_category():
+    assert competency.nice_category("an-asa-001", None) == "Analyze"
+    assert competency.nice_category("T0023", "task") is None
+    assert competency.nice_category(None, "Oversee and Govern") == "Oversee & Govern"

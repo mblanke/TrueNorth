@@ -83,7 +83,7 @@ service running.
 |---|---|---|---|
 | `<tn-vm-name>` (TrueNorth) | Management host 1 | 32 vCPU / 128 GB / 200 GB system + 1.3 TB data | Guide 02 §1 (by hand, from the Ubuntu ISO) |
 | vCenter (VCSA) | Management host 2 (recommended) | VMware's "small" size or larger | VMware's installer |
-| `<backup-vm-name>` (backup target) | Management host 2 | 2 vCPU / 4 GB / 40 GB system + a data disk at least 2× `tn_backup_max_total_gb` | Ubuntu 24.04, built as 06 §3.2 says |
+| `<backup-vm-name>` (backup target), at the fixed address `<backup-vm-ip>` on the management network | Management host 2 | 2 vCPU / 4 GB / 40 GB system + a data disk at least 2× `tn_backup_max_total_gb` | Ubuntu 24.04, built as 06 §3.2 says |
 | `<dc-vm-name>` (only without a site AD) | Management host 2 | 2 vCPU / 8 GB / 80 GB | Guide 02 Appendix B |
 | Depot (optional) | Management host 1 or 2 | 4 vCPU / 16 GB / 100 GB + data disk | `install/lab/depot.yml`; only if ranges install software at deploy time (§3.3) |
 
@@ -336,7 +336,7 @@ to the internet for the online install, NTP, DNS). The flows TrueNorth needs are
 | Administrators | TrueNorth VM, backup target, GPU node | TCP 22 | Administration |
 | TrueNorth VM, **online install only** | `github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, `tuf-repo-cdn.sigstore.dev` (signature check), `ghcr.io`, `pkg-containers.githubusercontent.com`, `download.docker.com`, `registry-1.docker.io`, `auth.docker.io`, `production.cloudflare.docker.com`, `quay.io`, `cdn01.quay.io`, `gcr.io`, `archive.ubuntu.com`, `security.ubuntu.com`, `pypi.org`, `files.pythonhosted.org`, `galaxy.ansible.com` | TCP 443 (and 80 for Ubuntu's mirrors) | Release files, images, Docker, Ubuntu and Python packages, Ansible collections |
 | GPU AI node, **online install only** | `nvidia.github.io`, `huggingface.co` (and its CDN), `registry-1.docker.io`, `ghcr.io`, Ubuntu's mirrors | TCP 443 | Driver toolkit, model weights, vLLM and LiteLLM images |
-| Depot, **prefetch window only** (§3.3) | `community.chocolatey.org`, `pypi.org`, `registry-1.docker.io` (the `tn_depot_*_upstream` values), plus the Ubuntu and Rocky mirrors its guests' stock sources name | TCP 443 (and 80 for Ubuntu's mirrors) | The depot filling its own caches; no standing egress — the egress NIC is connected only for a window, never while range VMs exist |
+| Depot, **prefetch window only** (§3.3) | `community.chocolatey.org`, `pypi.org`, `registry-1.docker.io`, `quay.io` (the `tn_depot_*_upstream` values), plus the Ubuntu and Rocky mirrors its guests' stock sources name | TCP 443 (and 80 for Ubuntu's mirrors) | The depot filling its own caches; no standing egress — the egress NIC is connected only for a window, never while range VMs exist |
 | TrueNorth VM (worker), **online feeds only** | `endoflife.date`, `www.cisa.gov`, `services.nvd.nist.gov` | TCP 443 | Daily content feeds (06 §7). GET requests only; no site data is sent |
 
 An air-gapped site needs none of the internet flows: guide 02 Appendix A.
@@ -345,9 +345,15 @@ An air-gapped site needs none of the internet flows: guide 02 Appendix A.
 browser opens its console on the TrueNorth VM (`wss://<tn-fqdn>/ws/console/…`, TCP 443, the
 same route as the web app) and TrueNorth relays the machine's screen from the ESXi host.
 Students and instructors need **no** route to vCenter or the ESXi hosts, and their browsers
-never see a host certificate. When a range's connection verifies TLS, it is the TrueNorth VM
-that checks the ESXi host's certificate, against the same trust store it uses for vCenter
-(§5). None of this console behaviour has been confirmed against a real ESXi host yet: the
+never see a host certificate. When a range's connection verifies TLS, it is the API
+container that checks the ESXi host's certificate (chain and host name), against the API
+container's **system** trust store — the same store its vCenter login verifies against
+(`control-plane/api/app/console_backends/vsphere_webmks.py`, §5). With the connection's
+`verify_ssl` off, nothing is verified: for the vCenter login as for the console relay. That
+store is not the TrueNorth VM's: the installer stages the site CA into this VM's host trust
+store and Keycloak's, but mounts no site CA into the API container (guide 02 §5.3), so with
+verification on the hosts' certificates must chain to a CA the API container already trusts.
+None of this console behaviour has been confirmed against a real ESXi host yet: the
 relay and the vSphere adapter are covered by tests with a mock console and a mocked vSphere
 SDK only.
 
@@ -388,11 +394,18 @@ The site CA (for example AD CS) provides:
       full chain, root excluded) and `truenorth.key` (the private key, unencrypted).
 - [ ] Each DC's **LDAPS certificate** must name the DC's FQDN (`<dc-fqdn>`); TrueNorth
       verifies the host name.
-- [ ] The **ESXi hosts' certificates** chain to a CA in the TrueNorth VM's trust store —
-      the same one it uses for vCenter: the site CA (`corp-root-ca.cer`), or VMCA's root —
-      and name the host the way vCenter knows it. TrueNorth verifies both when it relays a
-      console (§4.3); workstations never see a host certificate, so no browser trust is
-      needed for them.
+- [ ] The **ESXi hosts' certificates** name each host the way vCenter knows it, and chain to
+      a CA installed in the **API container's system trust store** — the same store the API
+      verifies the range's vCenter login against (source:
+      `control-plane/api/app/console_backends/vsphere_webmks.py`): the site CA
+      (`corp-root-ca.cer`), or VMCA's root. The API checks a host's certificate only when
+      the range's vCenter connection has `verify_ssl` on; with it off nothing is verified,
+      for the vCenter login as for the console relay (§4.3). Today the installer stages the
+      site CA into this VM's host trust store and Keycloak's, but mounts **no** site CA into
+      the API container, so the site CA is not in that store and guide 02 §5.3 has sites
+      set `tn_vsphere_verify_ssl: false` until the installer mechanism it records as open
+      exists. Workstations never see a host certificate, so no browser trust is needed for
+      them.
 
 The installer can run with a self-signed certificate for a first bring-up
 (`tn_tls_mode: selfsigned`), but browsers warn and it is not for Students.
@@ -480,6 +493,11 @@ Keys the site generates and keeps **offline**, never on the TrueNorth VM:
 | Feed bundle signing key (Ed25519) | Air-gapped sites only: signs the content feed bundles | 06 §7 |
 | Ansible vault password | Opens the installer's secrets file | 02 §5.2 |
 
+A real site (not the mock) also needs the **two golden-template build passwords**, Windows
+and Linux, from the custodians of the build record the templates were ported from (06 §4).
+They are not yours to invent, and the installer's preflight refuses to pass without them
+(`vault_template_windows_admin_password`, `vault_template_linux_password`: guide 02 §5.2).
+
 ---
 
 ## Checklist — site prerequisites
@@ -515,7 +533,9 @@ Print this page and tick it off with the site's teams before install day.
 - [ ] `corp-root-ca.cer` exported
 - [ ] `truenorth.crt` (full chain, PEM) and `truenorth.key` (PEM) issued for `<tn-fqdn>`
 - [ ] DC LDAPS certificates name the DCs' FQDNs
-- [ ] ESXi host certificates chain to `corp-root-ca.cer` (or another CA in TrueNorth's trust store), named as vCenter knows each host
+- [ ] ESXi host certificates named as vCenter knows each host, chaining to a CA the API
+      container's system trust store holds (§5.3: today the installer stages none there,
+      so guide 02 §5.3 sets `tn_vsphere_verify_ssl: false` until that mechanism exists)
 
 **Active Directory**
 
@@ -531,3 +551,4 @@ Print this page and tick it off with the site's teams before install day.
 - [ ] vCenter service account created; vCenter administrator available on the day
 - [ ] Backup escrow key pair generated; private half stored offline with two custodians
 - [ ] Vault password chosen and stored with the escrow key's custodians
+- [ ] The two golden-template build passwords in hand from their custodians (real vCenter only)
