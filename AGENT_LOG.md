@@ -307,3 +307,23 @@
 - Kanzo was unreachable from the Mac all session: the board does not reflect any of this.
   The seven truenorth review cards (#88-#93, #134) are for issues already closed on GitHub.
 - Next: owner's word on #551 and #553; then #410 (guide 01, 8 items), #479 (alerting).
+
+## 2026-11-28 — merge run: #551, #553, #547, #544, #545, #548 (Mac, from home)
+
+- All six merged on the owner's word, each squashed at a head with full CI green (32 pass,
+  `taz-guard` skipped). Main is at e0b7b879.
+- #547: brought up to date with main first, so CI ran against the #551 tests. #444 closed
+  by hand (the PR did not close it).
+- #544: `AGENT_LOG.md` conflict only; both entries kept. CI was green before #547 landed;
+  after it, its tests and the classes tests were run together locally, not in CI.
+- #545: had no adversarial review, so one was run. No cross-tenant read and no access hole,
+  but the tests stayed green with a tenant filter removed. Twelve tests added
+  (`tests/api/test_usage_cost.py`), each mutation-checked. The other findings are #554; one
+  needs the owner (a tenant admin can zero their own tenant's past cost with a back-dated card).
+- #548: the new #545 head merged in, retargeted to main, then main merged with `-s ours`
+  (main's tree equalled the #545 head already in the branch) to start a full CI run.
+- Worktrees for `feat/demo-cohort-150`, `feat/usage-cost-s1`, `-s2` and
+  `claude/audit-classes-fixes-444` are behind their remotes; the branches are merged.
+- Open: #550 (usage S3) is stacked on the old S2 head and needs main merged in. The held
+  UI-literal counter correction (#476) still waits for the owner. Kanzo was unreachable all
+  day; the board is not updated.
