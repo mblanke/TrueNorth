@@ -4,9 +4,10 @@
 
 One companion per strict-xfail oracle in ``tests/api/test_audit_classes_443.py``: a second
 input that pins the same secure behaviour from another angle — a second role, a boundary
-value, a two-class matrix or the API surface instead of the service call. Each FAILS at the
-base for the same reason its oracle does, and is ``xfail(strict=True)`` so the later fix
-turns it into an XPASS until its marker is dropped. The donor fixtures and helpers come
+value, a two-class matrix or the API surface instead of the service call. Each failed at
+the base for the same reason its oracle did; all six findings are fixed now, so none
+carries an xfail marker. The guards below each finding's companion pin what its fix must
+still allow (or still refuse). The donor fixtures and helpers come
 from the oracle module by module path (tests/api has no ``__init__.py``; never
 ``from conftest import``).
 
@@ -20,7 +21,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from _shared import act_as, real_user
-from app.classes import service as class_service
+from app.classes import access as class_access
 from app.classes.models import Class, ClassStatus, RollCallEntry
 from app.models import UserRole
 from app.scheduler.models import ScheduledEvent
@@ -81,11 +82,6 @@ def test_companion_f1_redating_by_one_day_already_reaches_past_the_approved_plan
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: Cancel racing Close-out overwrites a "
-    "closed class to cancelled (classes/router.py:384) — companion",
-)
 def test_companion_f2_the_leads_cancel_may_not_overwrite_a_class_closed_concurrently(
     client,
     world,
@@ -93,21 +89,44 @@ def test_companion_f2_the_leads_cancel_may_not_overwrite_a_class_closed_concurre
     monkeypatch,
 ):
     cid = uuid.UUID(world["class"]["id"])
-    real_audit = class_service.audit
+    real_require_editor = class_access.require_editor
 
-    def close_lands_while_cancel_is_in_flight(db, *args, **kwargs):
-        db.query(Class).filter(Class.id == cid).update(
+    def close_lands_while_cancel_is_in_flight(role):
+        db_session.query(Class).filter(Class.id == cid).update(
             {Class.status: ClassStatus.closed.value}, synchronize_session=False
         )
-        return real_audit(db, *args, **kwargs)
+        return real_require_editor(role)
 
-    monkeypatch.setattr(class_service, "audit", close_lands_while_cancel_is_in_flight)
+    monkeypatch.setattr(class_access, "require_editor", close_lands_while_cancel_is_in_flight)
     act_as(world["lead"])
     client.delete(f"/classes/{cid}")
     db_session.expire_all()
     assert db_session.get(Class, cid).status == ClassStatus.closed.value, (
         "a lead's cancel that raced the close-out must not overwrite closed with cancelled"
     )
+
+
+@pytest.mark.audit443
+def test_companion_f2_an_edit_may_not_land_on_a_class_closed_concurrently(client, world, db_session, monkeypatch):
+    """The finding's other half: update_class had the same stale "open" check, then wrote
+    the name, dates, lead and staff onto a class that had closed in between. The same
+    replayed close; the edit is refused and the closed class keeps its name."""
+    cid = uuid.UUID(world["class"]["id"])
+    real_require_editor = class_access.require_editor
+
+    def close_lands_while_edit_is_in_flight(role):
+        db_session.query(Class).filter(Class.id == cid).update(
+            {Class.status: ClassStatus.closed.value}, synchronize_session=False
+        )
+        return real_require_editor(role)
+
+    monkeypatch.setattr(class_access, "require_editor", close_lands_while_edit_is_in_flight)
+    act_as(world["lead"])
+    r = client.put(f"/classes/{cid}", json=_class_body(world, name="Renamed after close"))
+    assert r.status_code == 409, r.text
+    db_session.expire_all()
+    closed = db_session.get(Class, cid)
+    assert (closed.status, closed.name) == (ClassStatus.closed.value, world["class"]["name"])
 
 
 # ── 3. Reject racing Approve: through the API route ───────────────────────
@@ -117,12 +136,6 @@ def test_companion_f2_the_leads_cancel_may_not_overwrite_a_class_closed_concurre
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: Reject of a pending roll-call addition is "
-    "unguarded: racing an Approve it removes an admitted "
-    "Student without freeing the seat (classes/service.py:476) — companion",
-)
 def test_companion_f3_the_reject_route_may_not_remove_a_student_approved_concurrently(
     client,
     world,
@@ -161,12 +174,6 @@ def test_companion_f3_the_reject_route_may_not_remove_a_student_approved_concurr
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: A class's course can be changed after its "
-    "sessions were booked; the sessions keep the old "
-    "course_id (classes/service.py:150) — companion",
-)
 def test_companion_f4_a_booked_session_pins_the_course_even_with_an_empty_roll_call(
     client,
     world,
@@ -192,12 +199,6 @@ def test_companion_f4_a_booked_session_pins_the_course_even_with_an_empty_roll_c
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: A former assistant/observer demoted to "
-    "Student keeps the class in GET /classes "
-    "(classes/access.py:35) — companion",
-)
 def test_companion_f5_a_demoted_observer_no_longer_sees_the_class_in_the_list(client, world, db_session):
     observer = real_user(db_session, UserRole.observer, world["a"].id)
     act_as(world["lead"])
@@ -217,12 +218,6 @@ def test_companion_f5_a_demoted_observer_no_longer_sees_the_class_in_the_list(cl
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: Admission uses the UTC calendar day for "
-    "the class's last day while the rest of the area uses "
-    "the site zone (classes/onboarding.py:100) — companion",
-)
 def test_companion_f6_sign_in_on_the_last_site_day_admits_only_the_class_still_running(
     client,
     world,
@@ -317,3 +312,116 @@ def test_the_lead_may_not_extend_a_class_whose_approved_session_is_already_over(
         f"/classes/{world['class']['id']}", json=_class_body(world, end_date=str((DAY + timedelta(days=9)).date()))
     )
     assert r.status_code == 409, r.text
+
+
+# ── 4. Course pinned by booked sessions: what the fix must still allow ────
+
+
+def test_the_course_may_change_once_the_classs_sessions_are_cancelled(client, world, db_session):
+    """Guard for the service.apply fix: only a live booking pins the course. With its one
+    session cancelled (and nobody signed in), the class may move to another course."""
+    from app.scheduler.models import EventState
+
+    ev = _book(client, world)
+    _approve(client, world, ev)
+    db_session.get(ScheduledEvent, uuid.UUID(ev["id"])).state = EventState.cancelled
+    db_session.flush()
+    act_as(world["lead"])
+    r = client.put(f"/classes/{world['class']['id']}", json=_class_body(world, course_id=str(world["other_course"].id)))
+    assert r.status_code == 200, r.text
+    assert r.json()["course_id"] == str(world["other_course"].id)
+
+
+def test_a_draft_session_pins_the_course_too(client, world):
+    """Guard: a draft goes on to approval with the course it was booked for, so it pins it."""
+    _book(client, world)  # booked, not approved
+    act_as(world["lead"])
+    r = client.put(f"/classes/{world['class']['id']}", json=_class_body(world, course_id=str(world["other_course"].id)))
+    assert r.status_code == 409, r.text
+
+
+# ── 5. Demoted staff: the lead, and "my classes" ───────────────────────────
+
+
+@pytest.mark.audit443
+def test_a_demoted_lead_no_longer_sees_the_class_in_the_list(client, world):
+    """Same leak through the lead branch: visible() listed a class by lead_instructor_id
+    whatever the caller's role, while role_from gives a demoted lead no part in it."""
+    act_as(world["lead"].model_copy(update={"role": UserRole.student}))
+    assert world["class"]["id"] not in [c["id"] for c in client.get("/classes").json()]
+    assert client.get(f"/classes/{world['class']['id']}").status_code == 404
+
+
+@pytest.mark.audit443
+@pytest.mark.parametrize("who", ["lead", "assistant"])
+def test_demoted_staff_have_no_my_classes(client, world, who):
+    """GET /classes/mine (staffed_by) honours the same rule: a demoted lead or assistant is
+    refused or gets nothing, never the class."""
+    act_as(world[who].model_copy(update={"role": UserRole.student}))
+    r = client.get("/classes/mine")
+    assert r.status_code == 403 or world["class"]["id"] not in [c["id"] for c in r.json()], r.text
+
+
+def test_current_staff_still_see_their_class(client, world):
+    """Guard: the lead and the assistant, in their own roles, still list the class."""
+    for who in ("lead", "assistant"):
+        act_as(world[who])
+        assert world["class"]["id"] in [c["id"] for c in client.get("/classes").json()]
+        assert world["class"]["id"] in [c["id"] for c in client.get("/classes/mine").json()]
+
+
+# ── 6. Site day: what the fix must still refuse ────────────────────────────
+
+
+def test_an_eastern_site_does_not_admit_the_day_after_the_class_ended(client, world, db_session, sign_in, monkeypatch):
+    """Guard for the onboarding.py fix, the other side of the date line: in Tokyo the class
+    ended yesterday while UTC is still on its last day. The site's day decides: no admission."""
+    from app.classes import onboarding
+
+    monkeypatch.setenv("SITE_TIMEZONE", "Asia/Tokyo")
+
+    # 2026-05-31 20:00 UTC = 2026-06-01 05:00 in Tokyo: the morning after the class's last day.
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # noqa: A003 - the datetime API
+            return datetime(2026, 5, 31, 20, 0, tzinfo=UTC)
+
+    monkeypatch.setattr(onboarding, "datetime", FrozenDatetime)
+    cls = db_session.get(Class, uuid.UUID(world["class"]["id"]))
+    cls.start_date, cls.end_date = date(2026, 5, 27), date(2026, 5, 31)
+    db_session.flush()
+    _on_roll_call(client, world, "joe.bloggs@corp.test")
+    assert sign_in(_identity())["status"] != "registered"
+    db_session.expire_all()
+    entry = db_session.query(RollCallEntry).filter(RollCallEntry.email == "joe.bloggs@corp.test").one()
+    assert entry.status == "invited"
+
+
+def test_the_forfeit_message_names_the_class_on_its_last_site_evening(client, world, db_session, monkeypatch):
+    """The sibling of the onboarding fix (review of #444): a Student who lost their seat is
+    told to ask their instructor while the class runs, on the site's day too. Toronto, the
+    last evening; UTC already the day after."""
+    from app.classes import forfeit
+
+    monkeypatch.setenv("SITE_TIMEZONE", "America/Toronto")
+    monkeypatch.setattr(forfeit, "_now", lambda: datetime(2026, 6, 1, 0, 30, tzinfo=UTC))
+    cls = db_session.get(Class, uuid.UUID(world["class"]["id"]))
+    cls.start_date, cls.end_date = date(2026, 5, 27), date(2026, 5, 31)
+    _on_roll_call(client, world, "joe.bloggs@corp.test")
+    entry = db_session.query(RollCallEntry).filter(RollCallEntry.email == "joe.bloggs@corp.test").one()
+    entry.status = "forfeited"
+    db_session.flush()
+    assert forfeit.forfeited_class_names(db_session, email="joe.bloggs@corp.test") == [cls.name]
+    monkeypatch.setattr(forfeit, "_now", lambda: datetime(2026, 6, 1, 4, 30, tzinfo=UTC))  # 00:30 the next site day
+    assert forfeit.forfeited_class_names(db_session, email="joe.bloggs@corp.test") == []
+
+
+@pytest.mark.audit443
+def test_a_lead_demoted_to_observer_has_the_class_no_more_in_my_classes(client, world):
+    """The case the staffed_by change actually alters (review of #444): an observer may call
+    /classes/mine, and a former lead now an observer (not on the class's staff) no longer
+    gets the class there."""
+    act_as(world["lead"].model_copy(update={"role": UserRole.observer}))
+    r = client.get("/classes/mine")
+    assert r.status_code == 200, r.text
+    assert world["class"]["id"] not in [c["id"] for c in r.json()]

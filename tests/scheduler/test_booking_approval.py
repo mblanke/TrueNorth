@@ -28,7 +28,7 @@ from unittest.mock import patch
 import pytest
 from _shared import act_as, real_tenant, real_user
 from app.classes import sessions as class_sessions
-from app.classes.models import ClassSession, RollCallEntry, RollCallSettings
+from app.classes.models import Class, ClassSession, RollCallEntry, RollCallSettings
 from app.enrollment import ensure_enrollment
 from app.models import AuditLog, Course, Range, RangeState, Template, User, UserRole
 from app.scheduler import clock, lifecycle
@@ -839,7 +839,10 @@ def _class_body(w, **over) -> dict:
     return body
 
 
-def test_1_a_class_changing_course_tells_the_old_course_nothing(client, db_session, world, outbox):
+def test_1_a_class_with_an_approved_session_cannot_change_course(client, db_session, world, outbox):
+    """Was: a class changing course tells the old course nothing. Since audit #443
+    (classes/service.py:150) a booked session pins the class's course, so the change is
+    refused and the session's invites are unchanged."""
     act_as(world["lead"])
     cls = client.post("/classes", json=_class_body(world, name="C2", assistant_ids=[])).json()
     with patch("app.notifications.get_channel", return_value=Outbox()):
@@ -852,7 +855,9 @@ def test_1_a_class_changing_course_tells_the_old_course_nothing(client, db_sessi
     db_session.flush()
     act_as(world["lead"])
     assert client.put(f"/classes/{cls['id']}", json=_class_body(
-        world, name="C2", assistant_ids=[], course_id=str(other.id))).status_code == 200
+        world, name="C2", assistant_ids=[], course_id=str(other.id))).status_code == 409
+    db_session.expire_all()
+    assert str(db_session.get(Class, uuid.UUID(cls["id"])).course_id) == cls["course_id"]
     outbox.clear()
     assert client.put(f"/schedule/events/{ev['id']}", json=_session(name="renamed", vcpu_total=10)).status_code == 200
     assert "eve@corp.test" not in outbox.invited("CANCEL")  # enrolled on the old course only

@@ -54,6 +54,7 @@ from .. import identity as ident
 from ..auth import CurrentUser, TokenPayload
 from ..enrollment import ensure_enrollment
 from ..models import AuditLog, RegistrationRequest, RegistrationStatus, User, UserRole
+from ..scheduler.capacity import site_timezone
 from .models import Class, ClassStatus, RollCallEntry, RollCallStatus
 from .service import LEAD_ROLES, accounts_with_email, is_pre_provisioned, normalise_email
 
@@ -90,8 +91,10 @@ def _adoptable_roster_row(u: User, tenant_id) -> bool:
 
 
 def matching_entries(db: Session, email: str, today: date | None = None) -> list[tuple[RollCallEntry, Class]]:
-    """Entries ``email`` may claim (rule 3)."""
-    today = today or datetime.now(UTC).date()
+    """Entries ``email`` may claim (rule 3). A class admits through its last day on the
+    site's calendar (``SITE_TIMEZONE``, as the reminder clock), not UTC's: at a western site
+    the UTC date turns over during the last afternoon or evening (audit #443)."""
+    today = today or datetime.now(UTC).astimezone(site_timezone()).date()
     rows = (
         db.query(RollCallEntry, Class)
         .join(Class, Class.id == RollCallEntry.class_id)
