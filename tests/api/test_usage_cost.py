@@ -461,3 +461,94 @@ def test_from_must_be_before_to(client, priced):
     with acting(real_user(priced["db"], UserRole.admin, priced["a"])):
         resp = client.get("/usage/cost", params={"from": T0.isoformat(), "to": (T0 - H).isoformat()})
     assert resp.status_code == 422
+
+
+# ── tenancy and access: each filter has a test that fails without it ─────────
+def _other_tenant(w) -> dict:
+    """The same builders, pointed at tenant B (they read the tenant from ``w["a"]``)."""
+    db = w["db"]
+    course = Course(id=uuid.uuid4(), name="Other Course", tenant_id=w["b"])
+    db.add(course)
+    db.flush()
+    return {**w, "a": w["b"], "course": course, "rel": _release(db, w["b"], course), "tpl": _template(db, w["b"])}
+
+
+def _usage_in_b(w) -> User:
+    """A lab, a class seat and a shared class range, all in tenant B. Returns B's Student."""
+    wb = _other_tenant(w)
+    bea = _student(w["db"], w["b"], "bea")
+    _lab(wb, bea, T0, T0 + 2 * H)
+    cls = _class(wb)
+    entry = _entry(wb, cls, bea, T0)
+    _class_range(wb, cls, "seat", T0, T0 + 3 * H, entry=entry)
+    _class_range(wb, cls, "shared", T0, T0 + 3 * H)
+    return bea
+
+
+def test_another_tenants_labs_and_class_ranges_are_not_derived(world):
+    w = world
+    bea = _usage_in_b(w)
+    assert derive(w["db"], {w["a"]}, T0, T0 + 5 * H, now=T0 + 5 * H) == []
+    theirs = derive(w["db"], {w["b"]}, T0, T0 + 5 * H, now=T0 + 5 * H)
+    assert {LAB, CLASS_SEAT, CLASS_SHARED} <= {iv.source for iv in theirs}
+    assert {iv.user_id for iv in theirs if iv.source in (LAB, CLASS_SEAT)} == {bea.id}
+
+
+def test_a_tenant_admin_never_reads_another_tenants_class_ranges(client, priced):
+    w = priced
+    _usage_in_b(w)
+    w["db"].commit()
+    with acting(real_user(w["db"], UserRole.admin, w["b"])):
+        mine = client.get("/usage/cost", params=_q()).json()["rows"]
+    assert mine and all(r["tenant_id"] in (None, str(w["b"])) for r in mine)
+    # tenant A's admin is the platform admin here; a third tenant's admin is not
+    c = real_tenant(w["db"], "cost-c")
+    with acting(real_user(w["db"], UserRole.admin, c.id)):
+        assert client.get("/usage/cost", params=_q()).json()["rows"] == []
+        assert client.get("/usage/cost", params=_q(group_by="class")).json()["rows"] == []
+
+
+@pytest.mark.parametrize("role", [UserRole.instructor, UserRole.observer, UserRole.student, UserRole.range_ops])
+def test_only_admins_export_the_csv_or_add_a_rate_card(client, priced, role):
+    w = priced
+    with acting(real_user(w["db"], role, w["a"])):
+        assert client.get("/usage/cost.csv", params=_q()).status_code == 403
+        card = {"effective_from": "2026-12-01T00:00:00Z", "per_vcpu_hour": "0.02"}
+        assert client.post("/usage/rate-cards", json=card).status_code == 403
+
+
+def test_the_csv_holds_only_the_admins_own_tenant(client, priced):
+    w = priced
+    _usage_in_b(w)
+    w["db"].commit()
+    with acting(real_user(w["db"], UserRole.admin, w["b"])):
+        csv = client.get("/usage/cost.csv", params=_q())
+        assert client.get("/usage/cost.csv", params=_q(tenant_id=str(w["a"]))).status_code == 403
+    assert csv.status_code == 200
+    assert "Bea" in csv.text and "Ann" not in csv.text and str(w["a"]) not in csv.text
+
+
+def test_a_tenant_admin_does_not_list_another_tenants_rate_cards(client, priced):
+    w = priced
+    for tenant in (w["a"], w["b"]):
+        w["db"].add(RateCard(id=uuid.uuid4(), tenant_id=tenant, effective_from=T0, currency="CAD"))
+    w["db"].commit()
+    with acting(real_user(w["db"], UserRole.admin, w["b"])):
+        listed = client.get("/usage/rate-cards").json()
+    assert {c["tenant_id"] for c in listed} == {None, str(w["b"])}
+
+
+def test_a_name_that_starts_like_a_formula_is_quoted_in_the_csv(client, priced):
+    w = priced
+    w["ann"].display_name = "=HYPERLINK(1)"
+    w["db"].commit()
+    with acting(real_user(w["db"], UserRole.admin, w["a"])):
+        text = client.get("/usage/cost.csv", params=_q()).text
+    assert ",'=HYPERLINK(1)," in text and ",=HYPERLINK(1)," not in text
+
+
+@pytest.mark.parametrize("lead", ["=", "+", "-", "@", "\t", "\r"])
+def test_every_formula_lead_character_is_quoted(lead):
+    from app.usage.report import _safe
+
+    assert _safe(lead + "x") == "'" + lead + "x" and _safe("x" + lead) == "x" + lead
