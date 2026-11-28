@@ -395,3 +395,33 @@ def test_an_eastern_site_does_not_admit_the_day_after_the_class_ended(client, wo
     db_session.expire_all()
     entry = db_session.query(RollCallEntry).filter(RollCallEntry.email == "joe.bloggs@corp.test").one()
     assert entry.status == "invited"
+
+
+def test_the_forfeit_message_names_the_class_on_its_last_site_evening(client, world, db_session, monkeypatch):
+    """The sibling of the onboarding fix (review of #444): a Student who lost their seat is
+    told to ask their instructor while the class runs, on the site's day too. Toronto, the
+    last evening; UTC already the day after."""
+    from app.classes import forfeit
+
+    monkeypatch.setenv("SITE_TIMEZONE", "America/Toronto")
+    monkeypatch.setattr(forfeit, "_now", lambda: datetime(2026, 6, 1, 0, 30, tzinfo=UTC))
+    cls = db_session.get(Class, uuid.UUID(world["class"]["id"]))
+    cls.start_date, cls.end_date = date(2026, 5, 27), date(2026, 5, 31)
+    _on_roll_call(client, world, "joe.bloggs@corp.test")
+    entry = db_session.query(RollCallEntry).filter(RollCallEntry.email == "joe.bloggs@corp.test").one()
+    entry.status = "forfeited"
+    db_session.flush()
+    assert forfeit.forfeited_class_names(db_session, email="joe.bloggs@corp.test") == [cls.name]
+    monkeypatch.setattr(forfeit, "_now", lambda: datetime(2026, 6, 1, 4, 30, tzinfo=UTC))  # 00:30 the next site day
+    assert forfeit.forfeited_class_names(db_session, email="joe.bloggs@corp.test") == []
+
+
+@pytest.mark.audit443
+def test_a_lead_demoted_to_observer_has_the_class_no_more_in_my_classes(client, world):
+    """The case the staffed_by change actually alters (review of #444): an observer may call
+    /classes/mine, and a former lead now an observer (not on the class's staff) no longer
+    gets the class there."""
+    act_as(world["lead"].model_copy(update={"role": UserRole.observer}))
+    r = client.get("/classes/mine")
+    assert r.status_code == 200, r.text
+    assert world["class"]["id"] not in [c["id"] for c in r.json()]

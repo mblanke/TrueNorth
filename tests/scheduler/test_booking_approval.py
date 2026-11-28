@@ -28,7 +28,7 @@ from unittest.mock import patch
 import pytest
 from _shared import act_as, real_tenant, real_user
 from app.classes import sessions as class_sessions
-from app.classes.models import ClassSession, RollCallEntry, RollCallSettings
+from app.classes.models import Class, ClassSession, RollCallEntry, RollCallSettings
 from app.enrollment import ensure_enrollment
 from app.models import AuditLog, Course, Range, RangeState, Template, User, UserRole
 from app.scheduler import clock, lifecycle
@@ -856,7 +856,8 @@ def test_1_a_class_with_an_approved_session_cannot_change_course(client, db_sess
     act_as(world["lead"])
     assert client.put(f"/classes/{cls['id']}", json=_class_body(
         world, name="C2", assistant_ids=[], course_id=str(other.id))).status_code == 409
-    assert db_session.get(ScheduledEvent, uuid.UUID(ev["id"])).course_id != other.id
+    db_session.expire_all()
+    assert str(db_session.get(Class, uuid.UUID(cls["id"])).course_id) == cls["course_id"]
     outbox.clear()
     assert client.put(f"/schedule/events/{ev['id']}", json=_session(name="renamed", vcpu_total=10)).status_code == 200
     assert "eve@corp.test" not in outbox.invited("CANCEL")  # enrolled on the old course only

@@ -120,7 +120,7 @@ not established here, and a fresh audit of the current release has not been done
 3. **Console relay**: the log redaction (a credential in a log file) and the LTI-token WebSocket
    (Moodle Students cannot open a console).
 4. **Credentials**: `force_settle`, the stranded post-restore rotation.
-5. **Scheduler** and **capacity**, then provisioning hardening (S5). (Classes: all fixed, #444.)
+5. **Scheduler** and **capacity**, then provisioning hardening (S5). (Classes: the five audit findings are fixed, #444; the same stale-check pattern on other class writes is #546.)
 
 From #493 (follow-ups to the rc21 fix reviews, not listed above): a deactivated Student's lab is
 not ended (capacity gate, security) and an admin class extension skips the capacity re-check. The

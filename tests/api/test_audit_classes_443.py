@@ -239,7 +239,9 @@ def test_f2_cancel_may_not_overwrite_a_class_closed_concurrently(client, world, 
     The fix (router._locked) locks the class row and reads it again, as close-out does, so
     the replayed close is seen. The hook fires before that re-read; one placed later (in
     ``service.audit``, as first written) would land after the fix's check and prove
-    nothing. Removing the re-read turns this test red.
+    nothing. Removing the re-read turns this test red. The row lock itself cannot be shown
+    here (SQLite ignores FOR UPDATE); on PostgreSQL it is what keeps a close from landing
+    between the re-read and the commit.
     """
     cid = uuid.UUID(world["class"]["id"])
     real_require_editor = class_access.require_editor
