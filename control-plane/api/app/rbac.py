@@ -156,6 +156,12 @@ class Permission(str, Enum):
     READINESS_READ = "readiness:read"
     CLASS_ATTEND = "class:attend"
 
+    # Usage and cost (app/usage): what each Student's ranges cost to run, and the rate card
+    # that prices it. Admin only, so no role lists them: Instructors, Observers and Students
+    # never see what a Student costs. USAGE_ADMIN changes the rate card.
+    USAGE_READ = "usage:read"
+    USAGE_ADMIN = "usage:admin"
+
     # Tenant management
     TENANT_CREATE = "tenant:create"
     TENANT_READ = "tenant:read"

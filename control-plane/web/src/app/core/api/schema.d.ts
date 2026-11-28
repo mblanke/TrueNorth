@@ -9888,6 +9888,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/usage/cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What each Student (course, class, tenant) cost */
+        get: operations["cost_report_usage_cost_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/usage/cost.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The cost report as CSV */
+        get: operations["cost_report_csv_usage_cost_csv_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/usage/cost/students/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One Student's usage, interval by interval */
+        get: operations["student_cost_usage_cost_students__user_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/usage/rate-cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Rate cards: the tenant's and the platform default */
+        get: operations["list_rate_cards_usage_rate_cards_get"];
+        put?: never;
+        /**
+         * Add a rate card (a new price)
+         * @description A new price from ``effective_from`` on. Platform-wide needs a platform administrator.
+         *     Audit-logged.
+         */
+        post: operations["create_rate_card_usage_rate_cards_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -13328,6 +13401,76 @@ export interface components {
             /** Version */
             version?: string | null;
         };
+        /** CostReportOut */
+        CostReportOut: {
+            /** Group By */
+            group_by: string;
+            /**
+             * Period From
+             * Format: date-time
+             */
+            period_from: string;
+            /**
+             * Period To
+             * Format: date-time
+             */
+            period_to: string;
+            /** Rows */
+            rows: components["schemas"]["CostRow"][];
+            totals: components["schemas"]["Figures"];
+        };
+        /** CostRow */
+        CostRow: {
+            /**
+             * Approximate
+             * @description Charged for the whole time held: no power history yet
+             */
+            approximate: boolean;
+            /** Cost Disk */
+            cost_disk: number;
+            /** Cost Ram */
+            cost_ram: number;
+            /** Cost Total */
+            cost_total: number;
+            /** Cost Vcpu */
+            cost_vcpu: number;
+            /** Cost Vm */
+            cost_vm: number;
+            /**
+             * Currency
+             * @description Empty: nothing priced; 'mixed': cards in more than one currency
+             */
+            currency: string;
+            /** Disk Gb Hours */
+            disk_gb_hours: number;
+            /** Intervals */
+            intervals: number;
+            /**
+             * Key
+             * @description The Student, course, class or tenant id; or e.g. 'unattributed:<tenant>'
+             */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Open
+             * @description Intervals still holding resources
+             */
+            open: number;
+            /** Ram Gb Hours */
+            ram_gb_hours: number;
+            /** Tenant Id */
+            tenant_id: string | null;
+            /**
+             * Unpriced Hours
+             * @description Hours with no rate card in force: counted, not costed
+             */
+            unpriced_hours: number;
+            /** Vcpu Hours */
+            vcpu_hours: number;
+            /** Vm Hours */
+            vm_hours: number;
+        };
         /** CourseGenerateIn */
         CourseGenerateIn: {
             /**
@@ -15251,6 +15394,37 @@ export interface components {
             /** Issued At */
             issued_at?: string | null;
         };
+        /** Figures */
+        Figures: {
+            /** Cost Disk */
+            cost_disk: number;
+            /** Cost Ram */
+            cost_ram: number;
+            /** Cost Total */
+            cost_total: number;
+            /** Cost Vcpu */
+            cost_vcpu: number;
+            /** Cost Vm */
+            cost_vm: number;
+            /**
+             * Currency
+             * @description Empty: nothing priced; 'mixed': cards in more than one currency
+             */
+            currency: string;
+            /** Disk Gb Hours */
+            disk_gb_hours: number;
+            /** Ram Gb Hours */
+            ram_gb_hours: number;
+            /**
+             * Unpriced Hours
+             * @description Hours with no rate card in force: counted, not costed
+             */
+            unpriced_hours: number;
+            /** Vcpu Hours */
+            vcpu_hours: number;
+            /** Vm Hours */
+            vm_hours: number;
+        };
         /**
          * FitOut
          * @description Whether a booking fits where it is asked for, and the next slot where it would.
@@ -15821,6 +15995,11 @@ export interface components {
             /** Updated At */
             updated_at?: string | null;
         };
+        /**
+         * GroupBy
+         * @enum {string}
+         */
+        GroupBy: "student" | "course" | "class" | "tenant";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -18866,6 +19045,82 @@ export interface components {
             /** Name */
             name?: string;
         };
+        /** RateCardIn */
+        RateCardIn: {
+            /**
+             * Currency
+             * @default CAD
+             */
+            currency?: string;
+            /**
+             * Effective From
+             * Format: date-time
+             * @description With a time zone offset; the card prices time from here on
+             */
+            effective_from: string;
+            /**
+             * Notes
+             * @default
+             */
+            notes?: string;
+            /**
+             * Per Gb Disk Hour
+             * @description Per GB-hour; the page shows it per GB-month (x730)
+             * @default 0
+             */
+            per_gb_disk_hour?: number | string;
+            /**
+             * Per Gb Ram Hour
+             * @default 0
+             */
+            per_gb_ram_hour?: number | string;
+            /**
+             * Per Vcpu Hour
+             * @default 0
+             */
+            per_vcpu_hour?: number | string;
+            /**
+             * Per Vm Hour
+             * @description Per running VM-hour, e.g. guest OS licences
+             * @default 0
+             */
+            per_vm_hour?: number | string;
+            /**
+             * Platform Wide
+             * @description The default for every tenant (platform administrator only)
+             * @default false
+             */
+            platform_wide?: boolean;
+        };
+        /** RateCardOut */
+        RateCardOut: {
+            /** Created At */
+            created_at?: string | null;
+            /** Currency */
+            currency: string;
+            /**
+             * Effective From
+             * Format: date-time
+             */
+            effective_from: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Notes */
+            notes: string;
+            /** Per Gb Disk Hour */
+            per_gb_disk_hour: string;
+            /** Per Gb Ram Hour */
+            per_gb_ram_hour: string;
+            /** Per Vcpu Hour */
+            per_vcpu_hour: string;
+            /** Per Vm Hour */
+            per_vm_hour: string;
+            /** Tenant Id */
+            tenant_id: string | null;
+        };
         /** ReadinessClassOut */
         ReadinessClassOut: {
             /** Awaiting Result */
@@ -20422,6 +20677,27 @@ export interface components {
              */
             proficiency: string;
         };
+        /** StudentCostOut */
+        StudentCostOut: {
+            /** Intervals */
+            intervals: components["schemas"]["UsageIntervalOut"][];
+            /**
+             * Period From
+             * Format: date-time
+             */
+            period_from: string;
+            /**
+             * Period To
+             * Format: date-time
+             */
+            period_to: string;
+            totals: components["schemas"]["Figures"];
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
         /** StudentListOut */
         StudentListOut: {
             /** Students */
@@ -21680,6 +21956,75 @@ export interface components {
         UrlIngestIn: {
             /** Urls */
             urls: string[];
+        };
+        /** UsageIntervalOut */
+        UsageIntervalOut: {
+            /** Approximate */
+            approximate: boolean;
+            /** Class Id */
+            class_id: string | null;
+            /** Cost Disk */
+            cost_disk: number;
+            /** Cost Ram */
+            cost_ram: number;
+            /** Cost Total */
+            cost_total: number;
+            /** Cost Vcpu */
+            cost_vcpu: number;
+            /** Cost Vm */
+            cost_vm: number;
+            /** Course Id */
+            course_id: string | null;
+            /**
+             * Currency
+             * @description Empty: nothing priced; 'mixed': cards in more than one currency
+             */
+            currency: string;
+            /** Disk Gb */
+            disk_gb: number;
+            /** Disk Gb Hours */
+            disk_gb_hours: number;
+            /**
+             * End
+             * Format: date-time
+             */
+            end: string;
+            /** Open */
+            open: boolean;
+            /** Ram Gb */
+            ram_gb: number;
+            /** Ram Gb Hours */
+            ram_gb_hours: number;
+            /** Range Id */
+            range_id: string | null;
+            /**
+             * Source
+             * @description lab, class_seat, class_shared or unattributed
+             */
+            source: string;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /**
+             * Start
+             * Format: date-time
+             */
+            start: string;
+            /**
+             * Unpriced Hours
+             * @description Hours with no rate card in force: counted, not costed
+             */
+            unpriced_hours: number;
+            /** Vcpu */
+            vcpu: number;
+            /** Vcpu Hours */
+            vcpu_hours: number;
+            /** Vm Hours */
+            vm_hours: number;
+            /** Vms */
+            vms: number;
         };
         /** UserCreateIn */
         UserCreateIn: {
@@ -40558,6 +40903,162 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TriageOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cost_report_usage_cost_get: {
+        parameters: {
+            query?: {
+                /** @description Default: the start of this month (UTC) */
+                from?: string | null;
+                /** @description Default: now */
+                to?: string | null;
+                group_by?: components["schemas"]["GroupBy"];
+                /** @description Platform administrator: one tenant (default: all) */
+                tenant_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CostReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cost_report_csv_usage_cost_csv_get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+                group_by?: components["schemas"]["GroupBy"];
+                tenant_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    student_cost_usage_cost_students__user_id__get: {
+        parameters: {
+            query?: {
+                from?: string | null;
+                to?: string | null;
+            };
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentCostOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rate_cards_usage_rate_cards_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateCardOut"][];
+                };
+            };
+        };
+    };
+    create_rate_card_usage_rate_cards_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RateCardIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateCardOut"];
                 };
             };
             /** @description Validation Error */
