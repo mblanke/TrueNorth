@@ -706,6 +706,18 @@ range_operations = sa.Table(
     sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
 )
 
+range_state_events = sa.Table(
+    "range_state_events",
+    metadata,
+    sa.Column("id", GUID(), primary_key=True),
+    sa.Column("tenant_id", GUID()),
+    sa.Column("range_id", GUID(), nullable=False),
+    sa.Column("from_state", sa.String(16)),
+    sa.Column("to_state", sa.String(16), nullable=False),
+    sa.Column("at", sa.DateTime(timezone=True), nullable=False),
+    sa.Column("source", sa.String(16), nullable=False),
+)
+
 range_snapshots = sa.Table(
     "range_snapshots",
     metadata,
@@ -925,6 +937,7 @@ __all__ = [
     "range_leases",
     "range_operations",
     "range_snapshots",
+    "range_state_events",
     "ranges",
     "scenario_executions",
     "scenarios",

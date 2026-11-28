@@ -980,6 +980,7 @@ PG_CALLS = {
     "update_range_state": lambda db: db_ops.update_range_state(
         db, ID, "failed", error="e", output="o", only_from=("ready", "stopped")
     ),
+    "record_state_event": lambda db: db_ops.record_state_event(db, ID, ID, "ready", "stopped", source="worker"),
     "lock_range": lambda db: db_ops.lock_range(db, ID),
     "range_template_and_backend": lambda db: db_ops.range_template_and_backend(db, ID),
     "range_output_and_backend": lambda db: db_ops.range_output_and_backend(db, ID),
@@ -1077,9 +1078,11 @@ class TestPostgresRendering:
         assert db.sql, f"{name} executed nothing"
         for sql in db.sql:
             # A write stamps updated_at: now(), or (external reservations) the start of the
-            # live read that saw the value. A DELETE leaves no row to stamp.
+            # live read that saw the value. A DELETE leaves no row to stamp. A usage ledger
+            # event carries its own ``at`` from the writer's clock (ADR 0021).
             assert ("now()" in sql.lower() or "updated_at=%(updated_at" in sql
-                    or sql.lstrip().upper().startswith(("SELECT", "DELETE"))), sql
+                    or sql.lstrip().upper().startswith(("SELECT", "DELETE"))
+                    or sql.startswith("INSERT INTO range_state_events")), sql
 
     def test_every_public_helper_is_covered(self):
         public = {n for n, f in vars(db_ops).items() if callable(f) and getattr(f, "__module__", "") == db_ops.__name__
@@ -1100,7 +1103,9 @@ class TestPostgresRendering:
 
         db = _PgRecorder()
         db_ops.update_range_state(db, ID, "failed", only_from=("ready",))
-        sql = " ".join(db.sql[0].split())
+        # The first statement locks and reads the state it replaces (the ledger, ADR 0021).
+        assert " ".join(db.sql[0].split()).endswith("FOR UPDATE")
+        sql = " ".join(next(s for s in db.sql if s.lstrip().startswith("UPDATE")).split())
         # The native enum is bound exactly as the API's ORM binds it through the same dialect.
         api = str(sa.update(m.Range.__table__).values(state="failed").compile(dialect=db.dialect))
         assert api.startswith("UPDATE ranges SET state=%(state)s") and "state=%(state)s," in sql

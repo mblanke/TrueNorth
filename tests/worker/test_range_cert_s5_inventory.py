@@ -295,7 +295,6 @@ TENANT = str(uuid.uuid4())
 def s5db(db):
     """The worker test database (conftest ``db``) with what S5 reads and writes."""
     with db.begin() as conn:
-        conn.execute(sa.text("ALTER TABLE ranges ADD COLUMN tenant_id TEXT"))
         conn.execute(sa.text("ALTER TABLE ranges ADD COLUMN deleted_at TIMESTAMP"))
     for t in (tables.range_inventory_checks, tables.range_certification_records, tables.range_certification_entries,
               tables.range_operations):

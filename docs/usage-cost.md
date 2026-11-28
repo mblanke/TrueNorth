@@ -16,9 +16,28 @@ Sizes:
 - **Labs:** the lab's own `vcpu`, `ram_mb` and `disk_gb`. The VM count comes from the range's template.
 - **Other ranges:** the template's sizes (`range_topology.template_demand`). Every clone is a full copy today, so disk is the full template size.
 
-**Approximate rows.** There is no power history yet, so class ranges and other ranges are charged compute for their whole life, even while powered off. These rows are flagged `approximate`. Usage S2 (a range state-event ledger) will make them exact.
+**Power history (S2, ADR 0021).** Every change of a range's state appends a row to `range_state_events`. Three writers add rows:
+- the worker's `update_range_state`;
+- the API's flush hook (`app/usage/ledger.py`);
+- an hourly reconciler (`worker/usage_reconcile.py`), which records anything the other two missed.
 
-**Rebuilt class ranges.** A class range that was rebuilt keeps only its last `built_at`, so time before the rebuild is not counted.
+Class ranges and other ranges are cut by those events:
+
+| State | Pays for |
+|---|---|
+| provisioning, ready, running, stopping, starting, destroying | compute and disk |
+| stopped | disk only |
+| created, destroyed | nothing |
+| failed | what it paid before (nothing, if a build failed) |
+
+Some time is still flagged `approximate`:
+- time before a range's first event (history from before the ledger), charged all on as in S1;
+- time after a reconcile event;
+- a range with no events at all.
+
+Labs are not cut by events; their own timestamps are already exact.
+
+**Rebuilt class ranges.** A class range that was rebuilt keeps only its newest `range_id`. The torn-down ranges before it report as unattributed.
 
 ## Rate cards
 
@@ -50,5 +69,6 @@ Split RAM and disk out the same way if you want them priced separately.
 
 ## Next
 
-- **S2:** ADR 0021 and `range_state_events`, written where the worker changes a range's state (`update_range_state`, `guarded_range_update`), for exact power history.
-- **S3:** the admin page (mockup first).
+- S3: the admin page (mockup first).
+- Sizes from what was actually provisioned, once linked clones land. Today every clone is a full copy.
+- A rule for charging booking and exercise ranges to Students. Today they are unattributed.

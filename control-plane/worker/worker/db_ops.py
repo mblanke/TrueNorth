@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Iterable, Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 import sqlalchemy as sa
@@ -45,6 +46,7 @@ from .tables import (
     range_credential_snapshots,
     range_credentials,
     range_snapshots,
+    range_state_events,
     ranges,
     scenario_executions,
     scenarios,
@@ -67,7 +69,14 @@ def update_range_state(
     clear_error: bool = False,
 ) -> int:
     """Set a range's state; conditional on its current state when ``only_from`` is given.
-    A fenced task's writes come through worker/fencing.py's guarded_range_update."""
+    A fenced task's writes come through worker/fencing.py's guarded_range_update.
+
+    A change of state also appends a ``range_state_events`` row in the same transaction
+    (ADR 0021, usage): the range row is locked first (as ``lock_range``), so the state read
+    here is the one replaced."""
+    before = db.execute(
+        sa.select(sa.cast(ranges.c.state, sa.Text), ranges.c.tenant_id).where(ranges.c.id == range_id).with_for_update()
+    ).first()
     values: dict[str, Any] = {"state": new_state, "updated_at": _now()}
     if error:
         values["error_message"] = error
@@ -79,7 +88,29 @@ def update_range_state(
     if only_from:
         # CAST: `state` is a native enum on Postgres and plain text on SQLite.
         stmt = stmt.where(sa.cast(ranges.c.state, sa.Text).in_(list(only_from)))
-    return db.execute(stmt).rowcount
+    moved = db.execute(stmt).rowcount
+    if moved and before is not None and before[0] != new_state:
+        record_state_event(db, range_id, before[1], before[0], new_state, source="worker")
+    return moved
+
+
+def record_state_event(db, range_id, tenant_id, from_state: str | None, to_state: str, *, source: str) -> None:
+    """Append one ``range_state_events`` row (ADR 0021). The caller's transaction commits it.
+
+    ``at`` is this process's clock, to the microsecond, not the database's ``now()``: that is
+    the transaction's start on PostgreSQL (and whole seconds on SQLite), so two changes in
+    one transaction would tie and the range's last state would be a coin toss."""
+    db.execute(
+        sa.insert(range_state_events).values(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            range_id=range_id,
+            from_state=from_state,
+            to_state=to_state,
+            at=datetime.now(UTC),
+            source=source,
+        )
+    )
 
 
 def lock_range(db, range_id: str) -> None:

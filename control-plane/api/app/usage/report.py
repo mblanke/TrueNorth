@@ -81,7 +81,16 @@ def _fallback_label(key: str, by: GroupBy) -> str:
 
 
 def price(book: RateBook, iv: Interval) -> Priced:
-    return book.price(iv.tenant_id, iv.start, iv.end, vcpu=iv.vcpu, ram_gb=iv.ram_gb, disk_gb=iv.disk_gb, vms=iv.vms)
+    return book.price(
+        iv.tenant_id,
+        iv.start,
+        iv.end,
+        vcpu=iv.vcpu,
+        ram_gb=iv.ram_gb,
+        disk_gb=iv.disk_gb,
+        vms=iv.vms,
+        compute=iv.compute,
+    )
 
 
 def build(

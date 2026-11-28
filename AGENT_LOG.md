@@ -230,3 +230,9 @@
   - S2: ADR 0021 and `range_state_events` written in worker `update_range_state` and
     `guarded_range_update`, for exact power history; class ranges are approximate until then.
   - S3: the admin page, mockup first.
+- S2 is built on `feat/usage-cost-s2`, stacked on S1:
+  - ADR 0021;
+  - the `range_state_events` table (migration f8b0d2c4e6a7), written by the worker's
+    `update_range_state`, the API's flush hook (app/usage/ledger.py) and an hourly
+    reconciler (worker/usage_reconcile.py);
+  - the report now cuts class ranges and other ranges into compute and disk-only time.

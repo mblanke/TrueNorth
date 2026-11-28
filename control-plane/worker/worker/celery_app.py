@@ -192,6 +192,13 @@ app.conf.beat_schedule = {
         "schedule": crontab(hour=4, minute=10),
         "options": {"expires": 6 * 3600},
     },
+    # The usage ledger's safety net (ADR 0021, worker/usage_reconcile.py): a range whose
+    # state its range_state_events do not show gets the missing change, marked reconcile.
+    "usage-ledger-reconcile-hourly": {
+        "task": "worker.usage_reconcile.reconcile_usage_ledger",
+        "schedule": crontab(minute=35),
+        "options": {"expires": 3600},
+    },
 }
 
 
@@ -243,5 +250,6 @@ from . import (
     tasks,  # noqa: F401, E402
     telemetry_tasks,  # noqa: F401, E402
     template_tasks,  # noqa: F401, E402
+    usage_reconcile,  # noqa: F401, E402
 )
 from .content_feeds import pull as content_feeds_pull  # noqa: F401, E402
