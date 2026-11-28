@@ -475,9 +475,24 @@ def reject_addition(db: Session, cls: Class, entry: RollCallEntry, actor: Curren
         raise HTTPException(409, f"This addition is {entry.status}, not waiting for approval")
     if cls.status == ClassStatus.closed.value:
         raise HTTPException(409, "A closed class is read-only; an admin reopens it first")
-    entry.status = RollCallStatus.removed.value
-    entry.removed_at = _now()
-    entry.pending_reason = f"{REJECTED_PREFIX}{reason}"[:1000]
+    # Claim it by the status it was read with, as approve_addition does: an approve that
+    # landed meanwhile has admitted the Student and taken their seat, and a reject written
+    # over it would remove them without freeing that seat (audit #443).
+    claimed = (
+        db.query(RollCallEntry)
+        .filter(RollCallEntry.id == entry.id, RollCallEntry.status == RollCallStatus.pending.value)
+        .update(
+            {
+                RollCallEntry.status: RollCallStatus.removed.value,
+                RollCallEntry.removed_at: _now(),
+                RollCallEntry.pending_reason: f"{REJECTED_PREFIX}{reason}"[:1000],
+            },
+            synchronize_session=False,
+        )
+    )
+    if claimed != 1:
+        raise HTTPException(409, "This addition changed at the same moment (approved or removed); reload")
+    db.refresh(entry)
     audit(db, actor.id, cls, "roll_call_addition_rejected", f"{entry.email}: {reason}"[:2000])
 
 

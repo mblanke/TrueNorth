@@ -117,12 +117,6 @@ def test_companion_f2_the_leads_cancel_may_not_overwrite_a_class_closed_concurre
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: Reject of a pending roll-call addition is "
-    "unguarded: racing an Approve it removes an admitted "
-    "Student without freeing the seat (classes/service.py:476) — companion",
-)
 def test_companion_f3_the_reject_route_may_not_remove_a_student_approved_concurrently(
     client,
     world,

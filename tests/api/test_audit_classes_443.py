@@ -272,12 +272,6 @@ def seats(monkeypatch):
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: Reject of a pending roll-call addition is "
-    "unguarded: racing an Approve it removes an admitted "
-    "Student without freeing the seat (classes/service.py:476)",
-)
 def test_f3_reject_may_not_remove_a_student_approved_concurrently(client, world, db_session, seats):
     """classes/service.py:476 — Reject of a pending roll-call addition is unguarded.
 
