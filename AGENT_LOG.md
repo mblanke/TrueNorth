@@ -255,3 +255,8 @@
   Qwen; no in-sandbox probe test pins the two fixes (review note 2). The runner is a
   background process of this session; restart with
   `ARC2_RUNS_DIR=$PWD/build/arc2 ARC2_MODE=local ARC2_LOCAL_URL=http://127.0.0.1:11434 ARC2_LOCAL_MODEL=qwen3.6:35b-a3b make arc2-runner`.
+
+## 2026-11-28 — Mac (guapo) — ARC² resume found no run
+- A resumed job (`/arc2 --resume <slug> accept`) was told "write $RUN as the absolute run directory" but never given it; Qwen guessed the main checkout's `build/arc2`, found nothing in this worktree and quit after 72 s. The runner now puts the run's absolute path and manifest in the job guidance (`guidance_for`); test added.
+- `arc2-phishing-basics` then ran stages 2–6 on Qwen 3.6; QA cycle 1 failed on a column-shifted `catalogue_row.csv` and sent it back to stage 1 (the designed rework loop).
+- Next: accept the preview when it is ready, import the package on the dev stack per its PROMOTE.md.

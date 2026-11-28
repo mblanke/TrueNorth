@@ -215,10 +215,20 @@ def stage_request(runs: Path, record: dict) -> Path | None:
     return run / REQUEST_FILE
 
 
-def command_for(job: dict, claude: str, model: str | None = None) -> list[str]:
+def guidance_for(run_dir: Path) -> str:
+    """RUNNER_GUIDANCE plus where this run is. Told only "write $RUN as the absolute run
+    directory", a model guesses the path (the main checkout's build/arc2, say), finds no
+    run in a worktree, and gives up: a resumed run has no request file to point the way."""
+    return (f"{RUNNER_GUIDANCE} This run's directory ($RUN) is {Path(run_dir).resolve()}; "
+            f"its manifest is {Path(run_dir).resolve() / 'manifest.json'}.")
+
+
+def command_for(job: dict, claude: str, model: str | None = None, run_dir: Path | None = None) -> list[str]:
     """The engine's command line. The prompt (a tenant's request or feedback) is not on
     it: it goes on stdin (``prompt_for``), because any process of the same account can
-    read another's arguments, and a sandbox cannot stop that on macOS."""
+    read another's arguments, and a sandbox cannot stop that on macOS. The run's path is
+    on it (in the guidance): a path is not the tenant's words."""
+    run_dir = run_dir or REPO_ROOT / "build" / "arc2" / job["slug"]
     cmd = [
         claude, "-p",
         "--output-format", "stream-json", "--verbose",
@@ -226,7 +236,7 @@ def command_for(job: dict, claude: str, model: str | None = None) -> list[str]:
         "--allowedTools", *job_tools(job["slug"]),
         # No user-level settings, hooks or MCP servers: only this repository's project settings.
         "--setting-sources", "project", "--strict-mcp-config",
-        "--append-system-prompt", RUNNER_GUIDANCE,
+        "--append-system-prompt", guidance_for(run_dir),
     ]
     return cmd + (["--model", model] if model else [])
 
@@ -640,7 +650,7 @@ def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOU
     )
     try:
         record = _attempt(record, path,
-                          confinement.wrap(command_for(record, claude, primary.model if primary else None), jail),
+                          confinement.wrap(command_for(record, claude, primary.model if primary else None, runs / record["slug"]), jail),
                           primary.env(env) if primary else env, timeout,
                           append=False, stdin_text=prompt_for(record))
         if models.claude_fallback and should_fall_back(record, gateway_first=True):
@@ -648,13 +658,13 @@ def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOU
             record.update(fallback_from=record["error"], engine="claude", state="running", error=None,
                           result=None, exit_code=None, finished_at=None, current_agent=None)
             write_record(path, record)
-            record = _attempt(record, path, confinement.wrap(command_for(record, claude, None), jail),
+            record = _attempt(record, path, confinement.wrap(command_for(record, claude, None, runs / record["slug"]), jail),
                               env, timeout, append=True, stdin_text=prompt_for(record))
         elif fallback and should_fall_back(record) and fallback.reachable():
             record.update(fallback_from=record["error"], engine=fallback.label, state="running", error=None,
                           result=None, exit_code=None, finished_at=None, current_agent=None)
             write_record(path, record)
-            record = _attempt(record, path, confinement.wrap(command_for(record, claude, fallback.model), jail),
+            record = _attempt(record, path, confinement.wrap(command_for(record, claude, fallback.model, runs / record["slug"]), jail),
                               fallback.env(env), timeout, append=True, stdin_text=prompt_for(record))
     finally:
         if home is not None:

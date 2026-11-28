@@ -387,6 +387,23 @@ def test_the_engine_ignores_user_settings_and_may_edit_only_its_own_run():
     assert cmd[cmd.index("--setting-sources") + 1] == "project" and "--strict-mcp-config" in cmd
 
 
+def test_the_engine_is_told_where_its_run_is(tmp_path):
+    # A resumed run has no request file to name its folder; told only "write $RUN as the
+    # absolute run directory", a model guessed the main checkout's build/arc2 and gave up.
+    job = {"id": "job000001", "action": "resume", "slug": SLUG, "text": "accept"}
+    run = tmp_path / "build" / "arc2" / SLUG
+    guidance = runner.command_for(job, "claude", run_dir=run)
+    guidance = guidance[guidance.index("--append-system-prompt") + 1]
+    assert guidance.startswith(runner.RUNNER_GUIDANCE)
+    assert f"($RUN) is {run.resolve()};" in guidance and str(run.resolve() / "manifest.json") in guidance
+    assert "accept" not in guidance.removeprefix(runner.RUNNER_GUIDANCE), "the tenant's words stay off argv"
+    default = runner.command_for(job, "claude")
+    assert (
+        str((runner.REPO_ROOT / "build" / "arc2" / SLUG).resolve())
+        in default[default.index("--append-system-prompt") + 1]
+    )
+
+
 PROCARGS_PROBE = r"""#!/usr/bin/python3
 import ctypes, json, os, sys
 libc = ctypes.CDLL(None)
