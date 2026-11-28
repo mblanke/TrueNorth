@@ -185,6 +185,9 @@ export const PAGE_ACCESS = {
   readiness: { all: ['readiness:read'] },
   /** GET /maintenance-windows (schedule:read); changing them needs range:admin (admins). */
   maintenanceWindows: { all: ['schedule:read', 'range:admin'] },
+  /** Usage and cost (ADR 0021): GET /usage/cost and the rate cards. Admins only, never
+   *  Instructors, Observers or Students; a new rate card needs usage:admin. */
+  usageCost: { all: ['usage:read'] },
   approvals: { all: ['registration:read'] },
   infrastructure: { all: ['infra:read'] },
   aiOrchestrator: { all: ['ai_config:read'] },

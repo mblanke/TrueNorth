@@ -236,3 +236,15 @@
     `update_range_state`, the API's flush hook (app/usage/ledger.py) and an hourly
     reconciler (worker/usage_reconcile.py);
   - the report now cuts class ranges and other ranges into compute and disk-only time.
+- S3 is built on `feat/usage-cost-s3`, stacked on S2 (Mac, 2026-11-28):
+  - mockup `docs/mockups/usage-cost.html` (renders in docs/mockups/renders/), approved;
+  - the page `/usage-cost` (features/usage-cost/), menu "Usage and cost" for `usage:read`:
+    the Cost tab (group by Student, course, class, organisation; period; CSV; a Student's
+    drill-down) and the Rate cards tab (list, new card, hardware helper);
+  - the drill-down API now names the range, course and class (`range_name`, `course_name`,
+    `class_name`); OpenAPI and web types regenerated.
+  - Not checked in a running app with real data; Karma and `ng build` only.
+  - Not done: a drill-down for unattributed, class and course rows (the API has none),
+    the course/class column in the Student view. Issue #549: the API accepts a back-dated
+    rate card.
+  - Next: merge #545, then #548, then the S3 PR; look at the page on TN-MGMT01.

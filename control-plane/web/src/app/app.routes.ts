@@ -413,6 +413,14 @@ export const routes: Routes = [
     title: 'Maintenance windows - TrueNorth Range',
   },
   {
+    // ADR 0021 (usage S3): what each Student costs to run on the range, and the rate cards.
+    path: 'usage-cost',
+    canActivate: [authGuard, onboardingGuard, pageGuard('usageCost')],
+    loadComponent: () =>
+      import('./features/usage-cost/usage-cost.component').then(m => m.UsageCostComponent),
+    title: 'Usage and cost - TrueNorth Range',
+  },
+  {
     // Before 'admin'. How to turn email on, bundled with the app (#318): the email banner links here.
     path: 'admin/help/email',
     canActivate: [authGuard, adminGuard],

@@ -28,8 +28,9 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
+from ..classes.models import Class
 from ..db import get_db
-from ..models import AuditLog, User
+from ..models import AuditLog, Course, Range, User
 from ..rbac import Permission, is_platform_admin, require_permission
 from ..tenancy import tenant_uuid
 from . import report
@@ -161,7 +162,9 @@ def student_cost(
             raise HTTPException(404, "Student not found")
     total = Priced()
     items = []
-    for iv, p in report.student_intervals(db, scope, user_id, start, end, _now()):
+    found = report.student_intervals(db, scope, user_id, start, end, _now())
+    names = _names(db, [iv for iv, _ in found])
+    for iv, p in found:
         total.add(p)
         items.append(
             UsageIntervalOut(
@@ -179,6 +182,9 @@ def student_cost(
                 approximate=iv.approximate,
                 open=iv.open,
                 compute=iv.compute,
+                range_name=names[0].get(iv.range_id),
+                course_name=names[1].get(iv.course_id),
+                class_name=names[2].get(iv.class_id),
                 **_figures(p),
             )
         )
@@ -235,6 +241,20 @@ def create_rate_card(body: RateCardIn, db: Session = Depends(get_db), user: Curr
     db.commit()
     db.refresh(card)
     return card
+
+
+def _names(db: Session, intervals: list) -> tuple[dict, dict, dict]:
+    """The range, course and class names the drill-down shows, by id; a deleted one is absent."""
+
+    def look(model, ids: set) -> dict:
+        ids = {i for i in ids if i is not None}
+        return dict(db.query(model.id, model.name).filter(model.id.in_(ids)).all()) if ids else {}
+
+    return (
+        look(Range, {iv.range_id for iv in intervals}),
+        look(Course, {iv.course_id for iv in intervals}),
+        look(Class, {iv.class_id for iv in intervals}),
+    )
 
 
 def _user_uuid(user: CurrentUser) -> uuid.UUID | None:
