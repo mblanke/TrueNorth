@@ -243,3 +243,15 @@
   Adversarial review: nothing blocking; fixed its two cheap notes (classes up to a year
   ahead now show; latest click wins). Not done: paging, and every request rebuilds the
   tenant's readiness (fine at demo scale).
+- ARC² on the dev stack (Mac, 2026-11-27): Course Studio on (scratch compose override,
+  ARC2_STUDIO_ENABLED + ARC2_RUNS_DIR=build/arc2). Owner wanted no token copy-paste, so the
+  runner runs `ARC2_MODE=local` on Mac Ollama `qwen3.6:35b-a3b` (owner: "qwen can be used"),
+  seatbelt sandbox. Two runner fixes, both needed for any confined job on this Mac:
+  `CLAUDE_CODE_TMPDIR` in the job home (Claude Code 2.1.x scratch under /private/tmp/claude-501
+  was refused: every Bash call EPERM), and `git_dirs`: a worktree job may read the main
+  checkout's `.git` read-only (else "not a git repository"); hardened per adversarial review
+  (needs objects/, never the home, never a dir containing the repo). Verified: run
+  `arc2-phishing-basics` reached the outline gate on Qwen. Not done: later stages untested on
+  Qwen; no in-sandbox probe test pins the two fixes (review note 2). The runner is a
+  background process of this session; restart with
+  `ARC2_RUNS_DIR=$PWD/build/arc2 ARC2_MODE=local ARC2_LOCAL_URL=http://127.0.0.1:11434 ARC2_LOCAL_MODEL=qwen3.6:35b-a3b make arc2-runner`.

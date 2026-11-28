@@ -534,7 +534,10 @@ def job_env(home: Path) -> dict:
     if not any(env.get(k) for k in AUTH_ENV):
         with contextlib.suppress(OSError):
             env["CLAUDE_CODE_OAUTH_TOKEN"] = token_file().read_text().strip()
+    # CLAUDE_CODE_TMPDIR: Claude Code keeps its Bash scratch under /private/tmp/claude-<uid>
+    # by default, which the sandbox refuses; every shell command then fails with EPERM.
     env.update(HOME=str(home), CLAUDE_CONFIG_DIR=str(home / ".claude"), TMPDIR=str(home / "tmp"),
+               CLAUDE_CODE_TMPDIR=str(home / "tmp"),
                XDG_CONFIG_HOME=str(home / ".config"), XDG_CACHE_HOME=str(home / ".cache"),
                PYTHONPATH="tools", PYTHONDONTWRITEBYTECODE="1")
     return env
@@ -544,6 +547,39 @@ def _claude_install(claude: str) -> tuple[Path, ...]:
     found = shutil.which(claude) or claude
     paths = {Path(found).parent, Path(os.path.realpath(found)).parent}
     return tuple(sorted(paths))
+
+
+def git_dirs(repo: Path, home: Path | None = None) -> tuple[Path, ...]:
+    """The git data a job must read when ``repo`` is a linked worktree: its ``.git`` is a
+    file naming a gitdir inside the main checkout's ``.git``, outside the readable repo, so
+    every git command in the job would fail. Read-only, like the repo; () for a plain
+    checkout, whose ``.git`` is already inside it.
+
+    Only a real git directory is opened up: one with ``objects/``, holding the gitdir, and
+    neither containing the repo (a bare repo with nested worktrees would expose sibling
+    checkouts and their runs) nor the runner's home (a stray ``commondir`` or ``gitdir:``
+    would expose ~/.ssh and the token). Anything else gives (): git fails in the job, and
+    nothing more becomes readable. Jobs cannot write these files; only the operator can."""
+    dotgit = Path(repo) / ".git"
+    if not dotgit.is_file():
+        return ()
+    home = (home or Path.home()).resolve()
+    with contextlib.suppress(OSError):
+        line = dotgit.read_text().strip()
+        if not line.startswith("gitdir:"):
+            return ()
+        gitdir = (Path(repo) / line.removeprefix("gitdir:").strip()).resolve()
+        common = gitdir
+        with contextlib.suppress(OSError):
+            common = (gitdir / (gitdir / "commondir").read_text().strip()).resolve()
+        root = Path(repo).resolve()
+        if common.is_relative_to(root):
+            return ()  # already readable as part of the repo
+        if (not (common / "objects").is_dir() or not gitdir.is_relative_to(common)
+                or root.is_relative_to(common) or home.is_relative_to(common)):
+            return ()
+        return (common,)
+    return ()
 
 
 def _local_ports(models: ModelConfig | LocalModel | None) -> tuple[int, ...]:
@@ -598,7 +634,7 @@ def run_job(record: dict, path: Path, claude: str, timeout: int = DEFAULT_TIMEOU
     jail = Jail(
         repo=REPO_ROOT, runs=runs, home=Path.home(),
         writable=tuple(p for p in (runs / record["slug"], home) if p is not None),
-        readable=_claude_install(claude), local_ports=models.local_ports(),
+        readable=(*_claude_install(claude), *git_dirs(REPO_ROOT)), local_ports=models.local_ports(),
         egress_port=egress.port if egress and not isinstance(confinement, Unconfined) else None,
         bridges=tuple(getattr(egress, "bridges", ())) if egress else (),
     )
@@ -1028,7 +1064,7 @@ def self_test(runs: Path, claude: str, timeout: int = 120) -> int:
                 env.update(egress.env(), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1")
         jail = Jail(
             repo=REPO_ROOT, runs=runs, home=Path.home(), writable=(home,) if home else (),
-            readable=_claude_install(claude), local_ports=models.local_ports(),
+            readable=(*_claude_install(claude), *git_dirs(REPO_ROOT)), local_ports=models.local_ports(),
             egress_port=egress.port if egress else None,
             bridges=tuple(egress.bridges) if egress else (),
         )

@@ -19,7 +19,9 @@ and other processes are denied where they matter; the job gets only what it need
   location a later job or the operator would load (``~/.claude``, ``~/.gitconfig``,
   shell profiles, launch agents, shared temp dirs).
 * **Reads**: nothing under the runner account's home except the repository, the
-  ``claude`` installation, the job's run and the job's home. That excludes other runs,
+  ``claude`` installation, the job's run and the job's home, plus, when the repository is
+  a linked worktree, the main checkout's ``.git`` (read-only; ``runner.git_dirs``), without
+  which git fails in the job. That excludes other runs,
   ``_studio``, ``_queue``, ``_jobs``, other jobs' Claude sessions, ``~/.ssh`` and
   ``~/.docker``. Inside the repository, ``.env*`` files (except the tracked
   ``.env.example`` templates, which hold no secrets) and any ``build/arc2/`` or
@@ -74,7 +76,7 @@ class Jail:
     runs: Path  # the runs root: unreadable and unwritable except ``writable`` below
     home: Path  # the runner account's home: unreadable except what is listed
     writable: tuple[Path, ...]  # read-write subtrees (the job's run, its home)
-    readable: tuple[Path, ...] = ()  # extra read-only subtrees (the claude installation)
+    readable: tuple[Path, ...] = ()  # extra read-only subtrees (the claude installation, a worktree's main .git)
     local_ports: tuple[int, ...] = ()  # localhost ports the job may connect to
     # When set, the only way out: every other outbound IP connection is denied and the
     # job reaches the internet through this 127.0.0.1 proxy (arc2/egress.py).

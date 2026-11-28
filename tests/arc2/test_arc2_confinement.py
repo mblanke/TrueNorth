@@ -373,6 +373,9 @@ def test_the_job_environment_is_an_allow_list(tmp_path, monkeypatch):
     assert "DATABASE_URL" not in env and "SOME_RUNNER_TOKEN" not in env
     assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "the-runner-token"
     assert env["HOME"] == str(tmp_path / "home") and env["CLAUDE_CONFIG_DIR"] == str(tmp_path / "home" / ".claude")
+    # Claude Code's own scratch (its Bash cwd files) stays in the job's home, which the
+    # sandbox lets it write; its default under /private/tmp/claude-<uid> is refused.
+    assert env["CLAUDE_CODE_TMPDIR"] == env["TMPDIR"] == str(tmp_path / "home" / "tmp")
 
 
 def test_the_engine_ignores_user_settings_and_may_edit_only_its_own_run():
@@ -451,3 +454,47 @@ def test_the_runner_keeps_only_its_own_settings_and_forwarded_names():
         }
     )
     assert env == {"PATH": "/bin", "ARC2_CONFINE": "auto", "ARC2_JOB_ENV": "FOO", "FOO": "1", "ARC2_RUNNER_CLEAN": "1"}
+
+
+def test_a_worktree_job_may_read_the_main_git_dir_and_a_plain_checkout_needs_nothing(tmp_path):
+    # A worktree's .git is a file pointing into the main checkout's .git, outside the repo
+    # the job may read; without it every git command in the job says "not a git repository".
+    home = tmp_path / "home"
+    main = home / "main"
+    (main / ".git" / "objects").mkdir(parents=True)
+    (main / ".git" / "worktrees" / "wt").mkdir(parents=True)
+    (main / ".git" / "worktrees" / "wt" / "commondir").write_text("../..\n")
+    wt = main / ".claude" / "worktrees" / "wt"
+    wt.mkdir(parents=True)
+    (wt / ".git").write_text(f"gitdir: {main / '.git' / 'worktrees' / 'wt'}\n")
+    assert runner.git_dirs(wt, home) == ((main / ".git").resolve(),)
+    assert runner.git_dirs(main, home) == ()  # .git is a directory inside the repo: already readable
+    (wt / ".git").write_text("not a gitdir line\n")
+    assert runner.git_dirs(wt, home) == ()
+
+
+def test_a_stray_gitdir_never_opens_up_the_home_or_sibling_checkouts(tmp_path):
+    home = tmp_path / "home"
+    (home / "main" / ".git" / "objects").mkdir(parents=True)
+    wt = home / "main" / ".claude" / "worktrees" / "wt"
+    wt.mkdir(parents=True)
+    gitdir = home / "main" / ".git" / "worktrees" / "wt"
+    gitdir.mkdir(parents=True)
+    (wt / ".git").write_text(f"gitdir: {gitdir}\n")
+    (gitdir / "commondir").write_text("../../../..\n")  # resolves to the home itself
+    (home / "objects").mkdir()  # even if it looks like a git dir
+    assert runner.git_dirs(wt, home) == ()
+    (wt / ".git").write_text(f"gitdir: {home}\n")  # a hand-edited gitdir: the home
+    assert runner.git_dirs(wt, home) == ()
+    (gitdir / "commondir").write_text("..\n")  # not a git dir: no objects/
+    (wt / ".git").write_text(f"gitdir: {gitdir}\n")
+    assert runner.git_dirs(wt, home) == ()
+    # A bare repo with the worktree nested inside it: the whole thing would be exposed.
+    bare = tmp_path / "proj.git"
+    (bare / "objects").mkdir(parents=True)
+    (bare / "worktrees" / "wt").mkdir(parents=True)
+    (bare / "worktrees" / "wt" / "commondir").write_text("../..\n")
+    nested = bare / "wt"
+    nested.mkdir()
+    (nested / ".git").write_text(f"gitdir: {bare / 'worktrees' / 'wt'}\n")
+    assert runner.git_dirs(nested, home) == ()
