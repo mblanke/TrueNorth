@@ -361,12 +361,6 @@ def test_f5_a_demoted_assistant_no_longer_sees_the_class_in_the_list(client, wor
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: Admission uses the UTC calendar day for "
-    "the class's last day while the rest of the area uses "
-    "the site zone (classes/onboarding.py:100)",
-)
 def test_f6_admission_keeps_the_site_day_not_the_utc_day(client, world, db_session, sign_in, monkeypatch):
     """classes/onboarding.py:100 — Admission uses the UTC calendar day for the last day.
 

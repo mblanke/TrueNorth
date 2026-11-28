@@ -217,12 +217,6 @@ def test_companion_f5_a_demoted_observer_no_longer_sees_the_class_in_the_list(cl
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: Admission uses the UTC calendar day for "
-    "the class's last day while the rest of the area uses "
-    "the site zone (classes/onboarding.py:100) — companion",
-)
 def test_companion_f6_sign_in_on_the_last_site_day_admits_only_the_class_still_running(
     client,
     world,
@@ -373,3 +367,30 @@ def test_current_staff_still_see_their_class(client, world):
         act_as(world[who])
         assert world["class"]["id"] in [c["id"] for c in client.get("/classes").json()]
         assert world["class"]["id"] in [c["id"] for c in client.get("/classes/mine").json()]
+
+
+# ── 6. Site day: what the fix must still refuse ────────────────────────────
+
+
+def test_an_eastern_site_does_not_admit_the_day_after_the_class_ended(client, world, db_session, sign_in, monkeypatch):
+    """Guard for the onboarding.py fix, the other side of the date line: in Tokyo the class
+    ended yesterday while UTC is still on its last day. The site's day decides: no admission."""
+    from app.classes import onboarding
+
+    monkeypatch.setenv("SITE_TIMEZONE", "Asia/Tokyo")
+
+    # 2026-05-31 20:00 UTC = 2026-06-01 05:00 in Tokyo: the morning after the class's last day.
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # noqa: A003 - the datetime API
+            return datetime(2026, 5, 31, 20, 0, tzinfo=UTC)
+
+    monkeypatch.setattr(onboarding, "datetime", FrozenDatetime)
+    cls = db_session.get(Class, uuid.UUID(world["class"]["id"]))
+    cls.start_date, cls.end_date = date(2026, 5, 27), date(2026, 5, 31)
+    db_session.flush()
+    _on_roll_call(client, world, "joe.bloggs@corp.test")
+    assert sign_in(_identity())["status"] != "registered"
+    db_session.expire_all()
+    entry = db_session.query(RollCallEntry).filter(RollCallEntry.email == "joe.bloggs@corp.test").one()
+    assert entry.status == "invited"
