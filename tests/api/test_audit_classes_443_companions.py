@@ -20,7 +20,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from _shared import act_as, real_user
-from app.classes import service as class_service
+from app.classes import access as class_access
 from app.classes.models import Class, ClassStatus, RollCallEntry
 from app.models import UserRole
 from app.scheduler.models import ScheduledEvent
@@ -81,11 +81,6 @@ def test_companion_f1_redating_by_one_day_already_reaches_past_the_approved_plan
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: Cancel racing Close-out overwrites a "
-    "closed class to cancelled (classes/router.py:384) — companion",
-)
 def test_companion_f2_the_leads_cancel_may_not_overwrite_a_class_closed_concurrently(
     client,
     world,
@@ -93,21 +88,44 @@ def test_companion_f2_the_leads_cancel_may_not_overwrite_a_class_closed_concurre
     monkeypatch,
 ):
     cid = uuid.UUID(world["class"]["id"])
-    real_audit = class_service.audit
+    real_require_editor = class_access.require_editor
 
-    def close_lands_while_cancel_is_in_flight(db, *args, **kwargs):
-        db.query(Class).filter(Class.id == cid).update(
+    def close_lands_while_cancel_is_in_flight(role):
+        db_session.query(Class).filter(Class.id == cid).update(
             {Class.status: ClassStatus.closed.value}, synchronize_session=False
         )
-        return real_audit(db, *args, **kwargs)
+        return real_require_editor(role)
 
-    monkeypatch.setattr(class_service, "audit", close_lands_while_cancel_is_in_flight)
+    monkeypatch.setattr(class_access, "require_editor", close_lands_while_cancel_is_in_flight)
     act_as(world["lead"])
     client.delete(f"/classes/{cid}")
     db_session.expire_all()
     assert db_session.get(Class, cid).status == ClassStatus.closed.value, (
         "a lead's cancel that raced the close-out must not overwrite closed with cancelled"
     )
+
+
+@pytest.mark.audit443
+def test_companion_f2_an_edit_may_not_land_on_a_class_closed_concurrently(client, world, db_session, monkeypatch):
+    """The finding's other half: update_class had the same stale "open" check, then wrote
+    the name, dates, lead and staff onto a class that had closed in between. The same
+    replayed close; the edit is refused and the closed class keeps its name."""
+    cid = uuid.UUID(world["class"]["id"])
+    real_require_editor = class_access.require_editor
+
+    def close_lands_while_edit_is_in_flight(role):
+        db_session.query(Class).filter(Class.id == cid).update(
+            {Class.status: ClassStatus.closed.value}, synchronize_session=False
+        )
+        return real_require_editor(role)
+
+    monkeypatch.setattr(class_access, "require_editor", close_lands_while_edit_is_in_flight)
+    act_as(world["lead"])
+    r = client.put(f"/classes/{cid}", json=_class_body(world, name="Renamed after close"))
+    assert r.status_code == 409, r.text
+    db_session.expire_all()
+    closed = db_session.get(Class, cid)
+    assert (closed.status, closed.name) == (ClassStatus.closed.value, world["class"]["name"])
 
 
 # ── 3. Reject racing Approve: through the API route ───────────────────────

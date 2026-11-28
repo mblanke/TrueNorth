@@ -47,6 +47,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from _shared import act_as, real_tenant, real_user
+from app.classes import access as class_access
 from app.classes import service as class_service
 from app.classes import sessions as class_sessions
 from app.classes.models import Class, ClassStatus, RollCallEntry, RollCallSettings
@@ -224,10 +225,6 @@ def test_f1_redating_an_approved_class_may_not_stretch_its_hold(client, world):
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: Cancel racing Close-out overwrites a closed class to cancelled (classes/router.py:384)",
-)
 def test_f2_cancel_may_not_overwrite_a_class_closed_concurrently(client, world, db_session, monkeypatch):
     """classes/router.py:384 — Cancel racing Close-out overwrites a closed class.
 
@@ -235,25 +232,25 @@ def test_f2_cancel_may_not_overwrite_a_class_closed_concurrently(client, world, 
     locks the row FOR UPDATE and commits ``closed`` in between; cancel's unconditional ORM
     UPDATE then lands after it and flips closed → cancelled — results kept, class hidden,
     unrecoverable. Replayed here by applying the concurrent close's committed write behind
-    the ORM's back while the cancel request is in flight (the hook ``service.audit`` runs
-    after cancel's stale read, before its commit). Correct behaviour: the class stays
-    closed; the cancel must not overwrite it.
+    the ORM's back while the cancel request is in flight: the hook ``access.require_editor``
+    runs after cancel's stale read of the class and before anything it does next. Correct
+    behaviour: the class stays closed; the cancel must not overwrite it.
 
-    Note for the fixer: this replay certifies a compare-and-set-style fix (as
-    approve_addition's, service.py:450) — a hook that fires only after cancel's reads can
-    not let a row-lock-at-read or re-read fix pass here, though both are correct in
-    production; rework this hook if that is the fix chosen.
+    The fix (router._locked) locks the class row and reads it again, as close-out does, so
+    the replayed close is seen. The hook fires before that re-read; one placed later (in
+    ``service.audit``, as first written) would land after the fix's check and prove
+    nothing. Removing the re-read turns this test red.
     """
     cid = uuid.UUID(world["class"]["id"])
-    real_audit = class_service.audit
+    real_require_editor = class_access.require_editor
 
-    def close_lands_while_cancel_is_in_flight(db, *args, **kwargs):
-        db.query(Class).filter(Class.id == cid).update(
+    def close_lands_while_cancel_is_in_flight(role):
+        db_session.query(Class).filter(Class.id == cid).update(
             {Class.status: ClassStatus.closed.value}, synchronize_session=False
         )
-        return real_audit(db, *args, **kwargs)
+        return real_require_editor(role)
 
-    monkeypatch.setattr(class_service, "audit", close_lands_while_cancel_is_in_flight)
+    monkeypatch.setattr(class_access, "require_editor", close_lands_while_cancel_is_in_flight)
     act_as(world["admin"])
     client.delete(f"/classes/{cid}")
     db_session.expire_all()
