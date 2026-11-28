@@ -25,7 +25,6 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import case, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -139,13 +138,13 @@ def import_nice_framework(
         (
             "SP-RSK-001",
             "Authorizing Official",
-            "Analyze",
+            "Securely Provision",
             "Senior official with authority to formally assume responsibility for operating a system",
         ),
         (
             "SP-RSK-002",
             "Security Control Assessor",
-            "Analyze",
+            "Securely Provision",
             "Conducts independent assessments of security controls and privacy controls",
         ),
         (
@@ -227,6 +226,31 @@ def import_nice_framework(
             "Protect and Defend",
             "Performs vulnerability assessments and recommends mitigations",
         ),
+        # Operate and Maintain (SP 800-181r1 work-role ids).
+        (
+            "OM-ADM-001",
+            "System Administrator",
+            "Operate and Maintain",
+            "Installs, configures, troubleshoots and maintains server and system configurations",
+        ),
+        (
+            "OM-NET-001",
+            "Network Operations Specialist",
+            "Operate and Maintain",
+            "Plans, implements and operates network services and systems",
+        ),
+        (
+            "OM-ANA-001",
+            "Systems Security Analyst",
+            "Operate and Maintain",
+            "Analyzes and develops the integration, testing, operations and maintenance of systems security",
+        ),
+        (
+            "OM-STS-001",
+            "Technical Support Specialist",
+            "Operate and Maintain",
+            "Provides technical support to users who need help with hardware and software",
+        ),
         ("SE-DEV-001", "Secure Software Assessor", "Securely Provision", "Analyzes security of software applications"),
         ("SE-ARC-001", "Security Architect", "Securely Provision", "Develops system security architecture and designs"),
     ]
@@ -270,7 +294,7 @@ def get_competency_profile(
 ):
     """Get aggregated competency profile for a user."""
     authorize_record_access(db, user, user_id, permission=Permission.LEARNING_RECORD_READ)
-    assertions =db.query(CompetencyAssertion).filter(CompetencyAssertion.user_id == user_id).all()
+    assertions = db.query(CompetencyAssertion).filter(CompetencyAssertion.user_id == user_id).all()
 
     by_framework: dict[str, int] = {}
     by_proficiency: dict[str, int] = {}
@@ -424,84 +448,99 @@ def add_certification(
 # ══════════════════════════════════════════════════════════════════════════
 
 
+# The seven NICE (SP 800-181r1) categories: the heatmap's rows.
+NICE_CATEGORIES = (
+    "Analyze",
+    "Collect & Operate",
+    "Investigate",
+    "Operate & Maintain",
+    "Oversee & Govern",
+    "Protect & Defend",
+    "Securely Provision",
+)
+# A NICE work role's code starts with its category's abbreviation (SP 800-181r1):
+# AN-ASA-001 is Analyze, OM-ADM-001 Operate & Maintain. The code decides, because the stored
+# category is not reliable: the content crosswalk stores "work_role" / "task", and the NICE
+# importer spelt categories "Collect and Operate" and once filed SP-RSK-* under Analyze.
+_NICE_PREFIX = {
+    "AN": "Analyze",
+    "CO": "Collect & Operate",
+    "IN": "Investigate",
+    "OM": "Operate & Maintain",
+    "OV": "Oversee & Govern",
+    "PR": "Protect & Defend",
+    "SP": "Securely Provision",
+}
+PROFICIENCY_SCORE = {"novice": 10, "beginner": 30, "intermediate": 50, "advanced": 75, "expert": 95}
+NO_UNIT = "No unit"
+
+
+def nice_category(code: str | None, stored: str | None) -> str | None:
+    """The NICE category of a NICE competency: from its code's prefix ("AN-..."), else its
+    stored category ("and" read as "&"), else None (a task, or anything uncategorised)."""
+    code = (code or "").strip().upper()
+    if code[2:3] == "-" and code[:2] in _NICE_PREFIX:
+        return _NICE_PREFIX[code[:2]]
+    spelt = (stored or "").strip().replace(" and ", " & ")
+    return spelt if spelt in NICE_CATEGORIES else None
+
+
 @router.get("/heatmap")
 def get_competency_heatmap(
-    view: str = Query("team"),
+    view: str = Query("team", pattern="^(team|individual)$"),
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Return competency heatmap data for ECharts visualization.
+    """Average NICE proficiency by category (rows) and formation (columns), for ECharts.
 
-    Returns NICE categories vs work roles with average proficiency scores.
+    - *team*: the caller's tenant, one column per unit (``users.unit``, the free-text
+      formation; case and surrounding spaces ignored, as on the readiness page). People with
+      no unit are under "No unit", last. Columns run from the most people assessed to the
+      fewest.
+    - *individual*: the caller's own assertions, one column ("You").
+
+    ``values`` holds ``[column, row, score, people]`` for each cell with at least one
+    assertion: the mean of its assertions' scores (novice 10, beginner 30, intermediate 50,
+    advanced 75, expert 95) and how many people they come from. A cell with no assertion is
+    left out, never shown as 0. A competency's row comes from ``nice_category``.
     """
-    nice_categories = [
-        "Analyze",
-        "Collect & Operate",
-        "Investigate",
-        "Operate & Maintain",
-        "Oversee & Govern",
-        "Protect & Defend",
-        "Securely Provision",
-    ]
-
-    # Get distinct work roles from competencies
-    # The enum member, not "NICE": the column stores "nice", so the literal never matched
-    # and the heatmap always fell back to the placeholder roles with zero scores.
-    work_roles_rows = (
-        db.query(Competency.category).filter(Competency.framework == CompetencyFramework.nice).distinct().all()
+    q = (
+        db.query(Competency.code, Competency.category, User.unit, User.id, CompetencyAssertion.proficiency)
+        .join(Competency, CompetencyAssertion.competency_id == Competency.id)
+        .join(User, CompetencyAssertion.user_id == User.id)
+        # "team" means the caller's tenant, not every tenant on the platform.
+        .filter(Competency.framework == CompetencyFramework.nice, User.tenant_id == tenant_uuid(user))
     )
-    work_roles = (
-        [r[0] for r in work_roles_rows]
-        if work_roles_rows
-        else [
-            "SOC Analyst",
-            "Incident Responder",
-            "Threat Hunter",
-            "Vulnerability Analyst",
-            "Pen Tester",
-            "Forensic Analyst",
-        ]
+    if view == "individual":
+        q = q.filter(CompetencyAssertion.user_id == uuid.UUID(user.id))
+
+    cells: dict[tuple[str, str], list] = {}  # (column key, category) -> [score sum, assertions, people]
+    shown: dict[str, str] = {}  # column key -> its label, one spelling per unit
+    people: dict[str, set] = {}  # column key -> who is assessed in it
+    for code, stored, unit, uid, proficiency in q.all():
+        category = nice_category(code, stored)
+        level = getattr(proficiency, "value", proficiency)
+        if category is None or level not in PROFICIENCY_SCORE:
+            continue
+        label = "You" if view == "individual" else ((unit or "").strip() or NO_UNIT)
+        key = label.lower()
+        if key not in shown or label < shown[key]:
+            shown[key] = label
+        cell = cells.setdefault((key, category), [0, 0, set()])
+        cell[0] += PROFICIENCY_SCORE[level]
+        cell[1] += 1
+        cell[2].add(uid)
+        people.setdefault(key, set()).add(uid)
+
+    keys = sorted(people, key=lambda k: (k == NO_UNIT.lower(), -len(people[k]), k))
+    col = {k: i for i, k in enumerate(keys)}
+    values = sorted(
+        [col[key], NICE_CATEGORIES.index(category), round(total / n), len(who)]
+        for (key, category), (total, n, who) in cells.items()
     )
-
-    _proficiency_score = {
-        "novice": 10,
-        "beginner": 30,
-        "intermediate": 50,
-        "advanced": 75,
-        "expert": 95,
-    }
-
-    # Build heatmap values: aggregate assertions per category × role
-    values = []
-    for x_idx, _role in enumerate(work_roles):
-        for y_idx, category in enumerate(nice_categories):
-            score_expr = case(
-                (CompetencyAssertion.proficiency == "novice", 10),
-                (CompetencyAssertion.proficiency == "beginner", 30),
-                (CompetencyAssertion.proficiency == "intermediate", 50),
-                (CompetencyAssertion.proficiency == "advanced", 75),
-                (CompetencyAssertion.proficiency == "expert", 95),
-                else_=0,
-            )
-            avg_query = (
-                db.query(func.avg(score_expr))
-                .join(Competency, CompetencyAssertion.competency_id == Competency.id)
-                # "team" means the caller's tenant, not every tenant on the platform.
-                .join(User, CompetencyAssertion.user_id == User.id)
-                .filter(
-                    Competency.category == category,
-                    Competency.framework == CompetencyFramework.nice,
-                    User.tenant_id == tenant_uuid(user),
-                )
-            )
-            if view == "individual":
-                avg_query = avg_query.filter(CompetencyAssertion.user_id == uuid.UUID(user.id))
-            result = avg_query.scalar()
-            score = int(result) if result else 0
-            values.append([x_idx, y_idx, score])
-
     return {
-        "categories": nice_categories,
-        "work_roles": work_roles,
+        "categories": list(NICE_CATEGORIES),
+        "columns": [shown[k] for k in keys],
+        "column_kind": "individual" if view == "individual" else "unit",
         "values": values,
     }

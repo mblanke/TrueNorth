@@ -93,6 +93,7 @@ from ..auth import CurrentUser
 from ..enrollment import ensure_enrollment
 from ..models import AuditLog, User, UserRole
 from ..scheduler import service as scheduler
+from ..scheduler.capacity import site_timezone
 from . import service, sessions
 from .models import Class, ClassStaff, ClassStatus, RollCallEntry, RollCallStatus, StaffRole
 
@@ -485,7 +486,9 @@ def forfeited_class_names(
         crit.append(RollCallEntry.user_id == user_id)
     if not crit:
         return []
-    today = _now().date()
+    # The site's day, as admission (onboarding.matching_entries): on a class's last evening
+    # at a western site the UTC date has already moved on (audit #443).
+    today = _now().astimezone(site_timezone()).date()
     rows = (
         db.query(Class.name)
         .join(RollCallEntry, RollCallEntry.class_id == Class.id)

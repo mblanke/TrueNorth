@@ -266,7 +266,7 @@ Test the key from the **TrueNorth VM** before scheduling anything (`--dry-run` w
 nothing); an error here names the problem — key refused, wrong `rrsync` path, wrong address:
 
 ```bash
-rsync --dry-run -a -e "ssh -i /root/.ssh/tn-backup -o BatchMode=yes" \
+sudo rsync --dry-run -a -e "ssh -i /root/.ssh/tn-backup -o BatchMode=yes" \
   /etc/hostname tnbackup@<backup-vm-ip>:probe-test/
 ```
 
@@ -539,7 +539,8 @@ Golden images then lists the catalogue, every image `planned`.
 Then, **per template**, on the TrueNorth VM with govc pointed at this site's vCenter
 (02 §3.1). The host names in the block: `<range-host-N>` is a range host's short name as
 vCenter knows it — the last element of a line from
-`govc find '/<datacenter>/host' -type h` (for example `…/Range/rh01` → `rh01`). The same
+`govc find '/<datacenter>/host' -type h` (for example `…/Range/rh01` → `rh01`; where vCenter
+lists a host by FQDN, the part before the first dot, as the template kit does). The same
 short names go into `RANGE_HOSTS` and, through `RANGE_DATASTORE_FMT` (`%s-local`), into the
 `<range-host-N>-local` datastores guide 01 §2.2 has you name. `-host=` wants the name
 vCenter lists that host under — the same `govc find` line shows it; it may be the short

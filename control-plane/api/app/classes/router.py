@@ -194,6 +194,16 @@ def _editable(db: Session, class_id: uuid.UUID, user: CurrentUser) -> Class:
     return cls
 
 
+def _locked(db: Session, cls: Class) -> Class:
+    """Lock the class row (PostgreSQL) and read it again, as close-out does: a close or a
+    cancel committed since ``cls`` was loaded is seen, and none lands before this commits.
+    Without it a stale "open" let a cancel or an edit write over a class that had just
+    closed (audit #443)."""
+    db.query(Class.id).filter(Class.id == cls.id, Class.tenant_id == cls.tenant_id).with_for_update().first()
+    db.refresh(cls)
+    return cls
+
+
 # ── Classes ────────────────────────────────────────────────────────────────
 
 
@@ -348,7 +358,7 @@ def update_class(
     user: CurrentUser = Depends(_CHANGE),
 ) -> ClassOut:
     """Its lead or an admin. Naming another lead hands the class over."""
-    cls = _editable(db, class_id, user)
+    cls = _locked(db, _editable(db, class_id, user))
     if cls.status != ClassStatus.open.value:
         raise HTTPException(409, f"A {cls.status} class cannot be changed")
     # A class's capacity hold runs to its last day (holds.py), so a later end_date silently
@@ -389,7 +399,7 @@ def cancel_class(
     sessions that have not started (drafts, awaiting approval, approved) are cancelled with
     it, and the approved ones' invites are withdrawn; one under way is left to its
     instructor."""
-    cls = _editable(db, class_id, user)
+    cls = _locked(db, _editable(db, class_id, user))
     if cls.status == ClassStatus.closed.value:
         raise HTTPException(409, "A closed class is read-only; an admin reopens it first")
     if cls.status != ClassStatus.cancelled.value:

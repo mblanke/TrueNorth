@@ -574,6 +574,57 @@ done
 
 Both importers are idempotent, so re-running is safe.
 
+### A demo cohort (150 Students)
+
+`make seed-demo-cohort`, after `make import-content`, loads a demo cohort into the dev
+stack: 150 fictional Students (Cyber Command 120; Fleet Cyber East, Fleet Cyber West and
+Cyber Mission Assurance 10 each, the formation in `users.unit`) at varied proficiency
+(novice to expert; the fleet and mission-assurance Students skew more experienced), NICE
+competency assertions for each, and six classes of 25 on ALJQ courses: three closed with
+attendance and pass / fail / incomplete results, two in progress, one scheduled.
+
+- **No logins, no passwords.** The Students are database rows only; nobody signs in as
+  them. Browse as the dev admin with the no-login dev build of the web app, which mirrors
+  the API's `AUTH_DISABLED=true` (the `web` container on :4200 is the production build and
+  asks for a Keycloak sign-in):
+
+  ```bash
+  cd control-plane/web && npm ci && npx ng serve --port 4300 --proxy-config proxy.conf.json
+  ```
+
+  Then open http://localhost:4300: Readiness (filter by unit), Learning > Competency >
+  Heatmap (NICE category by formation), Review > Students (every Student's progress; select
+  one for their record), Classes, Admin > Users.
+- **Dev stack only.** It runs in the api image through the in-process harness and refuses
+  unless `TN_ENV` is development and `AUTH_DISABLED=true`.
+- **Two backdated steps**, so a class history can exist: past sessions are approved as of
+  an hour before they start, and a started class's roll call is dated a week before it.
+  Everything else goes through the API's routes. Details in `scripts/seed_demo_cohort.py`.
+- **Idempotent.** Re-running makes nothing new. A cancelled open class is built again on
+  the next run; a closed class cannot be cancelled. The plan itself
+  (`scripts/demo_cohort_roster.py`) is deterministic by `--seed`; `--dry-run` prints it.
+- **Seed shortly before the demo.** The in-progress classes' remaining sessions are
+  recorded by the attendance clock as they pass, all absent, since nobody opens a range.
+- **Full rebuild** (dev only; drops the dev app database):
+
+  ```bash
+  docker compose -f infra/platform/docker/compose.dev.yml stop api worker-provision worker-scenario worker-telemetry flower
+  docker exec truenorth-postgres-1 psql -U forge -d postgres -c "DROP DATABASE forge WITH (FORCE)" -c "CREATE DATABASE forge OWNER forge"
+  docker compose -f infra/platform/docker/compose.dev.yml restart pgbouncer api worker-provision worker-scenario worker-telemetry flower
+  make import-content && make seed-demo-cohort
+  ```
+
+- **The dev rate limit.** The API allows 100 requests a minute per client, which
+  `make import-content` exceeds on a fresh database. For the import, restart the api with
+  the limiter off, from an override file outside the repo:
+
+  ```bash
+  printf 'services:\n  api:\n    environment:\n      RATE_LIMIT_ENABLED: "false"\n' > /tmp/no-ratelimit.yml
+  docker compose -f infra/platform/docker/compose.dev.yml -f /tmp/no-ratelimit.yml up -d --no-deps api
+  ```
+
+  A plain `make dev` puts it back. The seed itself runs in-process and is not limited.
+
 ### Putting content on the developmental path
 
 The developmental path — what `GET /api/v1/qsp/curriculum-map` renders — is built from

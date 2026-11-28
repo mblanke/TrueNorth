@@ -1898,9 +1898,18 @@ export interface paths {
         };
         /**
          * Get Competency Heatmap
-         * @description Return competency heatmap data for ECharts visualization.
+         * @description Average NICE proficiency by category (rows) and formation (columns), for ECharts.
          *
-         *     Returns NICE categories vs work roles with average proficiency scores.
+         *     - *team*: the caller's tenant, one column per unit (``users.unit``, the free-text
+         *       formation; case and surrounding spaces ignored, as on the readiness page). People with
+         *       no unit are under "No unit", last. Columns run from the most people assessed to the
+         *       fewest.
+         *     - *individual*: the caller's own assertions, one column ("You").
+         *
+         *     ``values`` holds ``[column, row, score, people]`` for each cell with at least one
+         *     assertion: the mean of its assertions' scores (novice 10, beginner 30, intermediate 50,
+         *     advanced 75, expert 95) and how many people they come from. A cell with no assertion is
+         *     left out, never shown as 0. A competency's row comes from ``nice_category``.
          */
         get: operations["get_competency_heatmap_competency_heatmap_get"];
         put?: never;
@@ -9058,6 +9067,47 @@ export interface paths {
         post?: never;
         /** Delete Volume */
         delete: operations["delete_volume_storage_volumes__volume_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/students": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every Student of the organisation with their progress
+         * @description The caller's own tenant only. Results are pass, fail or incomplete; never a score.
+         *     **readiness:read + learning_record:read**
+         */
+        get: operations["listStudentProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/students/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One Student's record: competency by NICE category and every class
+         * @description 404 unless a Student of the caller's own tenant.  **readiness:read + learning_record:read**
+         */
+        get: operations["getStudentProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -20564,6 +20614,69 @@ export interface components {
             /** Volume Name */
             volume_name: string;
         };
+        /** StudentClassOut */
+        StudentClassOut: {
+            /** Absent */
+            absent: number;
+            /**
+             * Class Id
+             * Format: uuid
+             */
+            class_id: string;
+            /**
+             * Comment
+             * @description The instructor's comment on the result
+             */
+            comment?: string | null;
+            /** Course Name */
+            course_name: string;
+            /** Decided At */
+            decided_at?: string | null;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Excused */
+            excused: number;
+            /** Name */
+            name: string;
+            /** @description The close-out result; None: not decided yet */
+            outcome?: components["schemas"]["ResultOutcomeOut"] | null;
+            /** Present */
+            present: number;
+            /**
+             * Qualification
+             * @description The NQual the course delivers, if any
+             */
+            qualification?: string | null;
+            /** Qualification Earned */
+            qualification_earned?: string | null;
+            /** Sessions Held */
+            sessions_held: number;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /** Status */
+            status: string;
+        };
+        /** StudentCompetencyOut */
+        StudentCompetencyOut: {
+            /** Assertions */
+            assertions: number;
+            /**
+             * Category
+             * @description A NICE category
+             */
+            category: string;
+            /**
+             * Proficiency
+             * @description Their level in it, from the assertions in that category
+             */
+            proficiency: string;
+        };
         /** StudentCostOut */
         StudentCostOut: {
             /** Intervals */
@@ -20579,6 +20692,138 @@ export interface components {
              */
             period_to: string;
             totals: components["schemas"]["Figures"];
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** StudentListOut */
+        StudentListOut: {
+            /** Students */
+            students: components["schemas"]["StudentRowOut"][];
+            /**
+             * Units
+             * @description Every formation of the organisation's Students, one spelling each
+             */
+            units: string[];
+        };
+        /** StudentRecordOut */
+        StudentRecordOut: {
+            /** Absent */
+            absent: number;
+            /**
+             * Awaiting Result
+             * @description Classes with no result yet
+             */
+            awaiting_result: number;
+            /** Callsign */
+            callsign?: string | null;
+            /**
+             * Class History
+             * @description Newest class first
+             */
+            class_history: components["schemas"]["StudentClassOut"][];
+            /**
+             * Classes
+             * @description Classes they are on (cancelled ones left out)
+             */
+            classes: number;
+            /**
+             * Competencies
+             * @description By NICE category, in the framework's order
+             */
+            competencies: components["schemas"]["StudentCompetencyOut"][];
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /** Excused */
+            excused: number;
+            /** Failed */
+            failed: number;
+            /** Incomplete */
+            incomplete: number;
+            /** Passed */
+            passed: number;
+            /**
+             * Present
+             * @description Sessions recorded present, every class
+             */
+            present: number;
+            /**
+             * Proficiency
+             * @description Overall NICE proficiency level from their competency assertions; None: none recorded
+             */
+            proficiency?: string | null;
+            /**
+             * Qualifications
+             * @description NQuals earned (a pass on a closed class, enrolment completed)
+             */
+            qualifications: string[];
+            /** Rank */
+            rank?: string | null;
+            /**
+             * Unit
+             * @description The formation (users.unit); None when unknown
+             */
+            unit?: string | null;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** StudentRowOut */
+        StudentRowOut: {
+            /** Absent */
+            absent: number;
+            /**
+             * Awaiting Result
+             * @description Classes with no result yet
+             */
+            awaiting_result: number;
+            /** Callsign */
+            callsign?: string | null;
+            /**
+             * Classes
+             * @description Classes they are on (cancelled ones left out)
+             */
+            classes: number;
+            /** Display Name */
+            display_name: string;
+            /** Email */
+            email: string;
+            /** Excused */
+            excused: number;
+            /** Failed */
+            failed: number;
+            /** Incomplete */
+            incomplete: number;
+            /** Passed */
+            passed: number;
+            /**
+             * Present
+             * @description Sessions recorded present, every class
+             */
+            present: number;
+            /**
+             * Proficiency
+             * @description Overall NICE proficiency level from their competency assertions; None: none recorded
+             */
+            proficiency?: string | null;
+            /**
+             * Qualifications
+             * @description NQuals earned (a pass on a closed class, enrolment completed)
+             */
+            qualifications: string[];
+            /** Rank */
+            rank?: string | null;
+            /**
+             * Unit
+             * @description The formation (users.unit); None when unknown
+             */
+            unit?: string | null;
             /**
              * User Id
              * Format: uuid
@@ -38939,6 +39184,71 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listStudentProgress: {
+        parameters: {
+            query?: {
+                /** @description Only this formation (case and spaces ignored) */
+                unit?: string | null;
+                /** @description Search name, email and callsign */
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    getStudentProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudentRecordOut"];
+                };
             };
             /** @description Validation Error */
             422: {

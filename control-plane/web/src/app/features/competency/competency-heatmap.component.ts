@@ -15,6 +15,12 @@ import { tnChartColors } from '../../shared/charts/echarts-theme';
 
 const PROFICIENCY_LEVELS = ['Novice', 'Beginner', 'Intermediate', 'Advanced', 'Expert'];
 
+/** Unit names are free text that people type: never put them into tooltip HTML raw. */
+function escapeHtml(text: string): string {
+  return String(text ?? '').replace(/[&<>"']/g, ch => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] as string));
+}
+
 type HeatmapData = CompetencyHeatmap;
 
 @Component({
@@ -25,8 +31,8 @@ type HeatmapData = CompetencyHeatmap;
       <mat-card-header>
         <mat-card-title>Competency Heatmap</mat-card-title>
         <mat-card-subtitle>
-          NICE Framework proficiency across work roles.
-          Darker cells indicate higher proficiency.
+          Average NICE Framework proficiency by category and formation.
+          Darker cells indicate higher proficiency; empty cells have no assessment.
         </mat-card-subtitle>
       </mat-card-header>
       <mat-card-content>
@@ -34,8 +40,8 @@ type HeatmapData = CompetencyHeatmap;
           <mat-form-field appearance="outline">
             <mat-label>View</mat-label>
             <mat-select [(ngModel)]="viewMode" (selectionChange)="renderChart()">
-              <mat-option value="team">Team Average</mat-option>
-              <mat-option value="individual">Individual</mat-option>
+              <mat-option value="team">By formation</mat-option>
+              <mat-option value="individual">Just me</mat-option>
             </mat-select>
           </mat-form-field>
         </div>
@@ -125,7 +131,7 @@ export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
     // A failed request is an error, never plausible numbers: no sample-data fallback.
     this.dataSub = this.api.getCompetencyHeatmap(this.viewMode).subscribe({
       next: data => {
-        if (!data?.values?.length || !data.work_roles?.length || !data.categories?.length) {
+        if (!data?.values?.length || !data.columns?.length || !data.categories?.length) {
           this.clearChart();
           this.status.set('empty');
           return;
@@ -158,10 +164,12 @@ export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
         textStyle: { color: c.text },
         formatter: (params: any) => {
           const cat = data.categories[params.value[1]];
-          const role = data.work_roles[params.value[0]];
+          const column = data.columns[params.value[0]];
           const score = params.value[2];
+          const people = params.value[3];
           const level = PROFICIENCY_LEVELS[Math.min(Math.floor(score / 20), 4)];
-          return `<b>${role}</b><br/>${cat}<br/>Score: ${score}% (${level})`;
+          const who = data.column_kind === 'unit' && people ? `<br/>${people} assessed` : '';
+          return `<b>${escapeHtml(column)}</b><br/>${escapeHtml(cat)}<br/>Score: ${score} (${level})${who}`;
         },
       },
       grid: {
@@ -169,9 +177,9 @@ export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
       },
       xAxis: {
         type: 'category',
-        data: data.work_roles,
+        data: data.columns,
         splitArea: { show: true },
-        axisLabel: { rotate: 45, fontSize: 11, color: c.textMuted },
+        axisLabel: { rotate: data.columns.length > 4 ? 30 : 0, fontSize: 11, color: c.textMuted, interval: 0 },
         axisLine: { lineStyle: { color: c.border } },
       },
       yAxis: {
@@ -182,6 +190,9 @@ export class CompetencyHeatmapComponent implements AfterViewInit, OnDestroy {
         axisLine: { lineStyle: { color: c.border } },
       },
       visualMap: {
+        // Colour by the score (value[2]), not ECharts' default last dimension: value[3] is
+        // how many people were assessed, which would paint the biggest formation darkest.
+        dimension: 2,
         min: 0,
         max: 100,
         calculable: true,

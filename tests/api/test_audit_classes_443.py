@@ -34,10 +34,10 @@ of the interleaving, without mocking the code under test.
 
 Every test is marked ``audit443`` so the batch is easy to find: ``pytest -m audit443``.
 
-Per the integrator's decision each failing test carries ``xfail(strict=True)`` naming its
-finding, so the suite is green at the base (6 xfailed) while the failure stays the oracle:
-the later fix turns its test into an XPASS, which strict mode surfaces as an error until
-the marker is dropped. Verify an oracle still bites with ``--runxfail``.
+Per the integrator's decision each failing test carried ``xfail(strict=True)`` naming its
+finding, so the suite was green at the base (6 xfailed) while the failure stayed the
+oracle. All six are fixed now (finding 1 by #492, findings 2-6 together) and carry no
+marker: each passes and guards its fix.
 """
 
 from __future__ import annotations
@@ -47,6 +47,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from _shared import act_as, real_tenant, real_user
+from app.classes import access as class_access
 from app.classes import service as class_service
 from app.classes import sessions as class_sessions
 from app.classes.models import Class, ClassStatus, RollCallEntry, RollCallSettings
@@ -224,10 +225,6 @@ def test_f1_redating_an_approved_class_may_not_stretch_its_hold(client, world):
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: Cancel racing Close-out overwrites a closed class to cancelled (classes/router.py:384)",
-)
 def test_f2_cancel_may_not_overwrite_a_class_closed_concurrently(client, world, db_session, monkeypatch):
     """classes/router.py:384 — Cancel racing Close-out overwrites a closed class.
 
@@ -235,25 +232,27 @@ def test_f2_cancel_may_not_overwrite_a_class_closed_concurrently(client, world, 
     locks the row FOR UPDATE and commits ``closed`` in between; cancel's unconditional ORM
     UPDATE then lands after it and flips closed → cancelled — results kept, class hidden,
     unrecoverable. Replayed here by applying the concurrent close's committed write behind
-    the ORM's back while the cancel request is in flight (the hook ``service.audit`` runs
-    after cancel's stale read, before its commit). Correct behaviour: the class stays
-    closed; the cancel must not overwrite it.
+    the ORM's back while the cancel request is in flight: the hook ``access.require_editor``
+    runs after cancel's stale read of the class and before anything it does next. Correct
+    behaviour: the class stays closed; the cancel must not overwrite it.
 
-    Note for the fixer: this replay certifies a compare-and-set-style fix (as
-    approve_addition's, service.py:450) — a hook that fires only after cancel's reads can
-    not let a row-lock-at-read or re-read fix pass here, though both are correct in
-    production; rework this hook if that is the fix chosen.
+    The fix (router._locked) locks the class row and reads it again, as close-out does, so
+    the replayed close is seen. The hook fires before that re-read; one placed later (in
+    ``service.audit``, as first written) would land after the fix's check and prove
+    nothing. Removing the re-read turns this test red. The row lock itself cannot be shown
+    here (SQLite ignores FOR UPDATE); on PostgreSQL it is what keeps a close from landing
+    between the re-read and the commit.
     """
     cid = uuid.UUID(world["class"]["id"])
-    real_audit = class_service.audit
+    real_require_editor = class_access.require_editor
 
-    def close_lands_while_cancel_is_in_flight(db, *args, **kwargs):
-        db.query(Class).filter(Class.id == cid).update(
+    def close_lands_while_cancel_is_in_flight(role):
+        db_session.query(Class).filter(Class.id == cid).update(
             {Class.status: ClassStatus.closed.value}, synchronize_session=False
         )
-        return real_audit(db, *args, **kwargs)
+        return real_require_editor(role)
 
-    monkeypatch.setattr(class_service, "audit", close_lands_while_cancel_is_in_flight)
+    monkeypatch.setattr(class_access, "require_editor", close_lands_while_cancel_is_in_flight)
     act_as(world["admin"])
     client.delete(f"/classes/{cid}")
     db_session.expire_all()
@@ -272,12 +271,6 @@ def seats(monkeypatch):
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: Reject of a pending roll-call addition is "
-    "unguarded: racing an Approve it removes an admitted "
-    "Student without freeing the seat (classes/service.py:476)",
-)
 def test_f3_reject_may_not_remove_a_student_approved_concurrently(client, world, db_session, seats):
     """classes/service.py:476 — Reject of a pending roll-call addition is unguarded.
 
@@ -319,12 +312,6 @@ def test_f3_reject_may_not_remove_a_student_approved_concurrently(client, world,
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: A class's course can be changed after its "
-    "sessions were booked; the sessions keep the old "
-    "course_id (classes/service.py:150)",
-)
 def test_f4_a_booked_class_may_not_switch_course_behind_its_sessions(client, world, db_session):
     """classes/service.py:150 — A class's course changes after its sessions were booked.
 
@@ -354,12 +341,6 @@ def test_f4_a_booked_class_may_not_switch_course_behind_its_sessions(client, wor
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: A former assistant/observer demoted to "
-    "Student keeps the class in GET /classes "
-    "(classes/access.py:35)",
-)
 def test_f5_a_demoted_assistant_no_longer_sees_the_class_in_the_list(client, world):
     """classes/access.py:35 — A former assistant demoted to Student keeps the class.
 
@@ -382,12 +363,6 @@ def test_f5_a_demoted_assistant_no_longer_sees_the_class_in_the_list(client, wor
 
 
 @pytest.mark.audit443
-@pytest.mark.xfail(
-    strict=True,
-    reason="audit #443: Admission uses the UTC calendar day for "
-    "the class's last day while the rest of the area uses "
-    "the site zone (classes/onboarding.py:100)",
-)
 def test_f6_admission_keeps_the_site_day_not_the_utc_day(client, world, db_session, sign_in, monkeypatch):
     """classes/onboarding.py:100 — Admission uses the UTC calendar day for the last day.
 
