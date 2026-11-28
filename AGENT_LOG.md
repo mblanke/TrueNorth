@@ -207,3 +207,20 @@
 - Waiting on the owner: `approvals.yml` (draft, not in the repo); Qwen names still in the
   write-gate allowlist against the no-Chinese-models rule; `journeys` as a required check (#197).
 - Next on site: docs/lab-checks/next-visit-rc23.md, top to bottom.
+
+## 2026-11-28 — closing pass on the docs issues and Taz cards (Mac, from home)
+
+- Re-checked every open docs issue (#387-#416) and Taz card (#433-#478) against main at
+  48da4326. Closed 43 with evidence in a comment; left 26 open, each with a note on what
+  remains.
+- #551 (open, CI green): Taz coverage rounds A to F, 55 test files that were delivered on
+  2026-11-08 and never applied. Closes #459-#461, #463-#465.
+- #553 (open, CI green): guide gaps found by the re-check, and Taz corrections 437-r2 and
+  439-r2. Closes #387, #389, #394, #403, #408, #414, #415.
+- New issue #552: the site CA is not trusted in the API and worker containers, so vSphere
+  TLS verification must stay off.
+- Held for the owner: Taz 453-r2 (corrected UI literal counter) raises the baseline 701 to
+  704 (#476). The four PRs opened by other sessions (#544, #545, #547, #548) are untouched.
+- Kanzo was unreachable from the Mac all session: the board does not reflect any of this.
+  The seven truenorth review cards (#88-#93, #134) are for issues already closed on GitHub.
+- Next: owner's word on #551 and #553; then #410 (guide 01, 8 items), #479 (alerting).

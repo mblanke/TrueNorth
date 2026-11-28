@@ -7,8 +7,8 @@ installer has finished ([02-install-guide.md](02-install-guide.md)) and ends whe
 can run classes. Day-to-day upkeep (backups, upgrades, porting golden images, alerts) is in
 [06-operations-runbook.md](06-operations-runbook.md).
 
-Written for release `v1.2.0-rc17`; the labels, routes and installer variables named below
-were checked against that tag. Words follow
+First written for `v1.2.0-rc17` and revised since; the line above says which release it
+applies to. Words follow
 [GLOSSARY.md](../GLOSSARY.md). UI paths are written as **sidebar section → item → tab or
 card → button**.
 
@@ -410,7 +410,8 @@ filters by it.
   ([04-instructor-guide.md](04-instructor-guide.md)).
 - **Observer consoles** are off by default: observers see live status only. To let observers
   open a class's consoles (read-only), set `tn_class_observer_consoles: true` in the
-  installer inventory and re-run `30-config` (`install/README.md`).
+  installer inventory and re-run the installer (top of this page): it renders the setting
+  and recreates the API, which reads it at start.
 - Approving someone into a **different** tenant is **API only** (`tenant_id` on
   `POST /registration/requests/{id}/approve`, platform administrator).
 
@@ -589,7 +590,7 @@ Every change is audited under your name.
 | Review cycles and themes: no screen | `/content-review/cycles`, `/content-review/themes` |
 | Bulk CSV roster of people who must exist before they sign in: no screen | `POST /users/import-csv` |
 | Approving a request into a different tenant: no screen | `tenant_id` on `POST /registration/requests/{id}/approve` |
-| Observer consoles on class sessions are off until you turn them on | `tn_class_observer_consoles: true` in the installer inventory, then re-run `30-config` |
+| Observer consoles on class sessions are off until you turn them on | `tn_class_observer_consoles: true` in the installer inventory, then re-run the installer |
 | An open console outlives its sign-in token: the token is checked when the console connects, not while it is open (ADR 0014, "Console relay"; issue #441 tracks the fix) | To cut someone off now, act in TrueNorth, not the directory: guide 06 §10 |
 
 ---
