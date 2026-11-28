@@ -73,8 +73,8 @@ def nations(db_session):
         Nation(
             id=uuid.uuid4(),
             name=f"Alphaland {uuid.uuid4().hex[:6]}",
-            iso_alpha2=uuid.uuid4().hex[:2].upper(),
-            iso_alpha3=uuid.uuid4().hex[:3].upper(),
+            iso_alpha2="Z1",
+            iso_alpha3="Z1Z",
             flag_emoji="F",
             is_active=True,
             is_nato=True,
@@ -83,8 +83,8 @@ def nations(db_session):
         Nation(
             id=uuid.uuid4(),
             name=f"Betalund {uuid.uuid4().hex[:6]}",
-            iso_alpha2=uuid.uuid4().hex[:2].upper(),
-            iso_alpha3=uuid.uuid4().hex[:3].upper(),
+            iso_alpha2="Z2",
+            iso_alpha3="Z2Z",
             flag_emoji="F",
             is_active=True,
             is_nato=True,
@@ -93,8 +93,8 @@ def nations(db_session):
         Nation(
             id=uuid.uuid4(),
             name=f"Gammastan {uuid.uuid4().hex[:6]}",
-            iso_alpha2=uuid.uuid4().hex[:2].upper(),
-            iso_alpha3=uuid.uuid4().hex[:3].upper(),
+            iso_alpha2="Z3",
+            iso_alpha3="Z3Z",
             flag_emoji="F",
             is_active=True,
             is_nato=False,
@@ -103,8 +103,8 @@ def nations(db_session):
         Nation(
             id=uuid.uuid4(),
             name=f"Deltaland {uuid.uuid4().hex[:6]}",
-            iso_alpha2=uuid.uuid4().hex[:2].upper(),
-            iso_alpha3=uuid.uuid4().hex[:3].upper(),
+            iso_alpha2="Z4",
+            iso_alpha3="Z4Z",
             flag_emoji="F",
             is_active=False,
             is_nato=True,
