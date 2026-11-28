@@ -328,17 +328,24 @@ def _events(db: Session, range_ids: set[uuid.UUID]) -> dict[uuid.UUID, list[_Eve
 
 def _refine(base: Interval, evs: list[_Event] | None) -> list[Interval]:
     """``base`` cut by its range's state events into what each part paid for. Parts that
-    paid nothing are dropped; the rest keep ``base``'s Student, sizes and labels."""
+    paid nothing are dropped; the rest keep ``base``'s Student, sizes and labels.
+
+    Approximate: time before the first event (history older than the ledger), and the time
+    that ends at a reconcile event: the change it caught happened somewhere in it."""
     if not evs:
         return [base]
     first = evs[0]
     pre = ledger.charge(first.from_state) if first.from_state else ledger.COMPUTE
     segments = [(base.start, first.at, pre, True)]
-    state, paid = first.from_state, pre
+    state = first.from_state
+    settled = pre if first.from_state not in ledger.IN_PROGRESS else ledger.NOTHING
     for i, e in enumerate(evs):
-        until = evs[i + 1].at if i + 1 < len(evs) else base.end
-        paid = ledger.charge(e.to_state, e.from_state or state, paid)
-        segments.append((e.at, until, paid, e.source == ledger.SOURCE_RECONCILE))
+        nxt = evs[i + 1] if i + 1 < len(evs) else None
+        paid = ledger.charge(e.to_state, e.from_state or state, settled)
+        if e.to_state not in ledger.IN_PROGRESS and e.to_state != "failed":
+            settled = paid
+        approx = nxt is not None and nxt.source == ledger.SOURCE_RECONCILE
+        segments.append((e.at, nxt.at if nxt else base.end, paid, approx))
         state = e.to_state
     out: list[Interval] = []
     for a, b, what, approx in segments:

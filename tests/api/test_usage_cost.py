@@ -518,7 +518,7 @@ def test_setting_the_same_state_again_records_nothing(world):
 
 
 @pytest.mark.parametrize(
-    ("state", "before", "before_charge", "pays"),
+    ("state", "before", "settled", "pays"),
     [
         ("running", None, ledger.NOTHING, ledger.COMPUTE),
         ("stopped", None, ledger.NOTHING, ledger.DISK),
@@ -528,8 +528,8 @@ def test_setting_the_same_state_again_records_nothing(world):
         ("failed", "provisioning", ledger.COMPUTE, ledger.NOTHING),  # a failed build leaves nothing
     ],
 )
-def test_what_each_state_pays_for(state, before, before_charge, pays):
-    assert ledger.charge(state, before, before_charge) == pays
+def test_what_each_state_pays_for(state, before, settled, pays):
+    assert ledger.charge(state, before, settled) == pays
 
 
 def _event(db, rid, tenant, at, frm, to, source="worker"):
@@ -592,7 +592,7 @@ def test_time_before_the_ledger_is_charged_all_on_and_marked_approximate(world):
     cr = _seat_with_events(w, [(T0 + 4 * H, None, "stopped", "reconcile")])
     ivs = sorted(_cut(w, cr), key=lambda i: i.start)
     assert ivs[0].start == T0 and ivs[0].end == T0 + 4 * H and ivs[0].compute and ivs[0].approximate
-    assert ivs[1].start == T0 + 4 * H and not ivs[1].compute and ivs[1].approximate  # reconcile: noticed late
+    assert ivs[1].start == T0 + 4 * H and not ivs[1].compute and not ivs[1].approximate  # known from here on
 
 
 def test_a_failed_build_pays_nothing_after_it_fails(world):
@@ -645,3 +645,60 @@ def test_the_drill_down_says_which_intervals_were_disk_only(client, priced):
     with acting(real_user(db, UserRole.admin, w["a"])):
         body = client.get(f"/usage/cost/students/{w['bob'].id}", params=_q()).json()
     assert sorted(iv["compute"] for iv in body["intervals"]) == [False, True]
+
+
+def _paid(ivs):
+    on = sum((iv.end - iv.start).total_seconds() for iv in ivs if iv.compute) / 3600
+    held = sum((iv.end - iv.start).total_seconds() for iv in ivs) / 3600
+    return on, held
+
+
+def test_a_failed_start_leaves_the_vms_off_so_it_pays_disk_only(world):
+    w = world
+    cr = _seat_with_events(
+        w,
+        [
+            (T0, None, "running"),
+            (T0 + 2 * H, "running", "stopped"),
+            (T0 + 3 * H, "stopped", "starting"),
+            (T0 + 4 * H, "starting", "failed"),
+        ],
+    )
+    on, held = _paid(_cut(w, cr))
+    assert on == pytest.approx(2 + 1)  # running 0-2 h, starting 3-4 h; off after the failed start
+    assert held == pytest.approx(10)
+
+
+def test_a_failed_stop_leaves_the_vms_running_so_it_pays_compute(world):
+    w = world
+    cr = _seat_with_events(
+        w, [(T0, None, "running"), (T0 + 2 * H, "running", "stopping"), (T0 + 3 * H, "stopping", "failed")]
+    )
+    on, held = _paid(_cut(w, cr))
+    assert on == pytest.approx(10) and held == pytest.approx(10)
+
+
+def test_the_time_before_a_reconcile_event_is_the_approximate_part(world):
+    w = world
+    cr = _seat_with_events(w, [(T0, None, "running"), (T0 + 3 * H, "running", "stopped", "reconcile")])
+    ivs = sorted(_cut(w, cr), key=lambda i: i.start)
+    assert [(iv.end - iv.start, iv.compute, iv.approximate) for iv in ivs] == [
+        (3 * H, True, True),  # the missed stop happened somewhere in here
+        (7 * H, False, False),
+    ]
+
+
+def test_an_expired_state_set_to_the_same_value_records_nothing(world):
+    w = world
+    db = w["db"]
+    r = _range(db, w["a"], w["tpl"], RangeState.running)
+    db.commit()
+    n = len(_events_of(db, r.id))
+    db.expire(r, ["state"])
+    r.state = RangeState.running
+    db.flush()
+    assert len(_events_of(db, r.id)) == n
+    db.expire(r, ["state"])
+    r.state = RangeState.stopping
+    db.flush()
+    assert _events_of(db, r.id)[-1] == ("running", "stopping", "api")

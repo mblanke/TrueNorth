@@ -28,11 +28,11 @@ Class ranges and other ranges are cut by those events:
 | provisioning, ready, running, stopping, starting, destroying | compute and disk |
 | stopped | disk only |
 | created, destroyed | nothing |
-| failed | what it paid before (nothing, if a build failed) |
+| failed | what it paid before the operation that failed (a failed start: disk; a failed stop: compute; a failed build: nothing) |
 
 Some time is still flagged `approximate`:
 - time before a range's first event (history from before the ledger), charged all on as in S1;
-- time after a reconcile event;
+- time ending at a reconcile event (the missed change happened somewhere in it);
 - a range with no events at all.
 
 Labs are not cut by events; their own timestamps are already exact.

@@ -13,15 +13,16 @@ Every change of ``ranges.state`` appends a ``RangeStateEvent`` in the same trans
   reconciler catches any other.
 
 What a state costs (``charge``): COMPUTE pays vCPU, RAM, VMs and disk; DISK pays disk only;
-NOTHING pays nothing. ``failed`` keeps what was charged before it (a stop or start that
-failed leaves the VMs as they were), except after a build, which leaves nothing built.
+NOTHING pays nothing. ``failed`` pays what the range paid in its last settled state, the
+one before the operation that failed: a failed stop leaves the VMs running, a failed start
+leaves them off. A failed build leaves nothing built.
 """
 
 from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import event, inspect
+from sqlalchemy import event, inspect, select
 from sqlalchemy.orm import Session
 
 from ..models import Range, RangeState
@@ -41,15 +42,21 @@ def _value(state) -> str | None:
     return state.value if isinstance(state, RangeState) else str(state)
 
 
-def charge(state: str | None, before_state: str | None = None, before_charge: str = NOTHING) -> str:
-    """What a range in ``state`` pays for. For ``failed``: what it paid before
-    (``before_charge``), unless it failed out of a build, which leaves nothing built."""
+# In progress: the operation's own state. A failure out of one of these leaves the range as
+# it was in the state before it (``settled``).
+IN_PROGRESS = {"provisioning", "stopping", "starting", "destroying"}
+
+
+def charge(state: str | None, before_state: str | None = None, settled: str = NOTHING) -> str:
+    """What a range in ``state`` pays for. For ``failed``: ``settled``, what it paid in its
+    last state that was neither in progress nor failed, unless it failed out of a build
+    (or was never built), which leaves nothing."""
     if state in _COMPUTE:
         return COMPUTE
     if state in _DISK:
         return DISK
     if state == "failed" and before_state not in (None, "created", "provisioning"):
-        return before_charge
+        return settled
     return NOTHING
 
 
@@ -63,6 +70,12 @@ def _record(session: Session, _ctx, _instances) -> None:
             continue
         new = _value(hist.added[0])
         old = _value(hist.deleted[0]) if hist.deleted else None
+        if old is None and obj not in session.new:
+            # An expired ``state`` has no old value in the session: read the stored one, so a
+            # same-value write records nothing and a real change names where it came from.
+            with session.no_autoflush:
+                stored = session.execute(select(Range.__table__.c.state).where(Range.__table__.c.id == obj.id))
+                old = _value(stored.scalar())
         if new is None or new == old or (old is None and new == "created"):
             continue
         if obj.id is None:  # a new range: give it its id now, so the event can name it

@@ -96,3 +96,26 @@ def test_the_reconciler_records_what_the_ledger_missed(db):
     assert _events(db, gone)[-1][:3] == ("running", "destroyed", "reconcile")
     with db.begin() as conn:
         assert run_reconcile(conn)["appended"] == 0  # nothing left to record
+
+
+def test_the_reconciler_does_not_repeat_a_change_committed_after_it_looked(db, monkeypatch):
+    """It reads every range's last event first; a worker change committed between that read
+    and the range's lock has its own event, and must not get a second one."""
+    from worker import usage_reconcile
+
+    _with_deleted_at(db)
+    rid = _range(db, "ready")
+    with db.begin() as conn:
+        db_ops.record_state_event(conn, rid, TENANT, None, "ready", source="worker")
+    stale = usage_reconcile._last_states
+
+    def look_then_change(conn):
+        seen = stale(conn)
+        with db.begin() as other:  # the worker's change lands after the reconciler looked
+            db_ops.update_range_state(other, rid, "stopping")
+        return seen
+
+    monkeypatch.setattr(usage_reconcile, "_last_states", look_then_change)
+    with db.begin() as conn:
+        assert run_reconcile(conn)["appended"] == 0
+    assert [t for _, t, _, _ in _events(db, rid)] == ["ready", "stopping"]

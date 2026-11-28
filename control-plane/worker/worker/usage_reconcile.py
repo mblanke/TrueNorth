@@ -49,6 +49,11 @@ def _last_states(db) -> dict[str, str]:
     return {str(r[0]): r[1] for r in rows}
 
 
+def _last_state(db, range_id) -> str | None:
+    e = range_state_events
+    return db.execute(sa.select(e.c.to_state).where(e.c.range_id == range_id).order_by(e.c.at.desc()).limit(1)).scalar()
+
+
 def run_reconcile(db) -> dict:
     """Append a reconcile event for every range whose state its ledger does not show."""
     last = _last_states(db)
@@ -61,11 +66,16 @@ def run_reconcile(db) -> dict:
         before = last.get(str(rid))
         if now_state is None or before == now_state or (before is None and now_state in _HOLDS_NOTHING):
             continue
-        # Lock the range and look again: a change made since the read above wrote its own event.
+        # Lock the range, then look again at both it and its ledger: a change committed since
+        # the reads above wrote its own event, and must not be recorded a second time.
         row = db.execute(
             sa.select(sa.cast(ranges.c.state, sa.Text), ranges.c.deleted_at).where(ranges.c.id == rid).with_for_update()
         ).first()
-        if row is None or _effective(row[0], row[1]) != now_state:
+        if row is None:
+            continue
+        now_state = _effective(row[0], row[1])
+        before = _last_state(db, rid)
+        if now_state is None or before == now_state or (before is None and now_state in _HOLDS_NOTHING):
             continue
         db_ops.record_state_event(db, rid, tenant, before, now_state, source=SOURCE)
         appended += 1

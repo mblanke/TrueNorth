@@ -37,13 +37,16 @@ Usage S1 (PR #545) derives a report from the timestamps that already exist:
      it, including fenced writes via `guarded_range_update`. It locks the range row and
      reads the state it replaces.
    - **api:** a SQLAlchemy `before_flush` hook (`app/usage/ledger.py`) sees every `Range`
-     whose `state` the ORM writes, wherever in the API it was set. A Core `UPDATE` is
+     whose `state` the ORM writes, wherever in the API it was set. If the session has
+     expired the old value, the hook reads the stored state. A Core `UPDATE` is
      invisible to the hook. The one that exists, `discard_unbuilt`, moves a range from
      created to destroyed; neither state holds anything.
    - **reconcile:** an hourly worker task (`worker/usage_reconcile.py`) handles any range
      whose state its last event does not show (a missed path, a soft delete, a hand
-     edit). It appends the missing change, stamped when it was noticed. The report marks
-     what follows a reconcile event as approximate.
+     edit). It appends the missing change, stamped when it was noticed. The change
+     happened somewhere in the time before that event, so the report marks that time
+     approximate. It re-reads the range's ledger under the range's row lock, so a change
+     committed meanwhile is never recorded twice.
    - The table has no foreign keys: the history outlives the range and the Student.
    - Ranges older than the ledger get their first event from the reconciler.
 4. **What each state pays for:**
@@ -53,7 +56,7 @@ Usage S1 (PR #545) derives a report from the timestamps that already exist:
    | provisioning, ready, running, stopping, starting, destroying | compute and disk |
    | stopped | disk only |
    | created, destroyed | nothing |
-   | failed | what it paid before (a failed stop or start leaves the VMs as they were), or nothing if it failed out of a build |
+   | failed | what it paid in its last settled state, before the operation that failed: a failed stop leaves the VMs running (compute), a failed start leaves them off (disk). Nothing if it failed out of a build. |
 
 5. **Who a range is charged to is decided when the report is read, not recorded.**
    - **Lab:** its Student.
@@ -78,6 +81,13 @@ Usage S1 (PR #545) derives a report from the timestamps that already exist:
   yet.
 - **Each worker state write costs one more `SELECT ... FOR UPDATE`.** It takes the same
   row lock the `UPDATE` takes, in the same order, so it adds no new deadlock.
+- **The reconciler is not cheap.** It scans every range and the newest event of each, every
+  hour, and holds the row locks it takes until it commits. That is fine at today's size. If
+  it grows, batch the commits and skip ranges whose last event is destroyed.
+- **API writes don't lock the range.** The `lab_sessions` and `range_ops` paths write
+  without locking it first, so a worker change at the same moment can leave an API event
+  naming a stale `from_state`. The reconciler then puts the ledger right, as an
+  approximate stretch.
 - **Rebuilt class ranges are only partly attributed.** A rebuilt class range keeps only
   its newest `range_id` on `class_ranges`. The earlier, torn-down ranges are no longer
   linked to the class, so they report as unattributed.
