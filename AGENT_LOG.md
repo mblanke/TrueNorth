@@ -260,3 +260,20 @@
 - A resumed job (`/arc2 --resume <slug> accept`) was told "write $RUN as the absolute run directory" but never given it; Qwen guessed the main checkout's `build/arc2`, found nothing in this worktree and quit after 72 s. The runner now puts the run's absolute path and manifest in the job guidance (`guidance_for`); test added.
 - `arc2-phishing-basics` then ran stages 2–6 on Qwen 3.6; QA cycle 1 failed on a column-shifted `catalogue_row.csv` and sent it back to stage 1 (the designed rework loop).
 - Next: accept the preview when it is ready, import the package on the dev stack per its PROMOTE.md.
+
+## 2026-11-28 — closing pass on the docs issues and Taz cards (Mac, from home)
+
+- Re-checked every open docs issue (#387-#416) and Taz card (#433-#478) against main at
+  48da4326. Closed 43 with evidence in a comment; left 26 open, each with a note on what
+  remains.
+- #551 (open, CI green): Taz coverage rounds A to F, 55 test files that were delivered on
+  2026-11-08 and never applied. Closes #459-#461, #463-#465.
+- #553 (open, CI green): guide gaps found by the re-check, and Taz corrections 437-r2 and
+  439-r2. Closes #387, #389, #394, #403, #408, #414, #415.
+- New issue #552: the site CA is not trusted in the API and worker containers, so vSphere
+  TLS verification must stay off.
+- Held for the owner: Taz 453-r2 (corrected UI literal counter) raises the baseline 701 to
+  704 (#476). The four PRs opened by other sessions (#544, #545, #547, #548) are untouched.
+- Kanzo was unreachable from the Mac all session: the board does not reflect any of this.
+  The seven truenorth review cards (#88-#93, #134) are for issues already closed on GitHub.
+- Next: owner's word on #551 and #553; then #410 (guide 01, 8 items), #479 (alerting).

@@ -70,7 +70,8 @@ All of these, in hand, or Phase B waits:
 ## What you need before you start
 
 Everything in the [site prerequisites checklist](01-site-prerequisites.md) is ticked or has a
-recorded exception, and the site values sheet (`<angle-bracket>` values) and the Active
+recorded exception, and the site values sheet (`<angle-bracket>` values: guide 02, "Site
+values this guide needs") and the Active
 Directory accounts the guides name are in hand. For Phase B, also the vCenter accounts and
 the prerequisites above.
 
