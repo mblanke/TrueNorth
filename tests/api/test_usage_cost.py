@@ -463,6 +463,247 @@ def test_from_must_be_before_to(client, priced):
     assert resp.status_code == 422
 
 
+# ── S2: the range state-event ledger (ADR 0021) ──────────────────────────────
+from app.usage import (
+    RangeStateEvent,  # noqa: E402
+    ledger,  # noqa: E402
+)
+
+
+def _events_of(db, rid):
+    return [
+        (e.from_state, e.to_state, e.source)
+        for e in db.query(RangeStateEvent).filter(RangeStateEvent.range_id == rid).order_by(RangeStateEvent.at).all()
+    ]
+
+
+def test_the_api_records_every_orm_state_change_of_a_range(world):
+    w = world
+    db = w["db"]
+    r = _range(db, w["a"], w["tpl"], RangeState.created)
+    db.flush()
+    assert _events_of(db, r.id) == []  # created holds nothing: no event
+    r.state = RangeState.destroying
+    db.flush()
+    r.state = RangeState.destroyed
+    db.flush()
+    assert _events_of(db, r.id)[-2:] == [("created", "destroying", "api"), ("destroying", "destroyed", "api")]
+    ev = db.query(RangeStateEvent).filter(RangeStateEvent.range_id == r.id).first()
+    assert ev.tenant_id == w["a"] and ev.at is not None
+
+
+def test_a_range_created_in_a_live_state_records_where_it_started(world):
+    w = world
+    db = w["db"]
+    r = Range(
+        name="lab-x",
+        template_id=w["tpl"].id,
+        tenant_id=w["a"],
+        state=RangeState.provisioning,
+        provisioner_backend="mock",
+    )
+    db.add(r)
+    db.flush()
+    assert _events_of(db, r.id) == [(None, "provisioning", "api")]
+
+
+def test_setting_the_same_state_again_records_nothing(world):
+    w = world
+    db = w["db"]
+    r = _range(db, w["a"], w["tpl"], RangeState.running)
+    n = len(_events_of(db, r.id))
+    r.state = RangeState.running
+    db.flush()
+    assert len(_events_of(db, r.id)) == n
+
+
+@pytest.mark.parametrize(
+    ("state", "before", "settled", "pays"),
+    [
+        ("running", None, ledger.NOTHING, ledger.COMPUTE),
+        ("stopped", None, ledger.NOTHING, ledger.DISK),
+        ("destroyed", None, ledger.NOTHING, ledger.NOTHING),
+        ("failed", "stopping", ledger.COMPUTE, ledger.COMPUTE),  # a failed stop: the VMs still run
+        ("failed", "starting", ledger.DISK, ledger.DISK),  # a failed start: still off
+        ("failed", "provisioning", ledger.COMPUTE, ledger.NOTHING),  # a failed build leaves nothing
+    ],
+)
+def test_what_each_state_pays_for(state, before, settled, pays):
+    assert ledger.charge(state, before, settled) == pays
+
+
+def _event(db, rid, tenant, at, frm, to, source="worker"):
+    db.add(
+        RangeStateEvent(
+            id=uuid.uuid4(), tenant_id=tenant, range_id=rid, from_state=frm, to_state=to, at=at, source=source
+        )
+    )
+    db.flush()
+
+
+def _seat_with_events(w, events, built=T0, torn=T0 + 10 * H):
+    cls = _class(w)
+    e = _entry(w, cls, w["ann"], T0)
+    cr = _class_range(w, cls, "seat", built, torn, e)
+    db = w["db"]
+    db.query(RangeStateEvent).filter(RangeStateEvent.range_id == cr.range_id).delete()
+    for at, frm, to, *src in events:
+        _event(db, cr.range_id, w["a"], at, frm, to, *(src or ["worker"]))
+    return cr
+
+
+def _cut(w, cr, period_end=T0 + 20 * H):
+    return [
+        iv for iv in derive(w["db"], {w["a"]}, T0 - 5 * H, period_end, now=period_end) if iv.range_id == cr.range_id
+    ]
+
+
+def test_a_class_range_pays_compute_only_while_running_and_disk_while_stopped(world):
+    w = world
+    cr = _seat_with_events(
+        w,
+        [
+            (T0, None, "provisioning"),
+            (T0 + H, "provisioning", "ready"),
+            (T0 + 3 * H, "ready", "stopping"),
+            (T0 + 3 * H + timedelta(minutes=1), "stopping", "stopped"),
+            (T0 + 7 * H, "stopped", "starting"),
+            (T0 + 7 * H + timedelta(minutes=1), "starting", "running"),
+            (T0 + 9 * H, "running", "destroying"),
+            (T0 + 10 * H, "destroying", "destroyed"),
+        ],
+    )
+    ivs = _cut(w, cr)
+    on = sum((iv.end - iv.start).total_seconds() for iv in ivs if iv.compute) / 3600
+    held = sum((iv.end - iv.start).total_seconds() for iv in ivs) / 3600
+    off = 4 - 1 / 60  # stopping and starting pay compute: off from 3h01 (stopped) to 7h00 (starting)
+    assert on == pytest.approx(10 - off)
+    assert held == pytest.approx(10)
+    assert all(iv.user_id == w["ann"].id and not iv.approximate for iv in ivs)
+    book = RateBook.of({None: [_card(T0 - H, vcpu=1.0, disk=0.01)]})
+    from app.usage.report import price
+
+    cost = sum(price(book, iv).total for iv in ivs)
+    assert cost == pytest.approx(6 * (10 - off) * 1.0 + 160 * 10 * 0.01)
+
+
+def test_time_before_the_ledger_is_charged_all_on_and_marked_approximate(world):
+    w = world
+    cr = _seat_with_events(w, [(T0 + 4 * H, None, "stopped", "reconcile")])
+    ivs = sorted(_cut(w, cr), key=lambda i: i.start)
+    assert ivs[0].start == T0 and ivs[0].end == T0 + 4 * H and ivs[0].compute and ivs[0].approximate
+    assert ivs[1].start == T0 + 4 * H and not ivs[1].compute and not ivs[1].approximate  # known from here on
+
+
+def test_a_failed_build_pays_nothing_after_it_fails(world):
+    w = world
+    cr = _seat_with_events(w, [(T0, None, "provisioning"), (T0 + H, "provisioning", "failed")])
+    ivs = _cut(w, cr)
+    assert sum((iv.end - iv.start).total_seconds() for iv in ivs) / 3600 == pytest.approx(1)
+
+
+def test_a_stopped_shared_range_splits_its_disk_over_the_roll_call(world):
+    w = world
+    cls = _class(w)
+    _entry(w, cls, w["ann"], T0)
+    _entry(w, cls, w["bob"], T0)
+    cr = _class_range(w, cls, "shared", T0, T0 + 4 * H)
+    db = w["db"]
+    db.query(RangeStateEvent).filter(RangeStateEvent.range_id == cr.range_id).delete()
+    _event(db, cr.range_id, w["a"], T0, None, "running")
+    _event(db, cr.range_id, w["a"], T0 + 2 * H, "running", "stopped")
+    ivs = [iv for iv in derive(db, {w["a"]}, T0, T0 + 4 * H, now=T0 + 4 * H) if iv.range_id == cr.range_id]
+    vcpu_h = sum(iv.vcpu * (iv.end - iv.start).total_seconds() / 3600 for iv in ivs if iv.compute)
+    disk_h = sum(iv.disk_gb * (iv.end - iv.start).total_seconds() / 3600 for iv in ivs)
+    assert vcpu_h == pytest.approx(6 * 2) and disk_h == pytest.approx(160 * 4)
+    assert {iv.user_id for iv in ivs} == {w["ann"].id, w["bob"].id}
+
+
+def test_an_unattributed_range_is_cut_by_its_events_too(world):
+    w = world
+    db = w["db"]
+    r = _range(db, w["a"], w["tpl"], RangeState.stopped, created=T0)
+    db.query(RangeStateEvent).filter(RangeStateEvent.range_id == r.id).delete()
+    _event(db, r.id, w["a"], T0, None, "running")
+    _event(db, r.id, w["a"], T0 + H, "running", "stopped")
+    ivs = [iv for iv in derive(db, {w["a"]}, T0, T0 + 5 * H, now=T0 + 5 * H) if iv.range_id == r.id]
+    assert sum((iv.end - iv.start).total_seconds() for iv in ivs if iv.compute) / 3600 == pytest.approx(1)
+    assert sum((iv.end - iv.start).total_seconds() for iv in ivs) / 3600 == pytest.approx(5)
+    assert all(iv.source == UNATTRIBUTED and not iv.approximate for iv in ivs)
+
+
+def test_the_drill_down_says_which_intervals_were_disk_only(client, priced):
+    w = priced
+    cls = _class(w)
+    e = _entry(w, cls, w["bob"], T0)
+    cr = _class_range(w, cls, "seat", T0, T0 + 4 * H, e)
+    db = w["db"]
+    db.query(RangeStateEvent).filter(RangeStateEvent.range_id == cr.range_id).delete()
+    _event(db, cr.range_id, w["a"], T0, None, "running")
+    _event(db, cr.range_id, w["a"], T0 + H, "running", "stopped")
+    db.commit()
+    with acting(real_user(db, UserRole.admin, w["a"])):
+        body = client.get(f"/usage/cost/students/{w['bob'].id}", params=_q()).json()
+    assert sorted(iv["compute"] for iv in body["intervals"]) == [False, True]
+
+
+def _paid(ivs):
+    on = sum((iv.end - iv.start).total_seconds() for iv in ivs if iv.compute) / 3600
+    held = sum((iv.end - iv.start).total_seconds() for iv in ivs) / 3600
+    return on, held
+
+
+def test_a_failed_start_leaves_the_vms_off_so_it_pays_disk_only(world):
+    w = world
+    cr = _seat_with_events(
+        w,
+        [
+            (T0, None, "running"),
+            (T0 + 2 * H, "running", "stopped"),
+            (T0 + 3 * H, "stopped", "starting"),
+            (T0 + 4 * H, "starting", "failed"),
+        ],
+    )
+    on, held = _paid(_cut(w, cr))
+    assert on == pytest.approx(2 + 1)  # running 0-2 h, starting 3-4 h; off after the failed start
+    assert held == pytest.approx(10)
+
+
+def test_a_failed_stop_leaves_the_vms_running_so_it_pays_compute(world):
+    w = world
+    cr = _seat_with_events(
+        w, [(T0, None, "running"), (T0 + 2 * H, "running", "stopping"), (T0 + 3 * H, "stopping", "failed")]
+    )
+    on, held = _paid(_cut(w, cr))
+    assert on == pytest.approx(10) and held == pytest.approx(10)
+
+
+def test_the_time_before_a_reconcile_event_is_the_approximate_part(world):
+    w = world
+    cr = _seat_with_events(w, [(T0, None, "running"), (T0 + 3 * H, "running", "stopped", "reconcile")])
+    ivs = sorted(_cut(w, cr), key=lambda i: i.start)
+    assert [(iv.end - iv.start, iv.compute, iv.approximate) for iv in ivs] == [
+        (3 * H, True, True),  # the missed stop happened somewhere in here
+        (7 * H, False, False),
+    ]
+
+
+def test_an_expired_state_set_to_the_same_value_records_nothing(world):
+    w = world
+    db = w["db"]
+    r = _range(db, w["a"], w["tpl"], RangeState.running)
+    db.commit()
+    n = len(_events_of(db, r.id))
+    db.expire(r, ["state"])
+    r.state = RangeState.running
+    db.flush()
+    assert len(_events_of(db, r.id)) == n
+    db.expire(r, ["state"])
+    r.state = RangeState.stopping
+    db.flush()
+    assert _events_of(db, r.id)[-1] == ("running", "stopping", "api")
+
+
 # ── tenancy and access: each filter has a test that fails without it ─────────
 def _other_tenant(w) -> dict:
     """The same builders, pointed at tenant B (they read the tenant from ``w["a"]``)."""

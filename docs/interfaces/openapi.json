@@ -26780,6 +26780,11 @@
             ],
             "title": "Class Id"
           },
+          "compute": {
+            "description": "False: the VMs were off (stopped), disk only",
+            "title": "Compute",
+            "type": "boolean"
+          },
           "cost_disk": {
             "title": "Cost Disk",
             "type": "number"
@@ -26915,7 +26920,8 @@
           "disk_gb",
           "vms",
           "approximate",
-          "open"
+          "open",
+          "compute"
         ],
         "title": "UsageIntervalOut",
         "type": "object"

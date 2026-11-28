@@ -17,9 +17,15 @@ unattributed   ``ranges.created_at`` → deleted / destroyed / now    none (book
 =============  ==================================================  ===========================
 
 Sizes are allocated, not measured: a lab's own ``vcpu``/``ram_mb``/``disk_gb``; a class or
-other range's template (``range_topology.template_demand``). With no power history yet
-(usage S2), compute is charged for the whole interval; class and other ranges are marked
-``approximate`` for that reason. A lab is never stopped and started, so its figures are exact.
+other range's template (``range_topology.template_demand``).
+
+Power history (usage S2, ADR 0021): a class or other range's interval is cut by its
+``range_state_events`` into what each state paid for (``ledger.charge``): running and the
+like pay compute and disk, stopped pays disk only, created/destroyed pay nothing. Time
+before a range's first event (history older than the ledger) is charged as before, all
+on, and marked ``approximate``; so is time after a reconcile event. A range with no events
+at all keeps the whole interval, approximate. A lab is never stopped and started: its
+figures are exact from its own timestamps and are not cut.
 """
 
 from __future__ import annotations
@@ -37,6 +43,8 @@ from ..lab_sessions import models as lab
 from ..lab_sessions.models import LabSession
 from ..models import Range, RangeState, Template
 from ..range_topology import template_demand
+from . import ledger
+from .models import RangeStateEvent
 
 LAB, CLASS_SEAT, CLASS_SHARED, UNATTRIBUTED = "lab", "class_seat", "class_shared", "unattributed"
 
@@ -58,6 +66,7 @@ class Interval:
     vms: float
     approximate: bool
     open: bool  # still holding resources at the time of the report
+    compute: bool = True  # False: the VMs were off (stopped), disk only
 
 
 def _aware(t: datetime | None) -> datetime | None:
@@ -204,6 +213,7 @@ def class_intervals(db: Session, tenant_ids, start: datetime, end: datetime, now
     for e in db.query(RollCallEntry).filter(RollCallEntry.class_id.in_(class_ids)).all():
         entries.setdefault(e.class_id, []).append(e)
     by_id = {e.id: e for es in entries.values() for e in es}
+    events = _events(db, {r.range_id for r in rows if r.range_id})
     out: list[Interval] = []
     for r in rows:
         a = _aware(r.built_at)
@@ -226,12 +236,15 @@ def class_intervals(db: Session, tenant_ids, start: datetime, end: datetime, now
             approximate=True,
             open=r.torn_down_at is None,
         )
+        parts = _refine(base, events.get(r.range_id))
         if r.kind == ClassRangeKind.shared.value:
-            out.extend(_split(replace(base, source=CLASS_SHARED), _attendance(entries.get(r.class_id, []), a)))
+            attendance = _attendance(entries.get(r.class_id, []), a)
+            for part in parts:
+                out.extend(_split(replace(part, source=CLASS_SHARED), attendance))
         else:
             entry = by_id.get(r.entry_id) if r.entry_id else None
             user = entry.user_id if entry else None
-            out.append(replace(base, user_id=user, source=CLASS_SEAT if user else UNATTRIBUTED))
+            out.extend(replace(p, user_id=user, source=CLASS_SEAT if user else UNATTRIBUTED) for p in parts)
     return out
 
 
@@ -257,10 +270,10 @@ def other_range_intervals(db: Session, tenant_ids, start: datetime, end: datetim
     owned = _attributed_ranges(db, tenant_ids)
     q = _tenant_filter(db.query(Range), Range.tenant_id, tenant_ids)
     q = q.filter(Range.state != RangeState.created, Range.created_at < end)
+    rows = [r for r in q.all() if r.id not in owned]
+    events = _events(db, {r.id for r in rows})
     out: list[Interval] = []
-    for r in q.all():
-        if r.id in owned:
-            continue
+    for r in rows:
         a = _aware(r.created_at)
         if r.deleted_at is not None:
             b, is_open = _aware(r.deleted_at), False
@@ -269,23 +282,84 @@ def other_range_intervals(db: Session, tenant_ids, start: datetime, end: datetim
         else:
             b, is_open = now, True
         vcpu, ram_gb, disk_gb, vms, _known = sizes.of(r.template_id)
+        base = Interval(
+            tenant_id=r.tenant_id,
+            source=UNATTRIBUTED,
+            source_id=r.id,
+            range_id=r.id,
+            user_id=None,
+            course_id=None,
+            class_id=None,
+            start=a,
+            end=max(a, b),
+            vcpu=vcpu,
+            ram_gb=ram_gb,
+            disk_gb=disk_gb,
+            vms=vms,
+            approximate=True,
+            open=is_open,
+        )
+        out.extend(_refine(base, events.get(r.id)))
+    return out
+
+
+@dataclass(frozen=True)
+class _Event:
+    at: datetime
+    from_state: str | None
+    to_state: str
+    source: str
+
+
+def _events(db: Session, range_ids: set[uuid.UUID]) -> dict[uuid.UUID, list[_Event]]:
+    out: dict[uuid.UUID, list[_Event]] = {}
+    ids = list(range_ids)
+    for i in range(0, len(ids), 500):
+        rows = (
+            db.query(RangeStateEvent)
+            .filter(RangeStateEvent.range_id.in_(ids[i : i + 500]))
+            .order_by(RangeStateEvent.range_id, RangeStateEvent.at)
+            .all()
+        )
+        for e in rows:
+            out.setdefault(e.range_id, []).append(_Event(_aware(e.at), e.from_state, e.to_state, e.source))
+    return out
+
+
+def _refine(base: Interval, evs: list[_Event] | None) -> list[Interval]:
+    """``base`` cut by its range's state events into what each part paid for. Parts that
+    paid nothing are dropped; the rest keep ``base``'s Student, sizes and labels.
+
+    Approximate: time before the first event (history older than the ledger), and the time
+    that ends at a reconcile event: the change it caught happened somewhere in it."""
+    if not evs:
+        return [base]
+    first = evs[0]
+    pre = ledger.charge(first.from_state) if first.from_state else ledger.COMPUTE
+    segments = [(base.start, first.at, pre, True)]
+    state = first.from_state
+    settled = pre if first.from_state not in ledger.IN_PROGRESS else ledger.NOTHING
+    for i, e in enumerate(evs):
+        nxt = evs[i + 1] if i + 1 < len(evs) else None
+        paid = ledger.charge(e.to_state, e.from_state or state, settled)
+        if e.to_state not in ledger.IN_PROGRESS and e.to_state != "failed":
+            settled = paid
+        approx = nxt is not None and nxt.source == ledger.SOURCE_RECONCILE
+        segments.append((e.at, nxt.at if nxt else base.end, paid, approx))
+        state = e.to_state
+    out: list[Interval] = []
+    for a, b, what, approx in segments:
+        a, b = max(a, base.start), min(b, base.end)
+        if b <= a or what == ledger.NOTHING:
+            continue
         out.append(
-            Interval(
-                tenant_id=r.tenant_id,
-                source=UNATTRIBUTED,
-                source_id=r.id,
-                range_id=r.id,
-                user_id=None,
-                course_id=None,
-                class_id=None,
+            replace(
+                base,
                 start=a,
-                end=max(a, b),
-                vcpu=vcpu,
-                ram_gb=ram_gb,
-                disk_gb=disk_gb,
-                vms=vms,
-                approximate=True,
-                open=is_open,
+                end=b,
+                compute=what == ledger.COMPUTE,
+                approximate=approx,
+                open=base.open and b == base.end,
             )
         )
     return out

@@ -650,7 +650,7 @@ class TestGuardedRangeStateOnARealDatabase:
             conn.execute(
                 text(
                     "CREATE TABLE ranges (id TEXT PRIMARY KEY, state TEXT, updated_at TEXT,"
-                    " error_message TEXT, provisioner_output TEXT)"
+                    " error_message TEXT, provisioner_output TEXT, tenant_id TEXT)"
                 )
             )
             conn.execute(text("INSERT INTO ranges (id, state) VALUES ('live', 'ready'), ('gone', 'destroyed')"))
@@ -662,6 +662,9 @@ class TestGuardedRangeStateOnARealDatabase:
             )
             conn.execute(text("INSERT INTO range_snapshots (id, snapshot_state) VALUES ('taking', 'creating')"))
             conn.execute(text("INSERT INTO range_snapshots (id, snapshot_state) VALUES ('binned', 'deleted')"))
+        from worker import tables
+
+        tables.range_state_events.create(engine)  # update_range_state appends one per change (ADR 0021)
         monkeypatch.setattr(tasks, "DATABASE_URL", url)
 
         def read(table: str, column: str, rid: str):

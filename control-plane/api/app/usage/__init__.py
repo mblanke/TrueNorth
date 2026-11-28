@@ -9,6 +9,7 @@ exist (lab sessions, class ranges, ranges); nothing here writes to them.
 Importing this package registers its table on ``Base.metadata``.
 """
 
-from .models import RateCard
+from . import ledger  # noqa: F401  registers the flush hook that records range state changes
+from .models import RangeStateEvent, RateCard
 
-__all__ = ["RateCard"]
+__all__ = ["RangeStateEvent", "RateCard"]

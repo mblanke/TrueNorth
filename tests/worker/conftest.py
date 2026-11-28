@@ -114,7 +114,7 @@ def _sqlite_now(dbapi_conn, _record):
 @pytest.fixture
 def db(tmp_path, monkeypatch):
     """A file SQLite database with the worker's range tables, and the tasks pointed at it."""
-    from worker import fencing, tasks
+    from worker import fencing, tables, tasks
 
     sa.event.listen(sa.engine.Engine, "connect", _sqlite_now)
     url = f"sqlite:///{tmp_path / 'worker.db'}"
@@ -124,7 +124,7 @@ def db(tmp_path, monkeypatch):
         conn.execute(
             sa.text(
                 "CREATE TABLE ranges (id TEXT PRIMARY KEY, name TEXT, template_id TEXT, state TEXT, provisioner_backend TEXT, "
-                "provisioner_output TEXT, error_message TEXT, updated_at TIMESTAMP)"
+                "provisioner_output TEXT, error_message TEXT, updated_at TIMESTAMP, tenant_id TEXT)"
             )
         )
         conn.execute(
@@ -134,6 +134,7 @@ def db(tmp_path, monkeypatch):
             )
         )
     fencing.range_leases.create(engine)
+    tables.range_state_events.create(engine)  # update_range_state appends one per change (ADR 0021)
     monkeypatch.setattr(tasks, "DATABASE_URL", url)
     monkeypatch.setattr(tasks, "_notify_api", lambda *a, **k: None)
     yield engine

@@ -34,7 +34,6 @@ NOW = datetime.now(UTC)
 def wdb(db):
     """The worker test database (conftest ``db``) with what the re-check reads."""
     with db.begin() as conn:
-        conn.execute(sa.text("ALTER TABLE ranges ADD COLUMN tenant_id TEXT"))
         conn.execute(sa.text("CREATE TABLE lab_sessions (id TEXT PRIMARY KEY, range_id TEXT, state TEXT, "
                              "end_reason TEXT)"))
     tables.maintenance_windows.create(db)

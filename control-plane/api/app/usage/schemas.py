@@ -92,6 +92,7 @@ class UsageIntervalOut(Figures):
     vms: float
     approximate: bool
     open: bool
+    compute: bool = Field(..., description="False: the VMs were off (stopped), disk only")
 
 
 class StudentCostOut(BaseModel):

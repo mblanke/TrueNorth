@@ -66,6 +66,7 @@ WORKER_TABLES = (
     "range_inventory_checks",  # ADR 0013 §5: the worker writes teardown verification and drift
     "range_leases",
     "range_operations",
+    "range_state_events",  # ADR 0021: update_range_state appends one per change; the usage reconciler
     "range_snapshots",
     "ranges",
     "scenario_executions",
@@ -117,6 +118,7 @@ def render() -> str:
     import app.range_ops  # noqa: F401 — range_operations.window_bypass (worker/maintenance_windows.py)
     import app.scenario_runs  # noqa: F401
     import app.scheduler.models  # noqa: F401 — scheduled_events
+    import app.usage  # noqa: F401 — range_state_events (worker/db_ops.py, worker/usage_reconcile.py)
     from app import models
     from app.db import Base
 

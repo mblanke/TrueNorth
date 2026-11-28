@@ -21963,6 +21963,11 @@ export interface components {
             approximate: boolean;
             /** Class Id */
             class_id: string | null;
+            /**
+             * Compute
+             * @description False: the VMs were off (stopped), disk only
+             */
+            compute: boolean;
             /** Cost Disk */
             cost_disk: number;
             /** Cost Ram */

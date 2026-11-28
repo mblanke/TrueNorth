@@ -72,7 +72,7 @@ def test_upgrade_reseals_adds_staff_logins_and_scrubs_the_wiki(tmp_path):
     from app.models_wiki import WikiPage, WikiRevision, WikiSpace
     from sqlalchemy.orm import Session
 
-    with Session(engine) as db:  # the parent revision's schema is the ORM's for these tables
+    with Session(engine, info={"usage_ledger_off": True}) as db:  # the parent revision's schema (no usage ledger yet) is the ORM's for these tables
         db.add(Tenant(id=tenant, name="t", slug="t"))
         db.flush()
         db.add(Template(id=tmpl, name="tp", version="1", yaml=TEMPLATE, tenant_id=tenant))

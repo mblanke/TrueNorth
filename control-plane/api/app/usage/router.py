@@ -178,6 +178,7 @@ def student_cost(
                 vms=round(iv.vms, 4),
                 approximate=iv.approximate,
                 open=iv.open,
+                compute=iv.compute,
                 **_figures(p),
             )
         )
